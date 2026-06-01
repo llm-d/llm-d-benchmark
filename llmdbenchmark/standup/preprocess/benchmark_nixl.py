@@ -7,12 +7,11 @@ from typing import List
 import traceback
 import zmq
 import io
-import sys
 import torch
 
 try:
     from nixl._api import nixl_agent, nixl_agent_config
-except ImportError as exc:
+except ImportError:
     sys.stderr.write("Failed to import NIXL\n")
     raise
 
@@ -161,7 +160,7 @@ def init_transfer_metadata_mc(
         msg = zmq_socket.recv()
         remote_xfer_descs = agent.deserialize_descs(msg)
 
-        uid = "TRANSFER"
+        uid = "TRANSFER"  # noqa: F841
         transfer_handle = agent.initialize_xfer(
             operation, local_xfer_descs, remote_xfer_descs, "server"
         )
@@ -308,7 +307,7 @@ def start_transfer(size, num_kvblocks, args):
             # [PERF LOG] Per-iteration bandwidth
             iter_bw = size / transfer_time / 1e9
             print(
-                f"[PERF] Iteration {iter_idx}: {transfer_time*1000:.2f} ms, {iter_bw:.2f} GB/s",
+                f"[PERF] Iteration {iter_idx}: {transfer_time * 1000:.2f} ms, {iter_bw:.2f} GB/s",
                 flush=True,
             )
 
@@ -330,7 +329,7 @@ def start_transfer(size, num_kvblocks, args):
 
     except KeyboardInterrupt:
         return 0.0
-    except Exception as e:
+    except Exception:
         print(f"Error in agent pair {args.role}: {traceback.format_exc()}")
         return 0.0
     finally:
@@ -446,9 +445,9 @@ def start_transfer_dual(size, num_kvblocks, args):
     Dual direction transfer where both client and server simultaneously perform WRITE operations.
     Each endpoint writes data to the other endpoint concurrently.
     """
-    assert (
-        args.backend == "ucx"
-    ), "Dual direction transfer only supported with UCX backend"
+    assert args.backend == "ucx", (
+        "Dual direction transfer only supported with UCX backend"
+    )
 
     try:
         # Create datasets for both sending and receiving
@@ -517,13 +516,13 @@ def start_transfer_dual(size, num_kvblocks, args):
         expected_value = 0 if "client" in args.role else 1
         for i, block in enumerate(recv_dataset):
             block_mean = torch.mean(block).item()
-            assert (
-                abs(block_mean - expected_value) < 1e-6
-            ), f"Block {i} received value {block_mean}, expected {expected_value}"
+            assert abs(block_mean - expected_value) < 1e-6, (
+                f"Block {i} received value {block_mean}, expected {expected_value}"
+            )
 
     except KeyboardInterrupt:
         return 0.0
-    except Exception as e:
+    except Exception:
         print(f"Error in dual write transfer {args.role}: {traceback.format_exc()}")
         return 0.0
     finally:
@@ -594,13 +593,13 @@ def start_transfer_local(size, num_kvblocks, args):
                 total_transfer_time += transfer_time
                 total_size += size
 
-            iter_bw = size / transfer_time / 1e9
+            iter_bw = size / transfer_time / 1e9  # noqa: F841
 
         # Verify dst buffers contain the src value (1.0)
         for i, block in enumerate(dst_dataset):
-            assert (
-                abs(torch.mean(block.float()).item() - 1.0) < 1e-6
-            ), f"Block {i}: expected 1.0 got {torch.mean(block.float()).item()}"
+            assert abs(torch.mean(block.float()).item() - 1.0) < 1e-6, (
+                f"Block {i}: expected 1.0 got {torch.mean(block.float()).item()}"
+            )
 
         effective_iters = max(args.iters - warmup, 1)
         avg_lat = total_transfer_time / effective_iters
@@ -618,7 +617,7 @@ def start_transfer_local(size, num_kvblocks, args):
         agent.deregister_memory(src_reg)
         agent.deregister_memory(dst_reg)
 
-    except Exception as e:
+    except Exception:
         import traceback
 
         print(f"Error in local transfer: {traceback.format_exc()}")
@@ -726,12 +725,12 @@ def main():
     )
     args = p.parse_args()
 
-    assert not (
-        args.dual and args.backend == "mooncake"
-    ), "We do not support dual direction with Mooncake backend"
-    assert not (
-        args.dual and args.remote_ip == "0.0.0.0"
-    ), "Remote IP must be set for dual direction transfer"
+    assert not (args.dual and args.backend == "mooncake"), (
+        "We do not support dual direction with Mooncake backend"
+    )
+    assert not (args.dual and args.remote_ip == "0.0.0.0"), (
+        "Remote IP must be set for dual direction transfer"
+    )
 
     print("NIXL P2P Benchmark — role:", args.role)
     print("Message sizes:", ", ".join(_pretty_size(s) for s in args.sizes))
@@ -742,9 +741,9 @@ def main():
     if args.local:
         if args.dst_device is None:
             args.dst_device = args.device
-        assert (
-            args.backend == "uccl" or args.backend == "ucx"
-        ), "Local mode only supported with --backend uccl/ucx"
+        assert args.backend == "uccl" or args.backend == "ucx", (
+            "Local mode only supported with --backend uccl/ucx"
+        )
         dst = args.dst_gpu_idx if args.dst_gpu_idx >= 0 else args.local_gpu_idx
         src_dev = f"cuda:{args.local_gpu_idx}" if args.device == "gpu" else "cpu"
         dst_dev = f"cuda:{dst}" if args.dst_device == "gpu" else "cpu"

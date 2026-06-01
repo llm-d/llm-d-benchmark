@@ -73,44 +73,53 @@ class DeployHarnessStep(Step):
 
         # Resolve key configuration
         harness_name = self._resolve(
-            plan_config, "harness.name",
-            context_value=context.harness_name, default="inference-perf",
+            plan_config,
+            "harness.name",
+            context_value=context.harness_name,
+            default="inference-perf",
         )
         harness_ns = self._resolve(
-            plan_config, "harness.namespace", "namespace.name",
+            plan_config,
+            "harness.namespace",
+            "namespace.name",
             context_value=context.harness_namespace or context.namespace,
         )
 
         endpoint_url = context.deployed_endpoints.get(stack_name, "")
         model_name = self._resolve(
-            plan_config, "model.name",
-            context_value=context.model_name, default="",
+            plan_config,
+            "model.name",
+            context_value=context.model_name,
+            default="",
         )
 
         # Determine stack type
-        is_standalone = (
-            "standalone" in context.deployed_methods
-            or self._resolve(plan_config, "standalone.enabled", default=False)
+        is_standalone = "standalone" in context.deployed_methods or self._resolve(
+            plan_config, "standalone.enabled", default=False
         )
-        is_fma = (
-            "fma" in context.deployed_methods
-            or self._resolve(plan_config, "fma.enabled", default=False)
+        is_fma = "fma" in context.deployed_methods or self._resolve(
+            plan_config, "fma.enabled", default=False
         )
         stack_type = "vllm-prod" if is_standalone or is_fma else "llm-d"
 
         # Resolve model ID label used as the llm-d.ai/model label value
         # (hashed format matching bash model_attribute) for infrastructure log capture.
-        model_label = plan_config.get("model_id_label", "") or self._resolve(plan_config, "model.shortName")
+        model_label = plan_config.get("model_id_label", "") or self._resolve(
+            plan_config, "model.shortName"
+        )
 
         # The namespace where model-serving infrastructure lives
         deploy_namespace = self._resolve(
-            plan_config, "namespace.name",
+            plan_config,
+            "namespace.name",
             context_value=context.namespace,
         )
 
         # Load the harness pod template
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]
-        template_path = base_dir / "config" / "templates" / "jinja" / "20_harness_pod.yaml.j2"
+        template_path = (
+            base_dir / "config" / "templates" / "jinja" / "20_harness_pod.yaml.j2"
+        )
         if not template_path.exists():
             return StepResult(
                 step_number=self.number,
@@ -131,25 +140,34 @@ class DeployHarnessStep(Step):
 
         # Resolve harness executable
         harness_executable = self._resolve(
-            plan_config, "harness.executable", default="llm-d-benchmark.sh",
+            plan_config,
+            "harness.executable",
+            default="llm-d-benchmark.sh",
         )
 
         # Determine experiment profile name
         profile_name = self._resolve(
-            plan_config, "harness.experimentProfile", "harness.profile",
-            context_value=context.harness_profile, default="sanity_random.yaml",
+            plan_config,
+            "harness.experimentProfile",
+            "harness.profile",
+            context_value=context.harness_profile,
+            default="sanity_random.yaml",
         )
         # Strip .in suffix if present
         if profile_name.endswith(".in"):
             profile_name = profile_name[:-3]
 
         results_dir_prefix = self._resolve(
-            plan_config, "experiment.resultsDir", default="/requests",
+            plan_config,
+            "experiment.resultsDir",
+            default="/requests",
         )
 
         # Resolve pod label for label-based kubectl wait
         pod_label = self._resolve(
-            plan_config, "harness.podLabel", default="llmdbench-harness-launcher",
+            plan_config,
+            "harness.podLabel",
+            default="llmdbench-harness-launcher",
         )
 
         # Determine treatments and parallelism
@@ -175,7 +193,9 @@ class DeployHarnessStep(Step):
             if treatment and isinstance(treatment, dict):
                 treatment_name = treatment.get("name", "")
             if treatment_name:
-                experiment_id = f"{harness_name}-{treatment_name}-{timestamp}-{rand_suffix}"
+                experiment_id = (
+                    f"{harness_name}-{treatment_name}-{timestamp}-{rand_suffix}"
+                )
             else:
                 experiment_id = f"{harness_name}-{timestamp}-{rand_suffix}"
 
@@ -194,7 +214,8 @@ class DeployHarnessStep(Step):
             # parallel pods within a treatment).
             pod_profile_name = (
                 self._treatment_profile_name(profile_name, treatment)
-                if treatment else profile_name
+                if treatment
+                else profile_name
             )
 
             for parallel_idx in range(1, parallelism + 1):
@@ -203,18 +224,14 @@ class DeployHarnessStep(Step):
 
                 # Per-pod results directory -- each parallel pod writes to
                 # its own sub-directory with an _${i} suffix, matching bash.
-                results_dir = (
-                    f"{results_dir_prefix}/{experiment_id}_{parallel_idx}"
-                )
+                results_dir = f"{results_dir_prefix}/{experiment_id}_{parallel_idx}"
 
                 # Build harness command per pod (results_dir differs)
                 if context.harness_debug:
                     harness_command = "sleep infinity"
                 else:
                     harness_cfg = plan_config.get("harness", {}) if plan_config else {}
-                    entrypoint = harness_cfg.get(
-                        "entrypoint", "llm-d-benchmark.sh"
-                    )
+                    entrypoint = harness_cfg.get("entrypoint", "llm-d-benchmark.sh")
                     harness_command = self._build_harness_command(
                         harness_executable=harness_executable,
                         profile_name=pod_profile_name,
@@ -235,16 +252,18 @@ class DeployHarnessStep(Step):
                     elif plan_config.get("fma", {}).get("enabled"):
                         deploy_method = "fma"
 
-                template_values.update({
-                    "pod_name": pod_name,
-                    "harness_command": harness_command,
-                    "endpoint_url": endpoint_url,
-                    "experiment_id": experiment_id,
-                    "results_dir": results_dir,
-                    "stack_type": stack_type,
-                    "deploy_method": deploy_method,
-                    "cluster_type": context.platform_type,
-                })
+                template_values.update(
+                    {
+                        "pod_name": pod_name,
+                        "harness_command": harness_command,
+                        "endpoint_url": endpoint_url,
+                        "experiment_id": experiment_id,
+                        "results_dir": results_dir,
+                        "stack_type": stack_type,
+                        "deploy_method": deploy_method,
+                        "cluster_type": context.platform_type,
+                    }
+                )
 
                 # Inject base64-encoded kubeconfig so kubectl works inside the pod
                 # (needed by collect_metrics.sh and llm-d-benchmark.sh vLLM scraping)
@@ -268,23 +287,34 @@ class DeployHarnessStep(Step):
                 # Service account precedence: CLI override (-q) > scenario's
                 # harness.serviceAccount > global serviceAccount.name default.
                 if context.harness_service_account:
-                    template_values["harness"]["serviceAccount"] = context.harness_service_account
-                elif plan_config and plan_config.get("harness", {}).get("serviceAccount"):
-                    template_values["harness"]["serviceAccount"] = plan_config["harness"]["serviceAccount"]
+                    template_values["harness"]["serviceAccount"] = (
+                        context.harness_service_account
+                    )
+                elif plan_config and plan_config.get("harness", {}).get(
+                    "serviceAccount"
+                ):
+                    template_values["harness"]["serviceAccount"] = plan_config[
+                        "harness"
+                    ]["serviceAccount"]
                 elif plan_config and "serviceAccount" in plan_config:
-                    template_values["harness"]["serviceAccount"] = plan_config["serviceAccount"].get("name", "default")
+                    template_values["harness"]["serviceAccount"] = plan_config[
+                        "serviceAccount"
+                    ].get("name", "default")
 
                 # Extra env vars to propagate into pod (-g)
                 if context.harness_envvars_to_pod:
                     import os
+
                     extra_env = []
                     for var_name in context.harness_envvars_to_pod.split(","):
                         var_name = var_name.strip()
                         if var_name and var_name in os.environ:
-                            extra_env.append({
-                                "name": var_name,
-                                "value": os.environ[var_name],
-                            })
+                            extra_env.append(
+                                {
+                                    "name": var_name,
+                                    "value": os.environ[var_name],
+                                }
+                            )
                     if extra_env:
                         template_values["harness"]["extraEnvVars"] = extra_env
 
@@ -310,8 +340,11 @@ class DeployHarnessStep(Step):
                 pod_yaml_path.write_text(rendered, encoding="utf-8")
 
                 result = cmd.kube(
-                    "apply", "-f", str(pod_yaml_path),
-                    "--namespace", harness_ns,
+                    "apply",
+                    "-f",
+                    str(pod_yaml_path),
+                    "--namespace",
+                    harness_ns,
                     check=False,
                 )
                 if not result.success:
@@ -348,15 +381,20 @@ class DeployHarnessStep(Step):
             # --- Phase 3: Collect this treatment's results ---
             if not context.dry_run and not context.harness_debug:
                 collect_errors = self._collect_treatment_results_discovery(
-                    cmd, experiment_id, harness_ns,
-                    results_dir_prefix, context,
+                    cmd,
+                    experiment_id,
+                    harness_ns,
+                    results_dir_prefix,
+                    context,
                 )
                 if collect_errors:
                     errors.extend(collect_errors)
 
             # --- Phase 4: Capture pod logs (when monitoring is enabled) ---
             monitoring = (plan_config or {}).get("monitoring", {})
-            metrics_enabled = str(monitoring.get("metricsScrapeEnabled", False)).lower() == "true"
+            metrics_enabled = (
+                str(monitoring.get("metricsScrapeEnabled", False)).lower() == "true"
+            )
             if not context.dry_run and metrics_enabled:
                 infra_ns = deploy_namespace or context.namespace or harness_ns
                 local_results_dir = context.run_results_dir()
@@ -369,17 +407,28 @@ class DeployHarnessStep(Step):
                     pod_log_dir.mkdir(parents=True, exist_ok=True)
 
                     capture_pod_logs(
-                        cmd, treatment_pod_names, harness_ns, pod_log_dir, context,
+                        cmd,
+                        treatment_pod_names,
+                        harness_ns,
+                        pod_log_dir,
+                        context,
                     )
                     capture_infrastructure_logs(
-                        cmd, infra_ns, pod_log_dir, model_label,
-                        pod_results_dir, context,
+                        cmd,
+                        infra_ns,
+                        pod_log_dir,
+                        model_label,
+                        pod_results_dir,
+                        context,
                     )
 
             # --- Phase 5: Clean up this treatment's pods ---
             if not context.dry_run and not context.harness_debug:
                 delete_pods_by_names(
-                    cmd, treatment_pod_names, harness_ns, context,
+                    cmd,
+                    treatment_pod_names,
+                    harness_ns,
+                    context,
                 )
 
             # Track experiment ID for upload step
@@ -419,8 +468,11 @@ class DeployHarnessStep(Step):
 
     @staticmethod
     def _collect_treatment_results_discovery(
-        cmd, experiment_id: str, namespace: str,
-        results_dir_prefix: str, context: ExecutionContext,
+        cmd,
+        experiment_id: str,
+        namespace: str,
+        results_dir_prefix: str,
+        context: ExecutionContext,
     ) -> list[str]:
         """Collect results by discovering directories on the PVC.
 
@@ -444,25 +496,24 @@ class DeployHarnessStep(Step):
 
         # List directories on the PVC under the results prefix
         ls_result = cmd.kube(
-            "exec", data_pod,
-            "--", "ls", "-1", results_dir_prefix,
+            "exec",
+            data_pod,
+            "--",
+            "ls",
+            "-1",
+            results_dir_prefix,
             namespace=namespace,
             check=False,
         )
         if not ls_result.success or not ls_result.stdout.strip():
-            errors.append(
-                f"Could not list results on PVC: {ls_result.stderr[:200]}"
-            )
+            errors.append(f"Could not list results on PVC: {ls_result.stderr[:200]}")
             return errors
 
         # Find directories matching this experiment
         all_dirs = [
-            d.strip() for d in ls_result.stdout.strip().split("\n")
-            if d.strip()
+            d.strip() for d in ls_result.stdout.strip().split("\n") if d.strip()
         ]
-        matching_dirs = [
-            d for d in all_dirs if experiment_id in d
-        ]
+        matching_dirs = [d for d in all_dirs if experiment_id in d]
 
         if not matching_dirs:
             context.logger.log_warning(
@@ -482,8 +533,10 @@ class DeployHarnessStep(Step):
             local_path.mkdir(parents=True, exist_ok=True)
 
             cp_result = cmd.kube(
-                "cp", "--retries=5",
-                remote_path, str(local_path),
+                "cp",
+                "--retries=5",
+                remote_path,
+                str(local_path),
                 namespace=namespace,
                 check=False,
             )
@@ -496,19 +549,22 @@ class DeployHarnessStep(Step):
                 # Sync analysis sub-directory
                 if not context.harness_debug and context.harness_wait_timeout != 0:
                     sync_analysis_dir(
-                        local_path, local_analysis_dir, dir_name,
+                        local_path,
+                        local_analysis_dir,
+                        dir_name,
                     )
             else:
-                errors.append(
-                    f"Failed to copy {dir_name}: {cp_result.stderr[:200]}"
-                )
+                errors.append(f"Failed to copy {dir_name}: {cp_result.stderr[:200]}")
 
         return errors
 
     @staticmethod
     def _collect_treatment_results(
-        cmd, experiment_id: str, namespace: str,
-        results_dir_prefix: str, context: ExecutionContext,
+        cmd,
+        experiment_id: str,
+        namespace: str,
+        results_dir_prefix: str,
+        context: ExecutionContext,
         parallelism: int = 1,
     ) -> list[str]:
         """Collect results for a single treatment from the data-access pod.
@@ -537,26 +593,34 @@ class DeployHarnessStep(Step):
             pod_suffix = f"{experiment_id}_{i}"
 
             local_path, success, err_msg = collect_pod_results(
-                cmd, data_pod, namespace, results_dir_prefix,
-                experiment_id, i, local_results_dir, context,
+                cmd,
+                data_pod,
+                namespace,
+                results_dir_prefix,
+                experiment_id,
+                i,
+                local_results_dir,
+                context,
             )
 
             if success:
                 # Sync analysis sub-directory to dedicated analysis dir.
                 # Matches bash condition: dir exists AND not debug AND
                 # timeout != 0 (functions.sh line 445).
-                if (
-                    not context.harness_debug
-                    and context.harness_wait_timeout != 0
-                ):
+                if not context.harness_debug and context.harness_wait_timeout != 0:
                     sync_analysis_dir(
-                        local_path, local_analysis_dir, pod_suffix,
+                        local_path,
+                        local_analysis_dir,
+                        pod_suffix,
                     )
                 # Upload per-pod results to cloud storage immediately
                 # after collection (matches bash per-pod upload_results call).
                 if context.harness_output != "local":
                     upload_err = upload_results_dir(
-                        cmd, local_path, context.harness_output, context,
+                        cmd,
+                        local_path,
+                        context.harness_output,
+                        context,
                     )
                     if upload_err:
                         errors.append(upload_err)
@@ -673,29 +737,17 @@ class DeployHarnessStep(Step):
         parts: list[str] = []
 
         # Pre-compute all vars -- entrypoint uses them directly
-        parts.append(
-            f"export LLMDBENCH_RUN_EXPERIMENT_HARNESS={harness_script}"
-        )
-        parts.append(
-            f"export LLMDBENCH_RUN_EXPERIMENT_ANALYZER={analyzer_script}"
-        )
-        parts.append(
-            f"export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR={results_dir}"
-        )
-        parts.append(
-            f"export LLMDBENCH_CONTROL_WORK_DIR={results_dir}"
-        )
+        parts.append(f"export LLMDBENCH_RUN_EXPERIMENT_HARNESS={harness_script}")
+        parts.append(f"export LLMDBENCH_RUN_EXPERIMENT_ANALYZER={analyzer_script}")
+        parts.append(f"export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR={results_dir}")
+        parts.append(f"export LLMDBENCH_CONTROL_WORK_DIR={results_dir}")
         parts.append(
             f"export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME={profile_name}"
         )
 
         # Capture harness timing and version for benchmark report population
-        parts.append(
-            "export LLMDBENCH_HARNESS_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        )
-        parts.append(
-            f"export LLMDBENCH_HARNESS_ARGS='--workload {profile_name}'"
-        )
+        parts.append("export LLMDBENCH_HARNESS_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+        parts.append(f"export LLMDBENCH_HARNESS_ARGS='--workload {profile_name}'")
 
         # Extract harness version from repos.txt at runtime (set inside container)
         parts.append(

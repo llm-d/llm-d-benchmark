@@ -14,7 +14,9 @@ from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData
 from inference_perf.apis.completion import CompletionAPIData
 from inference_perf.apis.base import InferenceInfo
 from inference_perf.client.modelserver.vllm_client import vLLMModelServerClient
-from inference_perf.client.requestdatacollector.multiprocess import MultiprocessRequestDataCollector
+from inference_perf.client.requestdatacollector.multiprocess import (
+    MultiprocessRequestDataCollector,
+)
 from aiohttp import ClientResponse
 from inference_perf.config import (
     APIConfig,
@@ -122,22 +124,26 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
     ignore_eos: bool = True
 
     async def to_payload(
-        self, effective_model_name: str, max_tokens: int, ignore_eos: bool, streaming: bool
+        self,
+        effective_model_name: str,
+        max_tokens: int,
+        ignore_eos: bool,
+        streaming: bool,
     ) -> Dict[str, Any]:
         self._session_context = await self.user_session.get_context(self.target_round)
         # Concatenate session context (list) and current prompt (list)
         # We assume self.prompt_token_ids is populated
         full_prompt = self._session_context + (self.prompt_token_ids or [])
-        
+
         if self.max_tokens == 0:
             self.max_tokens = max_tokens
-        
+
         # Override ignore_eos if set in self
         ignore_eos = self.ignore_eos
-            
+
         return {
             "model": effective_model_name,
-            "prompt": full_prompt, # vLLM supports list of ints
+            "prompt": full_prompt,  # vLLM supports list of ints
             "max_tokens": self.max_tokens,
             "ignore_eos": ignore_eos,
             "stream": streaming,
@@ -149,17 +155,23 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
         inference_info.extra_info["chat_round"] = self.user_session._current_round
 
     async def process_response(
-        self, response: ClientResponse, config: APIConfig, tokenizer: CustomTokenizer, lora_adapter: Optional[str] = None
+        self,
+        response: ClientResponse,
+        config: APIConfig,
+        tokenizer: CustomTokenizer,
+        lora_adapter: Optional[str] = None,
     ) -> InferenceInfo:
         # We need to manually calculate input_tokens because we sent token IDs and
         # the default implementation might rely on tokenizer.count_tokens(self.prompt) where self.prompt is empty.
-        
+
         # Capture start time for manual TTFT/TPOT if needed, but the base implementation does streaming parsing
         # We'll call super() to handle streaming parsing, but we might need to patch input_tokens afterwards
-        
-        inference_info = await super().process_response(response, config, tokenizer, lora_adapter)
+
+        inference_info = await super().process_response(
+            response, config, tokenizer, lora_adapter
+        )
         self.update_inference_info(inference_info)
-        
+
         # Calculate input tokens ensuring we account for the full context
         # The prompt was: self._session_context + (self.prompt_token_ids or [])
         full_context_len = len(self._session_context) + len(self.prompt_token_ids or [])
@@ -167,9 +179,11 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
 
         # Tokenize response to append to context
         output_ids = tokenizer.tokenizer.encode(self.model_response)
-        full_context = self._session_context + (self.prompt_token_ids or []) + output_ids
+        full_context = (
+            self._session_context + (self.prompt_token_ids or []) + output_ids
+        )
         self.user_session.update_context(full_context)
-        
+
         return inference_info
 
     async def process_failure(
@@ -194,7 +208,7 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         config: DataConfig,
         trace_file: str,
         tokenizer: Optional[CustomTokenizer] = None,
-        limit: int = 0, # 0 means no limit
+        limit: int = 0,  # 0 means no limit
     ):
         super().__init__(api_config, config, tokenizer)
         self.limit = limit
@@ -230,7 +244,7 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
             # Apply limit
             if self.limit > 0:
                 logger.info(f"Limiting trace to first {self.limit} requests")
-                raw_entries = raw_entries[:self.limit]
+                raw_entries = raw_entries[: self.limit]
 
             turns_per_session_map = {}
             prompt_lengths = []
@@ -238,20 +252,26 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
 
             for i, data in enumerate(raw_entries):
                 hash_ids = data.get("hash_ids", [])
-                
+
                 # Convert hash_ids to input_ids (tokens)
                 input_ids = self._block_ids_to_tokens(hash_ids)
-                
+
                 chat_id = int(data.get("chat_id", -1))
                 parent_chat_id = int(data.get("parent_chat_id", -1))
-                
+
                 # Determine correct session ID
-                session_id = str(chat_id) if parent_chat_id == -1 else str(parent_chat_id)
-                
+                session_id = (
+                    str(chat_id) if parent_chat_id == -1 else str(parent_chat_id)
+                )
+
                 if session_id not in self.user_sessions:
-                    self.user_sessions[session_id] = TokenBasedLocalUserSession(user_session_id=session_id)
-                
-                turns_per_session_map[session_id] = turns_per_session_map.get(session_id, 0) + 1
+                    self.user_sessions[session_id] = TokenBasedLocalUserSession(
+                        user_session_id=session_id
+                    )
+
+                turns_per_session_map[session_id] = (
+                    turns_per_session_map.get(session_id, 0) + 1
+                )
                 prompt_lengths.append(len(input_ids))
                 output_lengths.append(int(data.get("output_length", 10)))
 
@@ -259,51 +279,71 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
                     TraceEntry(
                         timestamp=float(data.get("timestamp", 0.0)),
                         input_ids=input_ids,
-                        input_length=len(input_ids), # Use actual token length
+                        input_length=len(input_ids),  # Use actual token length
                         output_length=output_lengths[-1],
                         chat_id=chat_id,
                         parent_chat_id=parent_chat_id,
-                        turn=int(data.get("turn", 1)), # explicit turn number if available
+                        turn=int(
+                            data.get("turn", 1)
+                        ),  # explicit turn number if available
                     )
                 )
 
-            logger.info(f"Loaded {len(self.trace_entries)} trace entries across {len(self.user_sessions)} sessions")
-            
+            logger.info(
+                f"Loaded {len(self.trace_entries)} trace entries across {len(self.user_sessions)} sessions"
+            )
+
             # Additional Trace Statistics
             turns_per_session = list(turns_per_session_map.values())
             if turns_per_session:
                 logger.info("--- Trace Session Statistics ---")
-                logger.info(f"Turns per Session: min={np.min(turns_per_session)}, p50={np.percentile(turns_per_session, 50):.1f}, p90={np.percentile(turns_per_session, 90):.1f}, max={np.max(turns_per_session)}")
-                logger.info(f"Prompt Lengths:    min={np.min(prompt_lengths)}, p50={np.percentile(prompt_lengths, 50):.1f}, p90={np.percentile(prompt_lengths, 90):.1f}, max={np.max(prompt_lengths)}")
-                logger.info(f"Output Lengths:    min={np.min(output_lengths)}, p50={np.percentile(output_lengths, 50):.1f}, p90={np.percentile(output_lengths, 90):.1f}, max={np.max(output_lengths)}")
+                logger.info(
+                    f"Turns per Session: min={np.min(turns_per_session)}, p50={np.percentile(turns_per_session, 50):.1f}, p90={np.percentile(turns_per_session, 90):.1f}, max={np.max(turns_per_session)}"
+                )
+                logger.info(
+                    f"Prompt Lengths:    min={np.min(prompt_lengths)}, p50={np.percentile(prompt_lengths, 50):.1f}, p90={np.percentile(prompt_lengths, 90):.1f}, max={np.max(prompt_lengths)}"
+                )
+                logger.info(
+                    f"Output Lengths:    min={np.min(output_lengths)}, p50={np.percentile(output_lengths, 50):.1f}, p90={np.percentile(output_lengths, 90):.1f}, max={np.max(output_lengths)}"
+                )
                 logger.info("--------------------------------")
         except Exception as e:
             logger.error(f"Failed to load trace file: {e}")
             raise
-    
+
     def get_data(self) -> Generator[InferenceAPIData, None, None]:
         # Yield LazyLoadInferenceAPIData for each entry
         for i, entry in enumerate(self.trace_entries):
-            session_id = str(entry.chat_id) if entry.parent_chat_id == -1 else str(entry.parent_chat_id)
+            session_id = (
+                str(entry.chat_id)
+                if entry.parent_chat_id == -1
+                else str(entry.parent_chat_id)
+            )
             prefered_worker_id = hash(session_id)
-            yield LazyLoadInferenceAPIData(data_index=i, prefered_worker_id=prefered_worker_id)
-    
+            yield LazyLoadInferenceAPIData(
+                data_index=i, prefered_worker_id=prefered_worker_id
+            )
+
     def load_lazy_data(self, data: LazyLoadInferenceAPIData) -> InferenceAPIData:
         entry = self.trace_entries[data.data_index]
-        session_id = str(entry.chat_id) if entry.parent_chat_id == -1 else str(entry.parent_chat_id)
-        
+        session_id = (
+            str(entry.chat_id)
+            if entry.parent_chat_id == -1
+            else str(entry.parent_chat_id)
+        )
+
         target_round = entry.turn - 1
-        
+
         return UserSessionTokenCompletionAPIData(
             prompt_token_ids=entry.input_ids,
-            prompt="", # Token IDs take precedence (or dealt with in to_payload)
+            prompt="",  # Token IDs take precedence (or dealt with in to_payload)
             max_tokens=entry.output_length,
             ignore_eos=True,
             stream=True,
             user_session=self.user_sessions[session_id],
             target_round=target_round,
         )
-    
+
     def get_request_count(self) -> int:
         return len(self.trace_entries)
 
@@ -315,7 +355,7 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
 
     def is_shared_prefix_supported(self) -> bool:
         return True
-    
+
     def is_prefered_worker_requested(self) -> bool:
         return True
 
@@ -325,12 +365,14 @@ class TraceLoadTimer(LoadTimer):
         super().__init__()
         self.timestamps = timestamps
 
-    def start_timer(self, initial: Optional[float] = None) -> Generator[float, None, None]:
+    def start_timer(
+        self, initial: Optional[float] = None
+    ) -> Generator[float, None, None]:
         if not self.timestamps:
             return
-            
+
         start_time = initial if initial is not None else 0.0
-        
+
         for ts in self.timestamps:
             yield start_time + ts
 
@@ -352,16 +394,33 @@ class TraceLoadGenerator(LoadGenerator):
 async def main():
     # Configuration
     parser = argparse.ArgumentParser(description="Multi-turn Trace Replay Benchmark")
-    parser.add_argument("--model-name", type=str, default=os.environ.get("MODEL_NAME", "google/gemma-3-1b-it"), help="Model name")
-    parser.add_argument("--base-url", type=str, default=os.environ.get("ENDPOINT_BASE_URL", "http://localhost:8000"), help="Base URL of the inference server")
-    parser.add_argument("--limit", type=int, default=1000, help="Limit the number of trace entries to replay")
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default=os.environ.get("MODEL_NAME", "google/gemma-3-1b-it"),
+        help="Model name",
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default=os.environ.get("ENDPOINT_BASE_URL", "http://localhost:8000"),
+        help="Base URL of the inference server",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=1000,
+        help="Limit the number of trace entries to replay",
+    )
     parser.add_argument(
         "--trace-file",
         type=str,
-        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "qwen_traceA_blksz_16.jsonl"),
-        help="Path to the trace file"
+        default=os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "qwen_traceA_blksz_16.jsonl"
+        ),
+        help="Path to the trace file",
     )
-    
+
     args = parser.parse_args()
 
     # Environment variables or defaults for server
@@ -369,42 +428,42 @@ async def main():
     base_url = args.base_url
     limit = args.limit
     trace_file = args.trace_file
-    
+
     logger.info("Starting Multi-turn Benchmark")
     logger.info(f"Model: {model_name}")
     logger.info(f"Base URL: {base_url}")
     logger.info(f"Limit: {limit}")
-    
+
     # configs
     api_config = APIConfig(type=APIType.Completion, streaming=True)
     load_config = LoadConfig(
         type=LoadType.CONSTANT,
         stages=[StandardLoadStage(duration=3600, rate=1.0)],
-        num_workers=os.cpu_count() or 1
+        num_workers=os.cpu_count() or 1,
     )
-    
+
     tokenizer_config = CustomTokenizerConfig(pretrained_model_name_or_path=model_name)
     data_config = DataConfig(
         type="synthetic",
-        trace=TraceConfig(file=trace_file, format=TraceFormat.AZURE_PUBLIC_DATASET)
-    ) # Placeholder
+        trace=TraceConfig(file=trace_file, format=TraceFormat.AZURE_PUBLIC_DATASET),
+    )  # Placeholder
 
     # Initialize components
     tokenizer = CustomTokenizer(tokenizer_config)
-    
+
     datagen = TraceDataGenerator(
         api_config=api_config,
         config=data_config,
         trace_file=trace_file,
         tokenizer=tokenizer,
-        limit=limit
+        limit=limit,
     )
-    
+
     loadgen = TraceLoadGenerator(datagen=datagen, load_config=load_config)
-    
+
     # Instantiate client with explicit args
     metrics_collector = MultiprocessRequestDataCollector()
-    
+
     client = vLLMModelServerClient(
         metrics_collector=metrics_collector,
         api_config=api_config,
@@ -414,24 +473,24 @@ async def main():
         max_tcp_connections=100,
         additional_filters=[],
         ignore_eos=True,
-        api_key=None
+        api_key=None,
     )
-    
+
     logger.info("Starting load generation...")
     async with metrics_collector.start():
         await loadgen.run(client)
-    
+
     logger.info("Benchmark finished. Generating Report...")
-    
+
     # Generate Report
-    
+
     runtime_params = PerfRuntimeParameters(
         start_time=0.0,
         duration=0.0,
         model_server_metrics={},
         stages=loadgen.stage_runtime_info,
     )
-    
+
     report_config = ReportConfig(
         request_lifecycle=RequestLifecycleMetricsReportConfig(
             summary=True,
@@ -440,15 +499,15 @@ async def main():
             percentiles=[50, 90, 99],
         )
     )
-    
+
     report_generator = ReportGenerator(
-        metrics_client=None, # No prometheus metrics
+        metrics_client=None,  # No prometheus metrics
         metrics_collector=metrics_collector,
-        config=Config() # Empty config or pass relevant parts
+        config=Config(),  # Empty config or pass relevant parts
     )
-    
+
     reports = await report_generator.generate_reports(report_config, runtime_params)
-    
+
     # Print Summary Report
     for report in reports:
         if report.name == "summary_lifecycle_metrics":
@@ -461,11 +520,11 @@ async def main():
 
     # Identify output directory
     output_dir = os.path.join(os.getcwd(), "reports")
-    
+
     # Save reports to local storage
     storage_config = StorageConfigBase(path=output_dir)
     storage_client = LocalStorageClient(config=storage_config)
-    
+
     # Save reports
     storage_client.save_report(reports)
     logger.info(f"Reports saved to: {output_dir}")
@@ -473,11 +532,12 @@ async def main():
     # Generate and print TTFT by Turn Buckets
     generate_ttft_report_by_turns(metrics_collector.get_metrics())
 
+
 def generate_ttft_report_by_turns(metrics: List[Any]):
     """
     Generates and prints a report of TTFT percentiles grouped by turn number buckets.
     """
-    
+
     # Define buckets: (min_turn, max_turn, label)
     # max_turn is inclusive. None means infinity.
     buckets = [
@@ -486,11 +546,11 @@ def generate_ttft_report_by_turns(metrics: List[Any]):
         (6, 10, "Turns 6-10"),
         (11, None, "Turns 11+"),
     ]
-    
+
     bucket_data = {label: [] for _, _, label in buckets}
-    
+
     logger.info("Processing metrics for TTFT by Turn Buckets...")
-    
+
     for metric in metrics:
         # Skip failed requests or those without TTFT info
         if metric.error is not None:
@@ -498,26 +558,26 @@ def generate_ttft_report_by_turns(metrics: List[Any]):
 
         if not metric.info.output_token_times:
             continue
-            
+
         ttft = metric.info.output_token_times[0] - metric.start_time
-        
+
         # Get turn number
         turn = metric.info.extra_info.get("chat_round", 0)
-        
+
         if turn == 0:
             # Fallback if chat_round is missing or 0 (should correspond to pre-fill or error state if not set)
             continue
-            
+
         # Assign to bucket
         for min_t, max_t, label in buckets:
             if turn >= min_t and (max_t is None or turn <= max_t):
                 bucket_data[label].append(ttft)
                 break
-    
+
     logger.info("\n=== TTFT by Turn Buckets (seconds) ===")
     logger.info(f"{'Bucket':<15} | {'Count':<5} | {'P50':<8} | {'P90':<8} | {'P99':<8}")
     logger.info("-" * 55)
-    
+
     for _, _, label in buckets:
         data = bucket_data[label]
         count = len(data)
@@ -525,11 +585,15 @@ def generate_ttft_report_by_turns(metrics: List[Any]):
             p50 = np.percentile(data, 50)
             p90 = np.percentile(data, 90)
             p99 = np.percentile(data, 99)
-            logger.info(f"{label:<15} | {count:<5} | {p50:<8.4f} | {p90:<8.4f} | {p99:<8.4f}")
+            logger.info(
+                f"{label:<15} | {count:<5} | {p50:<8.4f} | {p90:<8.4f} | {p99:<8.4f}"
+            )
         else:
-            logger.info(f"{label:<15} | {count:<5} | {'N/A':<8} | {'N/A':<8} | {'N/A':<8}")
+            logger.info(
+                f"{label:<15} | {count:<5} | {'N/A':<8} | {'N/A':<8} | {'N/A':<8}"
+            )
     logger.info("======================================\n")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
-

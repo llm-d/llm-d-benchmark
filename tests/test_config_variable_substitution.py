@@ -53,8 +53,7 @@ class TestSubstituteConfigVariables:
         }
         result = renderer._substitute_config_variables(values)
         assert (
-            result["field"]
-            == "test-model --port $VLLM_PORT --len $VLLM_MAX_MODEL_LEN"
+            result["field"] == "test-model --port $VLLM_PORT --len $VLLM_MAX_MODEL_LEN"
         )
 
     def test_shell_braced_vars_left_alone(self, renderer):

@@ -62,25 +62,29 @@ class TestDottedToNested:
 
     def test_divergent_paths(self):
         """Keys that share a prefix but diverge at different levels."""
-        result = dotted_to_nested({
-            "model.maxModelLen": 16000,
-            "model.blockSize": 64,
-            "vllmCommon.flags.numCpuBlocks": 500,
-        })
+        result = dotted_to_nested(
+            {
+                "model.maxModelLen": 16000,
+                "model.blockSize": 64,
+                "vllmCommon.flags.numCpuBlocks": 500,
+            }
+        )
         assert result == {
             "model": {"maxModelLen": 16000, "blockSize": 64},
             "vllmCommon": {"flags": {"numCpuBlocks": 500}},
         }
 
     def test_preserves_value_types(self):
-        result = dotted_to_nested({
-            "a.int": 42,
-            "a.float": 3.14,
-            "a.str": "hello",
-            "a.bool": True,
-            "a.none": None,
-            "a.list": [1, 2, 3],
-        })
+        result = dotted_to_nested(
+            {
+                "a.int": 42,
+                "a.float": 3.14,
+                "a.str": "hello",
+                "a.bool": True,
+                "a.none": None,
+                "a.list": [1, 2, 3],
+            }
+        )
         assert result["a"]["int"] == 42
         assert result["a"]["float"] == 3.14
         assert result["a"]["str"] == "hello"
@@ -176,8 +180,14 @@ class TestParseExperimentWithSetup:
 
     def test_treatment_specific_overrides(self, experiment_yaml: Path):
         plan = parse_experiment(experiment_yaml)
-        assert plan.setup_treatments[0].overrides["vllmCommon"]["flags"]["numCpuBlocks"] == 500
-        assert plan.setup_treatments[1].overrides["vllmCommon"]["flags"]["numCpuBlocks"] == 1000
+        assert (
+            plan.setup_treatments[0].overrides["vllmCommon"]["flags"]["numCpuBlocks"]
+            == 500
+        )
+        assert (
+            plan.setup_treatments[1].overrides["vllmCommon"]["flags"]["numCpuBlocks"]
+            == 1000
+        )
 
     def test_run_treatment_count(self, experiment_yaml: Path):
         plan = parse_experiment(experiment_yaml)
@@ -309,7 +319,9 @@ class TestParseExperimentEdgeCases:
     def test_missing_harness_and_profile(self, tmp_path: Path):
         """Harness and profile are None when not specified."""
         p = tmp_path / "minimal.yaml"
-        p.write_text("experiment:\n  name: minimal\ntreatments:\n  - name: t1\n    k: v\n")
+        p.write_text(
+            "experiment:\n  name: minimal\ntreatments:\n  - name: t1\n    k: v\n"
+        )
         plan = parse_experiment(p)
         assert plan.harness is None
         assert plan.profile is None
@@ -411,9 +423,7 @@ class TestParseExperimentEdgeCases:
         p.write_text(content)
         plan = parse_experiment(p)
         assert len(plan.setup_treatments) == 1
-        assert plan.setup_treatments[0].overrides == {
-            "model": {"maxModelLen": 16000}
-        }
+        assert plan.setup_treatments[0].overrides == {"model": {"maxModelLen": 16000}}
 
 
 # ===========================================================================
@@ -424,12 +434,14 @@ class TestParseExperimentEdgeCases:
 class TestParseRealExperimentFiles:
     """Test parsing the actual experiment YAML files in the repo."""
 
-    @pytest.fixture(params=[
-        "tiered-prefix-cache.yaml",
-        "precise-prefix-cache-aware.yaml",
-        "inference-scheduling.yaml",
-        "pd-disaggregation.yaml",
-    ])
+    @pytest.fixture(
+        params=[
+            "tiered-prefix-cache.yaml",
+            "precise-prefix-cache-aware.yaml",
+            "inference-scheduling.yaml",
+            "pd-disaggregation.yaml",
+        ]
+    )
     def experiment_file(self, request) -> Path:
         path = EXPERIMENTS_DIR / request.param
         if not path.exists():
@@ -696,8 +708,11 @@ class TestExperimentSummary:
 
     def test_record_failure(self, summary: ExperimentSummary):
         summary.record_failure(
-            "cpu-blocks-1000", "standup", "Pod failed",
-            run_completed=0, run_total=6,
+            "cpu-blocks-1000",
+            "standup",
+            "Pod failed",
+            run_completed=0,
+            run_total=6,
         )
         assert len(summary.results) == 1
         assert summary.results[0].status == "failed_standup"
@@ -747,7 +762,9 @@ class TestExperimentSummary:
         assert data["failed"] == 1
         assert len(data["treatments"]) == 2
 
-    def test_write_creates_parent_dirs(self, summary: ExperimentSummary, tmp_path: Path):
+    def test_write_creates_parent_dirs(
+        self, summary: ExperimentSummary, tmp_path: Path
+    ):
         """write() creates parent directories if they don't exist."""
         output = tmp_path / "deep" / "nested" / "summary.yaml"
         summary.write(output)
@@ -761,6 +778,7 @@ class TestExperimentSummary:
         class MockLogger:
             def __init__(self):
                 self.messages = []
+
             def log_info(self, msg):
                 self.messages.append(msg)
 

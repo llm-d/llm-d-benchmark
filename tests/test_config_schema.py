@@ -42,11 +42,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge override into a copy of base."""
     result = copy.deepcopy(base)
     for key, value in override.items():
-        if (
-            key in result
-            and isinstance(result[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
         else:
             result[key] = copy.deepcopy(value)
@@ -118,8 +114,7 @@ class TestScenarioValidation:
         merged = _deep_merge(defaults, scenario)
         warnings = validate_config(merged)
         assert warnings == [], (
-            f"Scenario {scenario_path.name} produced warnings:\n"
-            + "\n".join(warnings)
+            f"Scenario {scenario_path.name} produced warnings:\n" + "\n".join(warnings)
         )
 
 
@@ -178,7 +173,9 @@ class TestTypeErrors:
     def test_model_gpu_util_out_of_range(self, defaults_copy: dict) -> None:
         defaults_copy["model"]["gpuMemoryUtilization"] = 2.0
         warnings = validate_config(defaults_copy)
-        assert len(warnings) > 0, "Expected constraint violation for gpuMemoryUtilization > 1"
+        assert len(warnings) > 0, (
+            "Expected constraint violation for gpuMemoryUtilization > 1"
+        )
 
     def test_decode_replicas_negative(self, defaults_copy: dict) -> None:
         defaults_copy["decode"]["replicas"] = -1
@@ -188,7 +185,9 @@ class TestTypeErrors:
     def test_harness_wait_timeout_negative(self, defaults_copy: dict) -> None:
         defaults_copy["harness"]["waitTimeout"] = -100
         warnings = validate_config(defaults_copy)
-        assert len(warnings) > 0, "Expected constraint violation for negative waitTimeout"
+        assert len(warnings) > 0, (
+            "Expected constraint violation for negative waitTimeout"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -247,9 +246,7 @@ class TestAllowSections:
     def test_vllm_flags_accept_new_flags(self, defaults_copy: dict) -> None:
         defaults_copy["vllmCommon"]["flags"]["someNewVllmFlag"] = True
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"vllmCommon.flags should accept new flags: {warnings}"
-        )
+        assert warnings == [], f"vllmCommon.flags should accept new flags: {warnings}"
 
     def test_root_accepts_unknown_top_level(self, defaults_copy: dict) -> None:
         defaults_copy["someNewTopLevelKey"] = {"foo": "bar"}
@@ -284,9 +281,7 @@ class TestScenarioOnlyFields:
     def test_vllm_common_shm_memory(self, defaults_copy: dict) -> None:
         defaults_copy["vllmCommon"]["shmMemory"] = "16Gi"
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"vllmCommon.shmMemory should be accepted: {warnings}"
-        )
+        assert warnings == [], f"vllmCommon.shmMemory should be accepted: {warnings}"
 
     def test_harness_experiment_profile(self, defaults_copy: dict) -> None:
         defaults_copy["harness"]["experimentProfile"] = "sanity_random.yaml"
@@ -298,16 +293,12 @@ class TestScenarioOnlyFields:
     def test_work_dir(self, defaults_copy: dict) -> None:
         defaults_copy["workDir"] = "/workspace"
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"workDir should be accepted: {warnings}"
-        )
+        assert warnings == [], f"workDir should be accepted: {warnings}"
 
     def test_decode_accelerator(self, defaults_copy: dict) -> None:
         defaults_copy["decode"]["accelerator"] = {"count": 0}
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"decode.accelerator should be accepted: {warnings}"
-        )
+        assert warnings == [], f"decode.accelerator should be accepted: {warnings}"
 
     def test_decode_vllm_model_command(self, defaults_copy: dict) -> None:
         defaults_copy["decode"]["vllm"]["modelCommand"] = "serve"
@@ -319,9 +310,7 @@ class TestScenarioOnlyFields:
     def test_model_max_num_seq(self, defaults_copy: dict) -> None:
         defaults_copy["model"]["maxNumSeq"] = 128
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"model.maxNumSeq should be accepted: {warnings}"
-        )
+        assert warnings == [], f"model.maxNumSeq should be accepted: {warnings}"
 
     def test_flags_no_prefix_caching(self, defaults_copy: dict) -> None:
         defaults_copy["vllmCommon"]["flags"]["noPrefixCaching"] = True

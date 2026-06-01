@@ -39,13 +39,17 @@ class CreateProfileConfigmapStep(Step):
 
         # Resolve harness name
         harness_name = self._resolve(
-            plan_config, "harness.name",
-            context_value=context.harness_name, default="inference-perf",
+            plan_config,
+            "harness.name",
+            context_value=context.harness_name,
+            default="inference-perf",
         )
 
         # Resolve namespace
         harness_ns = self._resolve(
-            plan_config, "harness.namespace", "namespace.name",
+            plan_config,
+            "harness.namespace",
+            "namespace.name",
             context_value=context.harness_namespace or context.namespace,
         )
         if not harness_ns:
@@ -64,13 +68,18 @@ class CreateProfileConfigmapStep(Step):
         errors: list[str] = []
 
         profile_ok, profile_msg = self._create_profiles_configmap(
-            context, cmd, harness_name, harness_ns,
+            context,
+            cmd,
+            harness_name,
+            harness_ns,
         )
         if not profile_ok:
             errors.append(profile_msg)
 
         scripts_ok, scripts_msg = self._create_harness_scripts_configmap(
-            context, cmd, harness_ns,
+            context,
+            cmd,
+            harness_ns,
         )
         if not scripts_ok:
             errors.append(scripts_msg)
@@ -90,14 +99,17 @@ class CreateProfileConfigmapStep(Step):
             step_name=self.name,
             success=True,
             message=(
-                f"ConfigMaps created (profiles + harness-scripts) "
-                f"in ns={harness_ns}"
+                f"ConfigMaps created (profiles + harness-scripts) in ns={harness_ns}"
             ),
             stack_name=stack_name,
         )
 
     def _create_profiles_configmap(
-        self, context, cmd, harness_name: str, harness_ns: str,
+        self,
+        context,
+        cmd,
+        harness_name: str,
+        harness_ns: str,
     ) -> tuple[bool, str]:
         """Create the {harness_name}-profiles ConfigMap."""
         configmap_name = f"{harness_name}-profiles"
@@ -128,26 +140,30 @@ class CreateProfileConfigmapStep(Step):
         )
 
         ok, msg = self._kubectl_create_configmap(
-            cmd, configmap_name, from_file_args, harness_ns, context,
+            cmd,
+            configmap_name,
+            from_file_args,
+            harness_ns,
+            context,
         )
         if ok:
             context.logger.log_info(
-                f"ConfigMap '{configmap_name}' created with "
-                f"{profile_count} profile(s)"
+                f"ConfigMap '{configmap_name}' created with {profile_count} profile(s)"
             )
         return ok, msg
 
     def _create_harness_scripts_configmap(
-        self, context, cmd, harness_ns: str,
+        self,
+        context,
+        cmd,
+        harness_ns: str,
     ) -> tuple[bool, str]:
         """Create the llmdbench-harness-scripts ConfigMap from workload/harnesses/."""
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]
         harnesses_dir = base_dir / "workload" / "harnesses"
 
         if not harnesses_dir.is_dir():
-            return False, (
-                f"Harness scripts directory not found: {harnesses_dir}"
-            )
+            return False, (f"Harness scripts directory not found: {harnesses_dir}")
 
         from_file_args: list[str] = []
         script_count = 0
@@ -167,7 +183,10 @@ class CreateProfileConfigmapStep(Step):
         )
 
         ok, msg = self._kubectl_create_configmap(
-            cmd, HARNESS_SCRIPTS_CONFIGMAP, from_file_args, harness_ns,
+            cmd,
+            HARNESS_SCRIPTS_CONFIGMAP,
+            from_file_args,
+            harness_ns,
             context,
         )
         if ok:
@@ -179,17 +198,25 @@ class CreateProfileConfigmapStep(Step):
 
     @staticmethod
     def _kubectl_create_configmap(
-        cmd, name: str, from_file_args: list[str],
-        namespace: str, context,
+        cmd,
+        name: str,
+        from_file_args: list[str],
+        namespace: str,
+        context,
     ) -> tuple[bool, str]:
         """Create a ConfigMap via kubectl create --dry-run | kubectl apply."""
         cm_yaml_path = context.run_dir() / f"{name}.yaml"
 
         result = cmd.kube(
-            "create", "configmap", name,
+            "create",
+            "configmap",
+            name,
             *from_file_args,
-            "--namespace", namespace,
-            "--dry-run=client", "-o", "yaml",
+            "--namespace",
+            namespace,
+            "--dry-run=client",
+            "-o",
+            "yaml",
             check=False,
         )
         if not result.success:
@@ -200,26 +227,32 @@ class CreateProfileConfigmapStep(Step):
         cm_yaml_path.write_text(result.stdout, encoding="utf-8")
 
         result = cmd.kube(
-            "apply", "-f", str(cm_yaml_path),
-            "--namespace", namespace,
+            "apply",
+            "-f",
+            str(cm_yaml_path),
+            "--namespace",
+            namespace,
             check=False,
         )
         if not result.success:
-            return False, (
-                f"Failed to apply ConfigMap '{name}': {result.stderr}"
-            )
+            return False, (f"Failed to apply ConfigMap '{name}': {result.stderr}")
 
         return True, f"ConfigMap '{name}' created"
 
     def _dry_run(
-        self, context, harness_name: str, harness_ns: str, stack_name: str,
+        self,
+        context,
+        harness_name: str,
+        harness_ns: str,
+        stack_name: str,
     ) -> StepResult:
         """Handle --dry-run mode."""
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]
         harnesses_dir = base_dir / "workload" / "harnesses"
         script_count = (
             sum(1 for f in harnesses_dir.iterdir() if f.is_file())
-            if harnesses_dir.is_dir() else 0
+            if harnesses_dir.is_dir()
+            else 0
         )
         return StepResult(
             step_number=self.number,

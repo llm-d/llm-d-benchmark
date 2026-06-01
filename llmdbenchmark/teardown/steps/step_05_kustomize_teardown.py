@@ -36,7 +36,11 @@ class KustomizeTeardownStep(Step):
         cmd = context.require_cmd()
         namespace = context.require_namespace()
 
-        plan_config = self._load_plan_config(context) if stack_path is None else self._load_stack_config(stack_path)
+        plan_config = (
+            self._load_plan_config(context)
+            if stack_path is None
+            else self._load_stack_config(stack_path)
+        )
         kust_config = plan_config.get("kustomize", {}) if plan_config else {}
 
         guide_name = kust_config.get("guideName", "")
@@ -92,11 +96,21 @@ class KustomizeTeardownStep(Step):
             return self._fallback_teardown(cmd, context, namespace, guide_name)
 
         if monitoring:
-            mon_path = Path(repo_path) / "guides" / "recipes" / "modelserver" / "components" / "monitoring"
+            mon_path = (
+                Path(repo_path)
+                / "guides"
+                / "recipes"
+                / "modelserver"
+                / "components"
+                / "monitoring"
+            )
             if mon_path.exists():
                 result = cmd.kube(
-                    "delete", "-n", namespace,
-                    "-k", str(mon_path),
+                    "delete",
+                    "-n",
+                    namespace,
+                    "-k",
+                    str(mon_path),
                     "--ignore-not-found",
                     check=False,
                 )
@@ -108,6 +122,7 @@ class KustomizeTeardownStep(Step):
         overlay_dir = context.workspace / "setup" / "kustomize-overlay"
         if overlay_dir.exists():
             import shutil
+
             shutil.rmtree(overlay_dir, ignore_errors=True)
 
         if errors:
@@ -128,9 +143,7 @@ class KustomizeTeardownStep(Step):
         )
 
     @staticmethod
-    def _run_resolved(
-        cmd: CommandExecutor, resolved: str, *, check: bool = True
-    ):
+    def _run_resolved(cmd: CommandExecutor, resolved: str, *, check: bool = True):
         tokens = shlex.split(resolved)
         if not tokens:
             return cmd.execute(resolved, check=check)
@@ -150,13 +163,19 @@ class KustomizeTeardownStep(Step):
     ) -> StepResult:
         if guide_name:
             cmd.helm(
-                "uninstall", guide_name, "-n", namespace,
+                "uninstall",
+                guide_name,
+                "-n",
+                namespace,
                 check=False,
             )
 
         cmd.kube(
-            "delete", "deployment,service,configmap,serviceaccount",
-            "--all", "--namespace", namespace,
+            "delete",
+            "deployment,service,configmap,serviceaccount",
+            "--all",
+            "--namespace",
+            namespace,
             check=False,
         )
 

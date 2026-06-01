@@ -73,9 +73,7 @@ class DeploySetupStep(Step):
                 use_kubeconfig=False,
             )
             if not result.success:
-                errors.append(
-                    f"Failed to install Istio via helmfile: {result.stderr}"
-                )
+                errors.append(f"Failed to install Istio via helmfile: {result.stderr}")
 
         # Helmfile is copied to helm working dir so relative value paths resolve
         main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")
@@ -130,8 +128,7 @@ class DeploySetupStep(Step):
             step_name=self.name,
             success=True,
             message=(
-                "Helm repos and gateway infrastructure deployed "
-                f"for {stack_path.name}"
+                f"Helm repos and gateway infrastructure deployed for {stack_path.name}"
             ),
             stack_name=stack_path.name,
         )
@@ -212,9 +209,7 @@ class DeploySetupStep(Step):
         try:
             content = helmfile_path.read_text(encoding="utf-8")
             if "helmDefaults:" not in content:
-                patched = (
-                    "helmDefaults:\n" "  createNamespace: false\n" "---\n" + content
-                )
+                patched = "helmDefaults:\n  createNamespace: false\n---\n" + content
                 helmfile_path.write_text(patched, encoding="utf-8")
         except OSError:
             pass

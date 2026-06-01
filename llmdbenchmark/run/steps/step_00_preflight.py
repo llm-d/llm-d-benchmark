@@ -54,7 +54,10 @@ class RunPreflightStep(Step):
                 )
             elif not context.dry_run:
                 result = cmd.kube(
-                    "get", "namespace", harness_ns, check=False,
+                    "get",
+                    "namespace",
+                    harness_ns,
+                    check=False,
                 )
                 if not result.success:
                     errors.append(
@@ -62,51 +65,39 @@ class RunPreflightStep(Step):
                         f"Run the standup phase first."
                     )
                 else:
-                    context.logger.log_info(
-                        f"Harness namespace '{harness_ns}' exists"
-                    )
+                    context.logger.log_info(f"Harness namespace '{harness_ns}' exists")
 
         # Validate output destination
         output = context.harness_output
         if output == "local":
             results_dir = context.run_results_dir()
-            context.logger.log_info(
-                f"Output destination: local ({results_dir})"
-            )
+            context.logger.log_info(f"Output destination: local ({results_dir})")
         elif output.startswith("gs://"):
             if not context.dry_run:
                 result = cmd.execute(
-                    f"gsutil ls {output}", check=False, silent=True,
+                    f"gsutil ls {output}",
+                    check=False,
+                    silent=True,
                 )
                 if not result.success:
-                    errors.append(
-                        f"GCS destination not reachable: {output}"
-                    )
+                    errors.append(f"GCS destination not reachable: {output}")
                 else:
-                    context.logger.log_info(
-                        f"Output destination: GCS ({output})"
-                    )
+                    context.logger.log_info(f"Output destination: GCS ({output})")
             else:
-                context.logger.log_info(
-                    f"[DRY RUN] Output destination: GCS ({output})"
-                )
+                context.logger.log_info(f"[DRY RUN] Output destination: GCS ({output})")
         elif output.startswith("s3://"):
             if not context.dry_run:
                 result = cmd.execute(
-                    f"aws s3 ls {output}", check=False, silent=True,
+                    f"aws s3 ls {output}",
+                    check=False,
+                    silent=True,
                 )
                 if not result.success:
-                    errors.append(
-                        f"S3 destination not reachable: {output}"
-                    )
+                    errors.append(f"S3 destination not reachable: {output}")
                 else:
-                    context.logger.log_info(
-                        f"Output destination: S3 ({output})"
-                    )
+                    context.logger.log_info(f"Output destination: S3 ({output})")
             else:
-                context.logger.log_info(
-                    f"[DRY RUN] Output destination: S3 ({output})"
-                )
+                context.logger.log_info(f"[DRY RUN] Output destination: S3 ({output})")
 
         if context.dry_run:
             return StepResult(
