@@ -3,6 +3,7 @@ load:
   stages:
     - concurrent_sessions: 4
   worker_max_concurrency: 400
+  base_seed: 42
 api:
   type: chat
   streaming: true
