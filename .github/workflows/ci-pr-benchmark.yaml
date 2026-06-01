@@ -32,7 +32,7 @@ jobs:
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:
     name: Benchmark - Standalone (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: standalone
@@ -119,7 +119,7 @@ jobs:
 
   benchmark-modelservice-epponly:
     name: Benchmark - Modelservice / epponly (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: modelservice
