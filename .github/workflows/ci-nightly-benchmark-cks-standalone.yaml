@@ -11,9 +11,10 @@ on:
         description: 'Standup method to be used ("standalone","fma","modelservice")'
         required: false
         default: 'standalone'
-      cluster_provider:
+      standup_scenario:
         description: 'Cluster provider targeted ("ocp","gke","cks")'
         required: false
+        type: 'string'
         default: 'cks'
       cluster_namespace:
         description: 'Cluster namespace'
@@ -77,11 +78,11 @@ on:
 
 jobs:
   nightly:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: ${{ inputs.standup_method || 'standalone' }}
-      cluster_provider: ${{ inputs.cluster_provider || 'cks' }}
+      standup_scenario: ${{ inputs.standup_scenario || 'cks' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-cks' }}
       helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-cks' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-cks' }}

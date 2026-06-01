@@ -32,11 +32,11 @@ jobs:
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:
     name: Benchmark - Standalone (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
     with:
       scenario_dir: cicd
       standup_method: standalone
-      cluster_provider: kind
+      standup_scenario: kind
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -56,11 +56,11 @@ jobs:
   # -- FMA deployment (own Kind cluster) --
   benchmark-fma:
     name: Benchmark - FMA (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
     with:
       scenario_dir: cicd
       standup_method: fma
-      cluster_provider: kind
+      standup_scenario: kind
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -77,11 +77,11 @@ jobs:
 
   benchmark-modelservice-istio:
     name: Benchmark - Modelservice / istio (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
     with:
       scenario_dir: cicd
       standup_method: modelservice
-      cluster_provider: kind
+      standup_scenario: kind
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -98,11 +98,11 @@ jobs:
 
   benchmark-modelservice-agentgateway:
     name: Benchmark - Modelservice / agentgateway (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
     with:
       scenario_dir: cicd
       standup_method: modelservice
-      cluster_provider: kind
+      standup_scenario: kind
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -119,11 +119,11 @@ jobs:
 
   benchmark-modelservice-epponly:
     name: Benchmark - Modelservice / epponly (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
     with:
       scenario_dir: cicd
       standup_method: modelservice
-      cluster_provider: kind
+      standup_scenario: kind
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
