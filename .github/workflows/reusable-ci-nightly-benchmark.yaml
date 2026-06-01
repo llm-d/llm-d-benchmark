@@ -122,31 +122,37 @@ jobs:
       - name: set runs-on variable based on cluster provider
         id: set_runs_on
         run: |
-          IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\-ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
+          IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
           if [[ ! -z $IS_OCP ]]; then
             echo "Targetting self-hosted runners (OpenShift)"
             RUNNERS_JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
+          else
+            echo "Targetting hosted runners (non-OpenShift)"
+            RUNNERS_JSON_LIST='["ubuntu-latest"]'
+          fi
+          echo "Runners list is \"$RUNNERS_JSON_LIST\""
+          echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
+
+      - name: set cluster_type variable based on workflow and scenario name
+        id: set_cluster_provider
+        run: |
+          IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
+          if [[ ! -z $IS_OCP ]]; then
             CLUSTER_TYPE=ocp
           fi
-          IS_GKE=$(echo "${{ github.workflow }}" | grep -i "\-gke" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "gke" || true)
+          IS_GKE=$(echo "${{ github.workflow }}" | grep -i "\gke" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "gke" || true)
           if [[ ! -z $IS_GKE ]]; then
-            echo "Targetting hosted runners (non-OpenShift)"
-            RUNNERS_JSON_LIST='["ubuntu-latest"]'
             CLUSTER_TYPE=gke
           fi
-          IS_CKS=$(echo "${{ github.workflow }}" | grep -i "\-cks" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "cks" || true)
-          if [[ ! -z $IS_GKE ]]; then
-            echo "Targetting hosted runners (non-OpenShift)"
-            RUNNERS_JSON_LIST='["ubuntu-latest"]'
-            CLUSTER_TYPE=gke
+          IS_CKS=$(echo "${{ github.workflow }}" | grep -i "\cks" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "cks" || true)
+          if [[ ! -z $IS_CKS ]]; then
+            CLUSTER_TYPE=cks
           fi
-          IS_KIND=$(echo "${{ github.workflow }}" | grep -i "\-kind" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "kind" || true)
+          IS_KIND=$(echo "${{ github.workflow }}" | grep -i "\kind" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "kind" || true)
           if [[ ! -z $IS_KIND ]]; then
-            echo "Targetting hosted runners (non-OpenShift)"
-            RUNNERS_JSON_LIST='["ubuntu-latest"]'
             CLUSTER_TYPE=kind
           fi
-          echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
+          echo "Cluster provider is \"$CLUSTER_TYPE\""
           echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
 
   benchmark:
