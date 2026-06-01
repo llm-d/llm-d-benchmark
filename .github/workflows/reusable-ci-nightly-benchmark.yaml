@@ -140,6 +140,12 @@ jobs:
             RUNNERS_JSON_LIST='["ubuntu-latest"]'
             CLUSTER_TYPE=gke
           fi
+          IS_KIND=$(echo "${{ github.workflow }}" | grep -i "\-kind" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "kind" || true)
+          if [[ ! -z $IS_KIND ]]; then
+            echo "Targetting hosted runners (non-OpenShift)"
+            RUNNERS_JSON_LIST='["ubuntu-latest"]'
+            CLUSTER_TYPE=kind
+          fi
           echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
           echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
 
