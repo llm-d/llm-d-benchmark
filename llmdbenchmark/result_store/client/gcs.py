@@ -5,6 +5,7 @@ from pathlib import Path
 from google.cloud import storage
 from llmdbenchmark.result_store.client.base import StorageClient
 
+
 def parse_gcs_uri(uri: str) -> tuple[str, str]:
     """Parses gs://bucket/prefix into (bucket, prefix)."""
     if not uri.startswith("gs://"):
@@ -13,6 +14,7 @@ def parse_gcs_uri(uri: str) -> tuple[str, str]:
     bucket = parts[0]
     prefix = parts[1] if len(parts) > 1 else ""
     return bucket, prefix
+
 
 class GCSClient(StorageClient):
     """Handles pure GCS operations using standard credentials."""
@@ -34,7 +36,9 @@ class GCSClient(StorageClient):
         local_path = Path(local_dir)
 
         if not local_path.exists() or not local_path.is_dir():
-            raise ValueError(f"Local directory '{local_dir}' does not exist or is not a directory.")
+            raise ValueError(
+                f"Local directory '{local_dir}' does not exist or is not a directory."
+            )
 
         uploaded_count = 0
         for root, _, files in os.walk(local_path):
@@ -44,7 +48,7 @@ class GCSClient(StorageClient):
                 blob_path = f"{dest_prefix}/{relative_path}".replace("//", "/")
                 if blob_path.startswith("/"):
                     blob_path = blob_path[1:]
-                
+
                 blob = bucket.blob(blob_path)
                 blob.upload_from_filename(str(file_path))
                 uploaded_count += 1
@@ -68,7 +72,7 @@ class GCSClient(StorageClient):
         downloaded_count = 0
         blobs = bucket.list_blobs(prefix=prefix)
         for blob in blobs:
-            relative_name = blob.name[len(prefix):].lstrip("/")
+            relative_name = blob.name[len(prefix) :].lstrip("/")
             if not relative_name:
                 continue
             file_dest = dest_path / relative_name

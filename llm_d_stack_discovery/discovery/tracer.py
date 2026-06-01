@@ -49,12 +49,8 @@ class StackTracer:  # pylint: disable=too-many-instance-attributes
         gaie_version = detect_gaie_version(api)
         if gaie_version:
             logger.info("Detected GAIE API version: %s", gaie_version)
-            self.InferencePool = make_inference_pool_class(
-                gaie_version
-            )  # pylint: disable=invalid-name
-            self.InferenceModel = make_inference_model_class(
-                gaie_version
-            )  # pylint: disable=invalid-name
+            self.InferencePool = make_inference_pool_class(gaie_version)  # pylint: disable=invalid-name
+            self.InferenceModel = make_inference_model_class(gaie_version)  # pylint: disable=invalid-name
         else:
             logger.warning(
                 "GAIE CRDs not found on cluster; using default %s",
@@ -178,9 +174,7 @@ class StackTracer:  # pylint: disable=too-many-instance-attributes
                         self.api, Gateway, gateway_name, namespace
                     )
                     if gateway:
-                        logger.info(
-                            "Found Gateway: %s/%s", namespace, gateway_name
-                        )
+                        logger.info("Found Gateway: %s/%s", namespace, gateway_name)
                         return gateway, namespace
 
         # Check OpenShift Routes first (if on OpenShift)
@@ -294,7 +288,7 @@ class StackTracer:  # pylint: disable=too-many-instance-attributes
                 for listener in spec.get("listeners", []):
                     if listener.get("hostname") == hostname:
                         return gateway
-                
+
                 # Check status.addresses for IP-based gateway discovery
                 status = gateway.obj.get("status", {})
                 for address in status.get("addresses", []):

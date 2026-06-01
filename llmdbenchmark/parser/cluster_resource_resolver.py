@@ -77,9 +77,7 @@ class ClusterResourceResolver:
             self._propagate_network_to_methods(result)
             return result
 
-        self.logger.log_info(
-            f"Auto-detection requested for: {', '.join(auto_fields)}"
-        )
+        self.logger.log_info(f"Auto-detection requested for: {', '.join(auto_fields)}")
 
         self._connect(required_fields=auto_fields)
         self._scan_nodes(required_fields=auto_fields)
@@ -157,9 +155,7 @@ class ClusterResourceResolver:
 
             self._api_client = kube_connect()
             self._connected = True
-            self.logger.log_info(
-                "Connected to cluster for resource auto-detection"
-            )
+            self.logger.log_info("Connected to cluster for resource auto-detection")
             return True
 
         except RuntimeError:
@@ -173,7 +169,8 @@ class ClusterResourceResolver:
             ) from exc
 
     def _scan_nodes(
-        self, required_fields: list[str] | None = None,
+        self,
+        required_fields: list[str] | None = None,
     ) -> NodeResources:
         """Scan node capacities and labels via list_node(). Cached after first call."""
         if self._node_resources is not None:
@@ -208,9 +205,7 @@ class ClusterResourceResolver:
                 labels = node.metadata.labels or {}
                 for label_key in self.KNOWN_GPU_LABEL_KEYS:
                     if label_key in labels and labels[label_key]:
-                        gpu_labels.setdefault(label_key, set()).add(
-                            labels[label_key]
-                        )
+                        gpu_labels.setdefault(label_key, set()).add(labels[label_key])
 
             resources.accelerator_resources = sorted(accel_set)
             resources.network_resources = sorted(net_set)
@@ -228,8 +223,7 @@ class ClusterResourceResolver:
                 )
             for label_key, label_vals in resources.gpu_labels.items():
                 self.logger.log_info(
-                    f"Discovered GPU labels: "
-                    f"{label_key} = {', '.join(label_vals)}"
+                    f"Discovered GPU labels: {label_key} = {', '.join(label_vals)}"
                 )
 
         except Exception as exc:
@@ -244,7 +238,9 @@ class ClusterResourceResolver:
         return resources
 
     def _resolve_accelerator_resource(
-        self, values: dict, unresolved: list[str],
+        self,
+        values: dict,
+        unresolved: list[str],
     ) -> None:
         """``accelerator.resource: "auto"`` to detected GPU resource key."""
         accel = values.get("accelerator", {})
@@ -256,14 +252,14 @@ class ClusterResourceResolver:
         if resources.accelerator_resources:
             resolved = resources.accelerator_resources[0]
             accel["resource"] = resolved
-            self.logger.log_info(
-                f"Resolved accelerator.resource: {resolved}"
-            )
+            self.logger.log_info(f"Resolved accelerator.resource: {resolved}")
         else:
             unresolved.append("accelerator.resource")
 
     def _resolve_network_resource(
-        self, values: dict, unresolved: list[str],
+        self,
+        values: dict,
+        unresolved: list[str],
     ) -> None:
         """``vllmCommon.networkResource: "auto"`` to detected RDMA resource.
 
@@ -289,9 +285,7 @@ class ClusterResourceResolver:
                 )
                 if net_nr == "auto" or not net_nr:
                     vllm_common["networkNr"] = "1"
-                    self.logger.log_info(
-                        "Resolved vllmCommon.networkNr: 1"
-                    )
+                    self.logger.log_info("Resolved vllmCommon.networkNr: 1")
             else:
                 # Network resources are optional -- no RDMA/IB is fine
                 vllm_common["networkResource"] = ""
@@ -306,14 +300,15 @@ class ClusterResourceResolver:
             if net_resource:
                 vllm_common["networkNr"] = "1"
                 self.logger.log_info(
-                    f"Resolved vllmCommon.networkNr: 1 "
-                    f"(networkResource={net_resource})"
+                    f"Resolved vllmCommon.networkNr: 1 (networkResource={net_resource})"
                 )
             else:
                 vllm_common["networkNr"] = ""
 
     def _resolve_affinity_node_selector(
-        self, values: dict, unresolved: list[str],
+        self,
+        values: dict,
+        unresolved: list[str],
     ) -> None:
         """``affinity.nodeSelector: "auto"`` to dict from GPU product labels.
 
@@ -346,7 +341,9 @@ class ClusterResourceResolver:
         values["affinity"] = affinity
 
     def _resolve_accelerator_type_labels(
-        self, values: dict, unresolved: list[str],
+        self,
+        values: dict,
+        unresolved: list[str],
     ) -> None:
         """``*.acceleratorType.labelValue: "auto"`` for decode/prefill/standalone.
 

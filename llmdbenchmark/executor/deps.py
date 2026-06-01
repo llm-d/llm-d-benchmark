@@ -79,7 +79,9 @@ def check_system_dependencies(
 
 def check_python_version() -> tuple[bool, str]:
     """Return (meets_requirement, version_string) for Python >= 3.11."""
-    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    version = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
     meets = sys.version_info >= (3, 11)
     return meets, version
 
