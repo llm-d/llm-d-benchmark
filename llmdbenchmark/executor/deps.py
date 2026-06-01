@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 # helm with the Helm-3-only `helm version --client`, which Helm 4 removed --
 # helmfile then panics deep inside `helmfile template` with an opaque error.
 # These let standup fail fast with an actionable message instead.
-MIN_HELM_MAJOR = 4
+MIN_HELM_MAJOR = 3
 MIN_HELMFILE_VERSION = (1, 5, 0)
 
 
