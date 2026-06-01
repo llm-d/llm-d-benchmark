@@ -78,7 +78,7 @@ on:
 
 jobs:
   nightly:
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@additional_cicd_refactor
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: ${{ inputs.standup_method || 'standalone' }}
