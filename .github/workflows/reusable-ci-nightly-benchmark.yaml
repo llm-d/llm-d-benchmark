@@ -141,7 +141,7 @@ jobs:
             CLUSTER_TYPE=gke
           fi
           echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
-          echo "runners=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
+          echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
 
   benchmark:
     name: Benchmark
