@@ -78,8 +78,8 @@ tool_version_for() {
         curl)      echo "8_20_0"  ;;
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.5.1"   ;;
-        helm)      echo "v4.2.0" ;;
-        helm-diff) echo "v3.15.7" ;;
+        helm)      echo "v3.19.0" ;;
+        helm-diff) echo "v3.13.0" ;;
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.6"  ;;
