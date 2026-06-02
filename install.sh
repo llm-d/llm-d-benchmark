@@ -78,8 +78,8 @@ tool_version_for() {
         curl)      echo "8_20_0"  ;;
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.5.1"   ;;
-        helm)      echo "v4.2.0" ;;
-        helm-diff) echo "v3.15.7" ;;
+        helm)      echo "v3.19.0" ;;
+        helm-diff) echo "v3.13.0" ;;
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.6"  ;;
@@ -910,7 +910,7 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Install planner (from llm-d-planner)
 # ---------------------------------------------------------------------------
-PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@92b14fe09fea0ec9ff36539326b7a8df00f1022c"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"
 
 if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg planner ""

@@ -265,7 +265,7 @@ Jinja2 templates that produce Kubernetes resource definitions. Each template cor
 | `06_pod_access_to_harness_data.yaml.j2` | Harness data access pod |
 | `07_service_access_to_harness_data.yaml.j2` | Harness data access service |
 | `08_httproute.yaml.j2` | HTTPRoute for inference gateway |
-| `09_helmfile-gateway-provider.yaml.j2` | Helmfile for gateway provider (Istio/kgateway) |
+| `09_helmfile-gateway-provider.yaml.j2` | Helmfile for gateway provider (Istio/agentgateway) |
 | `10_helmfile-main.yaml.j2` | Main helmfile (llm-d-infra, modelservice) |
 | `11_infra.yaml.j2` | Infrastructure chart values |
 | `12_gaie-values.yaml.j2` | GAIE (inference extension) Helm values |
@@ -310,7 +310,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `wva` | Workload Variant Autoscaler settings |
 | `control` | Context secret name |
 | `lws` | LeaderWorkerSet configuration |
-| `kgateway` | kgateway provider configuration |
+| `agentgateway` | agentgateway provider configuration |
 | `openshiftMonitoring` | OpenShift-specific monitoring settings |
 | `inferenceExtension` | GAIE plugin configuration |
 
@@ -468,7 +468,7 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
 | `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
-| `chartVersions.kgateway` | `v2.2.3` | kgateway chart version |
+| `chartVersions.agentgateway` | `v2.2.3` | agentgateway chart version |
 | `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
 
 Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
@@ -482,7 +482,7 @@ scenario:
   - name: "my-upgrade-test"
     chartVersions:
       llmDModelservice: "0.5.0"    # pin to specific version
-      kgateway: "v2.3.0"           # upgrade kgateway
+      agentgateway: "v2.3.0"        # upgrade agentgateway
 ```
 
 ### Pinning all versions for reproducibility

@@ -39,9 +39,9 @@ See [Metrics Collection](metrics_collection.md) for the full technical reference
 
 For cluster-level monitoring with Prometheus and Grafana (dashboards, alerts, PromQL queries), refer to the upstream llm-d monitoring documentation:
 
-- [Observability and Monitoring in llm-d](https://github.com/llm-d/llm-d/tree/main/docs/monitoring) — Setup guides, PodMonitor configuration, platform-specific instructions
-- [Example PromQL Queries](https://github.com/llm-d/llm-d/blob/main/docs/monitoring/example-promQL-queries.md) — Ready-to-use queries for vLLM, EPP, prefix caching, and P/D disaggregation metrics
-- [Grafana Dashboards](https://github.com/llm-d/llm-d/tree/main/docs/monitoring/grafana/dashboards) — Community dashboards (vLLM overview, failure/saturation indicators, diagnostic drill-down, KV cache performance, P/D coordinator)
+- [Observability Setup in llm-d](https://github.com/llm-d/llm-d/blob/main/docs/resources/observability/setup.md) — Setup guides, PodMonitor configuration, platform-specific instructions
+- [Example PromQL Queries](https://github.com/llm-d/llm-d/blob/main/docs/resources/observability/promql.md) — Ready-to-use queries for vLLM, EPP, prefix caching, and P/D disaggregation metrics
+- [Grafana Dashboards](https://github.com/llm-d/llm-d/tree/main/guides/recipes/observability/grafana/dashboards) — Community dashboards (vLLM overview, failure/saturation indicators, diagnostic drill-down, KV cache performance, P/D coordinator)
 
 ### Distributed Tracing
 
@@ -49,7 +49,7 @@ The benchmark can **configure** OpenTelemetry tracing on deployed modelservice p
 
 For tracing backend setup and instrumentation details, refer to the upstream docs:
 
-- [Distributed Tracing Guide](https://github.com/llm-d/llm-d/blob/main/docs/monitoring/tracing/README.md) — OTel Collector + Jaeger setup, per-component configuration
+- [Distributed Tracing Guide](https://github.com/llm-d/llm-d/blob/main/docs/resources/observability/tracing.md) — OTel Collector + Jaeger setup, per-component configuration
 
 ### Examples
 
