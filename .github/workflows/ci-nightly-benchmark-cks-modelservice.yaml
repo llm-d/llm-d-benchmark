@@ -16,6 +16,21 @@ on:
         required: false
         type: 'string'
         default: 'cks'
+      decode_pods:
+        description: 'Number of decode (vllm "standalone") pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      prefill_pods:
+        description: 'Number of prefill pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      accelerator_type:
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        required: false
+        type: 'string'
+        default: 'gpu'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -82,6 +97,9 @@ jobs:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: ${{ inputs.standup_method || 'modelservice' }}
       standup_scenario: ${{ inputs.standup_scenario || 'cks' }}
+      decode_pods: ${{ inputs.decode_pods || 'auto' }}
+      prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
+      accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdmns-cks' }}
       helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-cks' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicdm-cks' }}
