@@ -31,6 +31,11 @@ on:
         required: false
         type: 'string'
         default: 'gpu'
+      backend_type:
+        description: 'Type of backend (vllm, sglang)'
+        required: false
+        type: 'string'
+        default: 'vllm'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -102,6 +107,7 @@ jobs:
       decode_pods: ${{ inputs.decode_pods || 'auto' }}
       prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
+      backend_type: ${{ inputs.backend_type || 'vllm' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-gke' }}
       helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-gke' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-gke' }}

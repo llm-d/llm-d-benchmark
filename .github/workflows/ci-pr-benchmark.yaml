@@ -40,6 +40,7 @@ jobs:
       decode_pods: auto
       prefill_pods: auto
       accelerator_type: sim
+      backend_type: vllm
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -67,6 +68,7 @@ jobs:
       decode_pods: auto
       prefill_pods: auto
       accelerator_type: sim
+      backend_type: vllm
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -91,6 +93,7 @@ jobs:
       decode_pods: auto
       prefill_pods: auto
       accelerator_type: sim
+      backend_type: vllm
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -115,6 +118,7 @@ jobs:
       decode_pods: auto
       prefill_pods: auto
       accelerator_type: sim
+      backend_type: vllm
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -139,6 +143,7 @@ jobs:
       decode_pods: auto
       prefill_pods: auto
       accelerator_type: sim
+      backend_type: vllm
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
