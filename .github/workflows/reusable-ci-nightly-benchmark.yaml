@@ -33,6 +33,11 @@ on:
         required: false
         type: 'string'
         default: 'gpu'
+      backend_type:
+        description: 'Type of backend (vllm, sglang)'
+        required: false
+        type: 'string'
+        default: 'vllm'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -187,6 +192,7 @@ jobs:
       LLMDBENCH_CICD_TARGET: ${{ needs.ensure-nightly-build-image.outputs.cluster_provider || 'kind' }}
       LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
       LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator || 'gpu' }}
+      LLMDBENCH_CICD_BACKEND: ${{ inputs.backend_type || 'vllm' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
@@ -357,33 +363,60 @@ jobs:
 
       - name: Apply overrides to scenarios
         run: |
+          export LLMDBENCH_CICD_PRIORITY_CLASS=nightly-gpu-critical
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             if [[ -d ~/llm-d ]]; then
               echo "### Overriding \"repoPath\" to \"$HOME/llm-d\""
-              yq -i ".scenario[0].kustomize.repoPath = \"$HOME/llm-d\"" ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+              yq -i ".scenario[0].kustomize.repoPath = \"$HOME/llm-d\"" ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             fi
             export INFRA_PROVIDER=base
-            if [[ -d ~/llm-d/guides/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/vllm/$LLMDBENCH_CICD_TARGET ]]
+            if [[ -d ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/vllm/$LLMDBENCH_CICD_TARGET ]]
             then
               export INFRA_PROVIDER=$LLMDBENCH_CICD_TARGET
             fi
             if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
               echo "### Setting \"Storage class\" to \"standard-rwx\""
-              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "standard-rwx"' ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "standard-rwx"' ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             fi
             if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
               echo "### Setting \"Storage class\" to \"shared-vast\""
-              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "shared-vast"' ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "shared-vast"' ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             fi
             if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
               echo "### Setting \"Storage class\" to \"ibm-spectrum-scale-fileset\""
-              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "ibm-spectrum-scale-fileset"' ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "ibm-spectrum-scale-fileset"' ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             fi
             echo "### Setting \"INFRA_PROVIDER\" to \"$INFRA_PROVIDER\""
-            yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$INFRA_PROVIDER\"" ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+            yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$INFRA_PROVIDER\"" ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            cat ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
+            echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_ACCELERATOR\$LLMDBENCH_CICD_BACKEND\""
+            yq -i ".scenario[0].kustomize.acceleratorBackend = \"$LLMDBENCH_CICD_ACCELERATOR\$LLMDBENCH_CICD_BACKEND\"" ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            cat ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
+            echo " ### Setting priority class \"nightly-gpu-critical\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            for i in vllm decode prefill; do
+              find ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"nightly-gpu-critical\"" -i {} \;
+              find ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -print -exec yq '.spec.template.spec.priorityClassName' {} \;
+            done
+            export LLMDBENCH_CICD_DECODE_PODS="${{ inputs.decode_pods }}"
+            if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
+              echo " ### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+              for i in vllm decode; do
+                find ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+                find ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas" {} \;
+              done
+            fi
+            export LLMDBENCH_CICD_PREFILL_PODS="${{ inputs.prefill_pods }}"
+            if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
+              echo " ### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+              for i in prefill; do
+                find ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+                find ~/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas" {} \;
+              done
+            fi
           fi
           if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
-            sed -i 's^#      executable: llm-d-benchmark.py^      executable: llm-d-benchmark.py^g' config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            echo " ### Setting harness executable to \"llm-d-benchmark.py\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' ~/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
           fi
         shell: bash
 
