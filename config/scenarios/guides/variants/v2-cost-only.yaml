@@ -1,0 +1,6 @@
+# Secondary variant: same operational shape as primary, only cheaper.
+# Reproduces the original two-variant experiment (cost differentiation only).
+suffix: v2
+variantCost: "5.0"
+minReplicas: 1
+maxReplicas: 10

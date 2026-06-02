@@ -1,0 +1,325 @@
+# TWO-VARIANT WVA SCENARIO (Topology B — one shared EPP)
+#
+# Deploys the primary variant (cost 10.0) of unsloth/Meta-Llama-3.1-8B as a
+# standard single-stack benchmark. A second variant at a lower cost (default
+# 5.0) is then layered on top via `tools/add_variant.py`.
+#
+# Both variants register their pods into the SAME InferencePool / EPP so the
+# WVA saturation solver can compare their costs under a unified queue-depth
+# signal and scale the cheaper variant first.
+#
+# Topology:
+#
+#         +--------- Gateway -------------------------+
+#         |  HTTPRoute → InferencePool (one EPP)      |
+#         +--------------------------------------------+
+#                              |
+#               +--------------+--------------+
+#               |                             |
+#     +---------+--------+       +------------+-----+
+#     | vLLM decode      |       | vLLM decode      |
+#     | primary (cost 10)|       | secondary (cost 5)|
+#     | VA + HPA         |       | VA + HPA          |
+#     +------------------+       +------------------+
+#                   ^                       ^
+#                   +------- WVA (1) -------+
+#                              controller
+#
+# How the two variants share one InferencePool
+# --------------------------------------------
+# The InferencePool EPP selects pods by two labels:
+#   llm-d.ai/inferenceServing: "true"          (camelCase)
+#   llm-d.ai/model:            <model-hash>
+#
+# The primary Deployment (managed by modelservice chart) also sets a third
+# label on its pods: llm-d.ai/inference-serving: "true" (kebab-case), which
+# is the primary's own selector discriminator.
+#
+# The secondary Deployment created by `tools/add_variant.py` intentionally
+# OMITS the kebab label but KEEPS the camelCase + model-hash labels, so:
+#   - The InferencePool picks up both Deployments' pods (two labels match).
+#   - The primary Deployment does not accidentally claim secondary pods
+#     (primary selector requires the kebab label, which secondary pods lack).
+#   - The secondary Deployment uses wva.llmd.ai/variant=v2 as a unique
+#     discriminator in its own pod selector.
+#
+# Both VAs share spec.modelID = "unsloth/Meta-Llama-3.1-8B" so the WVA
+# solver groups them and applies cost-weighted scaling.
+#
+# Running:
+#
+#   # Step 1 — stand up the primary variant (cost 10.0)
+#   llmdbenchmark --spec guides/two-variant-wva standup -p <ns>
+#
+#   # Step 2 — enable WVA's V2 saturation analyzer (the cost-aware path).
+#   #          See the chart-side note in docs/multi-variant-benchmark.md
+#   #          about why this is a separate ConfigMap apply for now.
+#   kubectl apply -n <ns> -f config/scenarios/guides/two-variant-wva-v2-config.yaml
+#
+#   # Step 3 — layer on the secondary variant
+#   python tools/add_variant.py -n <ns> \
+#       --config config/scenarios/guides/variants/v2-cost-only.yaml
+#
+#   # Step 4 — run the benchmark (both variants share one InferencePool)
+#   llmdbenchmark --spec guides/two-variant-wva run \
+#       -p <ns> -l guidellm -w prefill_heavy.yaml
+#
+#   # Step 5 — teardown
+#   llmdbenchmark --spec guides/two-variant-wva teardown -p <ns>
+#
+# See docs/multi-variant-benchmark.md for the full guide.
+
+# ============================================================================
+# SHARED — applied to the stack before per-stack overrides
+# ============================================================================
+shared:
+  # --------------------------------------------------------------------------
+  # DEPLOYMENT METHOD
+  # --------------------------------------------------------------------------
+  modelservice:
+    enabled: true
+  standalone:
+    enabled: false
+
+  # --------------------------------------------------------------------------
+  # WVA CONTROLLER — installed once per namespace; per-stack scaling intent
+  # (variantAutoscaling, hpa) lives in each stack's wva: block below.
+  # --------------------------------------------------------------------------
+  wva:
+    enabled: true
+    wellLitPath: inference-scheduling
+    namespace: ""
+    image:
+      repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
+      tag: v0.7.0
+    replicaCount: 1
+    controller:
+      enabled: true
+    namespaceScoped: true
+    metrics:
+      enabled: true
+      port: 8443
+      secure: true
+    prometheus:
+      baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+      port: 9091
+    # Enable the WVA-side ServiceMonitor that propagates the `llm-d.ai/variant`
+    # pod label into scraped metrics as `llm_d_ai_variant`. Required by PR #1145
+    # for the V2 main path: without this relabeling, vllm:cache_config_info
+    # arrives in Prometheus with no variant label, the WVA collector can't map
+    # the row to a VariantAutoscaling, TotalKvCapacityTokens stays 0, and the
+    # analyzer falls into computeReplicaCapacityFallback (which uses the
+    # per-step batch budget — wrong dimension, ~50× under-states real KV).
+    vllmService:
+      enabled: true
+
+  # Per PR #1145 requirement: tag every scrape target with its VariantAutoscaling
+  # name so the WVA collector can directly map metric rows to variants.
+  # The primary VA name = `<model_id_label>-decode`. add_variant.py overrides
+  # this on the secondary Deployment to point at the v2 VA.
+  modelArtifacts:
+    extraLabels:
+      "llm-d.ai/variant": "unsloth--1409d52c-a-3-1-8b-decode"
+
+  chartVersions:
+    wva: 0.6.0
+    prometheusAdapter: 5.2.0
+
+  # --------------------------------------------------------------------------
+  # IMAGE OVERRIDES — pin vllm-openai to v0.14.0 (newer than the v0.9.2
+  # default) so the model server emits vllm:cache_config_info, allowing the
+  # WVA saturation-V2 analyzer to use real KV-memory capacity instead of
+  # the per-step batch budget fallback.
+  # --------------------------------------------------------------------------
+  images:
+    vllmOpenai:
+      repository: docker.io/vllm/vllm-openai
+      tag: v0.14.0
+
+  # --------------------------------------------------------------------------
+  # EPP PLUGIN CONFIG — flowControl feature gate required for WVA queue-depth
+  # driven scaling signal.
+  # --------------------------------------------------------------------------
+  inferenceExtension:
+    pluginsConfigFile: "wva-plugins.yaml"
+    pluginsCustomConfig:
+      wva-plugins.yaml: |
+        apiVersion: inference.networking.x-k8s.io/v1alpha1
+        kind: EndpointPickerConfig
+        featureGates:
+          - flowControl
+        plugins:
+          - type: queue-scorer
+          - type: kv-cache-utilization-scorer
+          - type: prefix-cache-scorer
+        schedulingProfiles:
+          - name: default
+            plugins:
+              - pluginRef: queue-scorer
+                weight: 2
+              - pluginRef: kv-cache-utilization-scorer
+                weight: 2
+              - pluginRef: prefix-cache-scorer
+                weight: 3
+
+  # --------------------------------------------------------------------------
+  # VLLM COMMON
+  # --------------------------------------------------------------------------
+  vllmCommon:
+    kvTransfer:
+      enabled: true
+      connector: NixlConnector
+      role: kv_both
+    flags:
+      enforceEager: true
+      disableLogRequests: true
+      disableUvicornAccessLog: true
+      allowLongMaxModelLen: "1"
+      serverDevMode: "1"
+    volumes:
+      - name: shared-config
+        type: emptyDir
+        emptyDir: {}
+      - name: dshm
+        type: emptyDir
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
+    volumeMounts:
+      - name: dshm
+        mountPath: /dev/shm
+      - name: shared-config
+        mountPath: /shared-config
+
+  # --------------------------------------------------------------------------
+  # PREFILL / DECODE defaults
+  # --------------------------------------------------------------------------
+  prefill:
+    enabled: false
+    replicas: 0
+
+  decode:
+    initContainers:
+      - name: preprocess
+        imageKey: benchmark
+        imagePullPolicy: Always
+        command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+    parallelism:
+      tensor: 1
+      data: 1
+      dataLocal: 1
+      workers: 1
+    extraEnvVars: []
+    extraContainerConfig:
+      ports:
+        - containerPort: 5557
+          protocol: TCP
+        - containerPort: 8200
+          name: metrics
+          protocol: TCP
+      securityContext:
+        capabilities:
+          add:
+            - "IPC_LOCK"
+            - "SYS_RAWIO"
+        runAsGroup: 0
+        runAsUser: 0
+      imagePullPolicy: Always
+    additionalVolumeMounts: []
+    additionalVolumes: []
+    probes:
+      startup:
+        path: /v1/models
+        failureThreshold: 60
+        initialDelaySeconds: 15
+        periodSeconds: 30
+        timeoutSeconds: 5
+      liveness:
+        path: /health
+        failureThreshold: 3
+        periodSeconds: 10
+        timeoutSeconds: 5
+      readiness:
+        path: /v1/models
+        failureThreshold: 3
+        periodSeconds: 5
+        timeoutSeconds: 2
+    monitoring:
+      podmonitor:
+        enabled: true
+        portName: metrics
+        path: /metrics
+        interval: 30s
+        labels:
+          release: llmd
+
+  workDir: "~/data/two-variant-wva"
+  harness:
+    name: inference-perf
+    experimentProfile: shared_prefix_synthetic.yaml
+
+  storage:
+    modelPvc:
+      size: 32Gi
+
+
+# ============================================================================
+# SCENARIO — primary variant (high-cost, cost 10.0)
+#
+# This standup deploys the primary variant only. Run
+# `python tools/add_variant.py -n <ns> --config <variant-yaml>` afterwards
+# to layer on the secondary variant at a lower cost.
+# ============================================================================
+scenario:
+  - name: "llama-8b"
+
+    model:
+      name: unsloth/Meta-Llama-3.1-8B
+      shortName: unsloth-meta-llama-3-1-8b
+      path: models/unsloth/Meta-Llama-3.1-8B
+      huggingfaceId: unsloth/Meta-Llama-3.1-8B
+      size: 32Gi
+      maxModelLen: 8192
+      blockSize: 64
+      gpuMemoryUtilization: 0.85
+
+    wva:
+      variantAutoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        variantCost: "10.0"
+        slo:
+          tpot: 10
+          ttft: 1000
+      hpa:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        targetAvgValue: 1
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+          scaleDown:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+
+    decode:
+      replicas: 1
+      resources:
+        limits:
+          memory: 48Gi
+          cpu: "16"
+        requests:
+          memory: 48Gi
+          cpu: "16"
