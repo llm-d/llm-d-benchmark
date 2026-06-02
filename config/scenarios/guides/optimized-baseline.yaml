@@ -71,17 +71,17 @@ scenario:
       #                       secretKeyRef:
       #                         name: llm-d-hf-token
       #                         key: HF_TOKEN
-      patches:
-        - patch: |
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: decode
-            spec:
-              replicas: 2
-              template:
-                spec:
-                  priorityClassName: nightly-gpu-critical
+      #patches:
+      #  - patch: |
+      #      apiVersion: apps/v1
+      #      kind: Deployment
+      #      metadata:
+      #        name: decode
+      #      spec:
+      #        replicas: 2
+      #        template:
+      #          spec:
+      #            priorityClassName: nightly-gpu-critical
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
