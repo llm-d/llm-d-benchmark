@@ -1946,7 +1946,6 @@ def cli() -> None:
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
-
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)

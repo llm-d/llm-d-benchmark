@@ -118,7 +118,7 @@ llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
 | `anyuid-sa` ServiceAccount exists | Cluster-admin (you, once) | `oc create serviceaccount anyuid-sa` |
 | `anyuid` SCC bound to `anyuid-sa` | Cluster-admin (you, once) | `oc adm policy add-scc-to-user anyuid -z anyuid-sa` |
 | RWX PVC storage class exists | Cluster infra | Verify with `oc get sc` |
-| API key secret in namespace | You | `kubectl create secret generic eval-secrets --from-literal=OPENAI_API_KEY=...` |
+| API key secret in namespace | You | `kubectl create secret generic eval-secrets --from-literal=OPENAI_API_KEY=...` | <!-- pragma: allowlist secreti-->
 | The framework creates | Framework | Namespace (if missing), PVC, ConfigMaps, harness pods |
 
 ## Troubleshooting

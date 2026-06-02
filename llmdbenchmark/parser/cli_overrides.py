@@ -23,6 +23,7 @@ same thing they would inside the scenario YAML.
 
 from __future__ import annotations
 
+import re
 import datetime
 import fnmatch
 from typing import Any
@@ -42,6 +43,15 @@ _GLOB_CHARS = "*?["
 
 class OverrideParseError(ValueError):
     """Raised when a ``--set`` expression cannot be parsed."""
+
+
+def protect_internal_dotting(raw: str) -> str:
+    """Ensure keys with dots in the name can be properly specified"""
+
+    processed = raw
+    for match in re.findall(r'"([^"]*)"', raw):
+        processed = processed.replace(f'"{match}"', match.replace(".", "_PROTECTDOT_"))
+    return processed
 
 
 def split_override_pairs(raw: str) -> list[str]:
@@ -191,7 +201,8 @@ def parse_cli_overrides(
     flat_by_selector: dict[str, dict[str, Any]] = {}
 
     for raw in values:
-        for pair in split_override_pairs(raw):
+        processed = protect_internal_dotting(raw)
+        for pair in split_override_pairs(processed):
             selector, key, value = parse_override_pair(pair)
             bucket = flat_by_selector.setdefault(selector, {})
             secret = is_secret_path(key)
