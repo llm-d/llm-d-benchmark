@@ -16,6 +16,21 @@ on:
         required: false
         type: 'string'
         default: 'cks'
+      decode_pods:
+        description: 'Number of decode (vllm "standalone") pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      prefill_pods:
+        description: 'Number of prefill pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      accelerator_type:
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        required: false
+        type: 'string'
+        default: 'gpu'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -61,12 +76,14 @@ on:
       harness:
         description: 'Harness to be used during "run" operation ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
         required: false
-        default: 'nop'
+#        default: 'nop'
+        default: vllm-benchmark
         type: 'string'
       workload:
         description: 'Workload profile to be used during "run" operation (check list under "workload/profiles")'
         required: false
-        default: 'nop.yaml'
+#        default: 'nop.yaml'
+        default: sanity_random.yaml
         type: 'string'
 
 #  push:
@@ -78,11 +95,14 @@ on:
 
 jobs:
   nightly:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@cicd_improvements_for_guides
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: ${{ inputs.standup_method || 'standalone' }}
       standup_scenario: ${{ inputs.standup_scenario || 'cks' }}
+      decode_pods: ${{ inputs.decode_pods || 'auto' }}
+      prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
+      accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-cks' }}
       helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-cks' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-cks' }}
