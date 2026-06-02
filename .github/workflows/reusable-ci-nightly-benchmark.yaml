@@ -18,6 +18,21 @@ on:
         required: false
         type: 'string'
         default: 'kind'
+      decode_pods:
+        description: 'Number of decode (vllm "standalone") pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      prefill_pods:
+        description: 'Number of prefill pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      accelerator_type:
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        required: false
+        type: 'string'
+        default: 'gpu'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -49,7 +64,7 @@ on:
         type: 'string'
         default: 'llm-d-benchmarks/regressions'
       gateway_class:
-        description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
+        description: 'Class of gateway used ("istio", "agentgateway", "epponly" (aka "standalone"), "none")'
         required: false
         type: 'string'
         default: 'epponly'
@@ -171,6 +186,7 @@ jobs:
       LLMDBENCH_CICD_SCENARIO: ${{ inputs.standup_scenario || 'kind' }}
       LLMDBENCH_CICD_TARGET: ${{ needs.ensure-nightly-build-image.outputs.cluster_provider || 'kind' }}
       LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
+      LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator || 'gpu' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
@@ -179,7 +195,7 @@ jobs:
       LLMDBENCH_MONITORING_ENABLED: ${{ inputs.monitoring_enabled || 'true' }}
       LLMDBENCH_CICD_HARNESS: ${{ inputs.harness || 'inference-perf' }}
       LLMDBENCH_CICD_WORKLOAD: ${{ inputs.workload || 'sanity_random.yaml' }}
-      GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      GCS_BASE_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
       GKE_CLUSTER_ZONE: us-east5
@@ -257,6 +273,12 @@ jobs:
             fi
           fi
 
+      - name: Show cluster names
+        run: |
+          echo "### Cluster names: $(cat ~/.kube/config | yq ".clusters[].name" | sed ':a;N;$!ba;s/\n/, /g')"
+          exit $?
+        shell: bash
+
       - name: Show cluster nodes
         run: |
           kubectl get node
@@ -267,13 +289,35 @@ jobs:
         if: env.LLMDBENCH_CICD_TARGET == 'kind'
         run: |
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-          echo "Labeling node: $NODE"
+          echo "### Labeling node: $NODE"
           kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+        shell: bash
+
+      - name: Set GCS full path
+        if: inputs.bucket_provider == 'gcs'
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          GCS_FULL_PATH="gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/"
+          GCS_FULL_PATH=$(echo "$GCS_FULL_PATH" | sed "s^$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_SCENARIO^$LLMDBENCH_CICD_SCENARIO^g")
+          echo "### GCS_FULL_PATH is \"$GCS_FULL_PATH\""
+          echo "GCS_FULL_PATH=$GCS_FULL_PATH" >> $GITHUB_ENV
+        shell: bash
 
       - name: Install llmdbenchmark
         run: |
+          cd ~
+          if [[ ! -f install.sh ]]; then
+            curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh -o install.sh
+            chmod +x install.sh
+          fi
           ./install.sh -y 2>&1
-          sudo cp util/debug_info_on_failure.sh /usr/local/bin
+          if [[ ! -f util/debug_info_on_failure.sh ]]; then
+            curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/util/debug_info_on_failure.sh -o /tmp/debug_info_on_failure.sh
+            chmod +x /tmp/debug_info_on_failure.sh
+            sudo cp /tmp/debug_info_on_failure.sh /usr/local/bin
+          else
+            sudo cp util/debug_info_on_failure.sh /usr/local/bin
+          fi
         shell: bash
 
       - name: Set up extra command line parameters
@@ -290,14 +334,65 @@ jobs:
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
             export LLMDBENCH_EXTRA_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_OPERATION_CMD "
           fi
+          echo "### LLMDBENCH_EXTRA_CMD is \"$LLMDBENCH_EXTRA_CMD\""
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_OPERATION_CMD is \"$LLMDBENCH_EXTRA_OPERATION_CMD\""
           echo "LLMDBENCH_EXTRA_OPERATION_CMD=$LLMDBENCH_EXTRA_OPERATION_CMD" >> $GITHUB_ENV
+          export LLMDBENCH_GATEWAY_CLASS=$(echo "$LLMDBENCH_GATEWAY_CLASS" | sed 's^standalone^epponly^g')
+          echo "LLMDBENCH_GATEWAY_CLASS is \"$LLMDBENCH_GATEWAY_CLASS\""
+          echo "LLMDBENCH_GATEWAY_CLASS=$LLMDBENCH_GATEWAY_CLASS"  >> $GITHUB_ENV
+        shell: bash
+
+      - name: Conditionally clone llm-d from main repo
+        run: |
+          cd ~
+          if [[ ! -d llm-d ]];
+          then
+            echo "### llm-d code NOT found, will clone now"
+            git clone https://github.com/llm-d/llm-d.git
+          fi
+          cd llm-d
+          echo "### llm-d code is present (branch $(git branch --show-current))"
+        shell: bash
+
+      - name: Apply overrides to scenarios
+        run: |
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            if [[ -d ~/llm-d ]]; then
+              echo "### Overriding \"repoPath\" to \"$HOME/llm-d\""
+              yq -i ".scenario[0].kustomize.repoPath = \"$HOME/llm-d\"" ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            export INFRA_PROVIDER=base
+            if [[ -d ~/llm-d/guides/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/vllm/$LLMDBENCH_CICD_TARGET ]]
+            then
+              export INFRA_PROVIDER=$LLMDBENCH_CICD_TARGET
+            fi
+            if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
+              echo "### Setting \"Storage class\" to \"standard-rwx\""
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "standard-rwx"' ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
+              echo "### Setting \"Storage class\" to \"shared-vast\""
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "shared-vast"' ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
+              echo "### Setting \"Storage class\" to \"ibm-spectrum-scale-fileset\""
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "ibm-spectrum-scale-fileset"' ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            echo "### Setting \"INFRA_PROVIDER\" to \"$INFRA_PROVIDER\""
+            yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$INFRA_PROVIDER\"" ~/llm-d-benchmark/config/scenarios/guides/$LLMDBENCH_CICD_SCENARIO.yaml
+          fi
+          if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
+            sed -i 's^#      executable: llm-d-benchmark.py^      executable: llm-d-benchmark.py^g' config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+          fi
         shell: bash
 
       - name: Cleanup target cloud
         run: |
-          echo "### Cluster names: $(cat ~/.kube/config | yq ".clusters[].name" | sed ':a;N;$!ba;s/\n/, /g')"
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          if [[ -d ~/llm-d-benchmark ]]; then
+            cd ~/llm-d-benchmark
+          fi
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --gateway-class $LLMDBENCH_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
@@ -305,6 +400,9 @@ jobs:
 
       - name: Standup
         run: |
+          if [[ -d ~/llm-d-benchmark ]]; then
+            cd ~/llm-d-benchmark
+          fi
           LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
@@ -318,14 +416,14 @@ jobs:
 
       - name: Run
         run: |
+          if [[ -d ~/llm-d-benchmark ]]; then
+            cd ~/llm-d-benchmark
+          fi
           if [[ "$LLMDBENCH_CICD_TARGET" == "kind" && "${{ inputs.standup_method }}" == "fma" ]]; then
             echo "Temporarily unable to test \"fma\" on \"kind\" clusters"
           elif [[ "$LLMDBENCH_CICD_TARGET" == "gke" && "${{ inputs.standup_method }}" == "fma" ]]; then
             echo "Temporarily unable to test \"fma\" on \"gke\" clusters"
           else
-            if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
-              sed -i 's^#      executable: llm-d-benchmark.py^      executable: llm-d-benchmark.py^g' config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
-            fi
             LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD"
             echo "### $LLMDBENCH_CMD ###"
             $LLMDBENCH_CMD
@@ -335,6 +433,9 @@ jobs:
       - name: Teardown
         if: always()
         run: |
+          if [[ -d ~/llm-d-benchmark ]]; then
+            cd ~/llm-d-benchmark
+          fi
           LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
@@ -353,11 +454,10 @@ jobs:
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping data upload to bucket, due to \"dry-run\" mode activated"
           else
-            RUN_DATE=$(date +'%Y-%m-%d')
             cd "$LLMDBENCH_WORKSPACE"
             REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
-            echo "Uploading data from directory \"REG_RESULTS\" to \"gs://${GCS_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_METHOD/$RUN_DATE/\""
-            gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
+            echo "Uploading data from directory \"REG_RESULTS\" to \"$GCS_FULL_PATH\""
+            gcloud storage cp -r $REG_RESULTS/ "$GCS_FULL_PATH" || true
           fi
         shell: bash
 
@@ -371,13 +471,13 @@ jobs:
             RUN_DATE=$(date +'%Y-%m-%d')
             POLL=30
             while true; do
-              brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+              brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
               if [[ $? -ne 0 ]]; then
                 echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
                 sleep $POLL
               else
                 latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
-                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
                 echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
                 exit 0
               fi
