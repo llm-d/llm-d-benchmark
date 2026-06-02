@@ -38,7 +38,7 @@ jobs:
       standup_method: standalone
       standup_scenario: kind
       decode_pods: auto
-      prefil_pods: auto
+      prefill_pods: auto
       accelerator_type: sim
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
@@ -65,7 +65,7 @@ jobs:
       standup_method: fma
       standup_scenario: kind
       decode_pods: auto
-      prefil_pods: auto
+      prefill_pods: auto
       accelerator_type: sim
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
@@ -89,7 +89,7 @@ jobs:
       standup_method: modelservice
       standup_scenario: kind
       decode_pods: auto
-      prefil_pods: auto
+      prefill_pods: auto
       accelerator_type: sim
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
@@ -113,7 +113,7 @@ jobs:
       standup_method: modelservice
       standup_scenario: kind
       decode_pods: auto
-      prefil_pods: auto
+      prefill_pods: auto
       accelerator_type: sim
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
@@ -137,7 +137,7 @@ jobs:
       standup_method: modelservice
       standup_scenario: kind
       decode_pods: auto
-      prefil_pods: auto
+      prefill_pods: auto
       accelerator_type: sim
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
