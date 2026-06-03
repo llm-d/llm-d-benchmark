@@ -80,7 +80,7 @@ scenario:
       pluginsConfigFile: "predicted-latency-slo-plugins.yaml"
       pluginsCustomConfig:
         predicted-latency-slo-plugins.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          apiVersion: llm-d.ai/v1alpha1
           kind: EndpointPickerConfig
           plugins:
           - type: queue-scorer

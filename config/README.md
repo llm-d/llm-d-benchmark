@@ -887,14 +887,18 @@ scenario:
         dataLocal: 1
         workers: 1
 
-    # Configure the inference extension with context-length-aware plugin
+    # Configure the inference extension with context-length-aware plugin.
+    # `apiVersion: llm-d.ai/v1alpha1` is the canonical API group on the
+    # llm-d-router charts; the legacy
+    # `inference.networking.x-k8s.io/v1alpha1` is still accepted but
+    # deprecated.
     inferenceExtension:
       pluginsConfigFile: "context-length-aware-config.yaml"
       sidecar:
         enabled: true
       pluginsCustomConfig:
         context-length-aware-config.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          apiVersion: llm-d.ai/v1alpha1
           kind: EndpointPickerConfig
           plugins:
             - type: tokenizer

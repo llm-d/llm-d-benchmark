@@ -1,25 +1,165 @@
 {# Modelservice-only template. -t kustomize uses upstream guide manifests. #}
+{#
+   Renders the values file for the llm-d-router chart (standalone or gateway
+   variant; see 10_helmfile-main.yaml.j2). Migrated from the GAIE-shipped
+   `inferencepool` / `standalone` charts.
+
+   YAML shape mapping (legacy GAIE chart -> llm-d-router chart):
+
+     inferenceExtension.replicas              -> router.epp.replicas
+     inferenceExtension.image.*               -> router.epp.image.*
+     inferenceExtension.extProcPort           -> router.epp.extProcPort
+     inferenceExtension.flags                 -> router.epp.flags
+     inferenceExtension.pluginsConfigFile     -> router.epp.pluginsConfigFile
+     inferenceExtension.pluginsCustomConfig   -> router.epp.pluginsCustomConfig
+     inferenceExtension.resources             -> router.epp.resources
+     inferenceExtension.env                   -> router.epp.env
+     inferenceExtension.volumes               -> router.epp.volumes
+     inferenceExtension.volumeMounts          -> router.epp.volumeMounts
+     inferenceExtension.failureMode           -> router.inferencePool.failureMode
+     inferenceExtension.sidecar (UDS)         -> router.tokenizer.enabled
+                                                 (the new chart manages the
+                                                  UDS tokenizer container
+                                                  natively; the post-renderer
+                                                  hack is gone)
+     inferenceExtension.envoySidecar          -> router.proxy.{args,resources}
+                                                 (standalone-chart Envoy)
+     inferenceExtension.extraServicePorts     -> router.extraServicePorts
+     inferenceExtension.extraContainerPorts   -> router.epp.extraContainerPorts
+     inferenceExtension.monitoring            -> router.monitoring
+     inferenceExtension.tracing               -> router.tracing
+     inferenceExtension.inferencePoolProviderConfig
+                                              -> router.inferencePool.provider.<gw>
+     inferencePool.targetPortNumber           -> router.modelServers.targetPorts[0].number
+     inferencePool.modelServers.matchLabels   -> router.modelServers.matchLabels
+
+   The benchmark keeps the `inferenceExtension` / `inferencePool` scenario
+   YAML keys as its own stable abstraction layer; all the chart-shape churn
+   stays inside this template. Plugin custom configs authored against
+   `inference.networking.x-k8s.io/v1alpha1` still parse against the new chart,
+   but the canonical apiVersion is now `llm-d.ai/v1alpha1` -- scenario authors
+   are encouraged to update their inline EndpointPickerConfig accordingly.
+#}
 {% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
-{% set registry = images.inferenceScheduler.repository.split('/')[0] %}
+{# Pick the EPP image. The chart was renamed during the llm-d-router
+   chart migration from `llm-d-inference-scheduler` to
+   `llm-d-router-endpoint-picker-dev`. Scenarios that still override
+   `images.inferenceScheduler` (e.g. for a custom mirror) are honored:
+   if the legacy override is non-default we use it, otherwise we fall
+   back to `images.routerEndpointPicker` (the new default sourced from
+   defaults.yaml). #}
+{% set _legacy_default = 'ghcr.io/llm-d/llm-d-inference-scheduler' %}
+{% set _epp_image = images.routerEndpointPicker
+                    if (images.inferenceScheduler is not defined
+                        or images.inferenceScheduler.repository == _legacy_default)
+                    else images.inferenceScheduler %}
+{% set registry = _epp_image.repository.split('/')[0] %}
 {% set _epponly = (gateway.className | default('') == 'epponly') %}
-inferenceExtension:
-  replicas: {{ inferenceExtension.replicas }}
-  image:
-{% set scheduler_repo = images.inferenceScheduler.repository %}
-{% if '/llm-d-inference-scheduler' in scheduler_repo %}
-    name: llm-d-inference-scheduler
-{% else %}
-    name: {{ scheduler_repo.split('/')[-1] }}
+router:
+{# UDS tokenizer is a first-class chart feature on the llm-d-router
+   charts. Toggling `inferenceExtension.sidecar.enabled` in a scenario
+   flips `router.tokenizer.enabled` and the chart wires up the tokenizer
+   container, sockets, and volumes itself -- in both gateway and
+   standalone (epponly) topologies. The post-renderer hack the legacy
+   standalone chart needed for this is gone.
+
+   The chart requires `modelName` to be set when `tokenizer.enabled: true`
+   (see `charts/router/values.yaml`); we source it from the scenario's
+   `model.name`. Scenario authors can override by setting
+   `inferenceExtension.sidecar.modelName` explicitly. #}
+{% if inferenceExtension.sidecar is defined and inferenceExtension.sidecar.enabled is defined and inferenceExtension.sidecar.enabled %}
+  tokenizer:
+    enabled: true
+{% if inferenceExtension.sidecar.modelName is defined and inferenceExtension.sidecar.modelName %}
+    modelName: {{ inferenceExtension.sidecar.modelName }}
+{% elif model is defined and model.name is defined and model.name %}
+    modelName: {{ model.name }}
 {% endif %}
-    registry: {{ registry }}
-    repository: {{ scheduler_repo | replace(registry ~ '/', '') }}
-    tag: {{ images.inferenceScheduler.tag }}
-    pullPolicy: {{ images.inferenceScheduler.pullPolicy }}
-  extProcPort: {{ inferenceExtension.extProcPort }}
-  extraContainerPorts:
-    - name: zmq
-      containerPort: {{ inferenceExtension.zmqPort }}
-      protocol: TCP
+{% endif %}
+{# latencyPredictor (predicted-latency-routing guide). Forwards the
+   entire `inferenceExtension.latencyPredictor` subtree to
+   `router.latencyPredictor` so scenarios can flip `enabled: true` (and
+   optionally override `trainingServer.*`, `predictionServer.*`, etc.) #}
+{% if inferenceExtension.latencyPredictor is defined and inferenceExtension.latencyPredictor %}
+  latencyPredictor:
+{{ inferenceExtension.latencyPredictor | toyaml | indent(4, true) }}
+{% endif %}
+  epp:
+    replicas: {{ inferenceExtension.replicas }}
+    image:
+{% set scheduler_repo = _epp_image.repository %}
+      name: {{ scheduler_repo.split('/')[-1] }}
+      registry: {{ registry }}
+      repository: {{ scheduler_repo | replace(registry ~ '/', '') }}
+      tag: {{ _epp_image.tag }}
+      pullPolicy: {{ _epp_image.pullPolicy }}
+    extProcPort: {{ inferenceExtension.extProcPort }}
+    extraContainerPorts:
+      - name: zmq
+        containerPort: {{ inferenceExtension.zmqPort }}
+        protocol: TCP
+{% if huggingface.enabled %}
+    env:
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: {{ huggingface.secretName }}
+            key: {{ huggingface.tokenKey }}
+{% endif %}
+    pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
+{% if inferenceExtension.resources is defined and inferenceExtension.resources %}
+    resources:
+{{ inferenceExtension.resources | toyaml | indent(6, true) }}
+{% endif %}
+{% if inferenceExtension.pluginsCustomConfig is defined and inferenceExtension.pluginsCustomConfig %}
+    pluginsCustomConfig:
+{% for filename, content in inferenceExtension.pluginsCustomConfig.items() %}
+      {{ filename }}: |
+{{ content | indent(8, true) }}
+{% endfor %}
+{% endif %}
+    flags:
+{% if inferenceExtension.flags is defined and inferenceExtension.flags %}
+{% for key, value in inferenceExtension.flags.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+{% else %}
+{% if monitoring is defined and monitoring.metricsScrapeEnabled is defined and monitoring.metricsScrapeEnabled %}
+      v: "4"
+{% else %}
+      v: "{{ inferenceExtension.verbosity | default('1') }}"
+{% endif %}
+{% endif %}
+{# The legacy chart attached the UDS tokenizer container via the `sidecar.*`
+   slot (or a helm post-renderer hack on the standalone chart). The new
+   chart provides `router.tokenizer.enabled: true` and does not surface a
+   generic sidecar slot, so the UDS-tokenizer-specific block has been
+   collapsed into the `tokenizer.enabled` flag above. The
+   `inferenceExtension.volumes` / `volumeMounts` escape hatches still
+   render here because some scenarios use them for non-tokenizer purposes
+   (e.g. shared config dirs). #}
+{% if inferenceExtension.volumes is defined and inferenceExtension.volumes %}
+    volumes:
+{% for vol in inferenceExtension.volumes %}
+      - name: {{ vol.name }}
+{% if vol.emptyDir is defined %}
+        emptyDir: {{ vol.emptyDir | toyaml | trim }}
+{% elif vol.configMap is defined %}
+        configMap:
+          name: {{ vol.configMap.name }}
+{% endif %}
+{% endfor %}
+{% if inferenceExtension.volumeMounts is defined and inferenceExtension.volumeMounts %}
+    volumeMounts:
+{% for vm in inferenceExtension.volumeMounts %}
+      - mountPath: {{ vm.mountPath }}
+        name: {{ vm.name }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{# router-level (not router.epp) keys: extra service ports, monitoring,
+   tracing. The new chart moved these out from under inferenceExtension. #}
   extraServicePorts:
     - name: zmq
       port: {{ inferenceExtension.zmqPort }}
@@ -35,29 +175,7 @@ inferenceExtension:
       protocol: TCP
       targetPort: 8081
 {% endif %}
-{% if huggingface.enabled %}
-  env:
-    - name: HF_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: {{ huggingface.secretName }}
-          key: {{ huggingface.tokenKey }}
-{% endif %}
-  pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
-{% if inferenceExtension.failureMode is defined and inferenceExtension.failureMode %}
-  failureMode: "{{ inferenceExtension.failureMode }}"
-{% endif %}
-{% if inferenceExtension.resources is defined and inferenceExtension.resources %}
-  resources:
-{{ inferenceExtension.resources | toyaml | indent(4, true) }}
-{% endif %}
-{% if inferenceExtension.pluginsCustomConfig is defined and inferenceExtension.pluginsCustomConfig %}
-  pluginsCustomConfig:
-{% for filename, content in inferenceExtension.pluginsCustomConfig.items() %}
-    {{ filename }}: |
-{{ content | indent(6, true) }}
-{% endfor %}
-{% endif %}
+
   monitoring:
     interval: "{{ inferenceExtension.monitoring.interval | default('10s') }}"
     prometheus:
@@ -65,35 +183,18 @@ inferenceExtension:
       auth:
         enabled: {{ inferenceExtension.monitoring.prometheus.auth.enabled | default(true) | lower }}
         # Overridable Secret name for the Prometheus ServiceAccount token.
-        # The gaie (inferencepool) chart v1.4.0 uses this exact path; older
-        # templates wrote `monitoring.secret.name` which the chart silently
-        # ignored and fell back to its hardcoded default, causing
-        # cross-release Helm ownership conflicts in multi-stack scenarios.
+        # In multi-stack scenarios two EPP releases sharing this Secret name
+        # in one namespace collide on Helm ownership; render_plans rewrites
+        # the default per-stack to keep them disjoint.
         secretName: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
-  flags:
-{% if inferenceExtension.flags is defined and inferenceExtension.flags %}
-{% for key, value in inferenceExtension.flags.items() %}
-    {{ key }}: "{{ value }}"
-{% endfor %}
-{% else %}
-{% if monitoring is defined and monitoring.metricsScrapeEnabled is defined and monitoring.metricsScrapeEnabled %}
-    v: "4"
-{% else %}
-    v: "{{ inferenceExtension.verbosity | default('1') }}"
-{% endif %}
-{% endif %}
+
 {# Envoy sidecar config for the standalone chart (gateway.className=epponly).
-   The chart's built-in Envoy sidecar exposes `args` and `resources` knobs
-   under `inferenceExtension.sidecar`. We surface them via the dedicated
-   `inferenceExtension.envoySidecar` scenario key to avoid clashing with
-   the UDS-tokenizer sidecar block below (which reuses
-   `inferenceExtension.sidecar.enabled`). The two are mutually exclusive
-   in practice: UDS tokenizer is only enabled for precise-prefix-cache
-   routing, which is incompatible with the epponly topology. #}
-{% if (gateway.className | default('') == 'epponly')
+   The new chart surfaces the Envoy sidecar tunables under `router.proxy`
+   (the legacy chart used `inferenceExtension.sidecar`). #}
+{% if _epponly
       and inferenceExtension.envoySidecar is defined
       and inferenceExtension.envoySidecar %}
-  sidecar:
+  proxy:
 {% if inferenceExtension.envoySidecar.args is defined and inferenceExtension.envoySidecar.args %}
     args:
 {% for arg in inferenceExtension.envoySidecar.args %}
@@ -104,84 +205,36 @@ inferenceExtension:
     resources:
 {{ inferenceExtension.envoySidecar.resources | toyaml | indent(6, true) }}
 {% endif %}
-{% elif inferenceExtension.sidecar is defined and inferenceExtension.sidecar.enabled is defined and inferenceExtension.sidecar.enabled %}
-  sidecar:
-    enabled: true
-    image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
-    imagePullPolicy: {{ inferenceExtension.sidecar.imagePullPolicy | default('IfNotPresent') }}
-    name: {{ inferenceExtension.sidecar.name | default('tokenizer-uds') }}
-    configMap:
-      name: {{ model_id_label }}-gaie-sidecar-config
-      data: {}
-    env:
-{% if huggingface.enabled %}
-      - name: HF_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: {{ huggingface.secretName }}
-            key: {{ huggingface.tokenKey }}
-{% endif %}
-{% if inferenceExtension.sidecar.env is defined and inferenceExtension.sidecar.env %}
-{% for env_var in inferenceExtension.sidecar.env %}
-      - name: {{ env_var.name }}
-        value: "{{ env_var.value }}"
-{% endfor %}
-{% endif %}
-{% if inferenceExtension.sidecar.volumeMounts is defined and inferenceExtension.sidecar.volumeMounts %}
-    volumeMounts:
-{% for vm in inferenceExtension.sidecar.volumeMounts %}
-      - mountPath: {{ vm.mountPath }}
-        name: {{ vm.name }}
-{% endfor %}
-{% endif %}
-  volumes:
-    - name: tokenizers
-      emptyDir: {}
-    - name: tokenizer-uds
-      emptyDir: {}
-  volumeMounts:
-    - mountPath: /tmp/tokenizer
-      name: tokenizer-uds
-{% elif inferenceExtension.volumes is defined and inferenceExtension.volumes %}
-  volumes:
-{% for vol in inferenceExtension.volumes %}
-    - name: {{ vol.name }}
-{% if vol.emptyDir is defined %}
-      emptyDir: {{ vol.emptyDir | toyaml | trim }}
-{% elif vol.configMap is defined %}
-      configMap:
-        name: {{ vol.configMap.name }}
-{% endif %}
-{% endfor %}
-{% if inferenceExtension.volumeMounts is defined and inferenceExtension.volumeMounts %}
-  volumeMounts:
-{% for vm in inferenceExtension.volumeMounts %}
-    - mountPath: {{ vm.mountPath }}
-      name: {{ vm.name }}
-{% endfor %}
-{% endif %}
 {% endif %}
 
-inferencePool:
-  targetPortNumber: {{ decode.vllm.servicePort }}
-  modelServerType: vllm
-  apiVersion: "inference.networking.k8s.io/v1"
+  inferencePool:
+    failureMode: "{{ inferenceExtension.failureMode | default('FailOpen') }}"
+
   modelServers:
+    targetPorts:
+      - number: {{ decode.vllm.servicePort }}
     matchLabels:
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
       llm-d.ai/model: {{ model_id_label }}
-{% if inferenceExtension.inferencePoolProviderConfig is defined and inferenceExtension.inferencePoolProviderConfig %}
-  provider:
-    {{ gateway.className }}:
-{{ inferenceExtension.inferencePoolProviderConfig | toyaml | indent(6, false) }}
-{% endif %}
 
-{# Only istio and gke need a provider hint for the inference-pool chart.
-   agentgateway, data-science-gateway-class, and epponly don't require one
-   (epponly uses the standalone chart, which has no provider concept). #}
+{# Root-level `provider.*` block. The llm-d-router-gateway-dev chart
+   reads the provider name + provider-specific config from the root,
+   NOT from `router.inferencePool.provider.<gw>` as the legacy GAIE
+   chart did. The chart's `templates/istio.yaml` reads
+   `.Values.provider.istio.destinationRule` directly (see
+   `llm-d-router-gateway-dev/templates/istio.yaml`); `templates/gke.yaml`
+   reads `.Values.provider.gke.*`.
+
+   agentgateway, data-science-gateway-class, and epponly don't require a
+   provider hint (epponly uses the standalone chart, which has no
+   provider concept; agentgateway has its own switch). #}
 {% set gw_class = gateway.className %}
 {% if gw_class in ['gke', 'istio'] %}
 provider:
   name: {{ gw_class }}
+{% if inferenceExtension.inferencePoolProviderConfig is defined and inferenceExtension.inferencePoolProviderConfig %}
+  {{ gw_class }}:
+{{ inferenceExtension.inferencePoolProviderConfig | toyaml | indent(4, true) }}
+{% endif %}
 {% endif %}
 {% endif %}

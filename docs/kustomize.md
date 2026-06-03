@@ -38,7 +38,8 @@ methods). Equivalently, set `kustomize.enabled: true` in the scenario. If
 | `repoPath` | `""` | Local llm-d clone to use. Falls back to `--llmd-repo-path`; empty ⇒ clone `https://github.com/llm-d/llm-d.git` into `workspace/llm-d`. |
 | `repoRef` | `"main"` | Git ref used when cloning. |
 | `acceleratorBackend` | `"gpu/vllm"` | Swaps `modelserver/gpu/vllm` → `modelserver/<backend>` in guide paths. |
-| `gaieVersion` | README `GAIE_VERSION` or `v1.5.0` | GAIE version substituted into README commands. |
+| `gaieVersion` | README `GAIE_VERSION` or `v1.5.0` | GAIE CRD bundle version substituted into README commands. |
+| `routerChartVersion` | README `ROUTER_CHART_VERSION` or `v0` | llm-d-router chart version. |
 | `monitoring` | `false` | Also applies `guides/recipes/modelserver/components/monitoring`. |
 | `deployTimeout` | `900` | Pod-readiness wait (seconds). |
 | `patches` | `[]` | Inline strategic-merge patches (modelserver). See below. |
@@ -96,9 +97,13 @@ kustomize:
   overlayPath: "/abs/path/my-overlay"
 
   # extraHelmValues / extraHelmSets → router/GAIE helm release ONLY.
+  # Keys are passed straight through to helm and therefore must match the
+  # chart's values schema. With the llm-d-router-{standalone,gateway}-dev
+  # charts the EPP replica knob lives at `router.epp.replicas`
+  # (previously `inferenceExtension.replicas` on the old GAIE chart).
   extraHelmValues: ["/abs/path/gaie-values.yaml"]
   extraHelmSets:
-    inferenceExtension.replicas: "2"
+    router.epp.replicas: "2"
 
   # guideVariableOverrides → override/fill ${VAR} tokens the guide
   # README already uses (cannot introduce new variables).
@@ -116,8 +121,8 @@ kustomize:
   appear in that guide's README; it cannot introduce new variables.
   Precedence (`llmdbenchmark/kustomize/variable_resolver.py`):
   README-declared defaults < `guideVariableOverrides` < forced
-  `GUIDE_NAME` / `NAMESPACE` / `GAIE_VERSION` (those three cannot be
-  overridden).
+  `GUIDE_NAME` / `NAMESPACE` / `GAIE_VERSION` / `ROUTER_CHART_VERSION`
+  (those four cannot be overridden).
 - The deployed model is whatever the guide pins; change it via a `patches`
   entry against the resource that carries it, not via `-m`/`model.name`.
 - **Multi-model (multi-stack) is NOT supported with kustomize.** The

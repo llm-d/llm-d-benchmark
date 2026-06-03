@@ -154,7 +154,7 @@ scenario:
     # manifests are applied verbatim and define their own router topology.
     # =========================================================================
     gateway:
-      className: epponly
+      className: istio
 
     # NOTE: the `kustomize` deploy method is configured at the TOP of this
     # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there

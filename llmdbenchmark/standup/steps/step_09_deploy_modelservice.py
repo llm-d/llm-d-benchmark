@@ -197,8 +197,48 @@ class DeployModelserviceStep(Step):
                 if not prefill_wait.success:
                     errors.append(f"Prefill pods not ready: {prefill_wait.stderr}")
 
+            # The llm-d-router chart migration renamed the EPP chart and
+            # dropped the legacy `inferencepool=<release>-epp` label the
+            # old GAIE chart added. The new
+            # llm-d-router-{standalone,gateway}-dev charts apply only
+            # `selectorLabels` + `modeLabels` to the Pod template; the
+            # common `app.kubernetes.io/*` labels are on the Deployment,
+            # not the Pod (see `charts/router/templates/_deployment.yaml`).
+            #
+            # The Pod's release-specific selector is gated on the chart's
+            # `router.inferencePool.create` value
+            # (`charts/router/templates/_helpers.tpl::selectorLabels`):
+            #   - create=true  (default in BOTH chart variants)
+            #                                  -> llm-d-router-gateway=<release>-epp
+            #   - create=false (user opt-in)   -> llm-d-router-standalone=<release>-epp
+            # Counter-intuitively, this is independent of which *chart*
+            # (`-standalone-dev` vs `-gateway-dev`) is installed. The
+            # chart variant only controls the outer wrapper (Envoy
+            # sidecar, K8s Gateway resource), not the EPP Pod labels.
+            #
+            # Probe both candidate labels once each so we discover which
+            # the chart actually applied, then wait on that one.
+            release_epp = f"{model_id_label}-gaie-epp"
+            chosen_label = f"llm-d-router-gateway={release_epp}"  # default
+            for candidate_key in ("llm-d-router-gateway", "llm-d-router-standalone"):
+                probe_label = f"{candidate_key}={release_epp}"
+                probe = cmd.kube(
+                    "get",
+                    "pods",
+                    "-l",
+                    probe_label,
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    "jsonpath={.items[*].metadata.name}",
+                    check=False,
+                )
+                if probe.success and probe.stdout.strip():
+                    chosen_label = probe_label
+                    break
+
             pool_wait = cmd.wait_for_pods(
-                label=f"inferencepool={model_id_label}-gaie-epp",
+                label=chosen_label,
                 namespace=namespace,
                 timeout=timeout,
                 poll_interval=10,

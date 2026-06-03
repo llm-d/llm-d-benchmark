@@ -112,6 +112,11 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
+    # `sidecar.enabled: true` is mapped to the
+    # `router.tokenizer.enabled: true` knob shipped by the
+    # llm-d-router-{standalone,gateway}-dev charts; the chart owns the
+    # UDS tokenizer container, sockets, and volumes -- the legacy
+    # post-renderer hack is no longer needed.
     # -------------------------------------------------------------------------
     inferenceExtension:
       pluginsConfigFile: "precise-prefix-cache-config.yaml"
@@ -121,7 +126,7 @@ scenario:
         v: 4  # log verbosity
       pluginsCustomConfig:
         precise-prefix-cache-config.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          apiVersion: llm-d.ai/v1alpha1
           kind: EndpointPickerConfig
           plugins:
             - type: tokenizer
