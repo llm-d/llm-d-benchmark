@@ -92,7 +92,8 @@ def force_remove_finalizers_by_selector(
     namespace: str,
     context: ExecutionContext,
 ) -> None:
-    """Force-remove all finalizers from pods matching a label selector.
+    """Force-remove all finalizers from pods matching a label selector,
+    then force-delete them so they don't linger in the namespace.
     """
     result = cmd.kube(
         "get", "pod",
@@ -114,6 +115,17 @@ def force_remove_finalizers_by_selector(
             "--namespace", namespace,
             "--type=merge",
             "-p", '{"metadata":{"finalizers":null}}',
+            check=False,
+        )
+        context.logger.log_info(
+            f"  Force-deleting stuck pod {pod}",
+            emoji="🗑️",
+        )
+        cmd.kube(
+            "delete", pod,
+            "--namespace", namespace,
+            "--grace-period=0", "--force",
+            "--ignore-not-found=true",
             check=False,
         )
 

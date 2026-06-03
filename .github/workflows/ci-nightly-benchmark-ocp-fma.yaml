@@ -120,40 +120,75 @@ jobs:
       workload: ${{ inputs.workload || 'nop.yaml' }}
     secrets: inherit
 
-#     START - This should be deleted, and the contents accessed from GCS accessed directly
-#      - name: Download standalone results
-#        if: always()
-#        uses: actions/download-artifact@v8
-#        with:
-#          name: benchmark-results-ocp-standalone
-#          path: /tmp/standalone-results
-#        continue-on-error: true
-#
-#      - name: Display benchmark results
-#        if: always()
-#        run: |
-#          echo "## Benchmark Results" >> "$GITHUB_STEP_SUMMARY"
-#          echo "" >> "$GITHUB_STEP_SUMMARY"
-#          found=0
-#          for f in $(find "$LLMDBENCH_WORKSPACE" /tmp/standalone-results -path "*/analysis/*" \( -name "result.txt" -o -name "summary.txt" \) 2>/dev/null | sort || true); do
-#            found=1
-#            stack_dir=$(basename "$(dirname "$f")")
-#            echo "### $stack_dir" >> "$GITHUB_STEP_SUMMARY"
-#            echo '```' >> "$GITHUB_STEP_SUMMARY"
-#            cat "$f" >> "$GITHUB_STEP_SUMMARY"
-#            echo '```' >> "$GITHUB_STEP_SUMMARY"
-#            echo "" >> "$GITHUB_STEP_SUMMARY"
-#          done
-#          if [ "$found" -eq 0 ]; then
-#            echo "_No analysis results found._" >> "$GITHUB_STEP_SUMMARY"
-#          fi
-#        shell: bash
-#
-#      - name: Archive benchmark results as GitHub artifact
-#        if: success() || failure()
-#        uses: actions/upload-artifact@v7.0.1
-#        with:
-#          name: benchmark-results-ocp-fma
-#          path: ${{ env.LLMDBENCH_WORKSPACE }}
-#          retention-days: 14
-#     END - This should be deleted, and the contents accessed from GCS accessed directly
+  display-results:
+    name: Display Results (OCP)
+    needs: [nightly]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'ocp' }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Display results
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          STANDALONE_DIR="/tmp/standalone-results"
+          FMA_DIR="/tmp/fma-results"
+          mkdir -p "$STANDALONE_DIR" "$FMA_DIR"
+          gcloud storage cp -r "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/" "$STANDALONE_DIR/" || true
+          gcloud storage cp -r "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/fma/$RUN_DATE/" "$FMA_DIR/" || true
+
+          latest_standalone=$(find "$STANDALONE_DIR" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
+          latest_fma=$(find "$FMA_DIR" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
+
+          echo "## Standalone Baseline Metrics (OCP)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          found=0
+          if [ -n "$latest_standalone" ]; then
+            echo "_Latest run: $(basename "$latest_standalone")_" >> "$GITHUB_STEP_SUMMARY"
+            for f in $(find "$latest_standalone" -path "*/analysis/*" -name "result.txt" 2>/dev/null | sort); do
+              found=1
+              experiment_id=$(basename "$(dirname "$f")")
+              {
+                echo "### $experiment_id"
+                echo '```'
+                cat "$f"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+          if [ "$found" -eq 0 ]; then
+            echo "_No standalone baseline results found._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "## FMA Metrics (OCP)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          found=0
+          if [ -n "$latest_fma" ]; then
+            echo "_Latest run: $(basename "$latest_fma")_" >> "$GITHUB_STEP_SUMMARY"
+            for f in $(find "$latest_fma" -path "*/analysis/*" -name "result.txt" 2>/dev/null | sort); do
+              found=1
+              experiment_id=$(basename "$(dirname "$f")")
+              {
+                echo "### $experiment_id"
+                echo '```'
+                cat "$f"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+          if [ "$found" -eq 0 ]; then
+            echo "_No FMA results found._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        shell: bash
