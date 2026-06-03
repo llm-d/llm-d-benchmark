@@ -2,9 +2,10 @@
 """
 add_variant.py — Add a secondary WVA variant to an existing single-stack benchmark.
 
-Implements Topology B: one shared InferencePool/EPP fed by two Deployments,
-each with its own VariantAutoscaling (VA) at a different variantCost. The WVA
-saturation solver uses variantCost to decide which variant to scale first.
+Layers a secondary Deployment into an existing single-variant standup so
+both Deployments register into the same InferencePool/EPP, each with its
+own VariantAutoscaling (VA) at a different variantCost. The WVA saturation
+solver uses variantCost to decide which variant to scale first.
 
 Label strategy
 --------------

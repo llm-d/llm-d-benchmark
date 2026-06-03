@@ -1,4 +1,4 @@
-# Multi-Variant Benchmark (WVA Topology B)
+# Multi-Variant WVA Benchmark
 
 End-to-end recipe for benchmarking the
 [Workload Variant Autoscaler (WVA)](https://github.com/llm-d/llm-d-workload-variant-autoscaler)

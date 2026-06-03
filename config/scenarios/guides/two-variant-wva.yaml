@@ -1,4 +1,4 @@
-# TWO-VARIANT WVA SCENARIO (Topology B — one shared EPP)
+# TWO-VARIANT WVA SCENARIO — one shared InferencePool/EPP, two Deployments
 #
 # Deploys the primary variant (cost 10.0) of unsloth/Meta-Llama-3.1-8B as a
 # standard single-stack benchmark. A second variant at a lower cost (default
