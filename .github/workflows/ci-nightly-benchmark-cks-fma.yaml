@@ -27,15 +27,25 @@ on:
         type: 'string'
         default: 'auto'
       accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'gpu'
       backend_type:
-        description: 'Type of backend (vllm, sglang)'
+        description: 'Type of backend (vllm, sglang) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'vllm'
+      infra_provider:
+        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: 'base'
+      connector:
+        description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: ''
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -106,6 +116,8 @@ jobs:
       prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
       backend_type: ${{ inputs.backend_type || 'vllm' }}
+      infra_provider: ${{ inputs.infra_provider || 'coreweave' }}
+      connector: ${{ inputs.infra_provider || '' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdfns-cks' }}
       helm_release: ${{ inputs.helm_release || 'lmdbenchcicdr-cks' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicdf-cks' }}

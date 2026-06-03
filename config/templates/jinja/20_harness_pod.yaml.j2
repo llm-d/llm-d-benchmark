@@ -145,4 +145,25 @@ spec:
 {% if harness.serviceAccount is defined and harness.serviceAccount %}
   serviceAccountName: {{ harness.serviceAccount }}
 {% endif %}
+{% if harness.nodeSelector is defined and harness.nodeSelector %}
+  nodeSelector:
+{% for key, value in harness.nodeSelector.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if harness.tolerations is defined and harness.tolerations %}
+  tolerations:
+{% for t in harness.tolerations %}
+  - key: {{ t.key }}
+{% if t.operator is defined %}
+    operator: {{ t.operator }}
+{% endif %}
+{% if t.value is defined %}
+    value: "{{ t.value }}"
+{% endif %}
+{% if t.effect is defined %}
+    effect: {{ t.effect }}
+{% endif %}
+{% endfor %}
+{% endif %}
   restartPolicy: Never
