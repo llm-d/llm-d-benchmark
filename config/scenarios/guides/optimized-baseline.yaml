@@ -54,23 +54,23 @@ scenario:
       # Inline kustomize strategic merge patches applied on top of the
       # guide's modelserver base.  For gated models, add an HF_TOKEN
       # env var patch (the secret is auto-created from HF_TOKEN env):
-      #
-      #   - patch: |
-      #       apiVersion: apps/v1
-      #       kind: Deployment
-      #       metadata:
-      #         name: decode
-      #       spec:
-      #         template:
-      #           spec:
-      #             containers:
-      #               - name: modelserver
-      #                 env:
-      #                   - name: HF_TOKEN
-      #                     valueFrom:
-      #                       secretKeyRef:
-      #                         name: llm-d-hf-token
-      #                         key: HF_TOKEN
+      patches:
+         - patch: |
+             apiVersion: apps/v1
+             kind: Deployment
+             metadata:
+               name: decode
+             spec:
+               template:
+                 spec:
+                   containers:
+                     - name: modelserver
+                       env:
+                         - name: HF_TOKEN
+                           valueFrom:
+                             secretKeyRef:
+                               name: llm-d-hf-token
+                               key: HF_TOKEN
       #patches:
       #  - patch: |
       #      apiVersion: apps/v1
