@@ -29,12 +29,12 @@ on:
         type: 'string'
         default: 'auto'
       accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'gpu'
       backend_type:
-        description: 'Type of backend (vllm, sglang)'
+        description: 'Type of backend (vllm, sglang) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'vllm'
@@ -47,7 +47,7 @@ on:
         description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
-        default: ''        
+        default: ''
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -380,7 +380,7 @@ jobs:
             mkdir -p ~/work/llm-d/
             cd ~/work/llm-d/
             echo "### llm-d code NOT found, will clone now"
-            git clone https://github.com/llm-d/llm-d.git          
+            git clone https://github.com/llm-d/llm-d.git
           fi
           cd ~/work/llm-d/llm-d
           echo "### llm-d code is present (branch $(git branch --show-current))"
@@ -407,7 +407,7 @@ jobs:
             echo "### Setting \"INFRA_PROVIDER\" to \"$LLMDBENCH_CICD_INFRA_PROVIDER\""
             yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$LLMDBENCH_CICD_INFRA_PROVIDER\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
-            export LLMDBENCH_CICD_BACKEND_ACCELERATOR=$(echo $LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/ | sed 's^//^/^g' 
+            export LLMDBENCH_CICD_BACKEND_ACCELERATOR=$(echo $LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/ | sed 's^//^/^g'
             echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\""
             yq -i ".scenario[0].kustomize.acceleratorBackend = \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
