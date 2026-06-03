@@ -53,8 +53,7 @@ class TestSubstituteConfigVariables:
         }
         result = renderer._substitute_config_variables(values)
         assert (
-            result["field"]
-            == "test-model --port $VLLM_PORT --len $VLLM_MAX_MODEL_LEN"
+            result["field"] == "test-model --port $VLLM_PORT --len $VLLM_MAX_MODEL_LEN"
         )
 
     def test_shell_braced_vars_left_alone(self, renderer):
@@ -142,7 +141,7 @@ class TestModelIdLabelAlias:
                 {
                     "apiVersion": "inference.networking.x-k8s.io/v1alpha2",
                     "kind": "InferenceObjective",
-                    "spec": {"poolRef": {"name": "${model.idLabel}-gaie"}},
+                    "spec": {"poolRef": {"name": "${model.idLabel}-router"}},
                 }
             ],
         }
@@ -153,5 +152,5 @@ class TestModelIdLabelAlias:
         assert expected_label, "model_id_label should be computed"
         assert (
             result["extraObjects"][0]["spec"]["poolRef"]["name"]
-            == f"{expected_label}-gaie"
+            == f"{expected_label}-router"
         )

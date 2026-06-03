@@ -18,7 +18,7 @@ helmDefaults:
    (`oci://registry.k8s.io/gateway-api-inference-extension/charts/{standalone,inferencepool}`)
    to the llm-d-owned `llm-d-router-{standalone,gateway}-dev` charts in
    ghcr.io/llm-d/charts. Their values structure also changed -- see
-   12_gaie-values.yaml.j2 for how the benchmark's `inferenceExtension.*` /
+   12_router-values.yaml.j2 for how the benchmark's `inferenceExtension.*` /
    `inferencePool.*` config is mapped onto the new `router.*` layout. #}
 {% set _epponly = (gateway.className | default('') == 'epponly') %}
 {% set _gaie_chart = 'oci://ghcr.io/llm-d/charts/llm-d-router-standalone-dev' if _epponly else 'oci://ghcr.io/llm-d/charts/llm-d-router-gateway-dev' %}
@@ -67,13 +67,13 @@ releases:
 {% if _is_first_stack and not _epponly %}
       - {{ gateway.namespace }}/infra-llmdbench
 {% endif %}
-      - {{ gateway.namespace }}/{{ model_id_label }}-gaie
+      - {{ gateway.namespace }}/{{ model_id_label }}-router
     values:
       - ms-values.yaml
     labels:
       kind: inference-stack
 
-  - name: {{ model_id_label }}-gaie
+  - name: {{ model_id_label }}-router
     namespace: {{ gateway.namespace }}
     chart: {{ _gaie_chart }}
     {# llm-d-router chart version. Falls back to the legacy
@@ -86,7 +86,7 @@ releases:
       - {{ gateway.namespace }}/infra-llmdbench
 {% endif %}
     values:
-      - gaie-values.yaml
+      - router-values.yaml
     labels:
       kind: inference-stack
 {% endif %}

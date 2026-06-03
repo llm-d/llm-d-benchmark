@@ -119,7 +119,7 @@ class DeployModelserviceStep(Step):
                 errors.append(f"Failed to apply HTTPRoute: {result.stderr}")
             elif plan_config.get("httpRoute", {}).get("mode") == "shared":
                 # Shared-mode HTTPRoute references sibling InferencePools
-                # that may still be installing (other stacks' `-gaie`
+                # that may still be installing (other stacks' `-router`
                 # helm releases run in parallel with this one). Wait for
                 # each referenced pool to exist so the route doesn't
                 # linger in ResolvedRefs=False after step 09 returns.
@@ -218,7 +218,7 @@ class DeployModelserviceStep(Step):
             #
             # Probe both candidate labels once each so we discover which
             # the chart actually applied, then wait on that one.
-            release_epp = f"{model_id_label}-gaie-epp"
+            release_epp = f"{model_id_label}-router-epp"
             chosen_label = f"llm-d-router-gateway={release_epp}"  # default
             for candidate_key in ("llm-d-router-gateway", "llm-d-router-standalone"):
                 probe_label = f"{candidate_key}={release_epp}"
@@ -298,12 +298,12 @@ class DeployModelserviceStep(Step):
             # Covers istio / gke / data-science-gateway-class / epponly.
             # For epponly there is no Gateway, so the EPP service is the
             # endpoint clients hit directly (port 80 -> Envoy sidecar 8081).
-            service_name = f"{model_id_label}-gaie-epp"
+            service_name = f"{model_id_label}-router-epp"
 
         context.deployed_endpoints[stack_name] = service_name
 
         # In epponly mode there is no Gateway resource to label, and the
-        # GAIE chart's auto-generated route is to the EPP gRPC port which
+        # router chart's auto-generated route is to the EPP gRPC port which
         # we'd otherwise rewrite to point at the Gateway. Skip both.
         if gateway_class != "epponly":
             username = context.username or "unknown"
@@ -420,7 +420,7 @@ class DeployModelserviceStep(Step):
         if not siblings:
             return
 
-        # Template uses {model_id_label}-gaie for the InferencePool CR
+        # Template uses {model_id_label}-router for the InferencePool CR
         # name. Compute each sibling's label the same way render_plans
         # does (via its Jinja filter).
         def _label_for(model_name: str) -> str:
@@ -437,7 +437,7 @@ class DeployModelserviceStep(Step):
                 continue
             label = _label_for(sibling.get("modelName", ""))
             if label:
-                pool_names.append(f"{label}-gaie")
+                pool_names.append(f"{label}-router")
 
         if not pool_names:
             return

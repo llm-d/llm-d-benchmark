@@ -620,7 +620,7 @@ gateway:
 # This block is the benchmark's stable abstraction over the llm-d-router
 # chart's values. Field names mirror the legacy `inferenceExtension` GAIE
 # chart layout for backwards compatibility with existing scenarios; the
-# 12_gaie-values.yaml.j2 template maps them onto the chart's `router.*`
+# 12_router-values.yaml.j2 template maps them onto the chart's `router.*`
 # layout.
 # ============================================================================
 inferenceExtension:
@@ -628,7 +628,7 @@ inferenceExtension:
   extProcPort: *ext_proc_port
   zmqPort: *zmq_port
   pluginsConfigFile: "default-plugins.yaml"
-  # Custom plugin content to embed in gaie-values.yaml.
+  # Custom plugin content to embed in router-values.yaml.
   # Keys are filenames, values are the YAML content as literal strings.
   # Note: the new chart expects apiVersion `llm-d.ai/v1alpha1` for the
   # EndpointPickerConfig (was `inference.networking.x-k8s.io/v1alpha1`).
@@ -680,7 +680,7 @@ inferenceExtension:
   # Example (for istio destinationRule):
   #   inferencePoolProviderConfig:
   #     destinationRule:
-  #       host: my-model-gaie-epp
+  #       host: my-model-router-epp
   #       trafficPolicy:
   #         connectionPool:
   #           http:

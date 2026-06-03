@@ -147,11 +147,11 @@ Gateway class options (set via `gateway.className` in the scenario YAML):
 
 | `className`                  | What it deploys                                                                                                  | Use when                                                          |
 |------------------------------|------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
-| `istio` (default)            | istio-base + istiod control plane, a Gateway + HTTPRoute, the `inferencepool` GAIE chart                         | Default; most flexible / production deployments                   |
-| `agentgateway`               | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `inferencepool` GAIE chart               | Want agentgateway's data plane instead of Envoy/Istio             |
-| `gke`                        | Uses GKE-managed Gateway controller; same `inferencepool` GAIE chart                                             | Running on GKE                                                    |
-| `data-science-gateway-class` | OpenDataHub / OpenShift AI managed Gateway                                                                       | Running on OpenShift AI                                           |
-| `epponly`                    | **No** Kubernetes Gateway, **no** HTTPRoute, the `standalone` GAIE chart (EPP with an Envoy sidecar serving HTTP) | You want llm-d's standalone router topology without any gateway   |
+| `istio` (default)            | istio-base + istiod control plane, a Gateway + HTTPRoute, the `llm-d-router-gateway-dev` chart                       | Default; most flexible / production deployments                   |
+| `agentgateway`               | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `llm-d-router-gateway-dev` chart             | Want agentgateway's data plane instead of Envoy/Istio             |
+| `gke`                        | Uses GKE-managed Gateway controller; same `llm-d-router-gateway-dev` chart                                           | Running on GKE                                                    |
+| `data-science-gateway-class` | OpenDataHub / OpenShift AI managed Gateway                                                                           | Running on OpenShift AI                                           |
+| `epponly`                    | **No** Kubernetes Gateway, **no** HTTPRoute, the `llm-d-router-standalone-dev` chart (EPP with an Envoy sidecar serving HTTP) | You want llm-d's standalone router topology without any gateway   |
 
 ### Overriding `gateway.className` from the CLI
 
@@ -265,7 +265,7 @@ When `epponly` is selected, standup automatically:
    which bundles the EPP + Envoy sidecar in a single pod.
 5. **Adds a `port 80 -> targetPort 8081` extraServicePort** to the EPP
    service so HTTP requests reach the Envoy sidecar.
-6. **Points endpoint discovery at `{model_id_label}-gaie-epp:80`** -- the
+6. **Points endpoint discovery at `{model_id_label}-router-epp:80`** -- the
    smoketest and run phase resolve to the EPP service directly instead
    of a Gateway IP.
 
@@ -288,7 +288,7 @@ When `epponly` is selected, standup automatically:
 | `llm-d-infra` release    | Installed (creates `Gateway`)                          | **Skipped** (no Gateway needed)                              |
 | HTTPRoute                | Rendered                                               | **Not rendered**                                             |
 | Provider control plane   | istio / agentgateway controller installed via helmfile | **Not installed**                                            |
-| Endpoint                 | `Gateway` resource IP                                  | `{model_id_label}-gaie-epp` Service ClusterIP, port 80       |
+| Endpoint                 | `Gateway` resource IP                                  | `{model_id_label}-router-epp` Service ClusterIP, port 80     |
 | Number of EPP replicas   | Configurable                                           | **1** (matches default `inferenceExtension.replicas: 1`)     |
 | Multi-stack support      | Yes                                                    | **No** (single-stack only)                                   |
 

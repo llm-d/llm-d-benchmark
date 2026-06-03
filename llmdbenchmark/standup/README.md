@@ -16,7 +16,7 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 06 | `FMADeployStep` | global | Deploy FMA controllers |
 | 06 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
 | 08 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
-| 09 | `DeployGaieStep` | global | Deploy GAIE (Gateway API Inference Extension) |
+| 08 | `DeployRouterStep` | global | Deploy the llm-d router (EPP + provider resources) |
 | 10 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
 
 Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and inference test) were moved to the `llmdbenchmark.smoketests` module and now run as a separate phase after standup.
@@ -84,6 +84,6 @@ standup/
     +-- step_06_fma_deploy.py
     +-- step_06_standalone_deploy.py
     +-- step_07_deploy_setup.py
-    +-- step_08_deploy_gaie.py
+    +-- step_08_deploy_router.py
     +-- step_09_deploy_modelservice.py
 ```

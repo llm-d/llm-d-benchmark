@@ -109,7 +109,7 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
             epp_pods = self.get_pod_specs(
                 cmd,
                 namespace,
-                f"{_mode}={model_short}-gaie-epp",
+                f"{_mode}={model_short}-router-epp",
             )
             if epp_pods:
                 break

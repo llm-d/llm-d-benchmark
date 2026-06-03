@@ -519,7 +519,7 @@ def capture_infrastructure_logs(
     Captures:
     - Pod status (``kubectl get pods -o wide``) \u2192 ``pod_status.txt``
     - Model-serving logs (``llm-d.ai/model=<label>``) \u2192 ``modelserving_pods.log``
-    - EPP logs (``llm-d-router-{standalone,gateway}=<label>-gaie-epp``,
+    - EPP logs (``llm-d-router-{standalone,gateway}=<label>-router-epp``,
       whichever matches the deployed mode) \u2192 ``epp_pods.log``
     - IGW logs (``app.kubernetes.io/component=inference-gateway``) \u2192 ``igw_pods.log``
     """
@@ -565,7 +565,7 @@ def capture_infrastructure_logs(
             capture_label_logs(
                 cmd,
                 namespace,
-                f"{_mode}={model_label}-gaie-epp",
+                f"{_mode}={model_label}-router-epp",
                 _epp_log_path,
                 "EPP",
                 context,

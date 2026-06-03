@@ -44,8 +44,8 @@ methods). Equivalently, set `kustomize.enabled: true` in the scenario. If
 | `deployTimeout` | `900` | Pod-readiness wait (seconds). |
 | `patches` | `[]` | Inline strategic-merge patches (modelserver). See below. |
 | `overlayPath` | `""` | Directory overlay (modelserver). See below. |
-| `extraHelmValues` | `[]` | `-f <file>` appended to the router/GAIE helm command. |
-| `extraHelmSets` | `{}` | `--set k=v` appended to the router/GAIE helm command. |
+| `extraHelmValues` | `[]` | `-f <file>` appended to the router helm command. |
+| `extraHelmSets` | `{}` | `--set k=v` appended to the router helm command. |
 | `guideVariableOverrides` | `{}` | Override/fill the guide README's `${VAR}` values (cannot add new variables). |
 
 ## Two scopes
@@ -96,12 +96,12 @@ kustomize:
   # applied as a patch file. Combinable with `patches`.
   overlayPath: "/abs/path/my-overlay"
 
-  # extraHelmValues / extraHelmSets → router/GAIE helm release ONLY.
+  # extraHelmValues / extraHelmSets → router helm release ONLY.
   # Keys are passed straight through to helm and therefore must match the
   # chart's values schema. With the llm-d-router-{standalone,gateway}-dev
   # charts the EPP replica knob lives at `router.epp.replicas`
   # (previously `inferenceExtension.replicas` on the old GAIE chart).
-  extraHelmValues: ["/abs/path/gaie-values.yaml"]
+  extraHelmValues: ["/abs/path/router-values.yaml"]
   extraHelmSets:
     router.epp.replicas: "2"
 

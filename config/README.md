@@ -268,7 +268,7 @@ Jinja2 templates that produce Kubernetes resource definitions. Each template cor
 | `09_helmfile-gateway-provider.yaml.j2` | Helmfile for gateway provider (Istio/agentgateway) |
 | `10_helmfile-main.yaml.j2` | Main helmfile (llm-d-infra, modelservice) |
 | `11_infra.yaml.j2` | Infrastructure chart values |
-| `12_gaie-values.yaml.j2` | GAIE (inference extension) Helm values |
+| `12_router-values.yaml.j2` | llm-d router (EPP + InferencePool) Helm values |
 | `13_ms-values.yaml.j2` | Modelservice Helm values |
 | `14_standalone-deployment_yaml.j2` | Standalone vLLM Deployment |
 | `15_standalone-service_yaml.j2` | Standalone vLLM Service |
@@ -1358,12 +1358,12 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 |----------|-------------|-----------|
 | `04_download_job.yaml.j2` | `images.benchmark` | Model download job |
 | `06_pod_access_to_harness_data.yaml.j2` | `images.benchmark` | Harness data access pod |
-| `12_gaie-values.yaml.j2` | `images.inferenceScheduler` | Inference scheduling extension |
+| `12_router-values.yaml.j2` | `images.routerEndpointPicker` (legacy: `images.inferenceScheduler`) | llm-d router EPP |
 | `13_ms-values.yaml.j2` (decode) | `images.vllm` | Decode pods in modelservice |
 | `13_ms-values.yaml.j2` (prefill) | `images.vllm` | Prefill pods in modelservice |
 | `13_ms-values.yaml.j2` (sidecar) | `images.routingSidecar` | Routing sidecar in modelservice |
 | `13_ms-values.yaml.j2` (init containers) | `images.<imageKey>` | Per-init-container, via `imageKey:` (defaults to `images.benchmark`) |
-| `12_gaie-values.yaml.j2` (sidecar) | `images.udsTokenizer` | EPP sidecar (when `inferenceExtension.sidecar.enabled: true`) |
+| `12_router-values.yaml.j2` (tokenizer) | `images.udsTokenizer` | EPP UDS tokenizer (when `inferenceExtension.sidecar.enabled: true`) |
 | `14_standalone-deployment_yaml.j2` | `standalone.image` | Standalone vLLM container |
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
 | `19_wva-values.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
@@ -1608,7 +1608,8 @@ kustomize:
   guideName: "optimized-baseline"    # Guide directory name under guides/
   repoPath: ""                       # Local path to llm-d repo (auto-cloned if empty)
   repoRef: "main"                    # Git ref to checkout
-  gaieVersion: ""                    # GAIE chart version (auto-detected from README if empty)
+  gaieVersion: ""                    # GAIE CRD bundle version (auto-detected from README if empty)
+  routerChartVersion: ""             # llm-d-router chart version (auto-detected from README; defaults to v0)
   acceleratorBackend: "gpu/vllm"     # Modelserver backend path
   monitoring: false                  # Apply monitoring kustomize overlay
   overlayPath: ""                    # Path to additional kustomize overlay directory
