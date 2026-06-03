@@ -79,8 +79,8 @@ scenario:
     # -------------------------------------------------------------------------
     images:
       benchmark:
-        repository: icr.io/vopo/llm-d-benchmark
-        tag: latest
+        repository: quay.io/nayanakumari/llmd-benchmark-s390x
+        tag: guidellm-new-fixed
         pullPolicy: IfNotPresent
       vllm:
         repository: registry.redhat.io/rhaii-early-access/vllm-spyre-rhel9
@@ -309,7 +309,11 @@ scenario:
     # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
     # -------------------------------------------------------------------------
     decode:
-      replicas: 2
+      replicas: 1
+      tensorParallelSize: 1 
+     
+      accelerator:
+        count: 1  
 
       # Context-length-aware routing: per-pod labels (one per replica).
       # Requires multinode enabled (for LWS sequential pod naming) and
@@ -402,7 +406,7 @@ scenario:
         - name: HF_HUB_DISABLE_XET
           value: "1"
         - name: TORCH_SENDNN_CACHE_ENABLE
-          value: "0"
+          value: "1"
         - name: TORCH_SENDNN_CACHE_DIR
           value: /mnt/spyre-precompiled-model
         - name: VLLM_SPYRE_REQUIRE_PRECOMPILED_DECODERS
@@ -463,9 +467,13 @@ scenario:
     workDir: "~/data/spyre"
 
     harness:
-      name: inference-perf
+      name: guidellm
       experimentProfile: sanity_random.yaml
-      waitTimeout: 36000
+      waitTimeout: 600
       extraEnvVars:
-        - name: LD_LIBRARY_PATH
-          value: "/tmp/arrow/cpp/release/release"
+        - name: PRE_HARNESS_CMD
+          value: |
+            sed -i 's/profile:/rate-type:/g'
+   /workspace/workload/profiles/guidellm/sanity_random.yaml
+            sed -i 's/max_seconds:/duration:/g' 
+   /workspace/workload/profiles/guidellm/sanity_random.yaml
