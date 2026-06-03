@@ -129,6 +129,17 @@ def force_remove_finalizers_by_selector(
             '{"metadata":{"finalizers":null}}',
             check=False,
         )
+        context.logger.log_info(
+            f"  Force-deleting stuck pod {pod}",
+            emoji="🗑️",
+        )
+        cmd.kube(
+            "delete", pod,
+            "--namespace", namespace,
+            "--grace-period=0", "--force",
+            "--ignore-not-found=true",
+            check=False,
+        )
 
 
 def wait_for_pods_by_label(

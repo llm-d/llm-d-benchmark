@@ -146,7 +146,7 @@ class UninstallHelmStep(Step):
                 )
 
         # Wait for all FMA pods to terminate while the controller is still running.
-        # Then force-remove any remaining finalizers: this handles
+        # Then force-remove any remaining finalizers and force-delete: this handles
         # pods left stuck from a previous teardown.
         timeout = context.fma_teardown_timeout
         for selector in [
@@ -155,6 +155,7 @@ class UninstallHelmStep(Step):
         ]:
             wait_for_pods_deleted(cmd, selector, namespace, timeout, context)
             force_remove_finalizers_by_selector(cmd, selector, namespace, context)
+            wait_for_pods_deleted(cmd, selector, namespace, 30, context)
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:
         """Collect model ID labels used to match helm releases."""

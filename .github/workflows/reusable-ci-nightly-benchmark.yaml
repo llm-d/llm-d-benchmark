@@ -29,15 +29,25 @@ on:
         type: 'string'
         default: 'auto'
       accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'gpu'
       backend_type:
-        description: 'Type of backend (vllm, sglang)'
+        description: 'Type of backend (vllm, sglang) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'vllm'
+      infra_provider:
+        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: 'base'
+      connector:
+        description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: ''
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -191,8 +201,10 @@ jobs:
       LLMDBENCH_CICD_SCENARIO: ${{ inputs.standup_scenario || 'kind' }}
       LLMDBENCH_CICD_TARGET: ${{ needs.ensure-nightly-build-image.outputs.cluster_provider || 'kind' }}
       LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
-      LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator || 'gpu' }}
+      LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator_type || 'gpu' }}
       LLMDBENCH_CICD_BACKEND: ${{ inputs.backend_type || 'vllm' }}
+      LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || 'base' }}
+      LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
@@ -368,7 +380,7 @@ jobs:
             mkdir -p ~/work/llm-d/
             cd ~/work/llm-d/
             echo "### llm-d code NOT found, will clone now"
-            git clone https://github.com/llm-d/llm-d.git          
+            git clone https://github.com/llm-d/llm-d.git
           fi
           cd ~/work/llm-d/llm-d
           echo "### llm-d code is present (branch $(git branch --show-current))"
@@ -380,11 +392,6 @@ jobs:
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             echo "### Overriding \"repoPath\" to \"$HOME/work/llm-d/llm-d\""
             yq -i ".scenario[0].kustomize.repoPath = \"$HOME/work/llm-d/llm-d\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
-            export INFRA_PROVIDER=base
-            if [[ -d ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/vllm/$LLMDBENCH_CICD_TARGET ]]
-            then
-              export INFRA_PROVIDER=$LLMDBENCH_CICD_TARGET
-            fi
             if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
               echo "### Setting \"Storage class\" to \"standard-rwx\""
               yq -i '.scenario[0].storage.workloadPvc.storageClassName = "standard-rwx"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
@@ -397,11 +404,12 @@ jobs:
               echo "### Setting \"Storage class\" to \"ibm-spectrum-scale-fileset\""
               yq -i '.scenario[0].storage.workloadPvc.storageClassName = "ibm-spectrum-scale-fileset"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             fi
-            echo "### Setting \"INFRA_PROVIDER\" to \"$INFRA_PROVIDER\""
-            yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$INFRA_PROVIDER\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            echo "### Setting \"INFRA_PROVIDER\" to \"$LLMDBENCH_CICD_INFRA_PROVIDER\""
+            yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$LLMDBENCH_CICD_INFRA_PROVIDER\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
-            echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND\""
-            yq -i ".scenario[0].kustomize.acceleratorBackend = \"$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            export LLMDBENCH_CICD_BACKEND_ACCELERATOR=$(echo $LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/ | sed 's^//^/^g')
+            echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\""
+            yq -i ".scenario[0].kustomize.acceleratorBackend = \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
             echo " ### Setting priority class \"nightly-gpu-critical\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
             for i in vllm decode prefill; do
@@ -461,6 +469,8 @@ jobs:
             echo "Temporarily unable to test \"fma\" on \"kind\" clusters"
           elif [[ "$LLMDBENCH_CICD_TARGET" == "gke" && "${{ inputs.standup_method }}" == "fma" ]]; then
             echo "Temporarily unable to test \"fma\" on \"gke\" clusters"
+          elif [[ "$LLMDBENCH_CICD_TARGET" == "cks" && "${{ inputs.standup_method }}" == "fma" ]]; then
+            echo "Temporarily unable to test \"fma\" on \"cks\" clusters"
           else
             LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD --data-access-timeout 1200"
             echo "### $LLMDBENCH_CMD ###"
@@ -498,7 +508,7 @@ jobs:
         shell: bash
 
       - name: Block waiting for Standalone baseline
-        if: env.LLMDBENCH_CICD_TARGET != 'kind' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
+        if: env.LLMDBENCH_CICD_TARGET == 'ocp' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping waiting for \"standalone baseline\", due to \"dry-run\" mode activated"
@@ -507,13 +517,14 @@ jobs:
             RUN_DATE=$(date +'%Y-%m-%d')
             POLL=30
             while true; do
-              brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+              # Match different standalone outputs
+              brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/*/results/*/benchmark_report*" 2>/dev/null)
               if [[ $? -ne 0 ]]; then
                 echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
                 sleep $POLL
               else
                 latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
-                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
                 echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
                 exit 0
               fi

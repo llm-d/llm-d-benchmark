@@ -1354,6 +1354,8 @@ downloadJob:
 dataAccess:
   rsyncPort: *rsync_port
   runAsUser: 0
+  nodeSelector: {}
+  tolerations: []
 
 # ============================================================================
 # LABELS
@@ -1488,6 +1490,8 @@ harness:
   resources:
     cpu: 16
     memory: 32Gi
+  nodeSelector: {}
+  tolerations: []
   output: local
   inferencePerf:
     rayonNumThreads: 4

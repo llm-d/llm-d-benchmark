@@ -27,15 +27,25 @@ on:
         type: 'string'
         default: 'auto'
       accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7)'
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standup method)'
         required: false
         type: 'string'
         default: 'gpu'
       backend_type:
-        description: 'Type of backend (vllm, sglang)'
+        description: 'Type of backend (vllm, sglang) (ONLY VALID FOR "kustomize" standup method)'
         required: false
         type: 'string'
         default: 'vllm'
+      infra_provider:
+        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standup method)'
+        required: false
+        type: 'string'
+        default: 'base'
+      connector:
+        description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standup method)'
+        required: false
+        type: 'string'
+        default: ''
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -81,14 +91,12 @@ on:
       harness:
         description: 'Harness to be used during "run" operation ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
         required: false
-#        default: 'nop'
-        default: vllm-benchmark
+        default: 'nop'
         type: 'string'
       workload:
         description: 'Workload profile to be used during "run" operation (check list under "workload/profiles")'
         required: false
-#        default: 'nop.yaml'
-        default: sanity_random.yaml
+        default: 'nop.yaml'
         type: 'string'
 
 #  push:
@@ -109,6 +117,8 @@ jobs:
       prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
       backend_type: ${{ inputs.backend_type || 'vllm' }}
+      infra_provider: ${{ inputs.infra_provider || 'ocp' }}
+      connector: ${{ inputs.infra_provider || '' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-ocp' }}
       helm_release: ${{ inputs.helm_release || 'lmdbenchcicdr-ocp' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-ocp' }}
@@ -119,8 +129,6 @@ jobs:
       monitoring_enabled: ${{ inputs.monitoring_enabled || 'true' }}
       dry_run: ${{ inputs.dry_run || 'false' }}
       verbose: ${{ inputs.verbose || 'false' }}
-      harness: ${{ inputs.harness || 'vllm-benchmark' }}
-      workload: ${{ inputs.workload || 'sanity_random.yaml' }}
-#      harness: ${{ inputs.harness || 'nop' }}
-#      workload: ${{ inputs.workload || 'nop.yaml' }}
+      harness: ${{ inputs.harness || 'nop' }}
+      workload: ${{ inputs.workload || 'nop.yaml' }}
     secrets: inherit

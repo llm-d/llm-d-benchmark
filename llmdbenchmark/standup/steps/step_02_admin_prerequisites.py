@@ -240,6 +240,13 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
     ):
         """Install Gateway API CRDs if any are missing."""
+        if plan_config.get("gateway", {}).get("externallyManaged", False):
+            cmd.logger.log_info(
+                "✅ Gateway is externally managed "
+                "— skipping Gateway API CRD install"
+            )
+            return
+
         gw_api = plan_config.get("gatewayApiCrd", {})
         gw_revision = gw_api.get("revision", "")
         if not gw_revision:
@@ -276,6 +283,13 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
     ):
         """Install inference extension CRDs if any are missing."""
+        if plan_config.get("gateway", {}).get("externallyManaged", False):
+            cmd.logger.log_info(
+                "✅ Gateway is externally managed "
+                "— skipping Gateway API inference extension CRD install"
+            )
+            return
+
         gw_api = plan_config.get("gatewayApiCrd", {})
         inf_ext_revision = gw_api.get("inferenceExtensionRevision", "")
         if not inf_ext_revision:
@@ -323,8 +337,16 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
     ):
         """Install the gateway provider only if its CRDs are missing."""
+
         gateway_config = plan_config.get("gateway", {})  # noqa: F841
         gateway_class = self._require_config(plan_config, "gateway", "className")
+
+        if gateway_config.get("externallyManaged", False):
+            cmd.logger.log_info(
+                f"✅ Gateway provider '{gateway_class}' is externally managed "
+                "— skipping installation"
+            )
+            return
 
         if gateway_class == "agentgateway":
             if not _any_crds_missing(AGENTGATEWAY_CRDS, existing_crds):
