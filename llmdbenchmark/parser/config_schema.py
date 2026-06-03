@@ -396,6 +396,8 @@ class HarnessConfig(BaseModel):
     podLabel: str
     debug: bool
     resources: HarnessResourcesConfig
+    nodeSelector: dict[str, str] = Field(default_factory=dict)
+    tolerations: list[dict[str, Any]] = Field(default_factory=list)
     output: str
     inferencePerf: InferencePerfConfig
     namespace: str | None = None
