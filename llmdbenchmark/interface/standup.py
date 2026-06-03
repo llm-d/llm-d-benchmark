@@ -5,7 +5,9 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
+def add_subcommands(
+    parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []
+):
     """Register the ``standup`` subcommand and its arguments."""
     standup_parser = parser.add_parser(
         Command.STANDUP.value,
@@ -44,6 +46,16 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         "--methods",
         default=env("LLMDBENCH_METHODS"),
         help="Standup methods (standalone, modelservice, fma, kustomize).",
+    )
+    standup_parser.add_argument(
+        "--gateway-class",
+        default=env("LLMDBENCH_GATEWAY_CLASS"),
+        help=(
+            "Override the scenario's gateway.className. Supported values: "
+            "epponly, istio, agentgateway, gke, data-science-gateway-class. "
+            "Only takes effect on the modelservice deploy path -- ignored "
+            "by kustomize/standalone/fma."
+        ),
     )
     standup_parser.add_argument(
         "-a",
@@ -127,10 +139,10 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         type=int,
         default=env_int("LLMDBENCH_PVC_BIND_TIMEOUT"),
         help="Seconds to wait for each PVC (workload, model, extra) to reach "
-             "the Bound phase during standup. A PVC that never binds (e.g. no "
-             "default StorageClass on the cluster) fails fast instead of "
-             "masquerading as a downstream pod/job timeout. Default: 240 "
-             "(some dynamic provisioners take 1-3 minutes per volume).",
+        "the Bound phase during standup. A PVC that never binds (e.g. no "
+        "default StorageClass on the cluster) fails fast instead of "
+        "masquerading as a downstream pod/job timeout. Default: 240 "
+        "(some dynamic provisioners take 1-3 minutes per volume).",
     )
     standup_parser.add_argument(
         "--llmd-repo-path",

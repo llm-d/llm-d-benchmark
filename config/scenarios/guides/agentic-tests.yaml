@@ -119,6 +119,7 @@ scenario:
           --tool-call-parser qwen3_xml \
           --disable-uvicorn-access-log \
           --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --override-generation-config '{"temperature": 0, "top_p": 1.0, "top_k": -1, "seed": 42}' \
           --no-enable-prefix-caching
 
       initContainers:

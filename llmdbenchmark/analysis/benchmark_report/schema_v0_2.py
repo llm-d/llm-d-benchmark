@@ -1037,7 +1037,10 @@ class SessionRequests(BaseModel):
 
     @model_validator(mode="after")
     def check_units(self):
-        if self.session_rate and self.session_rate.units not in UNITS_REQUEST_THROUGHPUT:
+        if (
+            self.session_rate
+            and self.session_rate.units not in UNITS_REQUEST_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.session_rate.units}", must be one of:'
                 f" {' '.join(UNITS_REQUEST_THROUGHPUT)}"
@@ -1047,22 +1050,34 @@ class SessionRequests(BaseModel):
                 f'Invalid units "{self.session_duration.units}", must be one of:'
                 f" {' '.join(UNITS_TIME)}"
             )
-        if self.events_per_session and self.events_per_session.units not in UNITS_QUANTITY:
+        if (
+            self.events_per_session
+            and self.events_per_session.units not in UNITS_QUANTITY
+        ):
             raise ValueError(
                 f'Invalid units "{self.events_per_session.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
             )
-        if self.events_cancelled_per_session and self.events_cancelled_per_session.units not in UNITS_QUANTITY:
+        if (
+            self.events_cancelled_per_session
+            and self.events_cancelled_per_session.units not in UNITS_QUANTITY
+        ):
             raise ValueError(
                 f'Invalid units "{self.events_cancelled_per_session.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
             )
-        if self.input_tokens_per_session and self.input_tokens_per_session.units not in UNITS_QUANTITY:
+        if (
+            self.input_tokens_per_session
+            and self.input_tokens_per_session.units not in UNITS_QUANTITY
+        ):
             raise ValueError(
                 f'Invalid units "{self.input_tokens_per_session.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
             )
-        if self.output_tokens_per_session and self.output_tokens_per_session.units not in UNITS_QUANTITY:
+        if (
+            self.output_tokens_per_session
+            and self.output_tokens_per_session.units not in UNITS_QUANTITY
+        ):
             raise ValueError(
                 f'Invalid units "{self.output_tokens_per_session.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"

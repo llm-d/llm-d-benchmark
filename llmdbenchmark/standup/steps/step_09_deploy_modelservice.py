@@ -45,8 +45,12 @@ class DeployModelserviceStep(Step):
         plan_config = self._load_stack_config(stack_path)
         release = self._require_config(plan_config, "release")
         model_id_label = plan_config.get("model_id_label", "")
-        inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort") # noqa: F841
-        timeout = context.modelservice_deploy_timeout # Generic timeout for all pods in step 9
+        inference_port = self._require_config(  # noqa: F841
+            plan_config, "vllmCommon", "inferencePort"
+        )
+        timeout = (
+            context.modelservice_deploy_timeout
+        )  # Generic timeout for all pods in step 9
 
         if not context.dry_run:
             pc_error = self._check_priority_class(cmd, plan_config, context)
@@ -120,7 +124,11 @@ class DeployModelserviceStep(Step):
                 # each referenced pool to exist so the route doesn't
                 # linger in ResolvedRefs=False after step 09 returns.
                 self._wait_for_sibling_inference_pools(
-                    cmd, context, errors, plan_config, namespace,
+                    cmd,
+                    context,
+                    errors,
+                    plan_config,
+                    namespace,
                 )
 
         if not errors:
@@ -134,11 +142,17 @@ class DeployModelserviceStep(Step):
             if not decode_wait.success:
                 errors.append(f"Decode pods not ready: {decode_wait.stderr}")
 
-            decode_cfg = plan_config.get("decode", {}) # noqa: F841
-            expected_replicas = int(self._require_config(plan_config, "decode", "replicas"))
+            decode_cfg = plan_config.get("decode", {})  # noqa: F841
+            expected_replicas = int(
+                self._require_config(plan_config, "decode", "replicas")
+            )
             is_multinode = plan_config.get("multinode", {}).get("enabled", False)
             if is_multinode:
-                workers = int(self._require_config(plan_config, "decode", "parallelism", "workers"))
+                workers = int(
+                    self._require_config(
+                        plan_config, "decode", "parallelism", "workers"
+                    )
+                )
                 expected_replicas = expected_replicas * workers
             if expected_replicas > 1 and not context.dry_run:
                 pod_count_result = cmd.kube(
@@ -168,7 +182,9 @@ class DeployModelserviceStep(Step):
                         )
 
             prefill_enabled = self._require_config(plan_config, "prefill", "enabled")
-            prefill_replicas = int(self._require_config(plan_config, "prefill", "replicas"))
+            prefill_replicas = int(
+                self._require_config(plan_config, "prefill", "replicas")
+            )
 
             if prefill_enabled and prefill_replicas > 0:
                 prefill_wait = cmd.wait_for_pods(
@@ -208,7 +224,9 @@ class DeployModelserviceStep(Step):
             if podmonitor_yaml and self._has_yaml_content(podmonitor_yaml):
                 # Check if PodMonitor CRD exists before attempting to apply
                 crd_check = cmd.kube(
-                    "get", "crd", "podmonitors.monitoring.coreos.com",
+                    "get",
+                    "crd",
+                    "podmonitors.monitoring.coreos.com",
                     check=False,
                 )
                 if crd_check.success:
@@ -237,55 +255,62 @@ class DeployModelserviceStep(Step):
         if gateway_class in ("kgateway", "agentgateway"):
             service_name = f"infra-{release}-inference-gateway"
         else:
+            # Covers istio / gke / data-science-gateway-class / epponly.
+            # For epponly there is no Gateway, so the EPP service is the
+            # endpoint clients hit directly (port 80 -> Envoy sidecar 8081).
             service_name = f"{model_id_label}-gaie-epp"
 
         context.deployed_endpoints[stack_name] = service_name
 
-        username = context.username or "unknown"
-        cmd.kube(
-            "label",
-            f"gateway/infra-{release}-inference-gateway",
-            f"stood-up-by={username}",
-            "stood-up-from=llm-d-benchmark",
-            "stood-up-via=modelservice",
-            "--namespace",
-            namespace,
-            "--overwrite",
-        )
-
-        # GAIE Helm chart creates a route to the EPP gRPC port (wrong for
-        # inference). We replace it with one targeting the gateway on port 80.
-        # data-science-gateway-class manages its own route.
-        if context.is_openshift and gateway_class != "data-science-gateway-class":
-            route_name = f"{release}-inference-gateway-route"
-
-            if gateway_class == "agentgateway":
-                route_service = f"infra-{release}-inference-gateway"
-            else:  # istio
-                route_service = f"infra-{release}-inference-gateway-istio"
-
+        # In epponly mode there is no Gateway resource to label, and the
+        # GAIE chart's auto-generated route is to the EPP gRPC port which
+        # we'd otherwise rewrite to point at the Gateway. Skip both.
+        if gateway_class != "epponly":
+            username = context.username or "unknown"
             cmd.kube(
-                "delete",
-                "route",
-                route_name,
-                "-n",
+                "label",
+                f"gateway/infra-{release}-inference-gateway",
+                f"stood-up-by={username}",
+                "stood-up-from=llm-d-benchmark",
+                "stood-up-via=modelservice",
+                "--namespace",
                 namespace,
-                "--ignore-not-found",
-                check=False,
+                "--overwrite",
             )
 
-            cmd.kube(
-                "expose",
-                f"service/{route_service}",
-                f"--name={route_name}",
-                "--port=80",
-                "-n",
-                namespace,
-            )
-            context.logger.log_info(
-                f"OpenShift route '{route_name}' created to "
-                f"service/{route_service}:80"
-            )
+            # GAIE Helm chart creates a route to the EPP gRPC port (wrong for
+            # inference). We replace it with one targeting the gateway on
+            # port 80. data-science-gateway-class manages its own route.
+            if context.is_openshift and gateway_class != "data-science-gateway-class":
+                route_name = f"{release}-inference-gateway-route"
+
+                if gateway_class == "agentgateway":
+                    route_service = f"infra-{release}-inference-gateway"
+                else:  # istio
+                    route_service = f"infra-{release}-inference-gateway-istio"
+
+                cmd.kube(
+                    "delete",
+                    "route",
+                    route_name,
+                    "-n",
+                    namespace,
+                    "--ignore-not-found",
+                    check=False,
+                )
+
+                cmd.kube(
+                    "expose",
+                    f"service/{route_service}",
+                    f"--name={route_name}",
+                    "--port=80",
+                    "-n",
+                    namespace,
+                )
+                context.logger.log_info(
+                    f"OpenShift route '{route_name}' created to "
+                    f"service/{route_service}:80"
+                )
 
         # WVA controller + prometheus-adapter are installed up-front by
         # step_02 (admin prerequisites). Here we only apply this stack's
@@ -390,9 +415,13 @@ class DeployModelserviceStep(Step):
             still_missing = []
             for name in missing:
                 check = cmd.kube(
-                    "get", "inferencepool", name,
-                    "--namespace", namespace,
-                    "-o", "name",
+                    "get",
+                    "inferencepool",
+                    name,
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    "name",
                     check=False,
                 )
                 if not check.success:
@@ -495,9 +524,8 @@ class DeployModelserviceStep(Step):
                 break
             # Check securityContext inside extraContainerConfig (used by
             # modelservice Helm chart for container-level security settings)
-            extra_sc = (
-                section.get("extraContainerConfig", {})
-                .get("securityContext", {})
+            extra_sc = section.get("extraContainerConfig", {}).get(
+                "securityContext", {}
             )
             if extra_sc.get("runAsUser") == 0 or extra_sc.get("runAsGroup") == 0:
                 needs_elevated = True
@@ -597,9 +625,8 @@ class DeployModelserviceStep(Step):
         ``oc get``. Best-effort - failures here don't fail step_09.
         """
         wva_cfg = plan_config.get("wva", {}) or {}
-        wva_ns = (
-            wva_cfg.get("namespace")
-            or plan_config.get("namespace", {}).get("name", "")
+        wva_ns = wva_cfg.get("namespace") or plan_config.get("namespace", {}).get(
+            "name", ""
         )
         model_id_label = plan_config.get("model_id_label", "")
         if not (wva_ns and model_id_label):
@@ -612,14 +639,15 @@ class DeployModelserviceStep(Step):
             ("hpa", "HorizontalPodAutoscaler"),
         ):
             result = cmd.kube(
-                "get", kind, resource_name,
-                "--namespace", wva_ns,
+                "get",
+                kind,
+                resource_name,
+                "--namespace",
+                wva_ns,
                 check=False,
             )
             if result.success and result.stdout.strip():
-                context.logger.log_info(
-                    f"📋 {label} state in ns/{wva_ns}:"
-                )
+                context.logger.log_info(f"📋 {label} state in ns/{wva_ns}:")
                 # Indent each line so it visually groups with the
                 # header above it in the standup log.
                 for line in result.stdout.rstrip().splitlines():
@@ -654,8 +682,12 @@ class DeployModelserviceStep(Step):
 
         if plan_config:
             params["model_name"] = self._require_config(plan_config, "model", "name")
-            params["model_short_name"] = self._require_config(plan_config, "model", "shortName")
-            params["model_huggingface_id"] = plan_config.get("model", {}).get("huggingfaceId", "")
+            params["model_short_name"] = self._require_config(
+                plan_config, "model", "shortName"
+            )
+            params["model_huggingface_id"] = plan_config.get("model", {}).get(
+                "huggingfaceId", ""
+            )
             params["inference_port"] = str(
                 self._require_config(plan_config, "vllmCommon", "inferencePort")
             )

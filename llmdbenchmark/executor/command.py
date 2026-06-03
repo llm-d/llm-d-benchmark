@@ -105,10 +105,16 @@ class CommandExecutor:
     Uses ``oc`` instead of ``kubectl`` when ``openshift=True``.
     """
 
-    def __init__(self, work_dir: Path, dry_run: bool, verbose: bool,
-                 logger=None, kubeconfig: str | None = None,
-                 kube_context: str | None = None,
-                 openshift: bool = False):
+    def __init__(
+        self,
+        work_dir: Path,
+        dry_run: bool,
+        verbose: bool,
+        logger=None,
+        kubeconfig: str | None = None,
+        kube_context: str | None = None,
+        openshift: bool = False,
+    ):
         self.work_dir = work_dir
         self.dry_run = dry_run
         self.verbose = verbose
@@ -143,8 +149,7 @@ class CommandExecutor:
         if self.dry_run and not force:
             return self._handle_dry_run(cmd_str, timestamp)
 
-        self._write_log(f"{timestamp}_command.log",
-                        f'---> will execute: "{cmd_str}"')
+        self._write_log(f"{timestamp}_command.log", f'---> will execute: "{cmd_str}"')
 
         exit_code, stdout, stderr = self._run_with_retries(
             cmd_str, attempts, silent, delay
@@ -226,8 +231,7 @@ class CommandExecutor:
         (self._commands_dir / filename).write_text(content)
 
     def _handle_failure(  # pylint: disable=too-many-arguments
-        self, cmd_str: str, exit_code: int,
-        stdout: str, stderr: str, *, fatal: bool
+        self, cmd_str: str, exit_code: int, stdout: str, stderr: str, *, fatal: bool
     ) -> None:
         """Log failure details and optionally raise ExecutionError."""
         self.logger.log_error(f'Command failed: "{cmd_str}"')
@@ -257,7 +261,10 @@ class CommandExecutor:
         return parts
 
     def kube(
-        self, *args: str, namespace: str | None = None, check: bool = True,
+        self,
+        *args: str,
+        namespace: str | None = None,
+        check: bool = True,
         force: bool = False,
     ) -> CommandResult:
         """Execute a kubectl/oc command with auto-injected kubeconfig flags.
@@ -316,8 +323,8 @@ class CommandExecutor:
         desc = description or label
         kc_args = " ".join(self._kubeconfig_args())
         cmd_repr = (
-            f'{self._kube_bin} {kc_args} wait --for=condition=Ready pod -l {label} '
-            f'--namespace {namespace} --timeout={timeout}s'
+            f"{self._kube_bin} {kc_args} wait --for=condition=Ready pod -l {label} "
+            f"--namespace {namespace} --timeout={timeout}s"
         ).replace("  ", " ")
 
         if self.dry_run:
@@ -329,7 +336,7 @@ class CommandExecutor:
 
         while True:
             elapsed = time.time() - start
-            remaining = max(0, timeout - elapsed) # noqa: F841
+            remaining = max(0, timeout - elapsed)  # noqa: F841
 
             if elapsed > timeout:
                 self._clear_progress_line(last_status_line)
@@ -338,14 +345,16 @@ class CommandExecutor:
                         f"⏱️  No pods found for {desc} after {timeout}s"
                     )
                     return CommandResult(
-                        command=cmd_repr, exit_code=1,
+                        command=cmd_repr,
+                        exit_code=1,
                         stderr=f"Timed out after {timeout}s waiting for {desc} -- no pods found",
                     )
                 self.logger.log_error(
                     f"⏱️  Timed out waiting for {desc} after {timeout}s"
                 )
                 return CommandResult(
-                    command=cmd_repr, exit_code=1,
+                    command=cmd_repr,
+                    exit_code=1,
                     stderr=f"Timed out after {timeout}s waiting for {desc}",
                 )
 
@@ -357,8 +366,12 @@ class CommandExecutor:
 
             if len(pods) == 0:
                 status_line = self._format_progress(
-                    desc, elapsed, timeout,
-                    "no pods found yet", 0, 0,
+                    desc,
+                    elapsed,
+                    timeout,
+                    "no pods found yet",
+                    0,
+                    0,
                 )
                 self._print_progress(status_line, last_status_line)
                 last_status_line = status_line
@@ -369,32 +382,31 @@ class CommandExecutor:
 
             ready_count = sum(1 for p in pods if p["ready"])
             total = len(pods)
-            pod_summaries = [
-                f'{p["name"][:30]}:{p["status"]}' for p in pods
-            ]
+            pod_summaries = [f"{p['name'][:30]}:{p['status']}" for p in pods]
 
             status_line = self._format_progress(
-                desc, elapsed, timeout,
+                desc,
+                elapsed,
+                timeout,
                 " | ".join(pod_summaries),
-                ready_count, total,
+                ready_count,
+                total,
             )
             self._print_progress(status_line, last_status_line)
             last_status_line = status_line
 
-            crashing = [
-                p for p in pods if p["status"] in CRASH_STATES
-            ]
+            crashing = [p for p in pods if p["status"] in CRASH_STATES]
             if crashing:
                 self._clear_progress_line(last_status_line)
                 crash_details = ", ".join(
-                    f'{p["name"][:30]}={p["status"]}' for p in crashing
+                    f"{p['name'][:30]}={p['status']}" for p in crashing
                 )
                 self.logger.log_error(
-                    f"❌ {desc}: pod(s) in terminal failure state: "
-                    f"{crash_details}"
+                    f"❌ {desc}: pod(s) in terminal failure state: {crash_details}"
                 )
                 return CommandResult(
-                    command=cmd_repr, exit_code=1,
+                    command=cmd_repr,
+                    exit_code=1,
                     stderr=(
                         f"Pod(s) in terminal failure state: {crash_details}. "
                         f"Aborting wait for {desc}."
@@ -404,8 +416,7 @@ class CommandExecutor:
             if ready_count == total and total > 0:
                 self._clear_progress_line(last_status_line)
                 self.logger.log_info(
-                    f"✅ {desc}: {total}/{total} Ready "
-                    f"({self._fmt_elapsed(elapsed)})"
+                    f"✅ {desc}: {total}/{total} Ready ({self._fmt_elapsed(elapsed)})"
                 )
                 return CommandResult(command=cmd_repr, exit_code=0)
 
@@ -423,8 +434,8 @@ class CommandExecutor:
         desc = description or f"job/{job_name}"
         kc_args = " ".join(self._kubeconfig_args())
         cmd_repr = (
-            f'{self._kube_bin} {kc_args} wait --for=condition=complete job/{job_name} '
-            f'--namespace {namespace} --timeout={timeout}s'
+            f"{self._kube_bin} {kc_args} wait --for=condition=complete job/{job_name} "
+            f"--namespace {namespace} --timeout={timeout}s"
         ).replace("  ", " ")
 
         if self.dry_run:
@@ -442,7 +453,8 @@ class CommandExecutor:
                     f"⏱️  Timed out waiting for {desc} after {timeout}s"
                 )
                 return CommandResult(
-                    command=cmd_repr, exit_code=1,
+                    command=cmd_repr,
+                    exit_code=1,
                     stderr=f"Timed out after {timeout}s waiting for {desc}",
                 )
 
@@ -450,8 +462,12 @@ class CommandExecutor:
 
             if job is None:
                 status_line = self._format_progress(
-                    desc, elapsed, timeout,
-                    "job not found -- waiting...", 0, 1,
+                    desc,
+                    elapsed,
+                    timeout,
+                    "job not found -- waiting...",
+                    0,
+                    1,
                 )
                 self._print_progress(status_line, last_status_line)
                 last_status_line = status_line
@@ -475,23 +491,27 @@ class CommandExecutor:
                     self._clear_progress_line(last_status_line)
                     self.logger.log_error(f"❌ {desc}: Failed -- {reason}")
                     return CommandResult(
-                        command=cmd_repr, exit_code=1,
+                        command=cmd_repr,
+                        exit_code=1,
                         stderr=f"Job failed: {reason}",
                     )
 
             pods = self._get_pod_statuses(f"job-name={job_name}", namespace)
             pod_info = ""
             if pods:
-                pod_info = " | ".join(
-                    f'{p["name"][-20:]}:{p["status"]}' for p in pods
-                )
+                pod_info = " | ".join(f"{p['name'][-20:]}:{p['status']}" for p in pods)
 
             parts = f"active={active} succeeded={succeeded} failed={failed}"
             if pod_info:
                 parts += f" | {pod_info}"
 
             status_line = self._format_progress(
-                desc, elapsed, timeout, parts, succeeded, max(1, succeeded + active),
+                desc,
+                elapsed,
+                timeout,
+                parts,
+                succeeded,
+                max(1, succeeded + active),
             )
             self._print_progress(status_line, last_status_line)
             last_status_line = status_line
@@ -518,7 +538,9 @@ class CommandExecutor:
         """
         desc = description or f"pvc/{pvc_name}"
         kc_args = " ".join(self._kubeconfig_args())
-        cmd_repr = f'{self._kube_bin} {kc_args} wait --for=jsonpath={{.status.phase}}=Bound pvc/{pvc_name} --namespace {namespace} --timeout={timeout}s'.replace("  ", " ")
+        cmd_repr = f"{self._kube_bin} {kc_args} wait --for=jsonpath={{.status.phase}}=Bound pvc/{pvc_name} --namespace {namespace} --timeout={timeout}s".replace(
+            "  ", " "
+        )
 
         if self.dry_run:
             return self._handle_dry_run(cmd_repr, int(time.time() * 1e9))
@@ -544,21 +566,32 @@ class CommandExecutor:
                     f"⏱️  Timed out waiting for {desc} after {timeout}s"
                 )
                 return CommandResult(
-                    command=cmd_repr, exit_code=1,
+                    command=cmd_repr,
+                    exit_code=1,
                     stderr=f"Timed out after {timeout}s waiting for {desc}",
                 )
 
             parts = [self._kube_bin]
             parts.extend(self._kubeconfig_args())
-            parts.extend([
-                "get", "pvc", pvc_name,
-                "--namespace", namespace,
-                "-o", "jsonpath={.status.phase}:{.spec.storageClassName}",
-            ])
+            parts.extend(
+                [
+                    "get",
+                    "pvc",
+                    pvc_name,
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    "jsonpath={.status.phase}:{.spec.storageClassName}",
+                ]
+            )
             try:
                 result = subprocess.run(
-                    " ".join(parts), shell=True, capture_output=True,
-                    text=True, check=False, executable="/bin/bash",
+                    " ".join(parts),
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    executable="/bin/bash",
                 )
                 output = result.stdout.strip()
                 pvc_parts = output.split(":", 1)
@@ -575,21 +608,28 @@ class CommandExecutor:
 
                 sc_info = f" sc={sc}" if sc else " sc=cluster-default"
                 status_line = self._format_progress(
-                    desc, elapsed, timeout,
-                    f"{phase}{sc_info}", 0, 1,
+                    desc,
+                    elapsed,
+                    timeout,
+                    f"{phase}{sc_info}",
+                    0,
+                    1,
                 )
             except (OSError, KeyError, ValueError):
                 status_line = self._format_progress(
-                    desc, elapsed, timeout, "querying...", 0, 1,
+                    desc,
+                    elapsed,
+                    timeout,
+                    "querying...",
+                    0,
+                    1,
                 )
 
             self._print_progress(status_line, last_status_line)
             last_status_line = status_line
             time.sleep(poll_interval)
 
-    def _resolve_pvc_binding_mode(
-        self, pvc_name: str, namespace: str
-    ) -> str | None:
+    def _resolve_pvc_binding_mode(self, pvc_name: str, namespace: str) -> str | None:
         """Return the volumeBindingMode of the StorageClass that backs *pvc_name*.
 
         Reads the PVC's ``spec.storageClassName`` (i.e. exactly what the
@@ -623,8 +663,12 @@ class CommandExecutor:
         parts.extend(["-o", f"'jsonpath={jsonpath}'"])
         try:
             result = subprocess.run(
-                " ".join(parts), shell=True, capture_output=True,
-                text=True, check=False, executable="/bin/bash",
+                " ".join(parts),
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False,
+                executable="/bin/bash",
             )
             if result.returncode != 0:
                 return ""
@@ -632,21 +676,30 @@ class CommandExecutor:
         except OSError:
             return ""
 
-    def _get_pod_statuses(
-        self, label: str, namespace: str
-    ) -> list[dict] | None:
+    def _get_pod_statuses(self, label: str, namespace: str) -> list[dict] | None:
         """Query pod statuses via kubectl/oc get pods -o json."""
         parts = [self._kube_bin]
         parts.extend(self._kubeconfig_args())
-        parts.extend([
-            "get", "pods", "-l", label,
-            "--namespace", namespace,
-            "-o", "json",
-        ])
+        parts.extend(
+            [
+                "get",
+                "pods",
+                "-l",
+                label,
+                "--namespace",
+                namespace,
+                "-o",
+                "json",
+            ]
+        )
         try:
             result = subprocess.run(
-                " ".join(parts), shell=True, capture_output=True,
-                text=True, check=False, executable="/bin/bash",
+                " ".join(parts),
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False,
+                executable="/bin/bash",
             )
             if result.returncode != 0:
                 return None
@@ -659,9 +712,7 @@ class CommandExecutor:
 
                 status = phase
                 ready = False
-                container_statuses = item.get("status", {}).get(
-                    "containerStatuses", []
-                )
+                container_statuses = item.get("status", {}).get("containerStatuses", [])
                 if container_statuses:
                     # A pod is Ready only when ALL of its containers are
                     # Ready. Previously we only looked at containerStatuses[0]
@@ -679,7 +730,8 @@ class CommandExecutor:
                         # crashing/terminated container over a merely-waiting
                         # one so terminal failures bubble up first.
                         not_ready = [
-                            cs for cs in container_statuses
+                            cs
+                            for cs in container_statuses
                             if not cs.get("ready", False)
                         ]
                         status = _summarize_container_status(not_ready)
@@ -694,12 +746,14 @@ class CommandExecutor:
                             status = reason
                             break
 
-                pods.append({
-                    "name": name,
-                    "status": status,
-                    "ready": ready,
-                    "phase": phase,
-                })
+                pods.append(
+                    {
+                        "name": name,
+                        "status": status,
+                        "ready": ready,
+                        "phase": phase,
+                    }
+                )
             return pods
         except (json.JSONDecodeError, OSError):
             return None
@@ -708,15 +762,25 @@ class CommandExecutor:
         """Query job status via kubectl/oc get job -o json."""
         parts = [self._kube_bin]
         parts.extend(self._kubeconfig_args())
-        parts.extend([
-            "get", "job", job_name,
-            "--namespace", namespace,
-            "-o", "json",
-        ])
+        parts.extend(
+            [
+                "get",
+                "job",
+                job_name,
+                "--namespace",
+                namespace,
+                "-o",
+                "json",
+            ]
+        )
         try:
             result = subprocess.run(
-                " ".join(parts), shell=True, capture_output=True,
-                text=True, check=False, executable="/bin/bash",
+                " ".join(parts),
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False,
+                executable="/bin/bash",
             )
             if result.returncode != 0:
                 return None
@@ -727,8 +791,12 @@ class CommandExecutor:
 
     @staticmethod
     def _format_progress(
-        desc: str, elapsed: float, timeout: float,
-        detail: str, done: int, total: int,
+        desc: str,
+        elapsed: float,
+        timeout: float,
+        detail: str,
+        done: int,
+        total: int,
     ) -> str:
         """Format a progress status line."""
         elapsed_str = CommandExecutor._fmt_elapsed(elapsed)
@@ -747,8 +815,7 @@ class CommandExecutor:
             count_str = "--"
 
         return (
-            f"  ⏳ [{elapsed_str}/{timeout_str}] {desc}: "
-            f"[{bar}] {count_str} | {detail}"
+            f"  ⏳ [{elapsed_str}/{timeout_str}] {desc}: [{bar}] {count_str} | {detail}"
         )
 
     @staticmethod

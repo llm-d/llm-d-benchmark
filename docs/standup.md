@@ -141,7 +141,60 @@ The scenario parameters can be roughly categorized in four groups:
 
 | Variable                                     | Meaning                                                                | Note                                                                                                     |
 | -------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Set to `agentgateway` to use the agentgateway data plane instead of Istio               |
+| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Supported: `istio`, `agentgateway`, `gke`, `data-science-gateway-class`, `epponly`.     |
+
+Gateway class options (set via `gateway.className` in the scenario YAML):
+
+| `className`                  | What it deploys                                                                                                  | Use when                                                          |
+|------------------------------|------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `istio` (default)            | istio-base + istiod control plane, a Gateway + HTTPRoute, the `inferencepool` GAIE chart                         | Default; most flexible / production deployments                   |
+| `agentgateway`               | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `inferencepool` GAIE chart               | Want agentgateway's data plane instead of Envoy/Istio             |
+| `gke`                        | Uses GKE-managed Gateway controller; same `inferencepool` GAIE chart                                             | Running on GKE                                                    |
+| `data-science-gateway-class` | OpenDataHub / OpenShift AI managed Gateway                                                                       | Running on OpenShift AI                                           |
+| `epponly`                    | **No** Kubernetes Gateway, **no** HTTPRoute, the `standalone` GAIE chart (EPP with an Envoy sidecar serving HTTP) | You want llm-d's standalone router topology without any gateway   |
+
+### Overriding `gateway.className` from the CLI
+
+Every subcommand that renders templates (`plan`, `standup`, `experiment`,
+and the `run`/`smoketest`/`teardown` paths that re-render for setup
+overrides) accepts a `--gateway-class` flag that overrides the
+scenario's `gateway.className` for that invocation. The same value can
+be supplied via the `LLMDBENCH_GATEWAY_CLASS` environment variable.
+
+```bash
+# Scenario default is epponly -- flip to istio without editing YAML
+llmdbenchmark --spec guides/optimized-baseline standup -p my-ns --gateway-class istio
+
+# env-var form (matches the LLMDBENCH_* convention)
+LLMDBENCH_GATEWAY_CLASS=agentgateway \
+  llmdbenchmark --spec guides/optimized-baseline standup -p my-ns
+```
+
+Precedence (highest wins): `--gateway-class` CLI flag → scenario
+`gateway.className` → `defaults.yaml` (`istio`).
+
+#### Method-aware validation
+
+`gateway.className` only affects rendering when the active deploy
+method is `modelservice`. For `kustomize`, `standalone`, and `fma` the
+gateway block is ignored by every rendered template, so the CLI accepts
+**any** value (including sentinels like `none` or `n/a` that CI scripts
+often pass uniformly across deploy methods). The banner shows it as
+`Gateway: <value> (ignored -- modelservice is not the active deploy method)`.
+
+When `modelservice` is the active method, the override is checked
+against the whitelist of supported values above and a typo fails fast
+at plan time:
+
+```text
+ValueError: --gateway-class='isto' is not a supported value for the
+modelservice deploy method. Choose one of: epponly, istio, agentgateway,
+gke, data-science-gateway-class.
+```
+
+This lets CI workflows pass `--gateway-class=$SOME_VAR` for every
+deploy method without per-method special-casing, while still catching
+typos when the value actually matters.
 
 ### Switching from Istio to agentgateway
 
@@ -177,6 +230,73 @@ That single change is all that's needed.  The benchmark tool handles everything 
 
 - [`config/scenarios/examples/cpu.yaml`](../config/scenarios/examples/cpu.yaml) -- CPU-only deployment
 - [`config/scenarios/guides/optimized-baseline.yaml`](../config/scenarios/guides/optimized-baseline.yaml) -- inference scheduling guide
+
+### EPP-only (llm-d standalone router) mode (`gateway.className: epponly`)
+
+`epponly` mirrors the **Standalone Mode** documented in llm-d
+([guides/recipes/router/README.md](https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md))
+and used by every well-lit-path guide (e.g.
+[optimized-baseline](https://github.com/llm-d/llm-d/blob/main/guides/optimized-baseline/README.md)).
+The EPP is deployed via the upstream
+`oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone`
+chart, which adds an Envoy sidecar to the EPP pod so HTTP traffic can hit
+the EPP service directly -- no Kubernetes Gateway, no HTTPRoute, no
+`llm-d-infra` Helm release.
+
+```yaml
+scenario:
+  - name: "my-stack"
+    gateway:
+      className: epponly      # default is "istio"
+
+    modelservice:
+      enabled: true
+    # ... rest of scenario config
+```
+
+When `epponly` is selected, standup automatically:
+
+1. **Skips the gateway provider install** -- step 02 does not install istio
+   or agentgateway CRDs / controllers.
+2. **Skips the `llm-d-infra` Helm release** -- no Gateway resource is created.
+3. **Skips HTTPRoute rendering** -- nothing references a Gateway.
+4. **Swaps the GAIE chart** to the upstream `standalone` chart, which
+   bundles the EPP + Envoy sidecar in a single pod.
+5. **Adds a `port 80 -> targetPort 8081` extraServicePort** to the EPP
+   service so HTTP requests reach the Envoy sidecar.
+6. **Points endpoint discovery at `{model_id_label}-gaie-epp:80`** -- the
+   smoketest and run phase resolve to the EPP service directly instead
+   of a Gateway IP.
+
+#### Restrictions
+
+- **Single-stack only.** `epponly` cannot multiplex multiple models since
+  it has no shared Gateway / HTTPRoute. Multi-stack scenarios fail at
+  render time with a clear error.
+- **`httpRoute.mode: shared` is rejected** -- shared HTTPRoute requires a
+  Gateway that `epponly` does not deploy.
+- **Only the `modelservice` deploy method.** Combining `epponly` with
+  `standalone.enabled: true`, `fma.enabled: true`, or
+  `kustomize.enabled: true` is rejected at render time.
+
+#### Differences from a gateway-based deployment
+
+| Aspect                   | Gateway-based (istio / agentgateway / gke)             | `epponly`                                                    |
+|--------------------------|--------------------------------------------------------|--------------------------------------------------------------|
+| GAIE Helm chart          | `inferencepool`                                        | `standalone`                                                 |
+| `llm-d-infra` release    | Installed (creates `Gateway`)                          | **Skipped** (no Gateway needed)                              |
+| HTTPRoute                | Rendered                                               | **Not rendered**                                             |
+| Provider control plane   | istio / agentgateway controller installed via helmfile | **Not installed**                                            |
+| Endpoint                 | `Gateway` resource IP                                  | `{model_id_label}-gaie-epp` Service ClusterIP, port 80       |
+| Number of EPP replicas   | Configurable                                           | **1** (matches default `inferenceExtension.replicas: 1`)     |
+| Multi-stack support      | Yes                                                    | **No** (single-stack only)                                   |
+
+#### Example scenario using epponly
+
+- [`config/scenarios/guides/optimized-baseline.yaml`](../config/scenarios/guides/optimized-baseline.yaml)
+  -- ships with `gateway.className: epponly` as the default. Flip it to
+  `istio`/`agentgateway`/`gke`/`data-science-gateway-class` to switch
+  topology without touching anything else in the scenario.
 
 - "llm-d"-specific VLLM paramaters
 

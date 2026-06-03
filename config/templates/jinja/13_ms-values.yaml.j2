@@ -1,4 +1,5 @@
-{% if standalone.enabled is defined and not standalone.enabled %}
+{# Modelservice-only template. -t kustomize uses upstream guide manifests. #}
+{% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 
 {# ============================================================================
    ms-values.yaml.j2

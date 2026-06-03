@@ -36,7 +36,13 @@ jobs:
     with:
       scenario_dir: cicd
       standup_method: standalone
-      cluster_provider: kind
+      standup_scenario: kind
+      decode_pods: auto
+      prefill_pods: auto
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -60,7 +66,13 @@ jobs:
     with:
       scenario_dir: cicd
       standup_method: fma
-      cluster_provider: kind
+      standup_scenario: kind
+      decode_pods: auto
+      prefill_pods: auto
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -75,14 +87,19 @@ jobs:
       workload: nop.yaml
     secrets: inherit
 
-  # -- Modelservice deployment matrix (istio + agentgateway) --
   benchmark-modelservice-istio:
     name: Benchmark - Modelservice / istio (Kind)
     uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: modelservice
-      cluster_provider: kind
+      standup_scenario: kind
+      decode_pods: auto
+      prefill_pods: auto
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -103,7 +120,13 @@ jobs:
     with:
       scenario_dir: cicd
       standup_method: modelservice
-      cluster_provider: kind
+      standup_scenario: kind
+      decode_pods: auto
+      prefill_pods: auto
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -111,6 +134,33 @@ jobs:
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
       gateway_class: agentgateway
+      monitoring_enabled: true
+      dry_run: false
+      verbose: false
+      harness: guidellm
+      workload: sanity_random.yaml
+    secrets: inherit
+
+  benchmark-modelservice-epponly:
+    name: Benchmark - Modelservice / epponly (Kind)
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: modelservice
+      standup_scenario: kind
+      decode_pods: auto
+      prefill_pods: auto
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      helm_release: lmdbenchcicdr
+      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      bucket_project: llm-d-scale
+      bucket_provider: none
+      bucket_path: /tmp/llmdbenchcicd
+      gateway_class: epponly
       monitoring_enabled: true
       dry_run: false
       verbose: false

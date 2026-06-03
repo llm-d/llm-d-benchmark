@@ -52,13 +52,19 @@ def _get_llmd_benchmark_envars() -> dict:
                     * int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", "-1")),
                     "accelerator": [
                         {
-                            "model": os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "").split(
-                                ":", 1
-                            )[-1],
+                            "model": os.environ.get(
+                                "LLMDBENCH_VLLM_COMMON_AFFINITY", ""
+                            ).split(":", 1)[-1],
                             "count": int(
-                                os.environ.get("LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", "-1")
+                                os.environ.get(
+                                    "LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", "-1"
+                                )
                             )
-                            * int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", "-1")),
+                            * int(
+                                os.environ.get(
+                                    "LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", "-1"
+                                )
+                            ),
                             "parallelism": {
                                 "tp": int(
                                     os.environ.get(
@@ -66,7 +72,9 @@ def _get_llmd_benchmark_envars() -> dict:
                                     )
                                 ),
                                 "dp": int(
-                                    os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", "-1")
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", "-1"
+                                    )
                                 ),
                             },
                         }
@@ -97,14 +105,18 @@ def _get_llmd_benchmark_envars() -> dict:
                     },
                 },
                 "metadata": {
-                    "load_format": os.environ.get("LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT", ""),
+                    "load_format": os.environ.get(
+                        "LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT", ""
+                    ),
                     "logging_level": os.environ.get(
                         "LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL", ""
                     ),
                     "vllm_server_dev_mode": os.environ.get(
                         "LLMDBENCH_VLLM_COMMON_VLLM_SERVER_DEV_MODE", ""
                     ),
-                    "preprocess": os.environ.get("LLMDBENCH_VLLM_STANDALONE_PREPROCESS", ""),
+                    "preprocess": os.environ.get(
+                        "LLMDBENCH_VLLM_STANDALONE_PREPROCESS", ""
+                    ),
                 },
             },
             "metadata": {
@@ -150,89 +162,117 @@ def _get_llmd_benchmark_envars() -> dict:
                 "model": {"name": os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", "")},
                 "host": {
                     "type": ["prefill"]
-                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"))
+                    * int(
+                        os.environ.get(
+                            "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"
+                        )
+                    )
                     + ["decode"]
-                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1")),
+                    * int(
+                        os.environ.get(
+                            "LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1"
+                        )
+                    ),
                     "accelerator": [
                         {
-                            "model": os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "").split(
-                                ":", 1
-                            )[-1],
+                            "model": os.environ.get(
+                                "LLMDBENCH_VLLM_COMMON_AFFINITY", ""
+                            ).split(":", 1)[-1],
                             "count": int(
                                 os.environ.get(
-                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", "-1"
+                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM",
+                                    "-1",
                                 )
                             )
                             * int(
                                 os.environ.get(
-                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", "-1"
+                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM",
+                                    "-1",
                                 )
                             ),
                             "parallelism": {
                                 "tp": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                                 "dp": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                                 "dpLocal": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                                 "workers": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                             },
                         }
                     ]
-                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"))
+                    * int(
+                        os.environ.get(
+                            "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"
+                        )
+                    )
                     + [
                         {
-                            "model": os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "").split(
-                                ":", 1
-                            )[-1],
+                            "model": os.environ.get(
+                                "LLMDBENCH_VLLM_COMMON_AFFINITY", ""
+                            ).split(":", 1)[-1],
                             "count": int(
                                 os.environ.get(
-                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", "-1"
+                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM",
+                                    "-1",
                                 )
                             )
                             * int(
                                 os.environ.get(
-                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM", "-1"
+                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM",
+                                    "-1",
                                 )
                             ),
                             "parallelism": {
                                 "tp": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                                 "dp": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                                 "dpLocal": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                                 "workers": int(
                                     os.environ.get(
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM", "-1"
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM",
+                                        "-1",
                                     )
                                 ),
                             },
                         }
                     ]
-                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1")),
+                    * int(
+                        os.environ.get(
+                            "LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1"
+                        )
+                    ),
                 },
                 "platform": {
                     "metadata": {
@@ -257,8 +297,16 @@ def _get_llmd_benchmark_envars() -> dict:
                         }
                     ]
                     * (
-                        int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"))
-                        + int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1"))
+                        int(
+                            os.environ.get(
+                                "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"
+                            )
+                        )
+                        + int(
+                            os.environ.get(
+                                "LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1"
+                            )
+                        )
                     ),
                 },
             },
@@ -1393,7 +1441,9 @@ def import_inference_perf_session(results_file: str) -> BenchmarkReportV01:
         "sessions_per_second": results.get("sessions_per_second"),
         "session_duration": _stats(results.get("session_duration_sec"), Units.S),
         "num_events": _stats(results.get("num_events"), Units.COUNT),
-        "num_events_cancelled": _stats(results.get("num_events_cancelled"), Units.COUNT),
+        "num_events_cancelled": _stats(
+            results.get("num_events_cancelled"), Units.COUNT
+        ),
         "total_input_tokens": _stats(results.get("total_input_tokens"), Units.COUNT),
         "total_output_tokens": _stats(results.get("total_output_tokens"), Units.COUNT),
     }
@@ -1418,7 +1468,8 @@ def import_inference_perf_session(results_file: str) -> BenchmarkReportV01:
                 },
                 "requests": {
                     "total": results.get("total_events", 0),
-                    "failures": results.get("total_events", 0) - results.get("total_events_completed", 0),
+                    "failures": results.get("total_events", 0)
+                    - results.get("total_events_completed", 0),
                     "input_length": {
                         "units": Units.COUNT,
                         "mean": get_nested(results, ["total_input_tokens", "mean"], 0),
@@ -2134,7 +2185,7 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
             "args": engine["args"],
             "metadata": {
                 "image": engine["image"],
-            }
+            },
         }
         engines.append(e)
 
@@ -2341,33 +2392,44 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 }
         vllm_metadatas.append(metadata_dict)
 
-    results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": vllm_metadatas})
+    results_dict["metrics"]["metadata"].append(
+        {"name": metrics_name, "value": vllm_metadatas}
+    )
 
     metrics_name = "extra_metrics"
     fma_metadatas = []
-    for extra_metric in  results.get(metrics_name, []):
+    for extra_metric in results.get(metrics_name, []):
         if extra_metric["name"] != "fma":
             continue
 
         metadata_dict = {"name": extra_metric["name"]}
         iterations = []
         for iteration in extra_metric.get("iterations", []):
-            it = { "iteration": { "units": Units.COUNT, "value": iteration["iteration"] } }
+            it = {"iteration": {"units": Units.COUNT, "value": iteration["iteration"]}}
             launcher_infos = []
             for launcher_info in iteration.get("launcher_infos", []):
-                info = { "name": launcher_info["name"] }
+                info = {"name": launcher_info["name"]}
 
                 requester_info = launcher_info["requester_info"]
-                ri = { "name": requester_info["name"] }
-                ri["creation_timestamp"] = { "units": Units.S, "value": requester_info["creation_timestamp"]}
-                ri["ready_timestamp"] = { "units": Units.S, "value": requester_info["ready_timestamp"]}
-                ri["dual_label_timestamp"] = { "units": Units.S, "value": requester_info["dual_label_timestamp"]}
+                ri = {"name": requester_info["name"]}
+                ri["creation_timestamp"] = {
+                    "units": Units.S,
+                    "value": requester_info["creation_timestamp"],
+                }
+                ri["ready_timestamp"] = {
+                    "units": Units.S,
+                    "value": requester_info["ready_timestamp"],
+                }
+                ri["dual_label_timestamp"] = {
+                    "units": Units.S,
+                    "value": requester_info["dual_label_timestamp"],
+                }
                 info["requester_info"] = ri
 
                 info["actuation_condition"] = launcher_info["actuation_condition"]
                 info["launcher_endpoint"] = launcher_info["launcher_endpoint"]
                 info["vllm_endpoint"] = launcher_info["vllm_endpoint"]
-                info["ttft"] = { "units": Units.S, "value": launcher_info["ttft"]}
+                info["ttft"] = {"units": Units.S, "value": launcher_info["ttft"]}
                 launcher_infos.append(info)
 
             it["launcher_infos"] = launcher_infos
@@ -2376,7 +2438,9 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
         metadata_dict["iterations"] = iterations
         fma_metadatas.append(metadata_dict)
 
-    results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": fma_metadatas})
+    results_dict["metrics"]["metadata"].append(
+        {"name": metrics_name, "value": fma_metadatas}
+    )
 
     update_dict(br_dict, results_dict)
 

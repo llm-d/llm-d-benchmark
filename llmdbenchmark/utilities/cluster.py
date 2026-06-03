@@ -86,7 +86,8 @@ def kube_connect(
 
     if kubeconfig:
         k8s_config.load_kube_config(
-            config_file=kubeconfig, context=kube_context,
+            config_file=kubeconfig,
+            context=kube_context,
         )
         _silence_insecure_tls_warnings_if_disabled()
         return client.ApiClient()
@@ -139,9 +140,7 @@ def get_service_endpoint(
         return None
     v1 = client.CoreV1Api(api_client)
     try:
-        service = v1.read_namespaced_service(
-            name=service_name, namespace=namespace
-        )
+        service = v1.read_namespaced_service(name=service_name, namespace=namespace)
         cluster_ip = service.spec.cluster_ip
         if service.spec.ports:
             port = service.spec.ports[0].port
@@ -205,11 +204,65 @@ def load_stacks_info(context: ExecutionContext) -> list[dict]:
                         or cfg.get("model", {}).get("name", "unknown")
                     ),
                     "method": method,
+                    "gateway_class": _format_gateway_label(
+                        method,
+                        cfg.get("gateway", {}).get("className", ""),
+                    ),
                 }
             )
         except (OSError, yaml.YAMLError):
             continue
     return stacks
+
+
+def _format_gateway_label(method: str, gateway_class: str) -> str:
+    """Return the banner label for the gateway class.
+
+    ``gateway.className`` only takes effect on the modelservice deploy
+    path (it switches the GAIE chart + Gateway/HTTPRoute rendering).
+    For other deploy methods it's ignored entirely, so the banner makes
+    that explicit instead of showing a misleading value.
+    """
+    if method == "modelservice":
+        return gateway_class or "unknown"
+    if method == "kustomize":
+        return "n/a (defined by upstream guide manifests)"
+    if method == "standalone":
+        return "n/a (plain vLLM, no EPP)"
+    if method == "fma":
+        return "n/a (managed by FMA)"
+    return gateway_class or "unknown"
+
+
+def resolve_phase_gateway_label(context: ExecutionContext) -> str | None:
+    """Single-stack helper: derive the gateway label for the banner.
+
+    Reads the first rendered stack's config and combines it with the
+    active deploy method to produce a human-friendly label. Returns
+    ``None`` when no rendered stack is available (e.g. run-only mode
+    with --endpoint-url) so the banner can omit the line cleanly.
+    """
+    method = "unknown"
+    if context.deployed_methods:
+        for m in ("kustomize", "standalone", "fma", "modelservice"):
+            if m in context.deployed_methods:
+                method = m
+                break
+
+    for stack_path in context.rendered_stacks or []:
+        config_file = stack_path / "config.yaml"
+        if not config_file.exists():
+            continue
+        try:
+            with open(config_file, encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            return _format_gateway_label(
+                method,
+                (cfg.get("gateway") or {}).get("className", ""),
+            )
+        except (OSError, yaml.YAMLError):
+            continue
+    return None
 
 
 def print_phase_banner(
@@ -263,6 +316,9 @@ def print_phase_banner(
     if num_stacks <= 1:
         log.log_info(f"  Model:       {model}")
         log.log_info(f"  Methods:     {methods}")
+        gateway_label = resolve_phase_gateway_label(context)
+        if gateway_label:
+            log.log_info(f"  Gateway:     {gateway_label}")
         log.log_info(f"  Namespace:   {namespace}")
     else:
         log.log_info(f"  Stacks:      {num_stacks}")
@@ -271,11 +327,14 @@ def print_phase_banner(
             s_model = si.get("model_name", "unknown")
             s_ns = si.get("namespace", "unknown")
             s_method = si.get("method", "unknown")
+            s_gateway = si.get("gateway_class", "")
             s_name = si.get("stack_name", f"stack-{i}")
             log.log_info(f"  Stack {i}: {s_name}")
             log.log_info(f"    Model:     {s_model}")
             log.log_info(f"    Namespace: {s_ns}")
             log.log_info(f"    Method:    {s_method}")
+            if s_gateway:
+                log.log_info(f"    Gateway:   {s_gateway}")
             if i < len(stacks_info):
                 log.log_info("")
 
@@ -316,7 +375,7 @@ def _kube_api_connect(context: ExecutionContext) -> None:
 
     try:
         api = client.ApisApi(api_client)
-        groups = api.get_api_versions() # noqa: F841
+        groups = api.get_api_versions()  # noqa: F841
     except Exception as exc:
         raise RuntimeError(
             f"Cluster is unreachable: {exc}. "

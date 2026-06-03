@@ -100,8 +100,8 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 
 ```bash
 --spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
---spec inference-scheduling             # inference scheduling guide
---spec inference-scheduling-wva         # inference scheduling + WVA autoscaling
+--spec guides/optimized-baseline        # optimized baseline guide (formerly inference-scheduling)
+--spec guides/workload-autoscaling      # optimized baseline + WVA autoscaling
 --spec multi-model-wva                  # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
 --spec pd-disaggregation               # prefill-decode disaggregation guide
 ...
@@ -382,7 +382,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@92b14fe09fea0ec9ff36539326b7a8df00f1022c"
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"
 ```
 
 ### Verify Installation
@@ -412,6 +412,7 @@ llmdbenchmark --version
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) to render into the plan |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model to render the plan for |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment method (`standalone`, `modelservice`) |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. Ignored (any value accepted, including `none`) when the active deploy method is `kustomize`, `standalone`, or `fma`. |
 | `-f` / `--monitoring` | | Enable monitoring in rendered templates (PodMonitor, EPP verbosity) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path (used for cluster resource auto-detection) |
 
@@ -424,6 +425,7 @@ llmdbenchmark --version
 | `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (`standalone`, `modelservice`) |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. See [Plan Options](#plan-options) for accepted values and method-aware behavior. |
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
@@ -441,6 +443,7 @@ llmdbenchmark --version
 | `-s STEPS` | | Step filter |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model that was deployed (for resource name resolution) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Methods to tear down (`standalone`, `modelservice`) |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` if teardown re-renders. See [Plan Options](#plan-options) for accepted values. |
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name (default: `llmdbench`) |
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |
@@ -454,6 +457,7 @@ llmdbenchmark --version
 | `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment YAML with setup and run treatments (required) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` during standup. See [Plan Options](#plan-options) for accepted values. |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
@@ -477,6 +481,7 @@ llmdbenchmark --version
 | `-m MODEL` | `LLMDBENCH_MODEL` | Model name override (e.g. facebook/opt-125m) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespaces (deploy,benchmark) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method used during standup |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` if the run phase re-renders templates for setup overrides. See [Plan Options](#plan-options) for accepted values. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name (inference-perf, guidellm, vllm-benchmark) |
 | `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile YAML |
@@ -512,6 +517,7 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 | `-s STEPS` | | Step filter (e.g., `0,1,2` or `0-2`) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` if the smoketest re-renders templates. See [Plan Options](#plan-options) for accepted values. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4). Smoketest pins this to 1 regardless - parallel probes across stacks are confusing. |
 | `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict smoketest to the named subset of stacks. |
@@ -530,7 +536,7 @@ This is useful for CI/CD pipelines, `.bashrc` configuration, or migrating from t
 
 ```bash
 # Example: set common defaults via env vars, override per-run via CLI
-export LLMDBENCH_SPEC=inference-scheduling
+export LLMDBENCH_SPEC=guides/optimized-baseline
 export LLMDBENCH_NAMESPACE=my-team-ns
 export LLMDBENCH_KUBECONFIG=~/.kube/my-cluster
 
@@ -699,7 +705,7 @@ See module-level READMEs for detailed documentation:
 `llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md). Each guide has a corresponding specification:
 
 ```bash
-llmdbenchmark --spec inference-scheduling standup       # Inference scheduling
+llmdbenchmark --spec guides/optimized-baseline standup  # Optimized baseline (formerly inference-scheduling)
 llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
 llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
 llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing

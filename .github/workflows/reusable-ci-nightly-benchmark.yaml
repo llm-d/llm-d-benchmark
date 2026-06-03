@@ -13,11 +13,41 @@ on:
         required: false
         type: 'string'
         default: 'standalone'
-      cluster_provider:
+      standup_scenario:
         description: 'Cluster provider targeted ("ocp","gke","cks")'
         required: false
         type: 'string'
         default: 'kind'
+      decode_pods:
+        description: 'Number of decode (vllm "standalone") pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      prefill_pods:
+        description: 'Number of prefill pods (default "auto", means what was configured on the scenario)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      accelerator_type:
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: 'gpu'
+      backend_type:
+        description: 'Type of backend (vllm, sglang) (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: 'vllm'
+      infra_provider:
+        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: 'base'
+      connector:
+        description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standyp method)'
+        required: false
+        type: 'string'
+        default: ''
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -49,10 +79,10 @@ on:
         type: 'string'
         default: 'llm-d-benchmarks/regressions'
       gateway_class:
-        description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
+        description: 'Class of gateway used ("istio", "agentgateway", "epponly" (aka "standalone"), "none")'
         required: false
         type: 'string'
-        default: 'istio'
+        default: 'epponly'
       monitoring_enabled:
         description: 'Enabled monitoring ("true", "false")'
         required: false
@@ -92,6 +122,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       conditional_runs_on: ${{ steps.set_runs_on.outputs.runners }}
+      cluster_provider: ${{ steps.set_cluster_provider.outputs.cluster_type }}
 
     steps:
       - name: Install system dependencies
@@ -121,12 +152,38 @@ jobs:
       - name: set runs-on variable based on cluster provider
         id: set_runs_on
         run: |
-          if [[ ${{ inputs.cluster_provider }} == "ocp" ]]; then
-            JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
+          IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
+          if [[ ! -z $IS_OCP ]]; then
+            echo "Targetting self-hosted runners (OpenShift)"
+            RUNNERS_JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
           else
-            JSON_LIST='["ubuntu-latest"]'
+            echo "Targetting hosted runners (non-OpenShift)"
+            RUNNERS_JSON_LIST='["ubuntu-latest"]'
           fi
-          echo "runners=$JSON_LIST" >> "$GITHUB_OUTPUT"
+          echo "Runners list is \"$RUNNERS_JSON_LIST\""
+          echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
+
+      - name: set cluster_type variable based on workflow and scenario name
+        id: set_cluster_provider
+        run: |
+          IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
+          if [[ ! -z $IS_OCP ]]; then
+            CLUSTER_TYPE=ocp
+          fi
+          IS_GKE=$(echo "${{ github.workflow }}" | grep -i "\gke" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "gke" || true)
+          if [[ ! -z $IS_GKE ]]; then
+            CLUSTER_TYPE=gke
+          fi
+          IS_CKS=$(echo "${{ github.workflow }}" | grep -i "\cks" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "cks" || true)
+          if [[ ! -z $IS_CKS ]]; then
+            CLUSTER_TYPE=cks
+          fi
+          IS_KIND=$(echo "${{ github.workflow }}" | grep -i "\kind" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "kind" || true)
+          if [[ ! -z $IS_KIND ]]; then
+            CLUSTER_TYPE=kind
+          fi
+          echo "Cluster provider is \"$CLUSTER_TYPE\""
+          echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
 
   benchmark:
     name: Benchmark
@@ -141,8 +198,13 @@ jobs:
       LLMDBENCH_CICD_NS: ${{ inputs.cluster_namespace || 'llmdbenchcicd' }}
       LLMDBENCH_CICD_R: ${{ inputs.helm_release || 'standalone' }}
       LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir || 'cicd' }}
-      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'kind' }}
+      LLMDBENCH_CICD_SCENARIO: ${{ inputs.standup_scenario || 'kind' }}
+      LLMDBENCH_CICD_TARGET: ${{ needs.ensure-nightly-build-image.outputs.cluster_provider || 'kind' }}
       LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
+      LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator_type || 'gpu' }}
+      LLMDBENCH_CICD_BACKEND: ${{ inputs.backend_type || 'vllm' }}
+      LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || 'base' }}
+      LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
@@ -151,7 +213,7 @@ jobs:
       LLMDBENCH_MONITORING_ENABLED: ${{ inputs.monitoring_enabled || 'true' }}
       LLMDBENCH_CICD_HARNESS: ${{ inputs.harness || 'inference-perf' }}
       LLMDBENCH_CICD_WORKLOAD: ${{ inputs.workload || 'sanity_random.yaml' }}
-      GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      GCS_BASE_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
       GKE_CLUSTER_ZONE: us-east5
@@ -168,7 +230,7 @@ jobs:
           python-version: "3.12"
 
       - name: Create Kind cluster
-        if: inputs.cluster_provider == 'kind'
+        if: env.LLMDBENCH_CICD_TARGET == 'kind'
         uses: helm/kind-action@v1
         with:
           version: v0.31.0
@@ -188,38 +250,52 @@ jobs:
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
       - name: Get GKE credentials
-        if: inputs.cluster_provider == 'gke'
+        if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
-          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+          if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
+            echo "Selected \"Google Kubernetes Engine\" kubeconfig"
+            gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+          fi
+        shell: bash
 
       - name: Set up kubeconfig from secret
-        if: inputs.cluster_provider != 'kind' && inputs.cluster_provider != 'gke'
+        if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
           mkdir -p ~/.kube
           if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
+            echo "Selected \"Coreweave\" kubeconfig"
             echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
           fi
           if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
+            echo "Selected \"OpenShift\" kubeconfig"
             echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
           fi
           chmod 600 ~/.kube/config
         shell: bash
 
       - name: Install oc (optional on install.sh)
-        if: inputs.cluster_provider == 'ocp'
+        if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
-          # Install oc (OpenShift CLI) — optional on install.sh
-          if ! command -v oc &>/dev/null; then
-            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
-              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
-            mkdir -p /tmp/oc-extract
-            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
-            sudo mv /tmp/oc-extract/oc /usr/local/bin/
-            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
-            sudo chmod +x /usr/local/bin/oc
-            sudo chmod +x /usr/local/bin/kubectl
-            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
+            # Install oc (OpenShift CLI) — optional on install.sh
+            if ! command -v oc &>/dev/null; then
+              curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+                "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+              mkdir -p /tmp/oc-extract
+              tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+              sudo mv /tmp/oc-extract/oc /usr/local/bin/
+              sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+              sudo chmod +x /usr/local/bin/oc
+              sudo chmod +x /usr/local/bin/kubectl
+              rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+            fi
           fi
+
+      - name: Show cluster names
+        run: |
+          echo "### Cluster names: $(cat ~/.kube/config | yq ".clusters[].name" | sed ':a;N;$!ba;s/\n/, /g')"
+          exit $?
+        shell: bash
 
       - name: Show cluster nodes
         run: |
@@ -227,10 +303,49 @@ jobs:
           exit $?
         shell: bash
 
+      - name: Label node for simulated accelerators
+        if: env.LLMDBENCH_CICD_TARGET == 'kind'
+        run: |
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "### Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+        shell: bash
+
+      - name: Set GCS full path
+        if: inputs.bucket_provider == 'gcs'
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          GCS_FULL_PATH="gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/"
+          GCS_FULL_PATH=$(echo "$GCS_FULL_PATH" | sed "s^$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_SCENARIO^$LLMDBENCH_CICD_SCENARIO^g")
+          echo "### GCS_FULL_PATH is \"$GCS_FULL_PATH\""
+          echo "GCS_FULL_PATH=$GCS_FULL_PATH" >> $GITHUB_ENV
+        shell: bash
+
       - name: Install llmdbenchmark
         run: |
+          #find ~ -type f -name "br_v0_2_json_schema.json" -print
+          cd ~
+          if [[ ! -d ~/work/llm-d-benchmark/llm-d-benchmark ]];
+          then
+            mkdir -p ~/work/llm-d-benchmark/
+            cd ~/work/llm-d-benchmark/
+            echo "### llm-d-benchmark code NOT found, will clone now"
+            git clone https://github.com/llm-d/llm-d-benchmark.git
+          fi
+          cd ~/work/llm-d-benchmark/llm-d-benchmark/
+          if [[ ! -f install.sh ]]; then
+            curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh -o install.sh
+            chmod +x install.sh
+          fi
           ./install.sh -y 2>&1
-          sudo cp util/debug_info_on_failure.sh /usr/local/bin
+          if [[ ! -f util/debug_info_on_failure.sh ]]; then
+            curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/util/debug_info_on_failure.sh -o /tmp/debug_info_on_failure.sh
+            chmod +x /tmp/debug_info_on_failure.sh
+            sudo cp /tmp/debug_info_on_failure.sh /usr/local/bin
+          else
+            sudo cp util/debug_info_on_failure.sh /usr/local/bin
+          fi
+          echo "### llm-d-benchmark code is present (branch $(git branch --show-current))"
         shell: bash
 
       - name: Set up extra command line parameters
@@ -247,14 +362,87 @@ jobs:
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
             export LLMDBENCH_EXTRA_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_OPERATION_CMD "
           fi
+          echo "### LLMDBENCH_EXTRA_CMD is \"$LLMDBENCH_EXTRA_CMD\""
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_OPERATION_CMD is \"$LLMDBENCH_EXTRA_OPERATION_CMD\""
           echo "LLMDBENCH_EXTRA_OPERATION_CMD=$LLMDBENCH_EXTRA_OPERATION_CMD" >> $GITHUB_ENV
+          export LLMDBENCH_GATEWAY_CLASS=$(echo "$LLMDBENCH_GATEWAY_CLASS" | sed 's^standalone^epponly^g')
+          echo "LLMDBENCH_GATEWAY_CLASS is \"$LLMDBENCH_GATEWAY_CLASS\""
+          echo "LLMDBENCH_GATEWAY_CLASS=$LLMDBENCH_GATEWAY_CLASS"  >> $GITHUB_ENV
+        shell: bash
+
+      - name: Conditionally clone llm-d from main repo
+        run: |
+          #find ~ -type f -name "cks_nvshmem3.3.9.patch" -print
+          cd ~
+          if [[ ! -d ~/work/llm-d ]];
+          then
+            mkdir -p ~/work/llm-d/
+            cd ~/work/llm-d/
+            echo "### llm-d code NOT found, will clone now"
+            git clone https://github.com/llm-d/llm-d.git
+          fi
+          cd ~/work/llm-d/llm-d
+          echo "### llm-d code is present (branch $(git branch --show-current))"
+        shell: bash
+
+      - name: Apply overrides to scenarios
+        run: |
+          export LLMDBENCH_CICD_PRIORITY_CLASS=nightly-gpu-critical
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            echo "### Overriding \"repoPath\" to \"$HOME/work/llm-d/llm-d\""
+            yq -i ".scenario[0].kustomize.repoPath = \"$HOME/work/llm-d/llm-d\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
+              echo "### Setting \"Storage class\" to \"standard-rwx\""
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "standard-rwx"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
+              echo "### Setting \"Storage class\" to \"shared-vast\""
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "shared-vast"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
+              echo "### Setting \"Storage class\" to \"ibm-spectrum-scale-fileset\""
+              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "ibm-spectrum-scale-fileset"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            fi
+            echo "### Setting \"INFRA_PROVIDER\" to \"$LLMDBENCH_CICD_INFRA_PROVIDER\""
+            yq -i ".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \"$LLMDBENCH_CICD_INFRA_PROVIDER\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
+            export LLMDBENCH_CICD_BACKEND_ACCELERATOR=$(echo $LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/ | sed 's^//^/^g')
+            echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\""
+            yq -i ".scenario[0].kustomize.acceleratorBackend = \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
+            echo " ### Setting priority class \"nightly-gpu-critical\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            for i in vllm decode prefill; do
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"nightly-gpu-critical\"" -i {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -print -exec yq '.spec.template.spec.priorityClassName' {} \;
+            done
+            export LLMDBENCH_CICD_DECODE_PODS="${{ inputs.decode_pods }}"
+            if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
+              echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+              for i in vllm decode; do
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -print -exec yq ".spec.replicas" {} \;
+              done
+            fi
+            export LLMDBENCH_CICD_PREFILL_PODS="${{ inputs.prefill_pods }}"
+            if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
+              echo "### Setting decode pods to \"$LLMDBENCH_CICD_PREFILL_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+              for i in prefill; do
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -print -exec yq ".spec.replicas" {} \;
+              done
+            fi
+          fi
+          if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
+            echo " ### Setting harness executable to \"llm-d-benchmark.py\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+          fi
         shell: bash
 
       - name: Cleanup target cloud
         run: |
-          echo "### Cluster names: $(cat ~/.kube/config | yq ".clusters[].name" | sed ':a;N;$!ba;s/\n/, /g')"
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          cd ~/work/llm-d-benchmark/llm-d-benchmark/
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --gateway-class $LLMDBENCH_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
@@ -262,7 +450,8 @@ jobs:
 
       - name: Standup
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          cd ~/work/llm-d-benchmark/llm-d-benchmark/
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
         shell: bash
@@ -275,15 +464,25 @@ jobs:
 
       - name: Run
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD"
-          echo "### $LLMDBENCH_CMD ###"
-          $LLMDBENCH_CMD
+          cd ~/work/llm-d-benchmark/llm-d-benchmark/
+          if [[ "$LLMDBENCH_CICD_TARGET" == "kind" && "${{ inputs.standup_method }}" == "fma" ]]; then
+            echo "Temporarily unable to test \"fma\" on \"kind\" clusters"
+          elif [[ "$LLMDBENCH_CICD_TARGET" == "gke" && "${{ inputs.standup_method }}" == "fma" ]]; then
+            echo "Temporarily unable to test \"fma\" on \"gke\" clusters"
+          elif [[ "$LLMDBENCH_CICD_TARGET" == "cks" && "${{ inputs.standup_method }}" == "fma" ]]; then
+            echo "Temporarily unable to test \"fma\" on \"cks\" clusters"
+          else
+            LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD --data-access-timeout 1200"
+            echo "### $LLMDBENCH_CMD ###"
+            $LLMDBENCH_CMD
+          fi
         shell: bash
 
       - name: Teardown
         if: always()
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          cd ~/work/llm-d-benchmark/llm-d-benchmark/
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
@@ -296,21 +495,20 @@ jobs:
         shell: bash
 
       - name: Upload results to GCS
-        if: inputs.cluster_provider != 'kind'
+        if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping data upload to bucket, due to \"dry-run\" mode activated"
           else
-            RUN_DATE=$(date +'%Y-%m-%d')
             cd "$LLMDBENCH_WORKSPACE"
             REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
-            echo "Uploading data from directory \"REG_RESULTS\" to \"gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/\""
-            gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
+            echo "Uploading data from directory \"REG_RESULTS\" to \"$GCS_FULL_PATH\""
+            gcloud storage cp -r $REG_RESULTS/ "$GCS_FULL_PATH" || true
           fi
         shell: bash
 
       - name: Block waiting for Standalone baseline
-        if: inputs.cluster_provider != 'kind' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
+        if: env.LLMDBENCH_CICD_TARGET == 'ocp' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping waiting for \"standalone baseline\", due to \"dry-run\" mode activated"
@@ -319,13 +517,14 @@ jobs:
             RUN_DATE=$(date +'%Y-%m-%d')
             POLL=30
             while true; do
-              brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+              # Match different standalone outputs
+              brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/*/results/*/benchmark_report*" 2>/dev/null)
               if [[ $? -ne 0 ]]; then
                 echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
                 sleep $POLL
               else
                 latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
-                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
                 echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
                 exit 0
               fi

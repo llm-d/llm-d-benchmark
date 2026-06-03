@@ -1,0 +1,72 @@
+name: CI - Nightly Run Benchmark on CKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Retained for compatibility with llm-d/llm-d's nightly-benchmark-cks caller.
+      input_dir:
+        description: 'Input directory for benchmark results'
+        required: false
+        default: '/tmp/cicd/analysis'
+      output_dir:
+        description: 'Output directory name (S3 prefix and artifact name)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark-cks-standalone:
+    name: Benchmark - Standalone (CKS)
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: standalone
+      cluster_provider: cks
+      cluster_namespace: llmdbenchcicdsns-cks
+      helm_release: llmdbenchcicdr-cks
+      workspace_dir: /tmp/llmdbenchcicds-cks
+      bucket_project: llm-d-scale
+      bucket_provider: gcs
+      bucket_path: llm-d-benchmarks/regressions
+      gateway_class: istio
+      dry_run: 'false'
+      verbose: 'false'
+    secrets: inherit
+
+  benchmark-cks-modelservice:
+    name: Benchmark - ModelService (CKS)
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: modelservice
+      cluster_provider: cks
+      cluster_namespace: llmdbenchcicdmns-cks
+      helm_release: llmdbenchcicdr-cks
+      workspace_dir: /tmp/llmdbenchcicdm-cks
+      bucket_project: llm-d-scale
+      bucket_provider: gcs
+      bucket_path: llm-d-benchmarks/regressions
+      gateway_class: istio
+      dry_run: 'false'
+      verbose: 'false'
+    secrets: inherit
+
+  benchmark-cks-fma:
+    name: Benchmark - FMA (CKS)
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: fma
+      cluster_provider: cks
+      cluster_namespace: llmdbenchcicdfns-cks
+      helm_release: llmdbenchcicdrf-cks
+      workspace_dir: /tmp/llmdbenchcicdf-cks
+      bucket_project: llm-d-scale
+      bucket_provider: gcs
+      bucket_path: llm-d-benchmarks/regressions
+      gateway_class: istio
+      dry_run: 'false'
+      verbose: 'false'
+    secrets: inherit

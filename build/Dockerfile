@@ -1,4 +1,4 @@
-FROM python:3.12.9-slim-bookworm
+FROM ghcr.io/llm-d/python:3.12.9-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
@@ -62,8 +62,8 @@ WORKDIR /workspace
 # Install harnesses
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=release-v0.5.0
-ARG INFERENCE_PERF_COMMIT=v0.5.0
+ARG INFERENCE_PERF_BRANCH=main
+ARG INFERENCE_PERF_COMMIT=ad65fe09932a300dfc27fcb1d17d1aac88787ea3
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
