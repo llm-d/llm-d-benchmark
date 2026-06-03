@@ -368,7 +368,7 @@ jobs:
             mkdir -p ~/work/llm-d/
             cd ~/work/llm-d/
             echo "### llm-d code NOT found, will clone now"
-            git clone https://github.com/llm-d/llm-d.git
+            git clone https://github.com/llm-d/llm-d.git          
           fi
           cd ~/work/llm-d/llm-d
           echo "### llm-d code is present (branch $(git branch --show-current))"
