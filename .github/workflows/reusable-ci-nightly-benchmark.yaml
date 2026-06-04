@@ -215,6 +215,7 @@ jobs:
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
       LLMDBENCH_IS_DRY_RUN: ${{ inputs.dry_run || 'false' }}
       LLMDBENCH_IS_VERBOSE: ${{ inputs.verbose || 'false' }}
