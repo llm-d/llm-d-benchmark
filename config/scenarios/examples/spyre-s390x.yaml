@@ -80,7 +80,7 @@ scenario:
     images:
       benchmark:
         repository: quay.io/nayanakumari/llmd-benchmark-s390x
-        tag: guidellm-new-fixed
+        tag: pyarrow-newfix-v3
         pullPolicy: IfNotPresent
       vllm:
         repository: registry.redhat.io/rhaii-early-access/vllm-spyre-rhel9
@@ -473,7 +473,5 @@ scenario:
       extraEnvVars:
         - name: PRE_HARNESS_CMD
           value: |
-            sed -i 's/profile:/rate-type:/g'
-   /workspace/workload/profiles/guidellm/sanity_random.yaml
-            sed -i 's/max_seconds:/duration:/g' 
-   /workspace/workload/profiles/guidellm/sanity_random.yaml
+            sed -i 's/profile:/rate-type:/g' /workspace/workload/profiles/guidellm/sanity_random.yaml
+            sed -i 's/max_seconds:/duration:/g' /workspace/workload/profiles/guidellm/sanity_random.yaml
