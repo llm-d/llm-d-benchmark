@@ -174,10 +174,12 @@ jobs:
           fi
           echo "Cluster provider is \"$CLUSTER_TYPE\""
           echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
+          echo "CLUSTER_TYPE=$CLUSTER_TYPE" >> "$GITHUB_ENV"
 
       - name: set runs-on variable based on cluster provider
         id: set_runs_on
         run: |
+          echo "Cluster provider is \"$CLUSTER_TYPE\""
           if [[ "$CLUSTER_TYPE" == "ocp" ]]; then
             echo "Targetting self-hosted runners (OpenShift)"
             RUNNERS_JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
@@ -209,7 +211,7 @@ jobs:
       LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
       LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator_type || 'gpu' }}
       LLMDBENCH_CICD_BACKEND: ${{ inputs.backend_type || 'vllm' }}
-      LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || 'base' }}
+      LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || '' }}
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
@@ -219,6 +221,7 @@ jobs:
       LLMDBENCH_MONITORING_ENABLED: ${{ inputs.monitoring_enabled || 'true' }}
       LLMDBENCH_CICD_HARNESS: ${{ inputs.harness || 'inference-perf' }}
       LLMDBENCH_CICD_WORKLOAD: ${{ inputs.workload || 'sanity_random.yaml' }}
+      LLMDBENCH_CICD_PRIORITY_CLASS: nightly-llm-d-cicd-critical
       GCS_BASE_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
@@ -309,6 +312,22 @@ jobs:
           exit $?
         shell: bash
 
+      - name: Create nightly PriorityClass
+        run: |
+          echo "Creating PriorityClass \"$LLMDBENCH_CICD_PRIORITY_CLASS\"..."
+          cat <<PRIORITY_EOF > prioclass.yaml
+          apiVersion: scheduling.k8s.io/v1
+          kind: PriorityClass
+          metadata:
+            name: $LLMDBENCH_CICD_PRIORITY_CLASS
+          value: 1000000
+          preemptionPolicy: PreemptLowerPriority
+          globalDefault: false
+          description: "High priority for nightly CI/CD llm-d workloads — preempts default-priority pods"
+          PRIORITY_EOF
+          kubectl apply -f prioclass.yaml
+          rm prioclass.yaml
+
       - name: Label node for simulated accelerators
         if: env.LLMDBENCH_CICD_TARGET == 'kind'
         run: |
@@ -394,7 +413,6 @@ jobs:
 
       - name: Apply overrides to scenarios
         run: |
-          export LLMDBENCH_CICD_PRIORITY_CLASS=nightly-gpu-critical
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             echo "### Overriding \"repoPath\" to \"$HOME/work/llm-d/llm-d\""
             yq -i ".scenario[0].kustomize.repoPath = \"$HOME/work/llm-d/llm-d\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
@@ -417,7 +435,7 @@ jobs:
             echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\""
             yq -i ".scenario[0].kustomize.acceleratorBackend = \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
-            echo " ### Setting priority class \"nightly-gpu-critical\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            echo " ### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
             for i in vllm decode prefill; do
               find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"nightly-gpu-critical\"" -i {} \;
               find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -print -exec yq '.spec.template.spec.priorityClassName' {} \;
