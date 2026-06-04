@@ -118,7 +118,7 @@ jobs:
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
       backend_type: ${{ inputs.backend_type || 'vllm' }}
       infra_provider: ${{ inputs.infra_provider || 'gke' }}
-      connector: ${{ inputs.infra_provider || '' }}
+      connector: ${{ inputs.connector || '' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdfns-gke' }}
       helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-gke' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicdf-gke' }}

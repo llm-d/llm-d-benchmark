@@ -117,7 +117,7 @@ jobs:
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
       backend_type: ${{ inputs.backend_type || 'vllm' }}
       infra_provider: ${{ inputs.infra_provider || 'ocp' }}
-      connector: ${{ inputs.infra_provider || '' }}
+      connector: ${{ inputs.connector || '' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdfns-ocp' }}
       helm_release: ${{ inputs.helm_release || 'lmdbenchcicdr-ocp' }}
       workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicdf-ocp' }}
