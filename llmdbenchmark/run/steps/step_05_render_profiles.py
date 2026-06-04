@@ -87,15 +87,30 @@ class RenderProfilesStep(Step):
 
         dataset_file_override: str | None = None
         if context.dataset_url:
-            # Trailing slash => directory replay: DIR is the full path, FILE is empty.
-            # Otherwise (path ends with a filename/extension) => single-file replay:
-            # DIR is the parent, FILE is the basename.
+            # For s3:// URLs the harness shell script downloads the file into
+            # /requests/datasets/ at pod runtime, so DIR must point at the
+            # local landing path, not at the s3:// prefix. For local-style
+            # URLs we still treat them as filesystem paths.
+            #
+            # Trailing slash => directory replay: DIR is the (resolved) path,
+            # FILE is empty.
+            # Otherwise (path ends with a filename/extension) => single-file
+            # replay: DIR is the parent (or the local landing dir for s3://),
+            # FILE is the basename.
+            is_s3 = context.dataset_url.startswith("s3://")
+            s3_local_dir = "/requests/datasets"
             if context.dataset_url.endswith("/"):
-                runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = context.dataset_url
+                if is_s3:
+                    runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = s3_local_dir
+                else:
+                    runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = context.dataset_url
                 dataset_file_override = ""
             else:
                 dir_part, file_part = posixpath.split(context.dataset_url)
-                runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = dir_part
+                if is_s3:
+                    runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = s3_local_dir
+                else:
+                    runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = dir_part
                 runtime_values["LLMDBENCH_RUN_DATASET_FILE"] = file_part
 
         env_map = build_env_map(

@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 
@@ -39,8 +39,10 @@ jobs:
       standup_scenario: kind
       decode_pods: auto
       prefill_pods: auto
-      accelerator_type: sim
-      backend_type: vllm
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -67,8 +69,10 @@ jobs:
       standup_scenario: kind
       decode_pods: auto
       prefill_pods: auto
-      accelerator_type: sim
-      backend_type: vllm
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -92,8 +96,10 @@ jobs:
       standup_scenario: kind
       decode_pods: auto
       prefill_pods: auto
-      accelerator_type: sim
-      backend_type: vllm
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -117,8 +123,10 @@ jobs:
       standup_scenario: kind
       decode_pods: auto
       prefill_pods: auto
-      accelerator_type: sim
-      backend_type: vllm
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}
@@ -142,8 +150,10 @@ jobs:
       standup_scenario: kind
       decode_pods: auto
       prefill_pods: auto
-      accelerator_type: sim
-      backend_type: vllm
+      accelerator_type: X
+      backend_type: X
+      infra_provider: X
+      connector: X
       cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
       helm_release: lmdbenchcicdr
       workspace_dir: tmp/cicd-sa-${{ github.event.number }}

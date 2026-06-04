@@ -80,7 +80,7 @@ scenario:
       pluginsConfigFile: "predicted-latency-slo-plugins.yaml"
       pluginsCustomConfig:
         predicted-latency-slo-plugins.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          apiVersion: llm-d.ai/v1alpha1
           kind: EndpointPickerConfig
           plugins:
           - type: queue-scorer
@@ -120,7 +120,7 @@ scenario:
       # InferencePool Provider Configuration
       inferencePoolProviderConfig:
         destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
+          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
           trafficPolicy:
             connectionPool:
               http:

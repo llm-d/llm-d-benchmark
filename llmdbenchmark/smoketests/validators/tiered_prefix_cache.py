@@ -76,11 +76,23 @@ class TieredPrefixCacheValidator(BaseSmoketest):
                     flag_value = parts[1] if len(parts) > 1 else None
                     report.add(self.assert_arg_contains(args, flag_name, flag_value))
 
-        epp_pods = self.get_pod_specs(
-            cmd,
-            namespace,
-            f"inferencepool={model_short}-gaie-epp",
-        )
+        # The llm-d-router-{standalone,gateway}-dev charts label the EPP
+        # Pod with the mode-specific selector
+        # (`llm-d-router-standalone=<release>-epp` or
+        # `llm-d-router-gateway=<release>-epp`); the legacy
+        # `inferencepool=<release>-epp` label is gone. The common
+        # `app.kubernetes.io/*` labels only land on the Deployment, not
+        # the Pod. We don't know the gateway mode here, so try both --
+        # exactly one will match.
+        epp_pods: list = []
+        for _mode in ("llm-d-router-gateway", "llm-d-router-standalone"):
+            epp_pods = self.get_pod_specs(
+                cmd,
+                namespace,
+                f"{_mode}={model_short}-router-epp",
+            )
+            if epp_pods:
+                break
         report.add(
             CheckResult(
                 "epp_pod_running",

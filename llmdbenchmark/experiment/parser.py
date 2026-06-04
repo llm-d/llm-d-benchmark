@@ -40,6 +40,7 @@ class ExperimentPlan:
     name: str
     harness: str | None
     profile: str | None
+    dataset_url: str | None
     setup_treatments: list[SetupTreatment]
     run_treatments_count: int
     experiment_file: Path
@@ -156,6 +157,7 @@ def parse_experiment(path: Path) -> ExperimentPlan:
     name = experiment_meta.get("name", path.stem)
     harness = experiment_meta.get("harness")
     profile = experiment_meta.get("profile")
+    dataset_url = experiment_meta.get("datasetUrl")
 
     setup_data = data.get("setup")
     setup_treatments: list[SetupTreatment] = []
@@ -171,6 +173,7 @@ def parse_experiment(path: Path) -> ExperimentPlan:
         name=name,
         harness=harness,
         profile=profile,
+        dataset_url=dataset_url,
         setup_treatments=setup_treatments,
         run_treatments_count=run_count,
         experiment_file=path,

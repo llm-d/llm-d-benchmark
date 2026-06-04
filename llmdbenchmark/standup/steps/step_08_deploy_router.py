@@ -1,4 +1,4 @@
-"""Step 08 -- Deploy GAIE (Gateway API Inference Extension)."""
+"""Step 08 -- Deploy the llm-d router (EPP + provider-specific resources)."""
 
 from pathlib import Path
 
@@ -8,14 +8,14 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 
 
-class DeployGaieStep(Step):
-    """Deploy the GAIE inference extension components."""
+class DeployRouterStep(Step):
+    """Deploy the llm-d router (EPP, InferencePool, provider resources)."""
 
     def __init__(self):
         super().__init__(
             number=8,
-            name="deploy_gaie",
-            description="Deploy GAIE inference extension",
+            name="deploy_router",
+            description="Deploy llm-d router (EPP + provider resources)",
             phase=Phase.STANDUP,
             per_stack=True,
         )
@@ -38,14 +38,14 @@ class DeployGaieStep(Step):
         errors = []
         cmd = context.require_cmd()
 
-        gaie_values = self._find_yaml(stack_path, "12_gaie-values")
+        router_values = self._find_yaml(stack_path, "12_router-values")
 
-        if not gaie_values:
+        if not router_values:
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
-                message="No GAIE values found, skipping",
+                message="No router values found, skipping",
                 stack_name=stack_path.name,
             )
 
@@ -55,7 +55,7 @@ class DeployGaieStep(Step):
         stack_name = stack_path.name
 
         if context.non_admin:
-            self._patch_gaie_for_non_admin(context, stack_name)
+            self._patch_router_for_non_admin(context, stack_name)
 
         helm_dir = context.setup_helm_dir() / stack_name
         helmfile_work = helm_dir / "helmfile.yaml"
@@ -66,7 +66,7 @@ class DeployGaieStep(Step):
                 "--namespace",
                 namespace,
                 "--selector",
-                f"name={model_id_label}-gaie",
+                f"name={model_id_label}-router",
                 "apply",
                 "-f",
                 str(helmfile_work),
@@ -74,7 +74,7 @@ class DeployGaieStep(Step):
                 "--skip-schema-validation",
             )
             if not result.success:
-                errors.append(f"Failed to deploy GAIE: {result.stderr}")
+                errors.append(f"Failed to deploy router: {result.stderr}")
         else:
             main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")
             if main_helmfile:
@@ -83,7 +83,7 @@ class DeployGaieStep(Step):
                     "--namespace",
                     namespace,
                     "--selector",
-                    f"name={model_id_label}-gaie",
+                    f"name={model_id_label}-router",
                     "apply",
                     "-f",
                     str(main_helmfile),
@@ -91,7 +91,7 @@ class DeployGaieStep(Step):
                     "--skip-schema-validation",
                 )
                 if not result.success:
-                    errors.append(f"Failed to deploy GAIE: {result.stderr}")
+                    errors.append(f"Failed to deploy router: {result.stderr}")
 
         # Wait for gateway pod only (not EPP -- it stays NOT_SERVING until step 09)
         if not errors and not context.dry_run:
@@ -129,7 +129,7 @@ class DeployGaieStep(Step):
                     errors.append(f"Gateway infra pod not ready: {gateway_wait.stderr}")
                 else:
                     context.logger.log_info(
-                        "GAIE deployed -- EPP pod will become Ready after "
+                        "Router deployed -- EPP pod will become Ready after "
                         "model servers are deployed in step 09"
                     )
 
@@ -140,7 +140,7 @@ class DeployGaieStep(Step):
                 step_number=self.number,
                 step_name=self.name,
                 success=False,
-                message="GAIE deployment had errors",
+                message="Router deployment had errors",
                 errors=errors,
                 stack_name=stack_path.name,
             )
@@ -149,32 +149,37 @@ class DeployGaieStep(Step):
             step_number=self.number,
             step_name=self.name,
             success=True,
-            message=f"GAIE deployed for {stack_path.name}",
+            message=f"Router deployed for {stack_path.name}",
             stack_name=stack_path.name,
         )
 
-    def _patch_gaie_for_non_admin(self, context: ExecutionContext, stack_name: str):
-        """Disable cluster-admin features (Prometheus monitoring, InferencePool) in GAIE values."""
+    def _patch_router_for_non_admin(self, context: ExecutionContext, stack_name: str):
+        """Disable cluster-admin features (Prometheus monitoring) in router values."""
         helm_dir = context.setup_helm_dir() / stack_name
-        gaie_file = helm_dir / "gaie-values.yaml"
-        if not gaie_file.exists():
+        router_file = helm_dir / "router-values.yaml"
+        if not router_file.exists():
             return
 
         try:
-            content = yaml.safe_load(gaie_file.read_text(encoding="utf-8"))
+            content = yaml.safe_load(router_file.read_text(encoding="utf-8"))
             if not content:
                 return
 
-            ie = content.get("inferenceExtension", {})
-            monitoring = ie.get("monitoring", {})
+            # The rendered values now use the `router.*` layout from the
+            # llm-d-router chart, so monitoring lives at
+            # `router.monitoring.prometheus.enabled` (not the legacy
+            # `inferenceExtension.monitoring.prometheus.enabled` the GAIE
+            # chart used).
+            router = content.get("router", {})
+            monitoring = router.get("monitoring", {})
             prometheus = monitoring.get("prometheus", {})
             if prometheus:
                 prometheus["enabled"] = False
                 context.logger.log_info(
-                    "Non-admin: disabled GAIE Prometheus monitoring"
+                    "Non-admin: disabled router Prometheus monitoring"
                 )
 
-            with open(gaie_file, "w", encoding="utf-8") as f:
+            with open(router_file, "w", encoding="utf-8") as f:
                 yaml.dump(content, f, default_flow_style=False)
 
         except (OSError, yaml.YAMLError):

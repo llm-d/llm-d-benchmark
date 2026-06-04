@@ -86,13 +86,15 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
-    # Reference: https://github.com/llm-d/llm-d/blob/main/guides/pd-disaggregation/gaie-pd/values.yaml
+    # Reference: https://github.com/llm-d/llm-d/blob/main/guides/pd-disaggregation/router/pd-disaggregation.values.yaml
+    # The plugins block uses the `llm-d.ai/v1alpha1` apiVersion shipped
+    # by the llm-d-router-{standalone,gateway}-dev charts.
     # -------------------------------------------------------------------------
     inferenceExtension:
       pluginsConfigFile: "pd-config.yaml"
       pluginsCustomConfig:
         pd-config.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          apiVersion: llm-d.ai/v1alpha1
           kind: EndpointPickerConfig
           plugins:
           - type: disagg-headers-handler

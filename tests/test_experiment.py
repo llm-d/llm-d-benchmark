@@ -325,6 +325,23 @@ class TestParseExperimentEdgeCases:
         plan = parse_experiment(p)
         assert plan.harness is None
         assert plan.profile is None
+        assert plan.dataset_url is None
+
+    def test_dataset_url_parsed(self, tmp_path: Path):
+        """experiment.datasetUrl is exposed on ExperimentPlan."""
+        p = tmp_path / "with-dataset.yaml"
+        p.write_text(textwrap.dedent("""\
+            experiment:
+              name: with-dataset
+              harness: aiperf
+              profile: dataset.yaml
+              datasetUrl: s3://bucket/path/to/trace.jsonl
+            treatments:
+              - name: t1
+                k: v
+        """))
+        plan = parse_experiment(p)
+        assert plan.dataset_url == "s3://bucket/path/to/trace.jsonl"
 
     def test_setup_without_treatments_key(self, tmp_path: Path):
         """Setup section without 'treatments' is ignored."""
@@ -584,6 +601,7 @@ class TestExperimentPlanProperties:
             name="test",
             harness=None,
             profile=None,
+            dataset_url=None,
             setup_treatments=[
                 SetupTreatment(name="s1"),
                 SetupTreatment(name="s2"),
@@ -600,6 +618,7 @@ class TestExperimentPlanProperties:
             name="test",
             harness=None,
             profile=None,
+            dataset_url=None,
             setup_treatments=[],
             run_treatments_count=6,
             experiment_file=Path("test.yaml"),
@@ -613,6 +632,7 @@ class TestExperimentPlanProperties:
             name="test",
             harness=None,
             profile=None,
+            dataset_url=None,
             setup_treatments=[SetupTreatment(name="s1")],
             run_treatments_count=0,
             experiment_file=Path("test.yaml"),

@@ -582,7 +582,7 @@ Both paths share steps 00-05 (infrastructure, namespaces, secrets) and step 10 (
 | 05 | harness_namespace | Per-stack | Harness namespace (PVC, data access pod, preprocess) |
 | 06 | standalone_deploy | Per-stack | Standalone vLLM deployment (Deployment + Service) |
 | 07 | deploy_setup | Per-stack | Helm repos and gateway infrastructure (helmfile) |
-| 08 | deploy_gaie | Per-stack | GAIE inference extension deployment |
+| 08 | deploy_router | Per-stack | llm-d router (EPP + provider resources) deployment |
 | 09 | deploy_modelservice | Per-stack | Modelservice deployment (helmfile + LWS) |
 | 10 | smoketest | Per-stack | Health check, inference test, per-scenario config validation |
 | 11 | inference_test | Per-stack | Sample inference request with demo curl command |

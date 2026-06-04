@@ -838,8 +838,8 @@ class RenderPlans:
     def _resolve_inference_pool_host(self, values: dict) -> dict:
         """Auto-populate destinationRule.host from model_id_label when not set.
 
-        The Kubernetes service name for the GAIE EPP is always
-        ``{model_id_label}-gaie-epp``.  If a scenario's
+        The Kubernetes service name for the router EPP is always
+        ``{model_id_label}-router-epp``.  If a scenario's
         ``inferenceExtension.inferencePoolProviderConfig.destinationRule``
         exists but has no ``host``, fill it in automatically so that
         scenario authors don't need to compute the hashed label by hand.
@@ -852,7 +852,7 @@ class RenderPlans:
         if dest_rule is not None and not dest_rule.get("host"):
             model_id_label = values.get("model_id_label", "")
             if model_id_label:
-                dest_rule["host"] = f"{model_id_label}-gaie-epp"
+                dest_rule["host"] = f"{model_id_label}-router-epp"
                 self.logger.log_info(
                     f"Auto-resolved destinationRule.host to '{dest_rule['host']}'"
                 )

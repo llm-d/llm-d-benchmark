@@ -16,7 +16,7 @@ class DeploySetupStep(Step):
     # Helmfile references these by relative path in its values: sections.
     _VALUES_FILE_MAP = {
         "11_infra": "infra.yaml",
-        "12_gaie-values": "gaie-values.yaml",
+        "12_router-values": "router-values.yaml",
         "13_ms-values": "ms-values.yaml",
     }
 

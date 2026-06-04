@@ -1,7 +1,7 @@
 {# HTTPRoute rendering - two modes:
 
    1. per-stack  (default): emit one HTTPRoute per stack, one backendRef ->
-      this stack's {model_id_label}-gaie InferencePool. This is the single-
+      this stack's {model_id_label}-router InferencePool. This is the single-
       model behavior the repo has always had.
 
    2. shared:     emit ONE HTTPRoute in stack index 1 only, with one
@@ -53,7 +53,7 @@ spec:
     - backendRefs:
       - group: inference.networking.k8s.io
         kind: InferencePool
-        name: {{ _sibling_label }}-gaie
+        name: {{ _sibling_label }}-router
         port: {{ decode.vllm.servicePort }}
         weight: 1
       timeouts:
@@ -86,7 +86,7 @@ spec:
     - backendRefs:
       - group: inference.networking.k8s.io
         kind: InferencePool
-        name: {{ model_id_label }}-gaie
+        name: {{ model_id_label }}-router
         port: {{ decode.vllm.servicePort }}
         weight: 1
       timeouts:
@@ -106,7 +106,7 @@ spec:
     - backendRefs:
       - group: inference.networking.k8s.io
         kind: InferencePool
-        name: {{ model_id_label }}-gaie
+        name: {{ model_id_label }}-router
         port: {{ decode.vllm.servicePort }}
         weight: 1
       timeouts:

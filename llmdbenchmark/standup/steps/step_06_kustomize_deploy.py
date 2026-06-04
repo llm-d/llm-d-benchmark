@@ -64,6 +64,11 @@ class KustomizeDeployStep(Step):
         repo_path = kust_config.get("repoPath") or context.llmd_repo_path or ""
         repo_ref = kust_config.get("repoRef", "main")
         gaie_version = kust_config.get("gaieVersion", "")
+        # `ROUTER_CHART_VERSION` is referenced by guide READMEs alongside
+        # `GAIE_VERSION` after the llm-d-router chart migration. Default
+        # to v0 (the published llm-d-router-* chart version) when the
+        # scenario doesn't pin one.
+        router_chart_version = kust_config.get("routerChartVersion", "") or "v0"
         accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
         monitoring = kust_config.get("monitoring", False)
         overlay_path = kust_config.get("overlayPath", "")
@@ -115,10 +120,20 @@ class KustomizeDeployStep(Step):
         if not gaie_version:
             gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
 
+        # Allow the scenario / guide README to override the default. The
+        # scenario knob (kustomize.routerChartVersion) takes precedence; the
+        # README's `export ROUTER_CHART_VERSION=...` falls back next; we then
+        # fall back to the v0 default the resolver applies.
+        readme_router_chart_version = parsed.variables.get("ROUTER_CHART_VERSION", "")
+        effective_router_chart_version = (
+            router_chart_version or readme_router_chart_version or "v0"
+        )
+
         resolver = GuideVariableResolver(
             guide_name=guide_name,
             namespace=namespace,
             gaie_version=gaie_version,
+            router_chart_version=effective_router_chart_version,
             repo_path=repo_path,
             accelerator_backend=accel_backend,
             variable_overrides=kust_config.get("guideVariableOverrides", {}),

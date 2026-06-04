@@ -129,6 +129,17 @@ def force_remove_finalizers_by_selector(
             '{"metadata":{"finalizers":null}}',
             check=False,
         )
+        context.logger.log_info(
+            f"  Force-deleting stuck pod {pod}",
+            emoji="🗑️",
+        )
+        cmd.kube(
+            "delete", pod,
+            "--namespace", namespace,
+            "--grace-period=0", "--force",
+            "--ignore-not-found=true",
+            check=False,
+        )
 
 
 def wait_for_pods_by_label(
@@ -519,7 +530,8 @@ def capture_infrastructure_logs(
     Captures:
     - Pod status (``kubectl get pods -o wide``) \u2192 ``pod_status.txt``
     - Model-serving logs (``llm-d.ai/model=<label>``) \u2192 ``modelserving_pods.log``
-    - EPP logs (``inferencepool=<label>-gaie-epp``) \u2192 ``epp_pods.log``
+    - EPP logs (``llm-d-router-{standalone,gateway}=<label>-router-epp``,
+      whichever matches the deployed mode) \u2192 ``epp_pods.log``
     - IGW logs (``app.kubernetes.io/component=inference-gateway``) \u2192 ``igw_pods.log``
     """
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -550,14 +562,27 @@ def capture_infrastructure_logs(
             "model-serving",
             context,
         )
-        capture_label_logs(
-            cmd,
-            namespace,
-            f"inferencepool={model_label}-gaie-epp",
-            log_dir / "epp_pods.log",
-            "EPP",
-            context,
-        )
+        # The llm-d-router chart migration renamed the EPP chart and
+        # dropped the legacy `inferencepool=<release>-epp` label. The new
+        # llm-d-router-{standalone,gateway}-dev charts apply only the
+        # mode-specific selector on the Pod template
+        # (`charts/router/templates/_helpers.tpl::selectorLabels`); the
+        # common `app.kubernetes.io/*` labels are on the Deployment, not
+        # the Pod, so `kubectl logs -l ...` can't use them. We don't have
+        # the gateway.className in this code path, so try both -- exactly
+        # one will match and the other writes an empty log.
+        _epp_log_path = log_dir / "epp_pods.log"
+        for _mode in ("llm-d-router-gateway", "llm-d-router-standalone"):
+            capture_label_logs(
+                cmd,
+                namespace,
+                f"{_mode}={model_label}-router-epp",
+                _epp_log_path,
+                "EPP",
+                context,
+            )
+            if _epp_log_path.exists() and _epp_log_path.stat().st_size > 0:
+                break
 
     # IGW logs (no model label needed)
     capture_label_logs(

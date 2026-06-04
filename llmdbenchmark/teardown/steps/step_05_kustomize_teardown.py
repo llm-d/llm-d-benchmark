@@ -50,6 +50,11 @@ class KustomizeTeardownStep(Step):
             if (auto_cloned / "guides").is_dir():
                 repo_path = str(auto_cloned)
         gaie_version = kust_config.get("gaieVersion", "")
+        # `ROUTER_CHART_VERSION` is referenced by guide READMEs alongside
+        # `GAIE_VERSION` after the llm-d-router chart migration. The
+        # teardown commands reference the same chart, so we need to
+        # resolve the same variable as during deploy.
+        router_chart_version = kust_config.get("routerChartVersion", "") or "v0"
         accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
         monitoring = kust_config.get("monitoring", False)
 
@@ -68,10 +73,17 @@ class KustomizeTeardownStep(Step):
             if not gaie_version:
                 gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
 
+            effective_router_chart_version = (
+                router_chart_version
+                or parsed.variables.get("ROUTER_CHART_VERSION", "")
+                or "v0"
+            )
+
             resolver = GuideVariableResolver(
                 guide_name=guide_name,
                 namespace=namespace,
                 gaie_version=gaie_version,
+                router_chart_version=effective_router_chart_version,
                 repo_path=repo_path,
                 accelerator_backend=accel_backend,
                 variable_overrides=kust_config.get("guideVariableOverrides", {}),
