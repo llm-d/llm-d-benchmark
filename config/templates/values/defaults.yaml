@@ -560,6 +560,10 @@ gateway:
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
   logLevel: error
+  # Optional: override the Gateway's HTTP listener port. When unset (default)
+  # the chart's built-in listener is used. Not supported for
+  # className: data-science-gateway-class (that class pins port 443 HTTPS+TLS).
+  # listenerPort: 80
   service:
     type: NodePort
   resources:
