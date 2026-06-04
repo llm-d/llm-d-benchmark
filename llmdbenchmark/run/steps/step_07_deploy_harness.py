@@ -221,6 +221,7 @@ class DeployHarnessStep(Step):
                         harness_name=harness_name,
                         results_dir=results_dir,
                         entrypoint=entrypoint,
+                        dataset_url=context.dataset_url,
                     )
 
                 # Build template values by merging plan_config with runtime values
@@ -646,6 +647,7 @@ class DeployHarnessStep(Step):
         harness_name: str,
         results_dir: str,
         entrypoint: str = "llm-d-benchmark.sh",
+        dataset_url: str | None = None,
     ) -> str:
         """Build the shell command that runs inside the harness pod.
 
@@ -702,6 +704,10 @@ class DeployHarnessStep(Step):
             f"export LLMDBENCH_HARNESS_VERSION=$(grep '^{harness_name}:' "
             f"/workspace/repos.txt 2>/dev/null | cut -d' ' -f3 || echo 'unknown')"
         )
+
+        # Propagate dataset URL so harness scripts can download from S3/etc.
+        if dataset_url:
+            parts.append(f"export LLMDBENCH_RUN_DATASET_URL={dataset_url}")
 
         # Call the entrypoint without --harness flag so NAME_AUTO stays 1
         # and the auto-discovery block is skipped (our exports are used as-is)
