@@ -181,7 +181,7 @@ jobs:
           if [[ "$CLUSTER_TYPE" == "ocp" ]]; then
             echo "Targetting self-hosted runners (OpenShift)"
             RUNNERS_JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
-          eliif [[ "$CLUSTER_TYPE" == "rocm" ]]; then
+          elif [[ "$CLUSTER_TYPE" == "rocm" ]]; then
             echo "Targetting self-hosted runners (AMD/CI)"
             RUNNERS_JSON_LIST='["rocm"]'
           else
