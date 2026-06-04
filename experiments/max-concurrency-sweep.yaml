@@ -1,0 +1,33 @@
+# =====================================================================
+# Experiment: Max Concurrency Sweep (vllm-benchmark)
+# =====================================================================
+#
+# Measures how inference latency and throughput change as the maximum
+# number of concurrent in-flight requests increases.
+#
+# Compatible harness: vllm-benchmark only.
+# The `max-concurrency` key is a top-level field in vllm-benchmark
+# profiles (random_concurrent, sanity_random, fixed_dataset, sharegpt).
+#
+# Usage:
+#   llmdbenchmark --spec <spec> run \
+#     --namespace <NAMESPACE> \
+#     --harness vllm-benchmark \
+#     --workload random_concurrent.yaml \
+#     --experiments workload/experiments/max-concurrency-sweep.yaml
+#
+# Example specs that use vllm-benchmark:
+#   pd-disaggregation, simulated-accelerators, wide-ep-lws
+
+treatments:
+  - name: conc8
+    max-concurrency: 8
+
+  - name: conc16
+    max-concurrency: 16
+
+  - name: conc24
+    max-concurrency: 24
+
+  - name: conc32
+    max-concurrency: 32
