@@ -149,41 +149,47 @@ jobs:
           done
         shell: bash
 
-      - name: set runs-on variable based on cluster provider
-        id: set_runs_on
+      - name: set cluster_type variable based on workflow and scenario name
+        id: set_cluster_provider
         run: |
           IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
           if [[ ! -z $IS_OCP ]]; then
+            export CLUSTER_TYPE=ocp
+          fi
+          IS_GKE=$(echo "${{ github.workflow }}" | grep -i "\gke" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "gke" || true)
+          if [[ ! -z $IS_GKE ]]; then
+            export CLUSTER_TYPE=gke
+          fi
+          IS_CKS=$(echo "${{ github.workflow }}" | grep -i "\cks" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "cks" || true)
+          if [[ ! -z $IS_CKS ]]; then
+            export CLUSTER_TYPE=cks
+          fi
+          IS_KIND=$(echo "${{ github.workflow }}" | grep -i "\kind" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "kind" || true)
+          if [[ ! -z $IS_KIND ]]; then
+            export CLUSTER_TYPE=kind
+          fi
+          IS_ROCM=$(echo "${{ github.workflow }}" | grep -i "\rocm" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "rocm" || true)
+          if [[ ! -z $IS_ROCM ]]; then
+            export CLUSTER_TYPE=rocm
+          fi
+          echo "Cluster provider is \"$CLUSTER_TYPE\""
+          echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
+
+      - name: set runs-on variable based on cluster provider
+        id: set_runs_on
+        run: |
+          if [[ "$CLUSTER_TYPE" == "ocp" ]]; then
             echo "Targetting self-hosted runners (OpenShift)"
             RUNNERS_JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
+          eliif [[ "$CLUSTER_TYPE" == "rocm" ]]; then
+            echo "Targetting self-hosted runners (AMD/CI)"
+            RUNNERS_JSON_LIST='["rocm"]'
           else
             echo "Targetting hosted runners (non-OpenShift)"
             RUNNERS_JSON_LIST='["ubuntu-latest"]'
           fi
           echo "Runners list is \"$RUNNERS_JSON_LIST\""
           echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
-
-      - name: set cluster_type variable based on workflow and scenario name
-        id: set_cluster_provider
-        run: |
-          IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
-          if [[ ! -z $IS_OCP ]]; then
-            CLUSTER_TYPE=ocp
-          fi
-          IS_GKE=$(echo "${{ github.workflow }}" | grep -i "\gke" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "gke" || true)
-          if [[ ! -z $IS_GKE ]]; then
-            CLUSTER_TYPE=gke
-          fi
-          IS_CKS=$(echo "${{ github.workflow }}" | grep -i "\cks" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "cks" || true)
-          if [[ ! -z $IS_CKS ]]; then
-            CLUSTER_TYPE=cks
-          fi
-          IS_KIND=$(echo "${{ github.workflow }}" | grep -i "\kind" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "kind" || true)
-          if [[ ! -z $IS_KIND ]]; then
-            CLUSTER_TYPE=kind
-          fi
-          echo "Cluster provider is \"$CLUSTER_TYPE\""
-          echo "cluster_type=$CLUSTER_TYPE" >> "$GITHUB_OUTPUT"
 
   benchmark:
     name: Benchmark
@@ -236,14 +242,14 @@ jobs:
           version: v0.31.0
 
       - name: Authenticate to Google Cloud
-        if: inputs.bucket_provider == 'gcs'
+        if: inputs.bucket_provider == 'gcs' || env.LLMDBENCH_CICD_TARGET == 'gke'
         id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           credentials_json: ${{ secrets.GKE_SA_KEY }}
 
       - name: Set up gcloud CLI and kubectl
-        if: inputs.bucket_provider == 'gcs'
+        if: inputs.bucket_provider == 'gcs' || env.LLMDBENCH_CICD_TARGET == 'gke'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
@@ -499,6 +505,8 @@ jobs:
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping data upload to bucket, due to \"dry-run\" mode activated"
+          elif [[ "${{ inputs.workload }}" == "sanity_random.yaml" ]]; then
+            echo "Skipping data upload to bucket, workload is "sanity_random.yml"
           else
             cd "$LLMDBENCH_WORKSPACE"
             REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
