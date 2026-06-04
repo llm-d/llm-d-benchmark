@@ -330,7 +330,8 @@ class TestParseExperimentEdgeCases:
     def test_dataset_url_parsed(self, tmp_path: Path):
         """experiment.datasetUrl is exposed on ExperimentPlan."""
         p = tmp_path / "with-dataset.yaml"
-        p.write_text(textwrap.dedent("""\
+        p.write_text(
+            textwrap.dedent("""\
             experiment:
               name: with-dataset
               harness: aiperf
@@ -339,7 +340,8 @@ class TestParseExperimentEdgeCases:
             treatments:
               - name: t1
                 k: v
-        """))
+        """)
+        )
         plan = parse_experiment(p)
         assert plan.dataset_url == "s3://bucket/path/to/trace.jsonl"
 
