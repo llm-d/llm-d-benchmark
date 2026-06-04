@@ -506,10 +506,11 @@ jobs:
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping data upload to bucket, due to \"dry-run\" mode activated"
           elif [[ "${{ inputs.workload }}" == "sanity_random.yaml" ]]; then
-            echo "Skipping data upload to bucket, workload is "sanity_random.yml"
+            echo "Skipping data upload to bucket, workload is \"sanity_random.yml\""
           else
             cd "$LLMDBENCH_WORKSPACE"
             REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+            find $REG_RESULTS/ -name run_metadata.yaml -exec sh -c "echo 'github_run_id: \"${{ github.run_id }}\"' >> {}" \;
             echo "Uploading data from directory \"REG_RESULTS\" to \"$GCS_FULL_PATH\""
             gcloud storage cp -r $REG_RESULTS/ "$GCS_FULL_PATH" || true
           fi
