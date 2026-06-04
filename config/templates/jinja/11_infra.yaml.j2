@@ -2,13 +2,13 @@
 {% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 {% set gw_class = gateway.className %}
 {# `epponly` renders no infra values: no Gateway is installed, the standalone
-   GAIE chart provides HTTP service directly via the EPP Envoy sidecar. #}
+   router chart provides HTTP service directly via the EPP Envoy sidecar. #}
 {% if gw_class == 'epponly' %}
 {% elif gw_class == 'gke' %}
 {# ── GKE: managed gateway with destinationRule ── #}
 gateway:
   gatewayClassName: gke-l7-regional-external-managed
-  destinationRule: {{ model_id_label }}-gaie-epp.{{ namespace.name }}
+  destinationRule: {{ model_id_label }}-router-epp.{{ namespace.name }}
 
 provider:
   name: gke
