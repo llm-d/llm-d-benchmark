@@ -153,6 +153,92 @@ class BaseSmoketest:
 
         return service_ip, gateway_port, is_standalone
 
+    @staticmethod
+    def _detect_served_model(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        plan_config: dict,
+    ) -> str | None:
+        """Detect the model actually served by the deployed model server.
+
+        In kustomize mode the served model comes from the guide manifests
+        in the llm-d repo (e.g. a small ``Qwen/Qwen3-0.6B`` for a
+        resource-constrained accelerator), NOT from the benchmark
+        scenario's ``model.name`` -- the scenario is shared across all
+        accelerators and kustomize mode explicitly ignores ``-m/--models``
+        and ``model.*``. Asserting against the scenario model therefore
+        produces false failures. Read the model straight off the running
+        decode Deployment's ``modelserver`` container instead.
+
+        Supports both vLLM (``vllm serve <MODEL>``) and SGLang
+        (``--model-path=<MODEL>``). Returns the served model id, or None
+        when it cannot be determined (caller falls back to the scenario).
+        """
+        guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
+        if not guide_name:
+            return None
+
+        selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role=decode"
+        result = cmd.kube(
+            "get",
+            "deployment",
+            "-l",
+            selector,
+            "--namespace",
+            namespace,
+            "-o",
+            (
+                "jsonpath={.items[0].spec.template.spec.containers"
+                "[?(@.name=='modelserver')].args}"
+            ),
+            check=False,
+        )
+        if result.dry_run or not result.success or not result.stdout.strip():
+            return None
+
+        try:
+            args = json.loads(result.stdout)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        if not isinstance(args, list):
+            return None
+
+        served = _served_model_from_args([str(a) for a in args])
+        if served:
+            context.logger.log_info(
+                f"Detected served model '{served}' from deployed "
+                f"'{guide_name}' decode Deployment (kustomize mode)"
+            )
+        return served
+
+    def _resolve_expected_model(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        plan_config: dict,
+    ) -> str:
+        """Return the model the smoketest should expect at the endpoint.
+
+        Prefers the model actually served by a kustomize-deployed model
+        server; falls back to the scenario's ``model.name`` for all other
+        deploy methods (standalone / modelservice / fma) where the
+        scenario IS the source of truth.
+        """
+        scenario_model = _nested_get(plan_config, "model", "name") or ""
+        if "kustomize" in context.deployed_methods:
+            served = self._detect_served_model(cmd, context, namespace, plan_config)
+            if served:
+                if scenario_model and served != scenario_model:
+                    context.logger.log_warning(
+                        f"Served model '{served}' differs from scenario "
+                        f"model '{scenario_model}'; asserting against the "
+                        f"served model (kustomize mode)"
+                    )
+                return served
+        return scenario_model
+
     def run_health_checks(
         self,
         context: ExecutionContext,
@@ -166,7 +252,7 @@ class BaseSmoketest:
         namespace = context.require_namespace()
         plan_config = _load_config(stack_path)
 
-        model_name = _nested_get(plan_config, "model", "name") or ""
+        model_name = self._resolve_expected_model(cmd, context, namespace, plan_config)
         model_id_label = (
             plan_config.get("model_id_label", "")
             or _nested_get(plan_config, "model", "shortName")
@@ -535,7 +621,7 @@ class BaseSmoketest:
         namespace = context.require_namespace()
         plan_config = _load_config(stack_path)
 
-        model_name = _nested_get(plan_config, "model", "name") or ""
+        model_name = self._resolve_expected_model(cmd, context, namespace, plan_config)
 
         # skip base inference test for FMA
         if "fma" in context.deployed_methods:
@@ -1970,6 +2056,40 @@ class BaseSmoketest:
         protocol = "https" if tls_termination else "http"
 
         return f"{protocol}://{route_host}/{model_id_label}{endpoint}"
+
+
+def _served_model_from_args(args: list[str]) -> str | None:
+    """Extract the served model id from a model server's container args.
+
+    Handles the two backends used by the guides:
+
+    * vLLM   -- ``["vllm", "serve", "<MODEL>", "--flag", ...]`` (the
+      model is the first positional token after ``serve``; when the
+      container splits ``command: ["vllm", "serve"]`` from ``args``, the
+      model is simply the first non-flag token).
+    * SGLang -- ``["--model-path=<MODEL>", ...]`` or
+      ``["--model-path", "<MODEL>", ...]``.
+
+    Returns the model id, or None when no model token is present.
+    """
+    for i, raw in enumerate(args):
+        arg = raw.strip()
+        if arg.startswith("--model-path") or arg.startswith("--model="):
+            if "=" in arg:
+                return arg.split("=", 1)[1].strip() or None
+            if i + 1 < len(args):
+                return args[i + 1].strip() or None
+
+    # vLLM positional: first bare (non-flag) token that isn't the
+    # ``vllm``/``serve`` subcommand words.
+    for arg in args:
+        token = arg.strip()
+        if not token or token.startswith("-"):
+            continue
+        if token in ("vllm", "serve"):
+            continue
+        return token
+    return None
 
 
 def _nested_get(d: dict, *keys: str):
