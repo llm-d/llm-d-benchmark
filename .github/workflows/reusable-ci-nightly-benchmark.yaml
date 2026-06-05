@@ -261,6 +261,8 @@ jobs:
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: 1200
       LLMDBENCH_CICD_WAIT_TIMEOUT: 1200
+      LLMDBENCH_CICD_JOB_TIMEOUT: 2700
+      LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: 1200
       LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
       LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || 'auto' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
@@ -456,7 +458,7 @@ jobs:
             --for=condition=Ready \
             -l job-name=tpu-request-job \
             -n "$LLMDBENCH_CICD_NS" \
-            --timeout=45m
+            --timeout=$LLMDBENCH_CICD_JOB_TIMEOUT
 
           # Release the chips so test can use them
           kubectl delete job tpu-request-job -n "$LLMDBENCH_CICD_NS"
@@ -565,8 +567,8 @@ jobs:
               eval $lkcmd
               cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
             fi
-            echo "### Setting \"repoPath\" to \"$HOME/llm-d/llm-d\""
-            lkcmd="yq -i \".scenario[0].kustomize.repoPath = \\\"$HOME/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            echo "### Setting \"repoPath\" to \"$HOME/work/llm-d/llm-d\""
+            lkcmd="yq -i \".scenario[0].kustomize.repoPath = \\\"$HOME/work/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.repoPath'
@@ -649,6 +651,9 @@ jobs:
           if [[ "$LLMDBENCH_IS_VERBOSE" == "true" ]]; then
             export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
           fi
+          #if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+          #  export LLMDBENCH_EXTRA_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_OPERATION_CMD "
+          #fi
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
             export LLMDBENCH_EXTRA_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_OPERATION_CMD "
           fi
