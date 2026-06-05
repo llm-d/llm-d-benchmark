@@ -261,6 +261,8 @@ jobs:
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: 1200
       LLMDBENCH_CICD_WAIT_TIMEOUT: 1200
+      LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || auto }}
+      LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || auto }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
@@ -373,14 +375,20 @@ jobs:
         run: |
           echo "### Attempting to list node names..."
           kubectl get node
-          exit $?
         shell: bash
 
       - name: Show cluster storageclasses
         run: |
           echo "### Attempting to list storage classes..."
           kubectl get storageclass
-          exit $?
+          if [[ $? -ne 0 ]]; then
+            exit 1
+          fi
+          IS_DEFAULT_SC=$(kubectl get storageclass  | grep "(default)" || true)
+          if [[ -z $IS_DEFAULT_SC ]]; then
+            echo "ERROR: please define a default StorageClass on your cluster"
+            exit 1
+          fi
         shell: bash
 
       - name: Request TPUs (DWS)
@@ -541,24 +549,10 @@ jobs:
           echo "### llm-d code is present (branch $(git branch --show-current))"
         shell: bash
 
-      - name: Apply overrides to scenarios
+      - name: Apply overrides to llm-d-benchmark scenarios (yaml)
         run: |
           touch ~/work/lkcmd.txt
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-            echo "### Overriding \"repoPath\" to \"$HOME/work/llm-d/llm-d\""
-            yq -i ".scenario[0].kustomize.repoPath = \"$HOME/work/llm-d/llm-d\"" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
-            if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
-              echo "### Setting \"Storage class\" to \"standard-rwx\""
-              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "standard-rwx"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
-            fi
-            if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
-              echo "### Setting \"Storage class\" to \"shared-vast\""
-              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "shared-vast"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
-            fi
-            if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
-              echo "### Setting \"Storage class\" to \"ibm-spectrum-scale-fileset\""
-              yq -i '.scenario[0].storage.workloadPvc.storageClassName = "ibm-spectrum-scale-fileset"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
-            fi
             echo "### Setting \"INFRA_PROVIDER\" to \"$LLMDBENCH_CICD_INFRA_PROVIDER\""
             lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \\\"$LLMDBENCH_CICD_INFRA_PROVIDER\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "$lkcmd" > ~/work/lkcmd.txt
@@ -571,17 +565,6 @@ jobs:
               eval $lkcmd
               cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
             fi
-            if [[ -z $LLMDBENCH_HF_TOKEN ]]; then
-              echo "#### Assigning fake value to LLMDBENCH_HF_TOKEN"
-              export LLMDBENCH_HF_TOKEN=hf_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
-            else
-              export LLMDBENCH_HF_TOKEN=$(echo $LLMDBENCH_HF_TOKEN | base64 -d)
-            fi
-            echo "### Setting \"HF_TOKEN\" to contents of \"$LLMDBENCH_HF_TOKEN\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.HF_TOKEN = \\\"$LLMDBENCH_HF_TOKEN\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
-            echo -n "$lkcmd" > ~/work/lkcmd.txt
-            eval $lkcmd
-            #cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
             echo "### Setting \"NAMESPACE\" to \"$LLMDBENCH_CICD_NS\""
             lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.NAMESPACE = \\\"$LLMDBENCH_CICD_NS\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "$lkcmd" > ~/work/lkcmd.txt
@@ -593,9 +576,37 @@ jobs:
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
+          fi
+          if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
+            echo " ### Setting harness executable to \"llm-d-benchmark.py\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+          fi
+        shell: bash
+
+      - name: Handle namespace and secret (HF_TOKEN) creation in case of kustomize
+        run: |
+          cd ~
+          touch ~/work/lkcmd.txt
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            if [[ -z $LLMDBENCH_HF_TOKEN ]]; then
+              echo "#### Assigning fake value to LLMDBENCH_HF_TOKEN"
+              export LLMDBENCH_HF_TOKEN=hf_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+            else
+              export LLMDBENCH_HF_TOKEN=$(echo $LLMDBENCH_HF_TOKEN | base64 -d)
+            fi
+            echo -n $LLMDBENCH_HF_TOKEN > hf_token.txt
+            kubectl create namespace $LLMDBENCH_CICD_NS --dry-run=client -o yaml | kubectl apply -f -
+            kubectl kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml
+            rm -rf hf_token.txt
+          fi
+        shell: bash
+
+      - name: Apply overrides to kustomize manifests
+        run: |
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             LLMDBENCH_CICD_KUSTOMIZE_PATH=~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_INFRA_PROVIDER
             echo "Kustomize full path is \"$LLMDBENCH_CICD_KUSTOMIZE_PATH\""
-            detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH  yq .spec.template.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|null" | uniq | cut -d ' ' -f 2)
+            detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH | yq .spec.template.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|null" | uniq | cut -d ' ' -f 2)
             echo "LLMDBENCH_CICD_DETECTED_MODEL is \"$detected_model\""
             echo "LLMDBENCH_CICD_DETECTED_MODEL=$detected_model"  >> $GITHUB_ENV
             echo " ### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
@@ -603,7 +614,6 @@ jobs:
               find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
               find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -print -exec yq '.spec.template.spec.priorityClassName' {} \;
             done
-            export LLMDBENCH_CICD_DECODE_PODS="${{ inputs.decode_pods }}"
             if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
               echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
               for i in vllm decode; do
@@ -611,7 +621,6 @@ jobs:
                 find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -print -exec yq ".spec.replicas" {} \;
               done
             fi
-            export LLMDBENCH_CICD_PREFILL_PODS="${{ inputs.prefill_pods }}"
             if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
               echo "### Setting decode pods to \"$LLMDBENCH_CICD_PREFILL_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
               for i in prefill; do
@@ -619,10 +628,6 @@ jobs:
                 find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -print -exec yq ".spec.replicas" {} \;
               done
             fi
-          fi
-          if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
-            echo " ### Setting harness executable to \"llm-d-benchmark.py\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-            yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
           fi
         shell: bash
 
