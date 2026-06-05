@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# EPP Scale Limits Benchmark — llm-d/llm-d-router#1290
+# EPP Scale Limits Benchmark
 #
 # Usage:
 #   ./run-benchmark.sh --config benchmark-templates/stress-ramp.yaml

@@ -13,10 +13,6 @@
 #     -p <NAMESPACE> \
 #     -k <KUBECONFIG>
 #
-# References:
-#   - https://github.com/llm-d/llm-d-router/issues/1290
-#   - https://github.com/llm-d/llm-d-router/issues/1342
-#
 # =====================================================================
 
 experiment:
