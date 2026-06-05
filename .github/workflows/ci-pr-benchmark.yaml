@@ -167,3 +167,30 @@ jobs:
       harness: guidellm
       workload: sanity_random.yaml
     secrets: inherit
+
+  benchmark-kustomize-optimized-baseline:
+    name: Benchmark - kustomize / epponly / optimized-baseline (Kind)
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: guides
+      standup_method: kustomize
+      standup_scenario: optimized-baseline
+      decode_pods: 2
+      prefill_pods: auto
+      accelerator_type: gpu
+      backend_type: vllm
+      infra_provider: base
+      connector:
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      helm_release: lmdbenchcicdr
+      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      bucket_project: llm-d-scale
+      bucket_provider: none
+      bucket_path: /tmp/llmdbenchcicd
+      gateway_class: epponly
+      monitoring_enabled: true
+      dry_run: true
+      verbose: false
+      harness: inference-perf
+      workload: sanity_random.yaml
+    secrets: inherit
