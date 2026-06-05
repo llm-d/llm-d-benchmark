@@ -41,10 +41,26 @@
                     else ('MI300X' if 'MI300X' in accel_label
                     else ('G2' if 'G2' in accel_label
                     else '')))) %}
+{# When fma.enabled is true, target the FMA requester Deployment instead of
+   the modelservice decode Deployment. Both kinds are Deployment (matches the
+   pattern in PR llm-d-incubation/llm-d-fast-model-actuation#552); only the
+   name differs. The variant suffix (fma/decode) keeps the VA's name + the
+   Prometheus variant label aligned with what the dual-pods controller emits
+   onto launcher pods at bind time via the InferenceServerConfig. #}
+{% if fma is defined and fma.enabled | default(false) %}
+{% set scale_kind = 'Deployment' %}
+{% set scale_name = 'fma-requester-' ~ model_id_label %}
+{% set variant_suffix = 'fma' %}
+{% else %}
+{% set scale_kind = 'Deployment' %}
+{% set scale_name = model_id_label ~ '-decode' %}
+{% set variant_suffix = 'decode' %}
+{% endif %}
+{% set variant_name = model_id_label ~ '-' ~ variant_suffix %}
 apiVersion: llmd.ai/v1alpha1
 kind: VariantAutoscaling
 metadata:
-  name: {{ model_id_label }}-decode
+  name: {{ variant_name }}
   namespace: {{ wva.namespace | default(namespace.name, true) }}
   labels:
     inference.optimization/acceleratorName: "{{ accel_name }}"
@@ -54,8 +70,8 @@ metadata:
     wva.llmd.ai/controller-instance: "{{ wva.namespace | default(namespace.name, true) }}"
 spec:
   scaleTargetRef:
-    kind: Deployment
-    name: {{ model_id_label }}-decode
+    kind: {{ scale_kind }}
+    name: {{ scale_name }}
   modelID: "{{ model.name }}"
   variantCost: "{{ wva.variantAutoscaling.variantCost | default('10.0') }}"
   minReplicas: {{ wva.variantAutoscaling.minReplicas | default(1) }}

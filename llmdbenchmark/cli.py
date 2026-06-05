@@ -385,19 +385,26 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
             )
             return methods
     else:
-        # Standup/teardown: treat as mutually exclusive
+        # Standup/teardown: kustomize and standalone are exclusive primaries.
+        # modelservice and fma can stack: when both flags are set, FMA layers
+        # on top of modelservice (e.g. workload-autoscaling guide). Either alone
+        # also works as a primary, preserving FMA-only nightly behavior.
         if kustomize:
             logger.log_info("Auto-detected deploy method from plan: kustomize")
             return ["kustomize"]
         if standalone:
             logger.log_info("Auto-detected deploy method from plan: standalone")
             return ["standalone"]
-        if fma:
-            logger.log_info("Auto-detected deploy method from plan: fma")
-            return ["fma"]
+        methods = []
         if modelservice:
-            logger.log_info("Auto-detected deploy method from plan: modelservice")
-            return ["modelservice"]
+            methods.append("modelservice")
+        if fma:
+            methods.append("fma")
+        if methods:
+            logger.log_info(
+                f"Auto-detected deploy method(s) from plan: {', '.join(methods)}"
+            )
+            return methods
 
     if phase == "teardown":
         raise PhaseError(

@@ -1,0 +1,48 @@
+{# ============================================================================
+   19_wva-kustomize.yaml.j2
+
+   Kustomization wrapper that installs the Workload Variant Autoscaler (WVA)
+   directly from the upstream repo's `config/overlays/namespace-scoped/openshift`
+   overlay. Replaces the previous helm-chart install path.
+
+   Why kustomize and not helm:
+     The published helm chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
+     with `wva.namespaceScoped: true` does NOT generate the watch-Role the
+     controller needs (only the leader-election Role). The controller then
+     crash-loops on cache sync because it can't watch VariantAutoscaling /
+     HPA / ScaledObject / ConfigMap. The upstream kustomize overlay always
+     emits a ClusterRole + ClusterRoleBinding for the controller SA,
+     which is what every working install on shared OCP clusters uses.
+
+   The upstream openshift overlay also handles:
+     - Service-CA cert mount (no manual cert extraction needed on OCP)
+     - --watch-namespace=$(POD_NAMESPACE) for namespace-scoped reconciliation
+     - manager-config ConfigMap pointed at thanos-querier with proper TLS
+
+   We override:
+     - Target namespace (upstream defaults to `wva-system`)
+     - Image (when scenario specifies wva.image.{repository,tag})
+     - Optional ref pin (wva.repoRef -- defaults to `main`)
+
+   Pattern matches step_06_kustomize_deploy._build_overlay_wrapper(): write a
+   small kustomization.yaml that lists the upstream as a `resources:` entry,
+   layer per-stack overrides on top, then `kubectl apply -k`.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: {{ wva.namespace | default(namespace.name, true) }}
+
+resources:
+- github.com/llm-d/llm-d-workload-variant-autoscaler/config/overlays/namespace-scoped/openshift?ref={{ wva.repoRef | default('main') }}
+
+{% if wva.image is defined and wva.image.repository is defined %}
+images:
+- name: ghcr.io/llm-d/workload-variant-autoscaler
+  newName: {{ wva.image.repository }}
+  newTag: {{ wva.image.tag | default('latest') }}
+{% endif %}
+{% endif %}

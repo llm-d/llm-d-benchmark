@@ -18,7 +18,7 @@ import yaml
 from jinja2 import Environment
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
     find_data_access_pod,
     wait_for_pods_by_label,
@@ -97,10 +97,11 @@ class DeployHarnessStep(Step):
         is_standalone = "standalone" in context.deployed_methods or self._resolve(
             plan_config, "standalone.enabled", default=False
         )
-        is_fma = "fma" in context.deployed_methods or self._resolve(
-            plan_config, "fma.enabled", default=False
-        )
-        stack_type = "vllm-prod" if is_standalone or is_fma else "llm-d"
+        # 'vllm-prod' stack type fits direct-to-pod harnesses (standalone,
+        # FMA-only). When FMA layers on top of modelservice the harness still
+        # talks to the modelservice/EPP gateway, so use 'llm-d'.
+        is_fma_only = is_fma_only_mode(context)
+        stack_type = "vllm-prod" if is_standalone or is_fma_only else "llm-d"
 
         # Resolve model ID label used as the llm-d.ai/model label value
         # (hashed format matching bash model_attribute) for infrastructure log capture.

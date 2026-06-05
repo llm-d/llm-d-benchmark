@@ -1,0 +1,217 @@
+name: CI - Nightly Run Benchmark on OCP ("FMA + WVA" autoscaling path)
+
+# Mirrors ci-nightly-benchmark-ocp-fma.yaml but targets the FMA+WVA scenario
+# under inference-perf load. Standing up the stack alone is necessary but
+# weak — WVA's whole job is to scale under traffic, so the default harness
+# is inference-perf + shared_prefix_synthetic.yaml (same as someone running
+# guides/workload-autoscaling.yaml manually).
+#
+# Why a separate workflow rather than reusing the FMA-only one:
+#   - Different scenario file (cicd/ocp-fma-wva.yaml vs cicd/ocp.yaml)
+#   - Different namespace/workspace defaults so the two nightlies don't
+#     collide on shared cluster state
+#   - Different harness defaults (inference-perf vs nop) — the FMA-only
+#     nightly validates standup; this one validates standup + autoscaling
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario_dir:
+        description: 'Directory housing the scenarios'
+        required: false
+        default: 'cicd'
+      standup_method:
+        description: 'Standup method to be used ("standalone","fma","modelservice")'
+        required: false
+        default: 'fma'
+      standup_scenario:
+        description: 'Scenario name (file under config/scenarios/<scenario_dir>/)'
+        required: false
+        type: 'string'
+        default: 'ocp-fma-wva'
+      decode_pods:
+        description: 'Number of decode pods (FMA+WVA path keeps decode at 0)'
+        required: false
+        type: 'string'
+        default: 'auto'
+      prefill_pods:
+        description: 'Number of prefill pods'
+        required: false
+        type: 'string'
+        default: 'auto'
+      accelerator_type:
+        description: 'Type of accelerator (kustomize only)'
+        required: false
+        type: 'string'
+        default: 'gpu'
+      backend_type:
+        description: 'Type of backend (kustomize only)'
+        required: false
+        type: 'string'
+        default: 'vllm'
+      infra_provider:
+        description: 'Target cloud provider (kustomize only)'
+        required: false
+        type: 'string'
+        default: 'ocp'
+      connector:
+        description: 'Accelerator offloading connector (kustomize only)'
+        required: false
+        type: 'string'
+        default: ''
+      cluster_namespace:
+        description: 'Cluster namespace'
+        required: false
+        default: 'llmdbenchcicdfwns-ocp'      # distinct from llmdbenchcicdfns-ocp (FMA-only)
+      helm_release:
+        description: 'Helm release name'
+        required: false
+        default: 'lmdbenchcicdfwr-ocp'
+      workspace_dir:
+        description: 'Workspace directory'
+        required: false
+        default: '/tmp/llmdbenchcicdfw-ocp'
+      bucket_project:
+        description: 'Project associated to the object storage bucket'
+        required: false
+        default: 'llm-d-scale'
+      bucket_provider:
+        description: 'Type (provider of) the bucket'
+        required: false
+        default: 'gcs'
+      bucket_path:
+        description: 'Path to object storage bucket'
+        required: false
+        default: 'llm-d-benchmarks/regressions'
+      gateway_class:
+        description: 'Class of gateway used'
+        required: false
+        default: 'none'
+      monitoring_enabled:
+        description: 'Enabled monitoring ("true", "false")'
+        required: true
+        type: 'string'
+        default: 'true'
+      dry_run:
+        description: 'Execute workflow in "dry-run" mode'
+        required: false
+        default: 'false'
+      verbose:
+        description: 'Execute workflow in "verbose" mode'
+        required: false
+        default: 'false'
+        type: 'string'
+      harness:
+        description: 'Harness ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
+        required: false
+        # Default to inference-perf so nightly exercises the same load shape
+        # someone running the guide manually would use. Can be overridden to
+        # "nop" via workflow_dispatch for a faster standup-only validation.
+        default: 'inference-perf'
+        type: 'string'
+      workload:
+        description: 'Workload profile (under workload/profiles/<harness>/)'
+        required: false
+        default: 'shared_prefix_synthetic.yaml'
+        type: 'string'
+
+  # Self-targeting push trigger so GitHub Actions registers this workflow
+  # before it lands on main. Without this, `workflow_dispatch` returns 404
+  # ("workflow not found on the default branch") because GH only registers
+  # workflow files that are reachable via at least one trigger when first
+  # seen. After this branch merges to main, this `push:` block can be
+  # removed -- main-side workflow_dispatch + schedule will be enough.
+  # Pattern borrowed from the existing ci-nightly-benchmark-ocp-vllmrs.yaml
+  # workflow, which lives only on the `vllm-rs` branch.
+  push:
+    branches:
+      - fma_wva
+    paths:
+      - '.github/workflows/ci-nightly-benchmark-ocp-fma-wva.yaml'
+      - 'config/scenarios/cicd/ocp-fma-wva.yaml'
+      - 'config/specification/cicd/ocp-fma-wva.yaml.j2'
+
+  schedule:
+    # 30 minutes offset from the FMA-only nightly so they don't compete for
+    # cluster resources when both run on the same OCP cluster.
+    - cron: '30 0 * * *'
+
+jobs:
+  nightly:
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
+      standup_method: ${{ inputs.standup_method || 'fma' }}
+      standup_scenario: ${{ inputs.standup_scenario || 'ocp-fma-wva' }}
+      decode_pods: ${{ inputs.decode_pods || 'auto' }}
+      prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
+      accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
+      backend_type: ${{ inputs.backend_type || 'vllm' }}
+      infra_provider: ${{ inputs.infra_provider || 'ocp' }}
+      connector: ${{ inputs.connector || '' }}
+      cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdfwns-ocp' }}
+      helm_release: ${{ inputs.helm_release || 'lmdbenchcicdfwr-ocp' }}
+      workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicdfw-ocp' }}
+      bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
+      bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      gateway_class: ${{ inputs.gateway_class || 'none' }}
+      monitoring_enabled: ${{ inputs.monitoring_enabled || 'true' }}
+      dry_run: ${{ inputs.dry_run || 'false' }}
+      verbose: ${{ inputs.verbose || 'false' }}
+      harness: ${{ inputs.harness || 'inference-perf' }}
+      workload: ${{ inputs.workload || 'shared_prefix_synthetic.yaml' }}
+    secrets: inherit
+
+  display-results:
+    name: Display Results (OCP FMA+WVA)
+    needs: [nightly]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'ocp' }}
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Display results
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          FMA_WVA_DIR="/tmp/fma-wva-results"
+          mkdir -p "$FMA_WVA_DIR"
+          # Results land under <bucket>/<target>/fma/<date>/ for the FMA standup
+          # method (same path as the FMA-only nightly), distinguished here by
+          # the workspace + namespace defaults that keep state disjoint.
+          gcloud storage cp -r "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/fma/$RUN_DATE/" "$FMA_WVA_DIR/" || true
+
+          latest=$(find "$FMA_WVA_DIR" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
+
+          echo "## FMA + WVA Metrics (OCP)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          found=0
+          if [ -n "$latest" ]; then
+            echo "_Latest run: $(basename "$latest")_" >> "$GITHUB_STEP_SUMMARY"
+            for f in $(find "$latest" -path "*/analysis/*" -name "result.txt" 2>/dev/null | sort); do
+              found=1
+              experiment_id=$(basename "$(dirname "$f")")
+              {
+                echo "### $experiment_id"
+                echo '```'
+                cat "$f"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            done
+          fi
+          if [ "$found" -eq 0 ]; then
+            echo "_No FMA+WVA results found._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        shell: bash
