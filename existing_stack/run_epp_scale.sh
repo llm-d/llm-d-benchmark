@@ -302,7 +302,15 @@ if [[ "${USE_GPU}" == "true" ]]; then
 fi
 log "Starting benchmark run: ${RUN_ID}"
 
-kubectl cp "${CONFIG_FILE}" "${NAMESPACE}/inference-perf:/tmp/bench-config.yml"
+RENDERED_CONFIG="$(mktemp /tmp/bench-config-XXXXXX.yaml)"
+trap 'rm -f "${RENDERED_CONFIG}"' EXIT
+EPP_ENDPOINT="http://${EPP_RELEASE}-epp:8081"
+sed -e "s|REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL|${MODEL_NAME}|g" \
+    -e "s|REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL|${EPP_ENDPOINT}|g" \
+    -e "s|REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER|${TOKENIZER}|g" \
+    "${CONFIG_FILE}" > "${RENDERED_CONFIG}"
+
+kubectl cp "${RENDERED_CONFIG}" "${NAMESPACE}/inference-perf:/tmp/bench-config.yml"
 
 kubectl exec -n "${NAMESPACE}" inference-perf -- \
     inference-perf -c /tmp/bench-config.yml --log-level INFO 2>&1 | tee "${RESULTS_DIR}/${RUN_ID}.log"
