@@ -108,6 +108,27 @@ on:
         required: false
         default: 'sanity_random.yaml'
         type: 'string'
+      tpu_topology:
+        description: 'GKE TPU topology (e.g. 2x4, 2x2x1)'
+        required: false
+        type: 'string'
+        default: '2x4'
+      tpu_chips:
+        description: 'Total TPU chips to request (0 for simulated)'
+        required: false
+        type: 'string'
+        default: '0'
+      tpu_wait_timeout:
+        description: 'Minutes to wait for TPU chips to become available (0 = no wait, fail immediately)'
+        required: false
+        type: 'string'
+        default: '0'
+      tpu_nodepool:
+        description: 'Target TPU node pool name (empty = do not override)'
+        required: false
+        type: 'string'
+        default: ''
+
 #  push:
 #    branches:
 #      - main
@@ -207,13 +228,24 @@ jobs:
           echo "Runners list is \"$RUNNERS_JSON_LIST\""
           echo "runners=$RUNNERS_JSON_LIST" >> "$GITHUB_OUTPUT"
 
+  skip-v7-warning:
+    name: Skip TPU v7 Run
+    runs-on: ubuntu-latest
+    if: inputs.accelerator_type == 'tpu-v7'
+    steps:
+      - name: Print skip message
+        run: |
+          echo "::warning::TPU v7 capacity is currently not available. Skipping benchmark run."
+          echo "## TPU v7 Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "TPU v7 capacity is currently not available. This run has been skipped." >> $GITHUB_STEP_SUMMARY
+
   benchmark:
     name: Benchmark
-#    runs-on: ubuntu-latest
     runs-on: ${{ fromJSON(needs.ensure-nightly-build-image.outputs.conditional_runs_on) }}
 #    container:
 #      image: ghcr.io/llm-d/llm-d-benchmark:nightly
     needs: [ensure-nightly-build-image]
+    if: inputs.accelerator_type != 'tpu-v7'
     timeout-minutes: 240
 
     env:
@@ -243,6 +275,9 @@ jobs:
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
       GKE_CLUSTER_ZONE: us-east5
+      TPU_TOPOLOGY: ${{ inputs.tpu_topology || '2x4' }}
+      TPU_CHIPS: ${{ inputs.tpu_chips || '0' }}
+      TPU_NODEPOOL: ${{ inputs.tpu_nodepool || '' }}
 
     steps:
       - name: Checkout Code
@@ -347,6 +382,88 @@ jobs:
           kubectl get storageclass
           exit $?
         shell: bash
+
+      - name: Request TPUs (DWS)
+        if: env.LLMDBENCH_CICD_TARGET == 'gke' && contains(inputs.accelerator_type, 'tpu') && inputs.tpu_chips > 0
+        run: |
+          kubectl create namespace "$LLMDBENCH_CICD_NS" || echo "Namespace already exists"
+
+          # Map accelerator_type (tpu-v6, tpu-v7) to GKE accelerator resource name
+          if [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v6" ]]; then
+            ACCELERATOR="tpu-v6e-slice"
+          elif [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v7" ]]; then
+            ACCELERATOR="tpu7x"
+          else
+            echo "::error::Unsupported TPU accelerator type: $LLMDBENCH_CICD_ACCELERATOR"
+            exit 1
+          fi
+
+          TOPOLOGY="$TPU_TOPOLOGY"
+          CHIPS_TO_REQUEST="$TPU_CHIPS"
+
+          CHIPS_PER_VM=8
+          if [[ "$ACCELERATOR" == "tpu7x" ]]; then
+            CHIPS_PER_VM=4
+          fi
+
+          VMS=$(( CHIPS_TO_REQUEST / CHIPS_PER_VM ))
+          if [ "$VMS" -lt 1 ]; then
+            VMS=1
+          fi
+
+          echo "Dynamic TPU request parameters calculated:"
+          echo "  CHIPS_TO_REQUEST: $CHIPS_TO_REQUEST"
+          echo "  ACCELERATOR: $ACCELERATOR"
+          echo "  TOPOLOGY: $TOPOLOGY"
+          echo "  CHIPS_PER_VM: $CHIPS_PER_VM"
+          echo "  VMS: $VMS"
+
+          cat <<EOF | kubectl apply -n "$LLMDBENCH_CICD_NS" -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: tpu-request-job
+          spec:
+            parallelism: $VMS
+            completions: $VMS
+            template:
+              spec:
+                nodeSelector:
+                  cloud.google.com/gke-flex-start: "true"
+                  cloud.google.com/gke-tpu-accelerator: $ACCELERATOR
+                  cloud.google.com/gke-tpu-topology: "$TOPOLOGY"
+                containers:
+                - name: tpu-container
+                  image: gcr.io/k8s-staging-perf-tests/sleep:latest
+                  args: ["3600s"]
+                  resources:
+                    requests:
+                      google.com/tpu: "$CHIPS_PER_VM"
+                    limits:
+                      google.com/tpu: "$CHIPS_PER_VM"
+                restartPolicy: OnFailure
+          EOF
+
+          kubectl wait pod \
+            --for=condition=Ready \
+            -l job-name=tpu-request-job \
+            -n "$LLMDBENCH_CICD_NS" \
+            --timeout=45m
+
+          # Release the chips so test can use them
+          kubectl delete job tpu-request-job -n "$LLMDBENCH_CICD_NS"
+
+          # Export topology and accelerator so subsequent steps (like scenario overrides) can read them
+          echo "TPU_ACCELERATOR=$ACCELERATOR" >> $GITHUB_ENV
+          echo "TPU_TOPOLOGY=$TOPOLOGY" >> $GITHUB_ENV
+
+          echo "## TPU Status — Nightly ($LLMDBENCH_CICD_SCENARIO on GKE TPU)" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| TPU Accelerator Type | ${{ inputs.accelerator_type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GKE Resource Name | $ACCELERATOR |" >> $GITHUB_STEP_SUMMARY
+          echo "| TPU Topology | $TOPOLOGY |" >> $GITHUB_STEP_SUMMARY
+          echo "| Requested Chips | $CHIPS_TO_REQUEST |" >> $GITHUB_STEP_SUMMARY
 
       - name: Create nightly PriorityClass
         run: |
@@ -454,6 +571,22 @@ jobs:
               eval $lkcmd
               cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
             fi
+            if [[ -z $LLMDBENCH_HF_TOKEN ]]; then
+              echo "#### Assigning fake value to LLMDBENCH_HF_TOKEN"
+              export LLMDBENCH_HF_TOKEN=hf_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+            else
+              export LLMDBENCH_HF_TOKEN=$(echo $LLMDBENCH_HF_TOKEN | base64 -d)
+            fi
+            echo "### Setting \"HF_TOKEN\" to contents of \"$LLMDBENCH_HF_TOKEN\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.HF_TOKEN = \\\"$LLMDBENCH_HF_TOKEN\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            echo -n "$lkcmd" > ~/work/lkcmd.txt
+            eval $lkcmd
+            #cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
+            echo "### Setting \"NAMESPACE\" to \"$LLMDBENCH_CICD_NS\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.NAMESPACE = \\\"$LLMDBENCH_CICD_NS\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            echo -n "$lkcmd" > ~/work/lkcmd.txt
+            eval $lkcmd
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.NAMESPACE'
             export LLMDBENCH_CICD_BACKEND_ACCELERATOR=$(echo $LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND | sed 's^//^/^g')
             echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\""
             lkcmd="yq -i \".scenario[0].kustomize.acceleratorBackend = \\\"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
