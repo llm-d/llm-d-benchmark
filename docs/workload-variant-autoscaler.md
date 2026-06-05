@@ -513,7 +513,7 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 
 | Artifact | File |
 |---|---|
-| Chart values rendered into the helm install | [`config/templates/jinja/19_wva-values.yaml.j2`](../config/templates/jinja/19_wva-values.yaml.j2) |
+| Kustomize wrapper for the WVA controller install | [`config/templates/jinja/19_wva-kustomize.yaml.j2`](../config/templates/jinja/19_wva-kustomize.yaml.j2) |
 | WVA namespace label patch | [`config/templates/jinja/23_wva-namespace.yaml.j2`](../config/templates/jinja/23_wva-namespace.yaml.j2) |
 | Per-stack `VariantAutoscaling` | [`config/templates/jinja/27_wva-variantautoscaling.yaml.j2`](../config/templates/jinja/27_wva-variantautoscaling.yaml.j2) |
 | Per-stack `HorizontalPodAutoscaler` | [`config/templates/jinja/28_wva-hpa.yaml.j2`](../config/templates/jinja/28_wva-hpa.yaml.j2) |

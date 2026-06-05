@@ -1,0 +1,49 @@
+load:
+  type: constant
+  # Autoscaling-validation profile for Qwen3-32B on H100. Calibrated to
+  # exceed 1-replica capacity (so WVA scales) but stay within 2-replica
+  # capacity.
+  num_workers: 2
+  stages:
+  - rate: 0.5         # 1 RPS aggregate -- WITHIN 1-replica capacity (~1-2
+    duration: 120     # RPS for Qwen3-32B at 4K-token prompts). Queue stays
+                      # empty during this window, but KV cache fills enough
+                      # to trip WVA's saturation gauge so HPA scales to 2
+                      # BEFORE the heavy stage hits.
+  - rate: 2           # 4 RPS aggregate -- within 2-replica steady-state.
+                      # Combined with HPA stabilizationWindowSeconds=30,
+                      # relief from scale-up arrives in <30s after stage 2
+                      # begins, which keeps queue under the harness's 300s
+                      # per-request timeout.
+    duration: 300
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: shared_prefix
+  shared_prefix:
+    num_groups: 32                # Number of distinct shared prefixes
+    num_prompts_per_group: 32     # Number of unique questions per shared prefix
+    system_prompt_len: 4000       # Long shared prefix
+                                  # Drives gpu_cache_usage_perc, the
+                                  # saturation signal WVA's optimizer reads.
+    question_len: 256             # Length of the unique question part
+    output_len: 256               # Shorter outputs (vs 1024) keep request
+                                  # turnover faster on Qwen3-32B so we drive
+                                  # concurrent-in-flight count up rather than
+                                  # queue depth. ~5–8s/request at this size.
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace

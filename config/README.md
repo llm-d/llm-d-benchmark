@@ -275,7 +275,7 @@ Jinja2 templates that produce Kubernetes resource definitions. Each template cor
 | `16_pvc_extra-pvc.yaml.j2` | Extra PVCs (e.g., scratch space) |
 | `17_standalone-podmonitor.yaml.j2` | Standalone PodMonitor for metrics |
 | `18_podmonitor.yaml.j2` | Modelservice PodMonitor for metrics |
-| `19_wva-values.yaml.j2` | Workload Variant Autoscaler values |
+| `19_wva-kustomize.yaml.j2` | Workload Variant Autoscaler kustomize wrapper |
 | `20_harness_pod.yaml.j2` | Benchmark harness pod |
 | `21_prometheus-adapter-values.yaml.j2` | Prometheus adapter values |
 | `22_prometheus-rbac.yaml.j2` | Prometheus RBAC resources |
@@ -1366,7 +1366,7 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 | `12_router-values.yaml.j2` (tokenizer) | `images.udsTokenizer` | EPP UDS tokenizer (when `inferenceExtension.sidecar.enabled: true`) |
 | `14_standalone-deployment_yaml.j2` | `standalone.image` | Standalone vLLM container |
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
-| `19_wva-values.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
+| `19_wva-kustomize.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
 | `20_harness_pod.yaml.j2` | `images.benchmark` | Benchmark harness pod |
 
 ### Fallback Chains

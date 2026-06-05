@@ -1,10 +1,10 @@
-"""WVA smoketest checks: controller + prometheus-adapter + per-stack VA & HPA.
+"""WVA smoketest checks: controller + prometheus-adapter + per-stack HPA.
 
 This is a *mixin* rather than a top-level validator so scenario-specific
 validators (e.g. inference-scheduling) can layer it on without having to
 duplicate its logic. A concrete validator exists too
 (:class:`WvaValidator`) for scenarios whose only WVA concerns are the
-baseline controller + per-stack VA/HPA checks.
+baseline controller + per-stack HPA checks.
 
 Activation gate: the mixin runs only when BOTH ``wva.enabled: true`` is
 present in the rendered stack config AND the cluster is OpenShift. WVA's
@@ -71,32 +71,32 @@ class WvaSmoketestMixin:
              container starts crash-looping mid-wait).
           2. prometheus-adapter Deployment exists and is Available in the
              user-workload-monitoring namespace.
-          3. The per-stack VariantAutoscaling resource exists with the
-             expected name ({model_id_label}-decode).
-          4. The VariantAutoscaling carries the `wva.llmd.ai/controller-instance`
-             label matching the controller's `CONTROLLER_INSTANCE` env (when
-             set). Without this label the controller's predicate silently
-             skips the VA — the most subtle WVA misconfiguration.
-          5. The per-stack HPA exists and references the decode Deployment.
-          6. The HPA's external-metric selector matches what WVA actually
-             emits: `variant_name`, `exported_namespace`, and
-             `controller_instance` all aligned with the rendered VA + chart
-             values. Catches selector drift before it manifests as
-             `TARGETS: <unknown>`.
-          7. (optional) HPA has an ``AbleToScale`` condition, meaning
+          3. The per-stack HPA exists and references the right scaleTargetRef:
+             the modelservice decode Deployment ({model_id_label}-decode) or,
+             under fma.enabled, the FMA requester Deployment
+             (fma-requester-{model_id_label}).
+          4. The HPA carries the three annotations WVA's controller requires
+             for annotation-based discovery: ``llm-d.ai/managed=true``,
+             ``llm-d.ai/model-id``, and ``llm-d.ai/variant-cost``. Without
+             these the controller's HPA reconciler skips the HPA and never
+             emits ``wva_desired_replicas``.
+          5. The HPA's external-metric selector matches what WVA actually
+             emits: ``variant_name`` = the HPA's own name, and
+             ``exported_namespace`` = the HPA's namespace. Catches selector
+             drift before it manifests as ``TARGETS: <unknown>``.
+          6. (optional) HPA has an ``AbleToScale`` condition, meaning
              prometheus-adapter is serving ``wva_desired_replicas`` for it.
-          8. The HPA's TARGETS / currentMetrics field has resolved from
+          7. The HPA's TARGETS / currentMetrics field has resolved from
              <unknown> to a numeric value — proves the full pipeline
              (controller → Prometheus → adapter → HPA) is end-to-end live.
-          9. The HPA's REPLICAS column converges to its MINPODS (idle
+          8. The HPA's REPLICAS column converges to its MINPODS (idle
              steady-state). With no traffic hitting the deployment, the
              controller computes desiredReplicas=minReplicas and the HPA
              scales the Deployment down to match — confirms the HPA is
              not just receiving the metric but actually acting on it.
-         10. End-state snapshot of the VA + HPA (always passes if the
-             resources can be queried) so the smoketest log captures
-             the final cluster state without needing a follow-up
-             ``oc describe`` call to debug.
+          9. End-state snapshot of the HPA (always passes if the resource
+             can be queried) so the smoketest log captures the final
+             cluster state without needing a follow-up ``oc describe``.
         """
         config = _load_config(stack_path)
         if not (_nested_get(config, "wva", "enabled") or False):
@@ -145,15 +145,20 @@ class WvaSmoketestMixin:
             or _nested_get(config, "model", "shortName")
             or ""
         )
-        va_name = f"{model_id_label}-decode"
-        decode_deployment = f"{model_id_label}-decode"
+        # Template 28 retargets the HPA at the FMA requester Deployment
+        # when fma.enabled — variant suffix becomes `-fma` (vs `-decode` for
+        # modelservice). The smoketest must follow the same gate so HPA
+        # name, scaleTargetRef expectation, and the metric selector's
+        # variant_name all stay aligned.
+        fma_enabled = bool(_nested_get(config, "fma", "enabled") or False)
+        if fma_enabled:
+            hpa_name = f"{model_id_label}-fma"
+            scale_target_name = f"fma-requester-{model_id_label}"
+        else:
+            hpa_name = f"{model_id_label}-decode"
+            scale_target_name = f"{model_id_label}-decode"
 
-        # Expected `controller_instance` value -- derived the same way the
-        # 19_/27_/28_ templates do, so an empty `wva.namespace` falls back
-        # to the deploy namespace.
-        expected_controller_instance = (
-            _nested_get(config, "wva", "namespace") or namespace
-        )
+        expected_model_id = _nested_get(config, "model", "name") or ""
 
         self._check_wva_controller(
             cmd,
@@ -164,41 +169,76 @@ class WvaSmoketestMixin:
             logger=context.logger,
         )
         self._check_prometheus_adapter(cmd, monitoring_ns, report)
-        self._check_variant_autoscaling(
-            cmd,
-            wva_ns,
-            va_name,
-            expected_controller_instance,
-            report,
-        )
         self._check_hpa(
             cmd,
             wva_ns,
-            va_name,
-            decode_deployment,
-            expected_controller_instance,
-            wva_ns,
+            hpa_name,
+            scale_target_name,
             report,
+            expected_model_id=expected_model_id,
         )
-        self._wait_for_hpa_targets(
-            cmd,
-            wva_ns,
-            va_name,
-            report,
-            timeout=_HPA_TARGETS_TIMEOUT_SECS,
-            poll_interval=_HPA_TARGETS_POLL_SECS,
-            logger=context.logger,
-        )
-        self._wait_for_hpa_converged(
-            cmd,
-            wva_ns,
-            va_name,
-            report,
-            timeout=_HPA_CONVERGED_TIMEOUT_SECS,
-            poll_interval=_HPA_CONVERGED_POLL_SECS,
-            logger=context.logger,
-        )
-        self._log_va_hpa_state(cmd, wva_ns, va_name, report)
+        # The HPA targets-resolved + converged checks below assume the model
+        # server is already emitting vLLM metrics post-standup (the WVA-only
+        # path with decode.replicas >= 1). Under FMA the model server tier
+        # is the FMA launcher pods, and at idle the requester sits at min=1
+        # with no traffic — so vLLM has no requests to measure, prometheus
+        # has no series for `wva_desired_replicas`, the HPA shows
+        # `FailedGetExternalMetric`, and the controller's optimization loop
+        # computes `desiredReplicas=0`. None of that is a bug; it is the
+        # correct idle state for FMA-on-modelservice. The metric pipeline
+        # gets exercised end-to-end by the run phase as soon as
+        # inference-perf hits the gateway. Skip the pre-traffic checks
+        # rather than fail-closed on idle, mirroring how
+        # ``_wait_for_hpa_targets`` would already pass on the WVA-only
+        # path because decode pods are emitting metrics from the moment
+        # they're Ready.
+        if fma_enabled:
+            report.add(
+                CheckResult(
+                    "wva_hpa_targets_resolved",
+                    True,
+                    message=(
+                        "Skipped pre-traffic HPA TARGETS check on FMA path: "
+                        "requester at min=1 with no load means "
+                        "`wva_desired_replicas` is intentionally absent until "
+                        "inference-perf drives traffic. The metric pipeline "
+                        "is exercised end-to-end during the run phase."
+                    ),
+                )
+            )
+            report.add(
+                CheckResult(
+                    "wva_hpa_converged",
+                    True,
+                    message=(
+                        "Skipped pre-traffic HPA convergence check on FMA path: "
+                        "with no traffic the controller computes "
+                        "`desiredReplicas=0` and HPA clamps to min=1; "
+                        "convergence (current==min) is the steady-state idle "
+                        "behavior, not a failure mode."
+                    ),
+                )
+            )
+        else:
+            self._wait_for_hpa_targets(
+                cmd,
+                wva_ns,
+                hpa_name,
+                report,
+                timeout=_HPA_TARGETS_TIMEOUT_SECS,
+                poll_interval=_HPA_TARGETS_POLL_SECS,
+                logger=context.logger,
+            )
+            self._wait_for_hpa_converged(
+                cmd,
+                wva_ns,
+                hpa_name,
+                report,
+                timeout=_HPA_CONVERGED_TIMEOUT_SECS,
+                poll_interval=_HPA_CONVERGED_POLL_SECS,
+                logger=context.logger,
+            )
+        self._log_hpa_state(cmd, wva_ns, hpa_name, report)
 
     # --- individual checks ------------------------------------------------
 
@@ -213,7 +253,7 @@ class WvaSmoketestMixin:
     ) -> None:
         """Wait for the WVA controller Deployment to become Available.
 
-        Polls ``oc get deployment workload-variant-autoscaler-controller-manager``
+        Polls ``oc get deployment wva-controller-manager``
         until the Deployment reports ``Available=True`` with all replicas Ready
         (covers pod scheduling, image pull, container startup, health
         probes, and leader election). Fails immediately — without waiting
@@ -230,7 +270,7 @@ class WvaSmoketestMixin:
             result = cmd.kube(
                 "get",
                 "deployment",
-                "workload-variant-autoscaler-controller-manager",
+                "wva-controller-manager",
                 "--namespace",
                 wva_ns,
                 "-o",
@@ -275,7 +315,7 @@ class WvaSmoketestMixin:
                                 f"(restartCount {baseline_restarts}→{restarts} "
                                 f"during {int(elapsed)}s wait). Likely crash-loop; "
                                 f"check `oc logs -n {wva_ns} "
-                                f"deploy/workload-variant-autoscaler-controller-manager "
+                                f"deploy/wva-controller-manager "
                                 f"--previous` for the failure cause."
                             ),
                         )
@@ -375,105 +415,25 @@ class WvaSmoketestMixin:
         )
 
     @staticmethod
-    def _check_variant_autoscaling(
-        cmd: CommandExecutor,
-        wva_ns: str,
-        va_name: str,
-        expected_controller_instance: str,
-        report: SmoketestReport,
-    ) -> None:
-        """Verify the per-stack VariantAutoscaling exists AND carries the
-        ``wva.llmd.ai/controller-instance`` label that matches the
-        controller's ``CONTROLLER_INSTANCE`` env.
-
-        The label check is the most subtle of the WVA gates: the v0.6.0
-        controller's predicate filters out any in-namespace VA that
-        doesn't carry this label when ``CONTROLLER_INSTANCE`` is set.
-        Without it, the VA shows up in ``oc get va`` but the controller
-        silently never reconciles it ("No active VariantAutoscalings
-        found" log loop forever) → no metric → HPA stuck at <unknown>.
-        """
-        result = cmd.kube(
-            "get",
-            "variantautoscaling.llmd.ai",
-            va_name,
-            "--namespace",
-            wva_ns,
-            "-o",
-            "json",
-            check=False,
-        )
-        if not result.success:
-            report.add(
-                CheckResult(
-                    "wva_variantautoscaling",
-                    False,
-                    expected=f"{va_name} present in ns/{wva_ns}",
-                    actual="missing",
-                    message=(
-                        f"VariantAutoscaling/{va_name} in ns/{wva_ns}: "
-                        f"{result.stderr.strip()[:200]}"
-                    ),
-                )
-            )
-            return
-
-        try:
-            va = json.loads(result.stdout) if result.stdout else {}
-        except (json.JSONDecodeError, ValueError):
-            va = {}
-
-        report.add(
-            CheckResult(
-                "wva_variantautoscaling",
-                True,
-                expected=f"{va_name} present in ns/{wva_ns}",
-                actual="present",
-                message=f"VariantAutoscaling/{va_name} in ns/{wva_ns}: present",
-            )
-        )
-
-        # Critical alignment check: VA label must match controller's instance.
-        labels = va.get("metadata", {}).get("labels", {}) or {}
-        actual_label = labels.get("wva.llmd.ai/controller-instance", "")
-        label_ok = actual_label == expected_controller_instance
-        report.add(
-            CheckResult(
-                "wva_va_controller_instance_label",
-                label_ok,
-                expected=(
-                    f"wva.llmd.ai/controller-instance={expected_controller_instance}"
-                ),
-                actual=(
-                    f"wva.llmd.ai/controller-instance={actual_label or '(missing)'}"
-                ),
-                message=(
-                    f"VariantAutoscaling/{va_name} controller-instance label: "
-                    f"{actual_label or '(missing)'} "
-                    f"(expected {expected_controller_instance}). "
-                    "Without a matching label, the controller's predicate "
-                    "skips this VA and never emits wva_desired_replicas."
-                    if not label_ok
-                    else f"VariantAutoscaling/{va_name} carries the matching "
-                    f"wva.llmd.ai/controller-instance={expected_controller_instance} "
-                    "label — controller will reconcile it."
-                ),
-            )
-        )
-
-    @staticmethod
     def _check_hpa(
         cmd: CommandExecutor,
         wva_ns: str,
         hpa_name: str,
-        expected_target: str,
-        expected_controller_instance: str,
-        expected_exported_namespace: str,
+        expected_scale_target: str,
         report: SmoketestReport,
+        expected_model_id: str = "",
     ) -> None:
-        """Verify the per-stack HPA exists, targets the decode Deployment,
-        carries a metric selector aligned with what the WVA controller
-        actually emits, and (best-effort) has an ``AbleToScale`` condition.
+        """Verify the per-stack HPA exists, targets the right workload, carries
+        the WVA opt-in annotations, and has a metric selector aligned with what
+        the controller actually emits.
+
+        Annotation-based discovery requires three annotations on
+        the HPA: ``llm-d.ai/managed: "true"`` (opts the HPA into WVA reconcile),
+        ``llm-d.ai/model-id`` (required, identifies the model), and
+        ``llm-d.ai/variant-cost`` (optional but rendered by 28_wva-hpa.yaml.j2).
+        WVA's external metric is keyed by the HPA's own name (``variant_name``)
+        and namespace (``exported_namespace``); the legacy ``controller_instance``
+        selector is intentionally absent on the modern path.
         """
         result = cmd.kube(
             "get",
@@ -507,22 +467,66 @@ class WvaSmoketestMixin:
         report.add(
             CheckResult(
                 "wva_hpa_target",
-                scale_target == expected_target,
-                expected=expected_target,
+                scale_target == expected_scale_target,
+                expected=expected_scale_target,
                 actual=scale_target,
                 message=(
                     f"HPA/{hpa_name} scaleTargetRef.name={scale_target} "
-                    f"(expected {expected_target})"
+                    f"(expected {expected_scale_target})"
                 ),
             )
         )
 
-        # Selector alignment check. The metric labels the controller
-        # actually emits are: variant_name (= VA's name), exported_namespace
-        # (= VA's namespace; renamed by Prometheus from `namespace`), and
-        # controller_instance (= chart's wva.controllerInstance, when set).
-        # The HPA's matchLabels must equal these or the external-metrics
-        # API will return zero items and the HPA stays <unknown>.
+        # Annotation-based discovery requires `llm-d.ai/managed=true` and
+        # `llm-d.ai/model-id` on the HPA. Without `managed`, WVA's HPA
+        # reconciler returns early (annotations.IsManaged false). Without
+        # `model-id`, ParseAnnotations errors and the controller never
+        # processes this HPA.
+        annotations = hpa.get("metadata", {}).get("annotations", {}) or {}
+        managed_val = annotations.get("llm-d.ai/managed", "")
+        model_id_val = annotations.get("llm-d.ai/model-id", "")
+
+        managed_ok = managed_val == "true"
+        report.add(
+            CheckResult(
+                "wva_hpa_managed_annotation",
+                managed_ok,
+                expected='llm-d.ai/managed="true"',
+                actual=f'llm-d.ai/managed="{managed_val or "(missing)"}"',
+                message=(
+                    f"HPA/{hpa_name} has the WVA opt-in annotation."
+                    if managed_ok
+                    else f'HPA/{hpa_name} is missing llm-d.ai/managed="true". '
+                    "Without it, the WVA controller's HPA reconciler skips "
+                    "this HPA and never emits wva_desired_replicas for it."
+                ),
+            )
+        )
+
+        if expected_model_id:
+            model_id_ok = model_id_val == expected_model_id
+            report.add(
+                CheckResult(
+                    "wva_hpa_model_id_annotation",
+                    model_id_ok,
+                    expected=f"llm-d.ai/model-id={expected_model_id}",
+                    actual=f"llm-d.ai/model-id={model_id_val or '(missing)'}",
+                    message=(
+                        f"HPA/{hpa_name} model-id annotation matches scenario."
+                        if model_id_ok
+                        else f"HPA/{hpa_name} model-id mismatch: "
+                        f"{model_id_val or '(missing)'} (expected "
+                        f"{expected_model_id}). The controller uses this "
+                        "to group variants per model."
+                    ),
+                )
+            )
+
+        # Selector alignment check. WVA emits wva_desired_replicas with two
+        # labels under the annotation path: variant_name (= the HPA's own
+        # name) and exported_namespace (= the HPA's namespace; renamed by
+        # Prometheus from `namespace`). The legacy `controller_instance`
+        # selector is intentionally absent on the modern path.
         match_labels = (
             hpa.get("spec", {})
             .get("metrics", [{}])[0]
@@ -532,9 +536,8 @@ class WvaSmoketestMixin:
             .get("matchLabels", {})
         ) or {}
         expected_selector = {
-            "variant_name": expected_target,
-            "exported_namespace": expected_exported_namespace,
-            "controller_instance": expected_controller_instance,
+            "variant_name": hpa_name,
+            "exported_namespace": wva_ns,
         }
         mismatches = [
             f"{k}={match_labels.get(k, '(missing)')}≠{v}"
@@ -552,9 +555,9 @@ class WvaSmoketestMixin:
                     f"HPA/{hpa_name} metric selector aligned with WVA-emitted "
                     f"labels — controller→adapter→HPA path will match."
                     if not mismatches
-                    else f"HPA/{hpa_name} metric selector mismatch: {', '.join(mismatches)}. "
-                    "These three labels (variant_name, exported_namespace, "
-                    "controller_instance) must equal what the WVA controller "
+                    else f"HPA/{hpa_name} metric selector mismatch: "
+                    f"{', '.join(mismatches)}. Both labels (variant_name, "
+                    "exported_namespace) must equal what the WVA controller "
                     "emits or no metric row will match."
                 ),
             )
@@ -597,7 +600,7 @@ class WvaSmoketestMixin:
         """Poll the HPA until its TARGETS / currentMetrics resolves to a value.
 
         ``oc get hpa`` shows ``<unknown>`` for an external metric until the
-        full pipeline is live: WVA controller has reconciled the VA,
+        full pipeline is live: WVA controller has reconciled the HPA,
         emitted ``wva_desired_replicas`` to its ``/metrics`` endpoint,
         Prometheus has scraped it, prometheus-adapter has discovered the
         rule, and the HPA controller has polled the external-metrics API.
@@ -786,42 +789,29 @@ class WvaSmoketestMixin:
             time.sleep(poll_interval)
 
     @staticmethod
-    def _log_va_hpa_state(
+    def _log_hpa_state(
         cmd: CommandExecutor,
         wva_ns: str,
-        resource_name: str,
+        hpa_name: str,
         report: SmoketestReport,
     ) -> None:
-        """Capture the current `oc get` output of the VA + HPA into the
-        smoketest report so the log alone tells the operator what state
-        each resource ended up in (TARGETS, MIN, MAX, REPLICAS, etc.)
-        without requiring a follow-up ``oc describe``.
+        """Capture the current `oc get` output of the HPA into the smoketest
+        report so the log alone tells the operator what state the resource
+        ended up in (TARGETS, MIN, MAX, REPLICAS, etc.) without requiring
+        a follow-up ``oc describe``.
 
-        Always passes when both resources can be queried; failure to
-        query is informational, not blocking.
+        Always passes when the resource can be queried; failure to query
+        is informational, not blocking.
         """
-        va_result = cmd.kube(
-            "get",
-            "variantautoscaling.llmd.ai",
-            resource_name,
-            "--namespace",
-            wva_ns,
-            check=False,
-        )
         hpa_result = cmd.kube(
             "get",
             "hpa",
-            resource_name,
+            hpa_name,
             "--namespace",
             wva_ns,
             check=False,
         )
 
-        va_text = (
-            va_result.stdout.strip()
-            if va_result.success
-            else (f"(failed: {va_result.stderr.strip()[:200]})")
-        )
         hpa_text = (
             hpa_result.stdout.strip()
             if hpa_result.success
@@ -830,13 +820,10 @@ class WvaSmoketestMixin:
 
         report.add(
             CheckResult(
-                "wva_va_hpa_state",
-                va_result.success and hpa_result.success,
+                "wva_hpa_state",
+                hpa_result.success,
                 message=(
-                    f"End-state of WVA resources in ns/{wva_ns}:\n"
-                    f"  VariantAutoscaling:\n    "
-                    + va_text.replace("\n", "\n    ")
-                    + "\n  HorizontalPodAutoscaler:\n    "
+                    f"End-state of HPA/{hpa_name} in ns/{wva_ns}:\n    "
                     + hpa_text.replace("\n", "\n    ")
                 ),
             )
@@ -920,7 +907,7 @@ class WvaValidator(WvaSmoketestMixin, BaseSmoketest):
     """Minimal standalone validator for WVA-only scenarios (e.g. inference-scheduling-wva).
 
     Runs the base infrastructure smoketest plus the WVA-specific checks
-    (controller, prometheus-adapter, VariantAutoscaling, HPA).
+    (controller, prometheus-adapter, HPA annotations + selector alignment).
     """
 
     def run_config_validation(

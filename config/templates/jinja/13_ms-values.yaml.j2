@@ -50,6 +50,19 @@ modelArtifacts:
   labels:
     llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
     llm-d.ai/model: {{ model_id_label }}
+{% if wva is defined and wva.enabled | default(false) and not (fma is defined and fma.enabled | default(false)) %}
+    # WVA needs the variant label on the scrape target so the saturation
+    # engine can join Prometheus series back to the VariantAutoscaling.
+    # FMA path stamps this on launcher pods via 24_fma-deployment.yaml.j2;
+    # for the modelservice (decode) path we stamp it here so baseline
+    # scenarios (WVA without FMA) hit METRICSREADY=True.
+    llm-d.ai/variant: "{{ model_id_label }}-decode"
+    # Also stamp the guide label so the PodMonitor (18_podmonitor.yaml.j2)
+    # can use the same `llm-d.ai/guide` selector for both FMA and baseline
+    # paths — mirrors Braulio's working FMA setup (PR #552/#579 in
+    # llm-d-fast-model-actuation) end-to-end on the modelservice path too.
+    llm-d.ai/guide: "{{ wva.wellLitPath | default('optimized-baseline') }}"
+{% endif %}
 {% if modelArtifacts is defined and modelArtifacts.extraLabels is defined %}
 {% for key, value in modelArtifacts.extraLabels.items() %}
     {{ key }}: "{{ value }}"

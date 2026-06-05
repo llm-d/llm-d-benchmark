@@ -150,6 +150,43 @@ class FMADeployStep(Step):
                 namespace,
             )
 
+        if len(errors) == 0:
+            # Wait for at least one launcher pod to be Bound (carrying the
+            # ISC labels propagated by the dual-pods-controller). Without
+            # this wait, standup returns immediately after the requester
+            # is Ready -- but the dual-pods-controller binds a launcher
+            # ASYNCHRONOUSLY (typically 30s to several minutes after
+            # requester Ready).
+            #
+            # Skip the wait when fma.requester.replicas == 0
+            requester_replicas = (
+                plan_config.get("fma", {}).get("requester", {}).get("replicas", 0)
+            )
+            model_id_label = plan_config.get("model_id_label", "")
+            if requester_replicas == 0:
+                context.logger.log_info(
+                    "    | Skipping bound-launcher wait: "
+                    "fma.requester.replicas=0 (no requester pod to bind to)."
+                )
+            elif model_id_label:
+                label_selector = (
+                    f"llm-d.ai/inferenceServing=true,llm-d.ai/model={model_id_label}"
+                )
+                wait_result = cmd.wait_for_pods(
+                    label=label_selector,
+                    namespace=namespace,
+                    timeout=600,
+                    poll_interval=10,
+                    description=f"FMA bound launcher (model={model_id_label})",
+                )
+                if not wait_result.success:
+                    errors.append(
+                        f"FMA bound launcher pod did not become Ready in "
+                        f"ns/{namespace}: {wait_result.stderr}. The "
+                        f"dual-pods-controller may not have bound a "
+                        f"launcher to the requester yet."
+                    )
+
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if len(errors) > 0:

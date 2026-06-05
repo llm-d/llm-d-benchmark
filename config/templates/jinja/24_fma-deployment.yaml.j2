@@ -23,13 +23,20 @@ spec:
   modelServerConfig:
     labels:
       component: inference
+      # EPP InferencePool selector keys (see 12_router-values.yaml.j2:217-218):
+      llm-d.ai/inferenceServing: "{{ labels.inferenceServing | default('true') }}"
+      llm-d.ai/model: "{{ model_id_label }}"
+{% if wva is defined and wva.enabled | default(false) %}
+      llm-d.ai/variant: "{{ model_id_label }}-fma"
+      llm-d.ai/guide: "{{ wva.wellLitPath | default('optimized-baseline') }}"
+{% endif %}
     env_vars:
       HF_HOME: "{{ fma.modelMountPath }}"
       VLLM_LOGGING_LEVEL: DEBUG
       VLLM_SERVER_DEV_MODE: "1"
       VLLM_USE_V1: "1"
     options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto --gpu-memory-utilization 0.95 --tensor-parallel-size 1"
-    port: 8005
+    port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1
 kind: LauncherConfig
@@ -138,12 +145,16 @@ spec:
     labelSelector:
       matchLabels:
         nvidia.com/gpu.present: "true"
+      # Skip unhealthy nodes
+      matchExpressions:
+        - key: nvidia.com/gpu.product
+          operator: Exists
   countForLauncher:
     - launcherConfigName: fma-{{ model_id_label }}
       launcherCount: 1
 ---
 apiVersion: apps/v1
-kind: ReplicaSet
+kind: Deployment
 metadata:
   name: fma-requester-{{ model_id_label }}
   labels:
@@ -155,7 +166,7 @@ metadata:
 {% endif %}
   namespace: {{ namespace.name }}
 spec:
-  replicas: 0
+  replicas: {{ fma.requester.replicas | default(0) }}
   selector:
     matchLabels:
       app: dp-app
@@ -173,6 +184,13 @@ spec:
         dual-pods.llm-d.ai/admin-port: "8081"
         dual-pods.llm-d.ai/inference-server-config: fma-{{ model_id_label }}
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.product
+                    operator: Exists
       containers:
         - name: inference-server
           image: {{ fma.requester.image.repository }}:{{ fma.requester.image.tag }}

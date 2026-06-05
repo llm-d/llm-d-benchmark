@@ -592,6 +592,13 @@ _RETRYABLE_INDICATORS = (
     "still loading",
     "503",
     "502",
+    # FMA cold-start race: bound launcher pod is k8s-Ready
+    # but vLLM's serving port isn't accepting yet,
+    # and EPP InferencePool is empty until ISC labels propagate.
+    "Connection refused",
+    "upstream connect error",
+    "remote connection failure",
+    "no pods available in datastore",
 )
 
 

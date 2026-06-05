@@ -74,7 +74,14 @@ class _StubContext:
     logger: _StubLogger = field(default_factory=_StubLogger)
 
 
-def _write_stack(tmp_path: Path, name: str, *, wva_ns: str, model_id: str) -> Path:
+def _write_stack(
+    tmp_path: Path,
+    name: str,
+    *,
+    wva_ns: str,
+    model_id: str,
+    fma_enabled: bool = False,
+) -> Path:
     """Create a rendered-stack directory with a wva-enabled config.yaml."""
     stack_dir = tmp_path / name
     stack_dir.mkdir(parents=True)
@@ -82,8 +89,18 @@ def _write_stack(tmp_path: Path, name: str, *, wva_ns: str, model_id: str) -> Pa
         "wva": {"enabled": True, "namespace": wva_ns},
         "namespace": {"name": wva_ns},
         "model_id_label": model_id,
+        "fma": {"enabled": fma_enabled},
     }
     (stack_dir / "config.yaml").write_text(yaml.safe_dump(cfg))
+    kustomization = (
+        "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+        "kind: Kustomization\n"
+        f"namespace: {wva_ns}\n"
+        "resources:\n"
+        "- github.com/llm-d/llm-d-workload-variant-autoscaler/"
+        "config/overlays/namespace-scoped/openshift?ref=main\n"
+    )
+    (stack_dir / "19_wva-kustomize.yaml").write_text(kustomization)
     return stack_dir
 
 
@@ -92,15 +109,42 @@ def _write_stack(tmp_path: Path, name: str, *, wva_ns: str, model_id: str) -> Pa
 # ---------------------------------------------------------------------------
 
 
+def _kustomize_delete_calls(cmd: _StubCmd) -> list[tuple]:
+    """All ``kubectl delete -k <dir> ...`` invocations recorded on the stub."""
+    return [
+        args
+        for args in cmd.kube_calls
+        if len(args) >= 2 and args[0] == "delete" and "-k" in args
+    ]
+
+
 def _controller_was_uninstalled(cmd: _StubCmd) -> bool:
-    return any(
-        "uninstall" in args and "workload-variant-autoscaler" in args
-        for args in cmd.helm_calls
-    )
+    """Detect a ``kubectl delete -k`` (kustomize-based controller uninstall)."""
+    return len(_kustomize_delete_calls(cmd)) > 0
 
 
-def _va_hpa_deleted_for(cmd: _StubCmd, model_id: str) -> bool:
-    expected = f"{model_id}-decode"
+def _kustomize_delete_namespaces(cmd: _StubCmd) -> set[str]:
+    """Read the staged kustomization.yaml at each delete-k call's tempdir
+    and pull out the ``namespace:`` field. Used to verify per-namespace
+    coverage when multiple WVA namespaces are torn down in one pass."""
+    namespaces: set[str] = set()
+    for args in _kustomize_delete_calls(cmd):
+        # args looks like ("delete", "-k", "<tempdir>", "--ignore-not-found")
+        idx = args.index("-k") + 1
+        kustomize_dir = Path(args[idx])
+        kfile = kustomize_dir / "kustomization.yaml"
+        if not kfile.exists():
+            continue
+        body = yaml.safe_load(kfile.read_text()) or {}
+        ns = body.get("namespace")
+        if ns:
+            namespaces.add(ns)
+    return namespaces
+
+
+def _va_hpa_deleted_for(cmd: _StubCmd, model_id: str, *, fma: bool = False) -> bool:
+    suffix = "fma" if fma else "decode"
+    expected = f"{model_id}-{suffix}"
     return any("delete" in args and expected in args for args in cmd.kube_calls)
 
 
@@ -127,7 +171,7 @@ class TestWvaTeardownPolicy:
 
         assert _controller_was_uninstalled(cmd), (
             f"Expected controller uninstall on full-scenario teardown; "
-            f"helm calls={cmd.helm_calls}"
+            f"kube calls={cmd.kube_calls}"
         )
         assert _va_hpa_deleted_for(cmd, "modelA")
         assert _va_hpa_deleted_for(cmd, "modelB")
@@ -149,7 +193,7 @@ class TestWvaTeardownPolicy:
 
         assert not _controller_was_uninstalled(cmd), (
             f"Expected controller preservation under --stack filter; "
-            f"helm calls={cmd.helm_calls}"
+            f"kube calls={cmd.kube_calls}"
         )
         assert any("Preserving WVA controller" in m for m in ctx.logger.messages), (
             f"Expected preservation log message; got: {ctx.logger.messages}"
@@ -173,7 +217,7 @@ class TestWvaTeardownPolicy:
 
         assert _controller_was_uninstalled(cmd), (
             f"Expected --deep to force controller uninstall; "
-            f"helm calls={cmd.helm_calls}"
+            f"kube calls={cmd.kube_calls}"
         )
 
     def test_non_openshift_skips_entirely(self, tmp_path: Path) -> None:
@@ -207,15 +251,40 @@ class TestWvaTeardownPolicy:
 
         step._teardown_wva(cmd, ctx, errors=[])
 
-        # Controller uninstalled once per unique namespace
-        ns_uninstalls = [
-            args
-            for args in cmd.helm_calls
-            if "uninstall" in args and "workload-variant-autoscaler" in args
-        ]
-        namespaces = {args[args.index("--namespace") + 1] for args in ns_uninstalls}
-        assert namespaces == {"ns1", "ns2"}, (
-            f"Expected controller uninstall in both ns1 and ns2; got {namespaces}"
+        # Controller uninstalled once per unique WVA namespace -- verified by
+        # reading the staged kustomization.yaml from each delete-k tempdir.
+        assert _kustomize_delete_namespaces(cmd) == {"ns1", "ns2"}, (
+            f"Expected controller uninstall in both ns1 and ns2; "
+            f"got namespaces={_kustomize_delete_namespaces(cmd)}; "
+            f"kube calls={cmd.kube_calls}"
+        )
+
+    def test_fma_enabled_stack_uses_fma_suffix(self, tmp_path: Path) -> None:
+        """Under fma.enabled the per-stack VA + HPA names use ``-fma`` suffix."""
+        step = UninstallHelmStep()
+        ctx = _StubContext(
+            rendered_stacks=[
+                _write_stack(
+                    tmp_path,
+                    "stack-fma",
+                    wva_ns="ns1",
+                    model_id="modelA",
+                    fma_enabled=True,
+                ),
+            ],
+            stack_filter=None,
+        )
+        cmd = _StubCmd()
+
+        step._teardown_wva(cmd, ctx, errors=[])
+
+        assert _va_hpa_deleted_for(cmd, "modelA", fma=True), (
+            f"Expected VA/HPA delete with -fma suffix under fma.enabled; "
+            f"kube calls={cmd.kube_calls}"
+        )
+        assert not _va_hpa_deleted_for(cmd, "modelA", fma=False), (
+            f"Did not expect -decode suffix when fma.enabled is true; "
+            f"kube calls={cmd.kube_calls}"
         )
 
     @pytest.mark.parametrize(
@@ -249,5 +318,5 @@ class TestWvaTeardownPolicy:
         assert _controller_was_uninstalled(cmd) == expected_uninstall, (
             f"stack_filter={stack_filter}, deep={deep}: "
             f"expected uninstall={expected_uninstall}, "
-            f"helm calls={cmd.helm_calls}"
+            f"kube calls={cmd.kube_calls}"
         )

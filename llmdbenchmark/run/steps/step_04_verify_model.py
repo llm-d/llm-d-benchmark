@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.endpoint import test_model_serving, cleanup_ephemeral_pods
 
 
@@ -21,7 +21,7 @@ class VerifyModelStep(Step):
 
     def should_skip(self, context: ExecutionContext) -> bool:
         """Skip model verification in skip-run mode or fma."""
-        return context.harness_skip_run or "fma" in context.deployed_methods
+        return context.harness_skip_run or is_fma_only_mode(context)
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -86,8 +86,6 @@ class VerifyModelStep(Step):
             port,
             model_name,
             plan_config,
-            max_retries=3,
-            retry_interval=10,
             service_account=context.harness_service_account,
             url_path_prefix=url_path_prefix,
         )
