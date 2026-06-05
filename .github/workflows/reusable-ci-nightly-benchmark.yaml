@@ -596,7 +596,7 @@ jobs:
             fi
             echo -n $LLMDBENCH_HF_TOKEN > hf_token.txt
             kubectl create namespace $LLMDBENCH_CICD_NS --dry-run=client -o yaml | kubectl apply -f -
-            kubectl kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml
+            kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml
             rm -rf hf_token.txt
           fi
         shell: bash
