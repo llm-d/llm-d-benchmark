@@ -82,7 +82,13 @@ def main():
             ]
         )
     if fma_enabled:
-        keys.extend(["LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT", "LLMDBENCH_FMA_ITERATIONS"])
+        keys.extend(
+            [
+                "LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT",
+                "LLMDBENCH_FMA_ITERATIONS",
+                "LLMDBENCH_FMA_SLEEPER_LIMIT",
+            ]
+        )
 
     envs.update(get_env_variables(keys))
     logger.info("Environment variables:")
@@ -106,6 +112,7 @@ def main():
 
     fma_launcher_port = envs.get("LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT", "0")
     fma_iterations = int(envs.get("LLMDBENCH_FMA_ITERATIONS", "0"))
+    fma_sleeper_limit = int(envs.get("LLMDBENCH_FMA_SLEEPER_LIMIT", "0"))
 
     deploy_methods = []
     if standalone_enabled:
@@ -121,6 +128,7 @@ def main():
 
     benchmark_result = BenchmarkResult()
     benchmark_result.scenario.deploy_methods = ",".join(deploy_methods)
+    benchmark_result.scenario.sleeper_limit = fma_sleeper_limit
     if fma_enabled:
         try:
             logger.info("Benchmark FMA launcher start...")

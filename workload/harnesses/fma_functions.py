@@ -79,6 +79,7 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
     ttft: float = 0.0
     actuation_condition: FMAActuationCondition | None = None
     launcher_creation_timestamp: float = 0.0
+    launcher_node: str = ""
     t_wake: float | None = None
     t_instance_create: float | None = None
     t_cold_launcher: float | None = None
@@ -127,7 +128,7 @@ class FMAMetricsIteration:
     launcher_infos: list[FMALauncherInfo]
     hot_hit_rate: float = 0.0
     warm_hit_rate: float = 0.0
-    cold_launcher_rate: float = 0.0
+    cold_launcher_hit_rate: float = 0.0
 
     def dump(self) -> dict[str, Any]:
         """Convert FMAMetricsIteration to dict.
@@ -280,6 +281,7 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
                         timezone.utc
                     ).timestamp()
                 )
+                launcher_info.launcher_node = launcher_pod.spec.node_name or ""
                 launcher_info.launcher_endpoint = (
                     f"http://{launcher_pod_ip}:{fma_launcher_port}"
                 )
@@ -909,7 +911,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                     launcher_infos,
                     hot_hit_rate=hot_count / total if total > 0 else 0.0,
                     warm_hit_rate=warm_count / total if total > 0 else 0.0,
-                    cold_launcher_rate=cold_count / total if total > 0 else 0.0,
+                    cold_launcher_hit_rate=cold_count / total if total > 0 else 0.0,
                 )
                 fma_metrics.iterations.append(fma_metrics_iteration)
             finally:
