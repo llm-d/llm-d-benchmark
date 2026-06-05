@@ -1,0 +1,152 @@
+# =====================================================================
+# Experiment: EPP Scale Limits Evaluation
+# =====================================================================
+#
+# Measures EPP throughput ceiling and latency degradation across
+# replica counts, CPU allocations, and routing strategies.
+#
+# Usage (full DoE with auto standup/teardown):
+#   llmdbenchmark --spec guides/optimized-baseline experiment \
+#     -e experiments/epp-scale-limits.yaml \
+#     -l inference-perf \
+#     -w epp_scale_stress.yaml \
+#     -p <NAMESPACE> \
+#     -k <KUBECONFIG>
+#
+# References:
+#   - https://github.com/llm-d/llm-d-router/issues/1290
+#   - https://github.com/llm-d/llm-d-router/issues/1342
+#
+# =====================================================================
+
+experiment:
+  name: epp-scale-limits
+  description: >
+    Evaluate QPS and concurrency limits for EPP in active-passive and
+    active-active modes across routing strategies, CPU allocations,
+    and replica counts.
+  harness: inference-perf
+  profile: epp_scale_stress.yaml
+
+design:
+  type: reduced_factorial
+
+  setup:
+    factors:
+      - name: epp_replicas
+        key: inferenceExtension.replicas
+        levels: [1, 2, 3, 4]
+        description: EPP replica count (1 = active-passive, >1 = active-active)
+
+      - name: epp_cpu
+        key: inferenceExtension.resources.requests.cpu
+        levels: ["1", "4", "8"]
+        unit: cores
+        description: EPP CPU request (4 = medium cloud VM, 8 = large)
+
+      - name: routing_plugins
+        key: inferenceExtension.pluginsConfigFile
+        levels: [default-plugins.yaml, optimized-baseline-plugins.yaml, active-request-plugins.yaml]
+        description: EPP routing plugin configuration
+
+  run:
+    constants:
+      - key: data.type
+        value: synthetic
+      - key: data.input_distribution.min
+        value: 50
+      - key: data.input_distribution.mean
+        value: 125
+      - key: data.input_distribution.max
+        value: 200
+      - key: data.output_distribution.min
+        value: 10
+      - key: data.output_distribution.mean
+        value: 30
+      - key: data.output_distribution.max
+        value: 50
+      - key: api.streaming
+        value: true
+      - key: server.ignore_eos
+        value: true
+
+  total_setup_treatments: 14
+  total_run_treatments: 1
+  total_matrix: 14
+
+  response_variables:
+    - Achieved QPS (throughput ceiling)
+    - TTFT P50 (median time to first token)
+    - TTFT P99 (tail time to first token)
+    - Failure count and rate
+    - Request latency P99
+
+# --- Setup Treatments ------------------------------------------------
+#
+# Reduced matrix covering all axes independently:
+# - Scaling curve: 1/2/3/4 replicas (default CPU, default routing)
+# - Routing comparison: 3 strategies (1 replica, default CPU)
+# - CPU sizing: 3 levels x 2/3/4 replicas (default routing)
+
+setup:
+  treatments:
+    # --- Scaling curve (default routing, 4 CPU) ---
+    - name: 1r-default
+      inferenceExtension.replicas: 1
+      inferenceExtension.resources.requests.cpu: "4"
+
+    - name: 2r-default
+      inferenceExtension.replicas: 2
+      inferenceExtension.resources.requests.cpu: "4"
+
+    - name: 3r-default
+      inferenceExtension.replicas: 3
+      inferenceExtension.resources.requests.cpu: "4"
+
+    - name: 4r-default
+      inferenceExtension.replicas: 4
+      inferenceExtension.resources.requests.cpu: "4"
+
+    # --- Routing strategy comparison (1 replica, 4 CPU) ---
+    - name: 1r-optimized-baseline
+      inferenceExtension.replicas: 1
+      inferenceExtension.resources.requests.cpu: "4"
+      inferenceExtension.pluginsConfigFile: "optimized-baseline-plugins.yaml"
+
+    - name: 1r-active-request
+      inferenceExtension.replicas: 1
+      inferenceExtension.resources.requests.cpu: "4"
+      inferenceExtension.pluginsConfigFile: "active-request-plugins.yaml"
+
+    # --- CPU sizing (default routing) ---
+    - name: 1r-1cpu
+      inferenceExtension.replicas: 1
+      inferenceExtension.resources.requests.cpu: "1"
+
+    - name: 1r-8cpu
+      inferenceExtension.replicas: 1
+      inferenceExtension.resources.requests.cpu: "8"
+
+    - name: 2r-4cpu
+      inferenceExtension.replicas: 2
+      inferenceExtension.resources.requests.cpu: "4"
+
+    - name: 2r-8cpu
+      inferenceExtension.replicas: 2
+      inferenceExtension.resources.requests.cpu: "8"
+
+    - name: 3r-4cpu
+      inferenceExtension.replicas: 3
+      inferenceExtension.resources.requests.cpu: "4"
+
+    - name: 3r-8cpu
+      inferenceExtension.replicas: 3
+      inferenceExtension.resources.requests.cpu: "8"
+
+    - name: 4r-4cpu
+      inferenceExtension.replicas: 4
+      inferenceExtension.resources.requests.cpu: "4"
+
+    - name: 4r-8cpu
+      inferenceExtension.replicas: 4
+      inferenceExtension.resources.requests.cpu: "8"
