@@ -104,7 +104,7 @@ kustomize:
 Upstream llm-d guides (since
 [llm-d/llm-d#1684](https://github.com/llm-d/llm-d/pull/1684)) reference
 `secret/llm-d-hf-token` directly in their modelserver manifests
-without `optional: true`. **Kustomize standup hard-requires the Secret
+without `optional: true`. So **Kustomize standup hard-requires the Secret
 to be available** — if the Pod can't resolve the `secretKeyRef` it
 hangs in `CreateContainerConfigError` until the deploy timeout
 elapses.
@@ -157,3 +157,7 @@ because their generated manifests don't have the hard requirement.
   would collide on the same guide resources. Use the `modelservice` method
   (e.g. the `multi-model-wva` scenario) for multi-model; keep kustomize
   scenarios single-stack.
+- The parser obeys `<!-- llm-d-cicd:skip start -->` / `<!-- llm-d-cicd:skip end -->`
+  markers in the upstream guide README — wrapped bash blocks are
+  dropped entirely (no commands, no harvested variables). See
+  [Skipping a block in the upstream guide](#skipping-a-block-in-the-upstream-guide).
