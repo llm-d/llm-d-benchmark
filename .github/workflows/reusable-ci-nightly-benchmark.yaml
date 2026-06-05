@@ -261,8 +261,8 @@ jobs:
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: 1200
       LLMDBENCH_CICD_WAIT_TIMEOUT: 1200
-      LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || auto }}
-      LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || auto }}
+      LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
+      LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || 'auto' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
