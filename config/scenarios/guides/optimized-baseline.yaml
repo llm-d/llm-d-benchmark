@@ -52,25 +52,15 @@ scenario:
       guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
 
       # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      patches:
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: decode
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
+      # guide's modelserver base.  HF_TOKEN is NOT something you need to
+      # patch in here -- the upstream guide manifests (since
+      # llm-d/llm-d#1684) already reference secret/llm-d-hf-token, and
+      # step_06_kustomize_deploy._ensure_hf_token_secret creates that
+      # Secret from your $HF_TOKEN (or LLMDBENCH_HF_TOKEN /
+      # HUGGING_FACE_HUB_TOKEN) before the modelserver apply. See
+      # docs/kustomize.md "HF_TOKEN handling".
+      #
+      # Use `patches:` for other modelserver tweaks, e.g.:
       #patches:
       #  - patch: |
       #      apiVersion: apps/v1
@@ -82,6 +72,7 @@ scenario:
       #        template:
       #          spec:
       #            priorityClassName: nightly-gpu-critical
+      patches: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
