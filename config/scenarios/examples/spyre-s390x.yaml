@@ -309,7 +309,7 @@ scenario:
     # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
     # -------------------------------------------------------------------------
     decode:
-      replicas: 1
+      replicas: 2
       tensorParallelSize: 1 
      
       accelerator:
@@ -357,7 +357,7 @@ scenario:
           failureThreshold: 3
 
       parallelism:
-        tensor: 2
+        tensor: 1
         data: 1
         dataLocal: 1
         workers: 1
