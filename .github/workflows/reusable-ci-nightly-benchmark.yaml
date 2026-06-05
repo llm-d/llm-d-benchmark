@@ -566,10 +566,10 @@ jobs:
               cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
             fi
             echo "### Setting \"repoPath\" to \"$HOME/llm-d/llm-d\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.repoPath = \\\"$HOME/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            lkcmd="yq -i \".scenario[0].kustomize.repoPath = \\\"$HOME/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
-            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.repoPath'
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.repoPath'
             echo "### Setting \"NAMESPACE\" to \"$LLMDBENCH_CICD_NS\""
             lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.NAMESPACE = \\\"$LLMDBENCH_CICD_NS\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
