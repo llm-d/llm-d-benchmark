@@ -360,7 +360,7 @@ jobs:
       - name: Install specific yq version
         uses: frenck/action-setup-yq@v1
         with:
-          version: 'v4.53.2'
+          version: 'v4.53.3'
 
       - name: Show cluster names
         run: |
