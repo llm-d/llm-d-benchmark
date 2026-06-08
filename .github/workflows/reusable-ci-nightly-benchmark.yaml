@@ -721,6 +721,7 @@ jobs:
         id: prereqs_set_harness_executable
         if: env.LLMDBENCH_CICD_HARNESS == 'nop' && env.LLMDBENCH_CICD_SCENARIO_DIR == 'cicd'
         run: |
+            export LLMDBENCH_CICD_SCENARIO_FILE=~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
             echo " ### Setting harness executable to \"llm-d-benchmark.py\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
             yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' $LLMDBENCH_CICD_SCENARIO_FILE
 

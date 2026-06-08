@@ -104,6 +104,13 @@ if [[ ! -z $LLMDBENCH_RUN_DATASET_URL ]]; then
   popd > /dev/null 2>&1
 fi
 
+for i in HF_TOKEN HUGGING_FACE_HUB_TOKEN; do
+  echo ${!i} | grep -q hf_
+  echo "Attempting to decode (base64) environment variable \"${i}\"..."
+  temp_var=$(echo ${!i} | base64 -d)
+  export $i=$temp_var
+done
+
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
 echo "Running harness: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
