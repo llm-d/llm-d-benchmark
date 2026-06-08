@@ -58,6 +58,17 @@ spec:
 {% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
+    # HuggingFace harness binaries split between the two env-var
+    # names: guidellm and a number of vLLM utilities read HF_TOKEN,
+    # while huggingface_hub-based libraries also accept
+    # HUGGING_FACE_HUB_TOKEN.  Setting both from the same secretKeyRef
+    # eliminates the question -- any harness that reads either name
+    # gets the token.
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
     - name: HUGGING_FACE_HUB_TOKEN
       valueFrom:
         secretKeyRef:

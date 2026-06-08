@@ -926,8 +926,18 @@ class RenderPlans:
         value (``REPLACE_TOKEN`` or empty), this method checks the
         following environment variables in order:
 
-        1. ``HF_TOKEN``
-        2. ``HUGGING_FACE_HUB_TOKEN``
+        1. ``HF_TOKEN``                -- plain HuggingFace convention
+        2. ``LLMDBENCH_HF_TOKEN``      -- project-prefixed (used in CI
+                                          and ``llmdbenchmark``-namespaced
+                                          environments)
+        3. ``HUGGING_FACE_HUB_TOKEN``  -- alternate HuggingFace convention
+
+        This chain matches every other HF-token consumer in the
+        codebase -- ``_ensure_hf_token_secret`` (the kustomize-mode
+        Secret enforcer), ``step_03_detect_endpoint``'s discovery
+        path, and the harness pod env block -- so a token set under
+        any of the three names is consistently picked up regardless
+        of which code path the user hits first.
 
         If a token is found, it is injected into the values dict along
         with its base64-encoded form so that rendered K8s Secret YAMLs
@@ -948,9 +958,14 @@ class RenderPlans:
             result["huggingface"] = hf_config
             return result
 
-        # Check environment variables (order matches HuggingFace SDK convention)
-        env_token = os.environ.get("HF_TOKEN") or os.environ.get(
-            "HUGGING_FACE_HUB_TOKEN"
+        # Check environment variables.  Order matches what
+        # ``_ensure_hf_token_secret`` and ``step_03_detect_endpoint``
+        # already use, so the harness pod's env block ends up wired up
+        # whenever the Secret would have been created.
+        env_token = (
+            os.environ.get("HF_TOKEN")
+            or os.environ.get("LLMDBENCH_HF_TOKEN")
+            or os.environ.get("HUGGING_FACE_HUB_TOKEN")
         )
         if not env_token:
             # No token available -- disable HF secret/auth rendering.
