@@ -108,6 +108,11 @@ on:
         required: false
         default: 'sanity_random.yaml'
         type: 'string'
+      cleanup:
+        description: 'Cleanup the llm-d stack stood up by this workflow'
+        required: false
+        default: 'true'
+        type: string
       tpu_topology:
         description: 'GKE TPU topology (e.g. 2x4, 2x2x1)'
         required: false
@@ -259,9 +264,10 @@ jobs:
       LLMDBENCH_CICD_BACKEND: ${{ inputs.backend_type || 'vllm' }}
       LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || '' }}
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
+      LLMDBENCH_CICD_CLEANUP: ${{ inputs.cleanup || 'true' }}
       LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: 1200
       LLMDBENCH_CICD_WAIT_TIMEOUT: 1200
-      LLMDBENCH_CICD_JOB_TIMEOUT: 2700
+      LLMDBENCH_CICD_JOB_TIMEOUT: 2700s
       LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: 1200
       LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
       LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || 'auto' }}
@@ -391,6 +397,45 @@ jobs:
             echo "ERROR: please define a default StorageClass on your cluster"
             exit 1
           fi
+          DEFAULT_SC=$(kubectl get storageclass  | grep "(default)" | cut -d "(" -f 1)
+          echo "Ensuring storageclass \"$DEFAULT_SC\" can create a pvc with accessMode \"ReadWriteMany\"..."
+          cat <<PVC_EOF > pvc.yaml
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: llm-d-cicd-test-rwx-pvc
+          spec:
+            accessModes:
+              - ReadWriteMany
+            storageClassName: $DEFAULT_SC
+            resources:
+              requests:
+                storage: 1G
+          PVC_EOF
+          kubectl apply -f pvc.yaml
+          cat <<POD_EOF > pod.yaml
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: llm-d-cicd-test-pod
+          spec:
+            containers:
+            - name: llm-d-cicd-test-pod
+              image: ubuntu:latest
+              command: ["sleep"]
+              args: ["infinity"]
+              volumeMounts:
+              - name: my-storage-volume
+                mountPath: /test
+            volumes:
+            - name: my-storage-volume
+              persistentVolumeClaim:
+                claimName: llm-d-cicd-test-rwx-pvc
+          POD_EOF
+          kubectl apply -f pod.yaml
+          kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/llm-d-cicd-test-rwx-pvc --timeout=300s
+          rm pod.yaml
+          rm pvc.yaml
         shell: bash
 
       - name: Request TPUs (DWS)
@@ -560,6 +605,11 @@ jobs:
             echo -n "$lkcmd" > ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
+            echo "### Setting \"REPO_ROOT\" to \"$HOME/work/llm-d/llm-d\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.REPO_ROOT = \\\"$HOME/work/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            echo -n "; $lkcmd" >> ~/work/lkcmd.txt
+            eval $lkcmd
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
             if [[ ! -z $LLMDBENCH_CICD_CONNECTOR ]]; then
             echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\""
               lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.CONNECTOR = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
@@ -594,16 +644,18 @@ jobs:
         run: |
           cd ~
           touch ~/work/lkcmd.txt
+          kubectl create namespace $LLMDBENCH_CICD_NS --dry-run=client -o yaml | kubectl apply -f -
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             if [[ -z $LLMDBENCH_HF_TOKEN ]]; then
               echo "#### Assigning fake value to LLMDBENCH_HF_TOKEN"
               export LLMDBENCH_HF_TOKEN=hf_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
-            else
-              export LLMDBENCH_HF_TOKEN=$(echo $LLMDBENCH_HF_TOKEN | base64 -d)
             fi
             echo -n $LLMDBENCH_HF_TOKEN > hf_token.txt
-            kubectl create namespace $LLMDBENCH_CICD_NS --dry-run=client -o yaml | kubectl apply -f -
-            kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml
+            IS_PLAINTEXT=$(echo $LLMDBENCH_HF_TOKEN | grep "hf_" || true)
+            if [[ -z $IS_PLAINTEXT ]]; then
+              echo -n $LLMDBENCH_HF_TOKEN | base64 -d > hf_token.txt
+            fi
+            kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
             rm -rf hf_token.txt
           fi
         shell: bash
@@ -618,21 +670,21 @@ jobs:
             echo "LLMDBENCH_CICD_DETECTED_MODEL=$detected_model"  >> $GITHUB_ENV
             echo " ### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
             for i in vllm decode prefill; do
-              find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
-              find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -print -exec yq '.spec.template.spec.priorityClassName' {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.template.spec.priorityClassName" $1' _ {} \;
             done
             if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
               echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
               for i in vllm decode; do
-                find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
-                find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -print -exec yq ".spec.replicas" {} \;
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
               done
             fi
             if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
               echo "### Setting decode pods to \"$LLMDBENCH_CICD_PREFILL_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
               for i in prefill; do
                 find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
-                find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -print -exec yq ".spec.replicas" {} \;
+                find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
               done
             fi
           fi
@@ -641,7 +693,9 @@ jobs:
       - name: Set up extra command line parameters
         run: |
           export LLMDBENCH_EXTRA_CMD=""
-          export LLMDBENCH_EXTRA_OPERATION_CMD=""
+          export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD=""
+          export LLMDBENCH_EXTRA_RUN_OPERATION_CMD=""
+          export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD=""
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             export LLMDBENCH_EXTRA_CMD="--non-admin"
           fi
@@ -652,18 +706,26 @@ jobs:
             export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
           fi
           #if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-          #  export LLMDBENCH_EXTRA_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_OPERATION_CMD "
+          #  export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
           #fi
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
-            export LLMDBENCH_EXTRA_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
           fi
           if [[ ! -z $LLMDBENCH_CICD_DETECTED_MODEL ]]; then
-            export LLMDBENCH_EXTRA_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
           fi
           echo "### LLMDBENCH_EXTRA_CMD is \"$LLMDBENCH_EXTRA_CMD\""
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
-          echo "### LLMDBENCH_EXTRA_OPERATION_CMD is \"$LLMDBENCH_EXTRA_OPERATION_CMD\""
-          echo "LLMDBENCH_EXTRA_OPERATION_CMD=$LLMDBENCH_EXTRA_OPERATION_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD is \"$LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD\""
+          echo "LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD=$LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_RUN_OPERATION_CMD is \"$LLMDBENCH_EXTRA_RUN_OPERATION_CMD\""
+          echo "LLMDBENCH_EXTRA_RUN_OPERATION_CMD=$LLMDBENCH_EXTRA_RUN_OPERATION_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD is \"$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD\""
+          echo "LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD=$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD" >> $GITHUB_ENV
           export LLMDBENCH_CICD_GATEWAY_CLASS=$(echo "$LLMDBENCH_CICD_GATEWAY_CLASS" | sed 's^standalone^epponly^g')
           echo "LLMDBENCH_CICD_GATEWAY_CLASS is \"$LLMDBENCH_CICD_GATEWAY_CLASS\""
           echo "LLMDBENCH_CICD_GATEWAY_CLASS=$LLMDBENCH_CICD_GATEWAY_CLASS"  >> $GITHUB_ENV
@@ -681,7 +743,7 @@ jobs:
       - name: Standup
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $(cat ~/work/lkcmd.txt); $LLMDBENCH_CMD ###"
           eval $LLMDBENCH_CMD
         shell: bash
@@ -706,17 +768,17 @@ jobs:
           elif [[ "$LLMDBENCH_CICD_TARGET" == "cks" && "${{ inputs.standup_method }}" == "fma" ]]; then
             echo "Temporarily unable to test \"fma\" on \"cks\" clusters"
           else
-            LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD --data-access-timeout $LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT --wait-timeout $LLMDBENCH_CICD_WAIT_TIMEOUT"
+            LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run $LLMDBENCH_EXTRA_RUN_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD --data-access-timeout $LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT --wait-timeout $LLMDBENCH_CICD_WAIT_TIMEOUT"
             echo "### $(cat ~/work/lkcmd.txt); $LLMDBENCH_CMD ###"
             eval $LLMDBENCH_CMD
           fi
         shell: bash
 
       - name: Teardown
-        if: always()
+        if: env.LLMDBENCH_CICD_CLEANUP == 'true'
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD  --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
