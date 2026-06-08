@@ -514,6 +514,15 @@ env_file_contents.append('if [[ $? -ne 0 && $ID == "ubuntu" ]]; then')
 env_file_contents.append("  apt-get update && apt install -y iproute2")
 env_file_contents.append("fi")
 
+env_file_contents.append("for i in HF_TOKEN HUGGING_FACE_HUB_TOKEN; do")
+env_file_contents.append("  echo ${!i} | grep -q hf_")
+env_file_contents.append(
+    '  echo "Attempting to decode (base64) environment variable \\"${i}\\"..."'
+)
+env_file_contents.append("  temp_var=$(echo ${!i} | base64 -d)")
+env_file_contents.append("  export $i=$temp_var")
+env_file_contents.append("done")
+
 if nccl_list:
     env_file_contents.append("which ibstat")
     env_file_contents.append('if [[ $? -ne 0 && $ID == "ubuntu" ]]; then')
