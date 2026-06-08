@@ -3,19 +3,6 @@ name: CI - Nightly Run Benchmark on OCP ("Standalone" standup method)
 on:
   workflow_dispatch:
     inputs:
-      scenario_dir:
-        description: 'Directory housing the scenarios'
-        required: false
-        default: 'cicd'
-      standup_method:
-        description: 'Standup method to be used ("standalone","fma","modelservice")'
-        required: false
-        default: 'standalone'
-      standup_scenario:
-        description: 'Cluster provider targeted ("ocp","gke","cks")'
-        required: false
-        type: 'string'
-        default: 'ocp'
       decode_pods:
         description: 'Number of decode (vllm "standalone") pods (default "auto", means what was configured on the scenario)'
         required: false
@@ -26,50 +13,10 @@ on:
         required: false
         type: 'string'
         default: 'auto'
-      accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standup method)'
-        required: false
-        type: 'string'
-        default: 'gpu'
-      backend_type:
-        description: 'Type of backend (vllm, sglang) (ONLY VALID FOR "kustomize" standup method)'
-        required: false
-        type: 'string'
-        default: 'vllm'
-      infra_provider:
-        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standup method)'
-        required: false
-        type: 'string'
-        default: 'base'
-      connector:
-        description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standup method)'
-        required: false
-        type: 'string'
-        default: ''
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
         default: 'llmdbenchcicdsns-ocp'
-      helm_release:
-        description: 'Helm release name (for modelservice)'
-        required: false
-        default: 'lmdbenchcicdr-ocp'
-      workspace_dir:
-        description: 'Workspace directory'
-        required: false
-        default: '/tmp/llmdbenchcicds-ocp'
-      bucket_project:
-        description: 'Project associated to the object storage bucket'
-        required: false
-        default: 'llm-d-scale'
-      bucket_provider:
-        description: 'Type (provider of) the bucket'
-        required: false
-        default: 'gcs'
-      bucket_path:
-        description: 'Path to object storage bucket'
-        required: false
-        default: 'llm-d-benchmarks/regressions'
       gateway_class:
         description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
         required: false
@@ -98,6 +45,11 @@ on:
         required: false
         default: 'nop.yaml'
         type: 'string'
+      cleanup:
+        description: 'Cleanup the llm-d stack stood up by this workflow'
+        required: false
+        default: 'true'
+        type: string
 
 #  push:
 #    branches:
@@ -131,4 +83,5 @@ jobs:
       verbose: ${{ inputs.verbose || 'false' }}
       harness: ${{ inputs.harness || 'nop' }}
       workload: ${{ inputs.workload || 'nop.yaml' }}
+      cleanup: ${{ inputs.cleanup || 'true' }}
     secrets: inherit
