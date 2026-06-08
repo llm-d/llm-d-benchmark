@@ -269,6 +269,7 @@ jobs:
       LLMDBENCH_CICD_WAIT_TIMEOUT: 1200
       LLMDBENCH_CICD_JOB_TIMEOUT: 2700s
       LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: 1200
+      LLMDBENCH_CICD_RUN_TIMEOUT: 3600
       LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
       LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || 'auto' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
@@ -705,17 +706,16 @@ jobs:
           if [[ "$LLMDBENCH_IS_VERBOSE" == "true" ]]; then
             export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
           fi
-          #if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-          #  export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
-          #fi
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+          fi
+          export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--wait-timeout $LLMDBENCH_CICD_RUN_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
             export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
-            export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
-            export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
           fi
           if [[ ! -z $LLMDBENCH_CICD_DETECTED_MODEL ]]; then
             export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
-            export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
             export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
           fi
           echo "### LLMDBENCH_EXTRA_CMD is \"$LLMDBENCH_EXTRA_CMD\""
@@ -734,7 +734,7 @@ jobs:
       - name: Cleanup target cloud
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD"
           echo "### $(cat ~/work/lkcmd.txt); $LLMDBENCH_CMD ###"
           eval $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
@@ -835,3 +835,4 @@ jobs:
           fi
           exit 1
         shell: bash
+
