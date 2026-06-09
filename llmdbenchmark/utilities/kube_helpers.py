@@ -134,9 +134,12 @@ def force_remove_finalizers_by_selector(
             emoji="🗑️",
         )
         cmd.kube(
-            "delete", pod,
-            "--namespace", namespace,
-            "--grace-period=0", "--force",
+            "delete",
+            pod,
+            "--namespace",
+            namespace,
+            "--grace-period=0",
+            "--force",
             "--ignore-not-found=true",
             check=False,
         )

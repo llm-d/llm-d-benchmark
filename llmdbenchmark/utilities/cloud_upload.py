@@ -49,37 +49,28 @@ def upload_results_dir(
 
     if context.dry_run:
         context.logger.log_info(
-            f"[DRY RUN] Would upload {relative_path} \u2192 "
-            f"{output}/{relative_path}/"
+            f"[DRY RUN] Would upload {relative_path} \u2192 {output}/{relative_path}/"
         )
         return None
 
     if output.startswith("gs://"):
         result = cmd.execute(
-            f"gcloud storage cp --recursive "
-            f"{local_path}/ {output}/{relative_path}/",
+            f"gcloud storage cp --recursive {local_path}/ {output}/{relative_path}/",
             check=False,
         )
         if not result.success:
-            return (
-                f"GCS upload failed for {relative_path}: "
-                f"{result.stderr[:200]}"
-            )
+            return f"GCS upload failed for {relative_path}: {result.stderr[:200]}"
         context.logger.log_info(
             f"Uploaded {relative_path} \u2192 {output}/{relative_path}/",
             emoji="\u2601\ufe0f",
         )
     elif output.startswith("s3://"):
         result = cmd.execute(
-            f"aws s3 cp --recursive "
-            f"{local_path}/ {output}/{relative_path}/",
+            f"aws s3 cp --recursive {local_path}/ {output}/{relative_path}/",
             check=False,
         )
         if not result.success:
-            return (
-                f"S3 upload failed for {relative_path}: "
-                f"{result.stderr[:200]}"
-            )
+            return f"S3 upload failed for {relative_path}: {result.stderr[:200]}"
         context.logger.log_info(
             f"Uploaded {relative_path} \u2192 {output}/{relative_path}/",
             emoji="\u2601\ufe0f",

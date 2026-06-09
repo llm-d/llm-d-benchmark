@@ -242,8 +242,7 @@ class AdminPrerequisitesStep(Step):
         """Install Gateway API CRDs if any are missing."""
         if plan_config.get("gateway", {}).get("externallyManaged", False):
             cmd.logger.log_info(
-                "✅ Gateway is externally managed "
-                "— skipping Gateway API CRD install"
+                "✅ Gateway is externally managed — skipping Gateway API CRD install"
             )
             return
 

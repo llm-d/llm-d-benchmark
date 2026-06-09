@@ -937,8 +937,9 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
 
     br_dict = _populate_benchmark_report_from_envars()
 
-    model_name = get_nested(
-        br_dict, ["scenario", "model", "name"],
+    model_name = get_nested(  # noqa: F841
+        br_dict,
+        ["scenario", "model", "name"],
         get_nested(results, ["input_config", "endpoint", "model_names", 0], "unknown"),
     )
 
@@ -965,14 +966,22 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
                         "input_seq_len": {
                             "distribution": Distribution.FIXED,
                             "value": isl_mean,
-                            "min": get_nested(results, ["input_sequence_length", "min"]),
-                            "max": get_nested(results, ["input_sequence_length", "max"]),
+                            "min": get_nested(
+                                results, ["input_sequence_length", "min"]
+                            ),
+                            "max": get_nested(
+                                results, ["input_sequence_length", "max"]
+                            ),
                         },
                         "output_seq_len": {
                             "distribution": Distribution.FIXED,
                             "value": osl_mean,
-                            "min": get_nested(results, ["output_sequence_length", "min"]),
-                            "max": get_nested(results, ["output_sequence_length", "max"]),
+                            "min": get_nested(
+                                results, ["output_sequence_length", "min"]
+                            ),
+                            "max": get_nested(
+                                results, ["output_sequence_length", "max"]
+                            ),
                         },
                     },
                     "native": {

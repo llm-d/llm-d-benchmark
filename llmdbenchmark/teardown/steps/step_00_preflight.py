@@ -37,9 +37,8 @@ class TeardownPreflightStep(Step):
                 errors=["plan config (config.yaml) not found"],
             )
 
-        context.namespace = (
-            context.namespace
-            or self._require_config(plan_config, "namespace", "name")
+        context.namespace = context.namespace or self._require_config(
+            plan_config, "namespace", "name"
         )
         context.harness_namespace = (
             context.harness_namespace

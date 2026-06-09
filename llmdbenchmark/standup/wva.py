@@ -25,9 +25,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 
 
-def extract_prometheus_ca_cert(
-    cmd: CommandExecutor, logger
-) -> str | None:
+def extract_prometheus_ca_cert(cmd: CommandExecutor, logger) -> str | None:
     """Extract the Prometheus CA cert from the OpenShift monitoring stack.
 
     Tries (in order):
@@ -136,9 +134,7 @@ def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-lo
 
     tmp_dir = Path(tempfile.mkdtemp())
     wva_values_path = tmp_dir / "wva_config.yaml"
-    wva_values_path.write_text(
-        yaml.dump(wva_config, sort_keys=False), encoding="utf-8"
-    )
+    wva_values_path.write_text(yaml.dump(wva_config, sort_keys=False), encoding="utf-8")
 
     wva_chart = plan_config.get("helmRepositories", {}).get("wva", {})
     chart_url = wva_chart.get("url", "")
@@ -265,10 +261,16 @@ def install_prometheus_adapter(  # pylint: disable=too-many-arguments
         )
     else:
         repo_url = _require_config(
-            plan_config, "helmRepositories", "prometheusAdapter", "url",
+            plan_config,
+            "helmRepositories",
+            "prometheusAdapter",
+            "url",
         )
         chart_name = _require_config(
-            plan_config, "helmRepositories", "prometheusAdapter", "name",
+            plan_config,
+            "helmRepositories",
+            "prometheusAdapter",
+            "name",
         )
         repo_alias = "prometheus-community"
 

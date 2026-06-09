@@ -2065,7 +2065,9 @@ def import_aiperf(results_file: str) -> BenchmarkReportV01:
     if br_dict:
         model_name = get_nested(br_dict, ["scenario", "model", "name"])
     else:
-        model_name = get_nested(results, ["input_config", "endpoint", "model_names", 0], "unknown")
+        model_name = get_nested(
+            results, ["input_config", "endpoint", "model_names", 0], "unknown"
+        )
 
     ttft = results.get("time_to_first_token", {})
     itl = results.get("inter_token_latency", {})

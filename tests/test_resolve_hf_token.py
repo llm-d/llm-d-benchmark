@@ -59,10 +59,9 @@ class TestResolveHfToken:
 
         assert result["huggingface"]["enabled"] is True
         assert result["huggingface"]["token"] == "hf_from_plain_var"
-        assert (
-            result["huggingface"]["tokenBase64"]
-            == base64.b64encode(b"hf_from_plain_var").decode("utf-8")
-        )
+        assert result["huggingface"]["tokenBase64"] == base64.b64encode(
+            b"hf_from_plain_var"
+        ).decode("utf-8")
 
     def test_llmdbench_hf_token_env_var_picked_up(self, renderer, monkeypatch):
         """The CI/project-prefixed name was previously a silent gap."""
@@ -74,10 +73,9 @@ class TestResolveHfToken:
 
         assert result["huggingface"]["enabled"] is True
         assert result["huggingface"]["token"] == "hf_from_llmdbench_var"
-        assert (
-            result["huggingface"]["tokenBase64"]
-            == base64.b64encode(b"hf_from_llmdbench_var").decode("utf-8")
-        )
+        assert result["huggingface"]["tokenBase64"] == base64.b64encode(
+            b"hf_from_llmdbench_var"
+        ).decode("utf-8")
 
     def test_hugging_face_hub_token_env_var_picked_up(self, renderer, monkeypatch):
         _clear_hf_env(monkeypatch)
