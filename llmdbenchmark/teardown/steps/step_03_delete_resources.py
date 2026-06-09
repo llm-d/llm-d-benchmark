@@ -25,22 +25,49 @@ SYSTEM_EXCLUDES = {
 }
 
 STANDALONE_PATTERNS = [
-    "standalone", "download-model", "testinference", "lmbenchmark",
+    "standalone",
+    "download-model",
+    "testinference",
+    "lmbenchmark",
 ]
 
 MODELSERVICE_PATTERNS = [
-    "llm-d-benchmark-preprocesses", "p2p", "inference-gateway",
-    "inferencepool", "httproute", "inferencepools.inference.networking.k8s.io",
-    "llm-route", "base-model", "endpoint-picker", "inference-route",
-    "inference-gateway-secret", "inference-gateway-params",
+    "llm-d-benchmark-preprocesses",
+    "p2p",
+    "inference-gateway",
+    "inferencepool",
+    "httproute",
+    "inferencepools.inference.networking.k8s.io",
+    "llm-route",
+    "base-model",
+    "endpoint-picker",
+    "inference-route",
+    "inference-gateway-secret",
+    "inference-gateway-params",
     "lmbenchmark",
 ]
 
 DEEP_RESOURCE_KINDS = [
-    "leaderworkerset", "deployment", "statefulset", "service", "secret",
-    "gateway", "inferencemodel", "inferencepool", "httproute", "configmap",
-    "job", "role", "rolebinding", "serviceaccount", "hpa", "va",
-    "servicemonitor", "podmonitor", "pod", "pvc",
+    "leaderworkerset",
+    "deployment",
+    "statefulset",
+    "service",
+    "secret",
+    "gateway",
+    "inferencemodel",
+    "inferencepool",
+    "httproute",
+    "configmap",
+    "job",
+    "role",
+    "rolebinding",
+    "serviceaccount",
+    "hpa",
+    "va",
+    "servicemonitor",
+    "podmonitor",
+    "pod",
+    "pvc",
 ]
 
 OPENSHIFT_RESOURCE_KINDS = ["route"]
@@ -91,8 +118,11 @@ class DeleteResourcesStep(Step):
         )
 
     def _deep_clean(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespaces: list[str], errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespaces: list[str],
+        errors: list,
     ):
         """Delete all resources of each kind in both namespaces."""
         kinds = list(DEEP_RESOURCE_KINDS)
@@ -101,13 +131,17 @@ class DeleteResourcesStep(Step):
 
         for ns in namespaces:
             context.logger.log_info(
-                f"Deep cleaning namespace \"{ns}\" "
-                f"({len(kinds)} resource kinds)..."
+                f'Deep cleaning namespace "{ns}" ({len(kinds)} resource kinds)...'
             )
             for kind in kinds:
                 list_result = cmd.kube(
-                    "get", kind, "--namespace", ns,
-                    "-o", "name", "--no-headers",
+                    "get",
+                    kind,
+                    "--namespace",
+                    ns,
+                    "-o",
+                    "name",
+                    "--no-headers",
                     "--ignore-not-found",
                     check=False,
                 )
@@ -119,15 +153,16 @@ class DeleteResourcesStep(Step):
                     continue
 
                 for resource in existing:
-                    context.logger.log_info(
-                        f"  Deleting {resource}", emoji="🗑️"
-                    )
+                    context.logger.log_info(f"  Deleting {resource}", emoji="🗑️")
 
                 # check=False suppresses CommandExecutor ERROR logs;
                 # we handle failures ourselves below
                 delete_args = [
-                    "delete", kind, "--all",
-                    "--namespace", ns,
+                    "delete",
+                    kind,
+                    "--all",
+                    "--namespace",
+                    ns,
                     "--ignore-not-found=true",
                 ]
                 # Force-delete pods to avoid hanging on Terminating pods
@@ -137,8 +172,7 @@ class DeleteResourcesStep(Step):
                 if not result.success:
                     stderr_lower = result.stderr.lower()
                     if (
-                        "the server doesn't have a resource type"
-                        in stderr_lower
+                        "the server doesn't have a resource type" in stderr_lower
                         or "not found" in stderr_lower
                         or "no matches for kind" in stderr_lower
                     ):
@@ -147,18 +181,18 @@ class DeleteResourcesStep(Step):
                     context.logger.log_error(
                         f"Failed to delete {kind} in {ns}: {result.stderr}"
                     )
-                    errors.append(
-                        f"Failed to delete {kind} in {ns}: "
-                        f"{result.stderr}"
-                    )
+                    errors.append(f"Failed to delete {kind} in {ns}: {result.stderr}")
                 else:
                     context.logger.log_info(
                         f"  Deleted {len(existing)} {kind}(s) in {ns}"
                     )
 
     def _normal_clean(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespaces: list[str], errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespaces: list[str],
+        errors: list,
     ):
         """Query for resources, filter by deployment method, delete individually."""
         resource_list = NORMAL_RESOURCE_LIST
@@ -183,14 +217,15 @@ class DeleteResourcesStep(Step):
         hf_secret = self._require_config(plan_config, "huggingface", "secretName")
 
         for ns in namespaces:
-            context.logger.log_info(
-                f"Cleaning namespace \"{ns}\" (normal mode)..."
-            )
+            context.logger.log_info(f'Cleaning namespace "{ns}" (normal mode)...')
 
             result = cmd.kube(
-                "get", resource_list,
-                "--namespace", ns,
-                "-o", "name",
+                "get",
+                resource_list,
+                "--namespace",
+                ns,
+                "-o",
+                "name",
             )
             if not result.success or not result.stdout.strip():
                 all_resources = []
@@ -198,19 +233,16 @@ class DeleteResourcesStep(Step):
                 all_resources = result.stdout.strip().splitlines()
 
             filtered = [
-                r for r in all_resources
-                if not self._is_system_resource(r, hf_secret)
+                r for r in all_resources if not self._is_system_resource(r, hf_secret)
             ]
 
             if standalone_active and not modelservice_active:
                 filtered = [
-                    r for r in filtered
-                    if self._matches_any(r, STANDALONE_PATTERNS)
+                    r for r in filtered if self._matches_any(r, STANDALONE_PATTERNS)
                 ]
             elif modelservice_active and not standalone_active:
                 filtered = [
-                    r for r in filtered
-                    if self._matches_any(r, MODELSERVICE_PATTERNS)
+                    r for r in filtered if self._matches_any(r, MODELSERVICE_PATTERNS)
                 ]
 
             # Also find model-serving workload controllers by pod
@@ -218,9 +250,12 @@ class DeleteResourcesStep(Step):
             # but the llm-d.ai/inferenceServing label is on the pod
             # template, so we query as JSON and filter in Python.
             workload_result = cmd.kube(
-                "get", "leaderworkerset,deployment,statefulset",
-                "--namespace", ns,
-                "-o", "json",
+                "get",
+                "leaderworkerset,deployment,statefulset",
+                "--namespace",
+                ns,
+                "-o",
+                "json",
                 "--ignore-not-found",
                 check=False,
             )
@@ -267,9 +302,7 @@ class DeleteResourcesStep(Step):
                     pass
 
             if not filtered:
-                context.logger.log_info(
-                    f"  No matching resources found in {ns}"
-                )
+                context.logger.log_info(f"  No matching resources found in {ns}")
                 continue
 
             context.logger.log_info(
@@ -277,11 +310,11 @@ class DeleteResourcesStep(Step):
             )
             deleted_count = 0
             for resource in filtered:
-                context.logger.log_info(
-                    f"  Deleting {resource}", emoji="🗑️"
-                )
+                context.logger.log_info(f"  Deleting {resource}", emoji="🗑️")
                 delete_args = [
-                    "delete", "--namespace", ns,
+                    "delete",
+                    "--namespace",
+                    ns,
                     "--ignore-not-found=true",
                     resource,
                 ]
@@ -294,9 +327,7 @@ class DeleteResourcesStep(Step):
                 else:
                     stderr_lower = del_result.stderr.lower()
                     if "not found" in stderr_lower or "no matches" in stderr_lower:
-                        context.logger.log_info(
-                            f"    Already removed: {resource}"
-                        )
+                        context.logger.log_info(f"    Already removed: {resource}")
                     else:
                         context.logger.log_warning(
                             f"    Could not delete {resource}: {del_result.stderr}"
@@ -316,9 +347,13 @@ class DeleteResourcesStep(Step):
             if not resource_type:
                 continue
             result = cmd.kube(
-                "get", resource_type,
-                "--namespace", namespace,
-                "--no-headers", "-o", "name",
+                "get",
+                resource_type,
+                "--namespace",
+                namespace,
+                "--no-headers",
+                "-o",
+                "name",
                 check=False,
             )
             if result.success or "No resources found" in result.stderr:

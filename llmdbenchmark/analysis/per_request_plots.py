@@ -36,6 +36,7 @@ def generate_per_request_plots(
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -89,15 +90,17 @@ def generate_per_request_plots(
         for i in range(1, len(token_times)):
             itls.append(token_times[i] - token_times[i - 1])
 
-        requests.append({
-            "e2e": e2e,
-            "ttft": ttft,
-            "tpot": tpot,
-            "itl_mean": sum(itls) / len(itls) if itls else None,
-            "itls": itls,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-        })
+        requests.append(
+            {
+                "e2e": e2e,
+                "ttft": ttft,
+                "tpot": tpot,
+                "itl_mean": sum(itls) / len(itls) if itls else None,
+                "itls": itls,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+            }
+        )
 
     if not requests:
         return 0
@@ -120,17 +123,30 @@ def generate_per_request_plots(
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
         # Histogram
-        ax1.hist(values, bins=min(30, len(values)), color="#3498db",
-                 alpha=0.7, edgecolor="black", linewidth=0.5)
-        ax1.axvline(sum(values) / len(values), color="#e74c3c",
-                    linestyle="--", label=f"Mean: {sum(values)/len(values):.4f}{unit}")
+        ax1.hist(
+            values,
+            bins=min(30, len(values)),
+            color="#3498db",
+            alpha=0.7,
+            edgecolor="black",
+            linewidth=0.5,
+        )
+        ax1.axvline(
+            sum(values) / len(values),
+            color="#e74c3c",
+            linestyle="--",
+            label=f"Mean: {sum(values) / len(values):.4f}{unit}",
+        )
         sorted_v = sorted(values)
         p50 = sorted_v[len(sorted_v) // 2]
         p99_idx = min(int(len(sorted_v) * 0.99), len(sorted_v) - 1)
-        ax1.axvline(p50, color="#2ecc71", linestyle="--",
-                    label=f"P50: {p50:.4f}{unit}")
-        ax1.axvline(sorted_v[p99_idx], color="#e67e22", linestyle="--",
-                    label=f"P99: {sorted_v[p99_idx]:.4f}{unit}")
+        ax1.axvline(p50, color="#2ecc71", linestyle="--", label=f"P50: {p50:.4f}{unit}")
+        ax1.axvline(
+            sorted_v[p99_idx],
+            color="#e67e22",
+            linestyle="--",
+            label=f"P99: {sorted_v[p99_idx]:.4f}{unit}",
+        )
         ax1.set_xlabel(xlabel)
         ax1.set_ylabel("Count")
         ax1.set_title(f"{title} (n={len(values)})")
@@ -138,8 +154,12 @@ def generate_per_request_plots(
         ax1.grid(alpha=0.3)
 
         # CDF
-        ax2.plot(sorted_v, [i / len(sorted_v) for i in range(len(sorted_v))],
-                 color="#3498db", linewidth=2)
+        ax2.plot(
+            sorted_v,
+            [i / len(sorted_v) for i in range(len(sorted_v))],
+            color="#3498db",
+            linewidth=2,
+        )
         ax2.axhline(0.5, color="#2ecc71", linestyle=":", alpha=0.5, label="P50")
         ax2.axhline(0.99, color="#e67e22", linestyle=":", alpha=0.5, label="P99")
         ax2.set_xlabel(xlabel)
@@ -154,8 +174,11 @@ def generate_per_request_plots(
         generated += 1
 
     # --- Scatter: TTFT vs input length ---
-    ttft_vals = [(r["input_tokens"], r["ttft"]) for r in requests
-                 if r["ttft"] is not None and r["input_tokens"]]
+    ttft_vals = [
+        (r["input_tokens"], r["ttft"])
+        for r in requests
+        if r["ttft"] is not None and r["input_tokens"]
+    ]
     if len(ttft_vals) >= 2:
         xs, ys = zip(*ttft_vals)
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -170,8 +193,11 @@ def generate_per_request_plots(
         generated += 1
 
     # --- Scatter: E2E vs output length ---
-    e2e_vals = [(r["output_tokens"], r["e2e"]) for r in requests
-                if r["e2e"] is not None and r["output_tokens"]]
+    e2e_vals = [
+        (r["output_tokens"], r["e2e"])
+        for r in requests
+        if r["e2e"] is not None and r["output_tokens"]
+    ]
     if len(e2e_vals) >= 2:
         xs, ys = zip(*e2e_vals)
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -193,8 +219,14 @@ def generate_per_request_plots(
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
         # Histogram
-        ax1.hist(all_itls, bins=50, color="#9b59b6", alpha=0.7,
-                 edgecolor="black", linewidth=0.5)
+        ax1.hist(
+            all_itls,
+            bins=50,
+            color="#9b59b6",
+            alpha=0.7,
+            edgecolor="black",
+            linewidth=0.5,
+        )
         ax1.set_xlabel("Inter-Token Latency (s)")
         ax1.set_ylabel("Count")
         ax1.set_title(f"ITL Distribution (all tokens, n={len(all_itls)})")
@@ -202,9 +234,12 @@ def generate_per_request_plots(
 
         # CDF
         sorted_itls = sorted(all_itls)
-        ax2.plot(sorted_itls,
-                 [i / len(sorted_itls) for i in range(len(sorted_itls))],
-                 color="#9b59b6", linewidth=2)
+        ax2.plot(
+            sorted_itls,
+            [i / len(sorted_itls) for i in range(len(sorted_itls))],
+            color="#9b59b6",
+            linewidth=2,
+        )
         ax2.set_xlabel("Inter-Token Latency (s)")
         ax2.set_ylabel("Cumulative Probability")
         ax2.set_title("ITL CDF (all tokens)")
@@ -229,6 +264,7 @@ def _log(context, message, warning=False):
             context.logger.log_info(message)
     else:
         import logging
+
         logger = logging.getLogger(__name__)
         if warning:
             logger.warning(message)

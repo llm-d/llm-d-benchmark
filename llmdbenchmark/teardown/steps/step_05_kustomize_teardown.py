@@ -36,7 +36,11 @@ class KustomizeTeardownStep(Step):
         cmd = context.require_cmd()
         namespace = context.require_namespace()
 
-        plan_config = self._load_plan_config(context) if stack_path is None else self._load_stack_config(stack_path)
+        plan_config = (
+            self._load_plan_config(context)
+            if stack_path is None
+            else self._load_stack_config(stack_path)
+        )
         kust_config = plan_config.get("kustomize", {}) if plan_config else {}
 
         guide_name = kust_config.get("guideName", "")
@@ -46,6 +50,11 @@ class KustomizeTeardownStep(Step):
             if (auto_cloned / "guides").is_dir():
                 repo_path = str(auto_cloned)
         gaie_version = kust_config.get("gaieVersion", "")
+        # `ROUTER_CHART_VERSION` is referenced by guide READMEs alongside
+        # `GAIE_VERSION` after the llm-d-router chart migration. The
+        # teardown commands reference the same chart, so we need to
+        # resolve the same variable as during deploy.
+        router_chart_version = kust_config.get("routerChartVersion", "") or "v0"
         accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
         monitoring = kust_config.get("monitoring", False)
 
@@ -64,10 +73,17 @@ class KustomizeTeardownStep(Step):
             if not gaie_version:
                 gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
 
+            effective_router_chart_version = (
+                router_chart_version
+                or parsed.variables.get("ROUTER_CHART_VERSION", "")
+                or "v0"
+            )
+
             resolver = GuideVariableResolver(
                 guide_name=guide_name,
                 namespace=namespace,
                 gaie_version=gaie_version,
+                router_chart_version=effective_router_chart_version,
                 repo_path=repo_path,
                 accelerator_backend=accel_backend,
                 variable_overrides=kust_config.get("guideVariableOverrides", {}),
@@ -92,11 +108,21 @@ class KustomizeTeardownStep(Step):
             return self._fallback_teardown(cmd, context, namespace, guide_name)
 
         if monitoring:
-            mon_path = Path(repo_path) / "guides" / "recipes" / "modelserver" / "components" / "monitoring"
+            mon_path = (
+                Path(repo_path)
+                / "guides"
+                / "recipes"
+                / "modelserver"
+                / "components"
+                / "monitoring"
+            )
             if mon_path.exists():
                 result = cmd.kube(
-                    "delete", "-n", namespace,
-                    "-k", str(mon_path),
+                    "delete",
+                    "-n",
+                    namespace,
+                    "-k",
+                    str(mon_path),
                     "--ignore-not-found",
                     check=False,
                 )
@@ -108,6 +134,7 @@ class KustomizeTeardownStep(Step):
         overlay_dir = context.workspace / "setup" / "kustomize-overlay"
         if overlay_dir.exists():
             import shutil
+
             shutil.rmtree(overlay_dir, ignore_errors=True)
 
         if errors:
@@ -128,9 +155,7 @@ class KustomizeTeardownStep(Step):
         )
 
     @staticmethod
-    def _run_resolved(
-        cmd: CommandExecutor, resolved: str, *, check: bool = True
-    ):
+    def _run_resolved(cmd: CommandExecutor, resolved: str, *, check: bool = True):
         tokens = shlex.split(resolved)
         if not tokens:
             return cmd.execute(resolved, check=check)
@@ -150,13 +175,19 @@ class KustomizeTeardownStep(Step):
     ) -> StepResult:
         if guide_name:
             cmd.helm(
-                "uninstall", guide_name, "-n", namespace,
+                "uninstall",
+                guide_name,
+                "-n",
+                namespace,
                 check=False,
             )
 
         cmd.kube(
-            "delete", "deployment,service,configmap,serviceaccount",
-            "--all", "--namespace", namespace,
+            "delete",
+            "deployment,service,configmap,serviceaccount",
+            "--all",
+            "--namespace",
+            namespace,
             check=False,
         )
 

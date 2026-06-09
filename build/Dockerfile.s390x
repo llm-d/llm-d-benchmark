@@ -7,18 +7,23 @@ WORKDIR /workspace
 # -----------------------------
 # Install additional tools
 # -----------------------------
-RUN microdnf install -y \
+RUN microdnf clean all && microdnf makecache && \
+    microdnf install -y \
     git jq rsync wget tar \
-    gcc gcc-c++ gcc-gfortran make cmake \
-    openssl-devel libffi-devel  zlib-devel libsndfile\
-    freetype-devel bzip2-devel xz-devel lz4-devel snappy-devel \
-    boost-devel  libjpeg-turbo-devel libtiff-devel libpng-devel libwebp-devel \
-    libxml2-devel libxslt-devel  libwebp-devel\
-    openblas openblas-devel autoconf automake libtool \
-    numpy perl-core dnf-plugins-core libxml2 libxml2-devel libxslt libxslt-devel \
+    which findutils \
+    bc procps-ng \
+    gcc gcc-c++ gcc-gfortran make cmake ninja-build \
+    autoconf automake libtool pkg-config \
+    openssl-devel libffi-devel zlib-devel \
+    bzip2-devel xz-devel lz4-devel snappy-devel libzstd-devel \
+    freetype-devel boost-devel \
+    openblas openblas-devel \
+    libjpeg-turbo-devel libtiff-devel libpng-devel libwebp-devel \
+    libxml2 libxml2-devel libxslt libxslt-devel \
     ca-certificates iproute infiniband-diags \
+    perl-core dnf-plugins-core \
+    libsndfile \
     && microdnf clean all
-
 # -----------------------------
 # Python 3.12
 # -----------------------------
@@ -101,8 +106,13 @@ RUN git clone https://github.com/apache/arrow.git && \
 # Build pyarrow
 # -----------------------------
 RUN cd /tmp/arrow/python && \
-    python -m pip install -r requirements-build.txt && \
-    python -m pip install .
+    python -m pip install -r requirements-build.txt build && \
+    export PYARROW_BUNDLE_ARROW_CPP=1 && \
+    export PYARROW_WITH_DATASET=1 && \
+    export ARROW_HOME=/usr/local && \
+    export PARQUET_HOME=/usr/local && \
+    python -m build --wheel && \
+    pip install dist/*.whl
 
 # -----------------------------
 # Install inference-perf (FULL deps now possible)
@@ -347,7 +357,7 @@ RUN SPIECE_WHL=$(ls /tmp/sentencepiece-wheels/*.whl) && \
         "$NUMBA_WHL" \
         "$OPENCV_WHL" \
         "$OUTLINES_WHL" \
-        "$SPIECE_WHL" \ 
+        "$SPIECE_WHL" \
         -r requirements/cpu-build.txt \
         -r requirements/cpu.txt
 

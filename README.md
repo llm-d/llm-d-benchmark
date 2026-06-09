@@ -100,8 +100,8 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 
 ```bash
 --spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
---spec inference-scheduling             # inference scheduling guide
---spec inference-scheduling-wva         # inference scheduling + WVA autoscaling
+--spec guides/optimized-baseline        # optimized baseline guide (formerly inference-scheduling)
+--spec guides/workload-autoscaling      # optimized baseline + WVA autoscaling
 --spec multi-model-wva                  # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
 --spec pd-disaggregation               # prefill-decode disaggregation guide
 ...
@@ -382,7 +382,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@92b14fe09fea0ec9ff36539326b7a8df00f1022c"
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"
 ```
 
 ### Verify Installation
@@ -536,7 +536,7 @@ This is useful for CI/CD pipelines, `.bashrc` configuration, or migrating from t
 
 ```bash
 # Example: set common defaults via env vars, override per-run via CLI
-export LLMDBENCH_SPEC=inference-scheduling
+export LLMDBENCH_SPEC=guides/optimized-baseline
 export LLMDBENCH_NAMESPACE=my-team-ns
 export LLMDBENCH_KUBECONFIG=~/.kube/my-cluster
 
@@ -582,7 +582,7 @@ Both paths share steps 00-05 (infrastructure, namespaces, secrets) and step 10 (
 | 05 | harness_namespace | Per-stack | Harness namespace (PVC, data access pod, preprocess) |
 | 06 | standalone_deploy | Per-stack | Standalone vLLM deployment (Deployment + Service) |
 | 07 | deploy_setup | Per-stack | Helm repos and gateway infrastructure (helmfile) |
-| 08 | deploy_gaie | Per-stack | GAIE inference extension deployment |
+| 08 | deploy_router | Per-stack | llm-d router (EPP + provider resources) deployment |
 | 09 | deploy_modelservice | Per-stack | Modelservice deployment (helmfile + LWS) |
 | 10 | smoketest | Per-stack | Health check, inference test, per-scenario config validation |
 | 11 | inference_test | Per-stack | Sample inference request with demo curl command |
@@ -705,7 +705,7 @@ See module-level READMEs for detailed documentation:
 `llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md). Each guide has a corresponding specification:
 
 ```bash
-llmdbenchmark --spec inference-scheduling standup       # Inference scheduling
+llmdbenchmark --spec guides/optimized-baseline standup  # Optimized baseline (formerly inference-scheduling)
 llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
 llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
 llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing

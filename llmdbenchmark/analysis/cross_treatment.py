@@ -27,31 +27,85 @@ if TYPE_CHECKING:
 # Metrics to extract from benchmark report v0.2
 # (dotted path into the YAML to column name, unit)
 METRICS_OF_INTEREST = [
-    ("results.request_performance.aggregate.latency.time_to_first_token.mean", "ttft_mean_s"),
-    ("results.request_performance.aggregate.latency.time_to_first_token.p50", "ttft_p50_s"),
-    ("results.request_performance.aggregate.latency.time_to_first_token.p99", "ttft_p99_s"),
-    ("results.request_performance.aggregate.latency.time_per_output_token.mean", "tpot_mean_s"),
-    ("results.request_performance.aggregate.latency.time_per_output_token.p99", "tpot_p99_s"),
-    ("results.request_performance.aggregate.latency.inter_token_latency.mean", "itl_mean_s"),
-    ("results.request_performance.aggregate.latency.inter_token_latency.p99", "itl_p99_s"),
-    ("results.request_performance.aggregate.latency.request_latency.mean", "e2e_mean_s"),
+    (
+        "results.request_performance.aggregate.latency.time_to_first_token.mean",
+        "ttft_mean_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.time_to_first_token.p50",
+        "ttft_p50_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.time_to_first_token.p99",
+        "ttft_p99_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.time_per_output_token.mean",
+        "tpot_mean_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.time_per_output_token.p99",
+        "tpot_p99_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.inter_token_latency.mean",
+        "itl_mean_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.inter_token_latency.p99",
+        "itl_p99_s",
+    ),
+    (
+        "results.request_performance.aggregate.latency.request_latency.mean",
+        "e2e_mean_s",
+    ),
     ("results.request_performance.aggregate.latency.request_latency.p99", "e2e_p99_s"),
-    ("results.request_performance.aggregate.throughput.output_token_rate.mean", "output_tps"),
-    ("results.request_performance.aggregate.throughput.request_rate.mean", "request_qps"),
-    ("results.request_performance.aggregate.throughput.total_token_rate.mean", "total_tps"),
+    (
+        "results.request_performance.aggregate.throughput.output_token_rate.mean",
+        "output_tps",
+    ),
+    (
+        "results.request_performance.aggregate.throughput.request_rate.mean",
+        "request_qps",
+    ),
+    (
+        "results.request_performance.aggregate.throughput.total_token_rate.mean",
+        "total_tps",
+    ),
     ("results.request_performance.aggregate.requests.total", "total_requests"),
     ("results.request_performance.aggregate.requests.failures", "failures"),
 ]
 
 SESSION_METRICS_OF_INTEREST = [
     ("results.session_performance.sessions.session_rate.mean", "session_rate_qps"),
-    ("results.session_performance.sessions.session_duration.mean", "session_duration_mean_s"),
-    ("results.session_performance.sessions.session_duration.p50", "session_duration_p50_s"),
-    ("results.session_performance.sessions.session_duration.p99", "session_duration_p99_s"),
-    ("results.session_performance.sessions.events_per_session.mean", "events_per_session_mean"),
-    ("results.session_performance.sessions.events_cancelled_per_session.mean", "events_cancelled_per_session_mean"),
-    ("results.session_performance.sessions.input_tokens_per_session.mean", "input_tokens_per_session_mean"),
-    ("results.session_performance.sessions.output_tokens_per_session.mean", "output_tokens_per_session_mean"),
+    (
+        "results.session_performance.sessions.session_duration.mean",
+        "session_duration_mean_s",
+    ),
+    (
+        "results.session_performance.sessions.session_duration.p50",
+        "session_duration_p50_s",
+    ),
+    (
+        "results.session_performance.sessions.session_duration.p99",
+        "session_duration_p99_s",
+    ),
+    (
+        "results.session_performance.sessions.events_per_session.mean",
+        "events_per_session_mean",
+    ),
+    (
+        "results.session_performance.sessions.events_cancelled_per_session.mean",
+        "events_cancelled_per_session_mean",
+    ),
+    (
+        "results.session_performance.sessions.input_tokens_per_session.mean",
+        "input_tokens_per_session_mean",
+    ),
+    (
+        "results.session_performance.sessions.output_tokens_per_session.mean",
+        "output_tokens_per_session_mean",
+    ),
     ("results.session_performance.sessions.total", "total_sessions"),
     ("results.session_performance.sessions.failed", "failed_sessions"),
 ]
@@ -93,9 +147,15 @@ def _shorten_treatment_label(name: str) -> str:
     name = re.sub(r"-\d{10,}$", "", name)
 
     # Strip harness prefix (e.g., inference-perf-)
-    for prefix in ("inference-perf-", "guidellm-", "vllm-benchmark-", "inferencemax-", "nop-"):
+    for prefix in (
+        "inference-perf-",
+        "guidellm-",
+        "vllm-benchmark-",
+        "inferencemax-",
+        "nop-",
+    ):
         if name.startswith(prefix):
-            name = name[len(prefix):]
+            name = name[len(prefix) :]
             break
 
     return name if name else "default"
@@ -157,13 +217,17 @@ def generate_cross_treatment_summary(
 
             # Extract workload metadata
             row["input_len_mean"] = deep_get(
-                report, "results.request_performance.aggregate.requests.input_length.mean"
+                report,
+                "results.request_performance.aggregate.requests.input_length.mean",
             )
             row["output_len_mean"] = deep_get(
-                report, "results.request_performance.aggregate.requests.output_length.mean"
+                report,
+                "results.request_performance.aggregate.requests.output_length.mean",
             )
             row["tool"] = deep_get(report, "scenario.load.standardized.tool", "")
-            row["rate_qps"] = deep_get(report, "scenario.load.standardized.rate_qps", "") or ""
+            row["rate_qps"] = (
+                deep_get(report, "scenario.load.standardized.rate_qps", "") or ""
+            )
 
             rows.append(row)
 
@@ -210,6 +274,7 @@ def _generate_comparison_plots(
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -235,6 +300,7 @@ def _generate_comparison_plots(
 
     # Aggregate rows by treatment (average across stages)
     from collections import defaultdict
+
     treatment_values: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         label = _shorten_treatment_label(r["treatment"])
@@ -246,8 +312,16 @@ def _generate_comparison_plots(
 
     # Color palette
     bar_colors = [
-        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
-        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+        "#e74c3c",
+        "#3498db",
+        "#2ecc71",
+        "#9b59b6",
+        "#f39c12",
+        "#1abc9c",
+        "#e67e22",
+        "#34495e",
+        "#16a085",
+        "#c0392b",
     ]
 
     generated = 0
@@ -260,7 +334,8 @@ def _generate_comparison_plots(
 
         for label in treatment_labels:
             vals = [
-                float(r[col_name]) for r in treatment_values[label]
+                float(r[col_name])
+                for r in treatment_values[label]
                 if r.get(col_name) is not None
             ]
             if vals:
@@ -291,8 +366,13 @@ def _generate_comparison_plots(
 
         x_pos = range(len(treatment_labels))
         bars = ax.bar(
-            x_pos, means, color=colors, alpha=0.85,
-            yerr=[mins, maxs], capsize=4, error_kw={"linewidth": 1.5},
+            x_pos,
+            means,
+            color=colors,
+            alpha=0.85,
+            yerr=[mins, maxs],
+            capsize=4,
+            error_kw={"linewidth": 1.5},
         )
 
         # Add value labels on bars
@@ -301,15 +381,24 @@ def _generate_comparison_plots(
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height() + max(maxs) * 0.02,
-                text, ha="center", va="bottom", fontsize=8, fontweight="bold",
+                text,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
             )
 
         # Add stage count annotation
         for i, label in enumerate(treatment_labels):
             n_stages = len(treatment_values[label])
             ax.text(
-                i, 0, f"n={n_stages}",
-                ha="center", va="bottom", fontsize=7, color="gray",
+                i,
+                0,
+                f"n={n_stages}",
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color="gray",
             )
 
         ax.set_xticks(x_pos)
@@ -342,6 +431,7 @@ def _generate_session_comparison_plots(
     """Generate bar charts for session lifecycle metrics across treatments."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -349,12 +439,19 @@ def _generate_session_comparison_plots(
         return 0
 
     # Only process rows that have at least one session metric populated
-    session_rows = [r for r in rows if any(r.get(col) is not None for _, col in SESSION_METRICS_OF_INTEREST)]
+    session_rows = [
+        r
+        for r in rows
+        if any(r.get(col) is not None for _, col in SESSION_METRICS_OF_INTEREST)
+    ]
     if not session_rows:
         return 0
 
     if len({_shorten_treatment_label(r["treatment"]) for r in session_rows}) < 2:
-        _log(context, "Only 1 treatment with session data -- skipping session comparison plots")
+        _log(
+            context,
+            "Only 1 treatment with session data -- skipping session comparison plots",
+        )
         return 0
 
     # (column_name, title, unit, higher_is_better)
@@ -363,17 +460,36 @@ def _generate_session_comparison_plots(
         ("session_duration_mean_s", "Session Duration (Mean)", "seconds", False),
         ("session_duration_p99_s", "Session Duration P99", "seconds", False),
         ("events_per_session_mean", "Events per Session (Mean)", "count", True),
-        ("events_cancelled_per_session_mean", "Cancelled Events per Session (Mean)", "count", False),
-        ("output_tokens_per_session_mean", "Output Tokens per Session (Mean)", "tokens", True),
+        (
+            "events_cancelled_per_session_mean",
+            "Cancelled Events per Session (Mean)",
+            "count",
+            False,
+        ),
+        (
+            "output_tokens_per_session_mean",
+            "Output Tokens per Session (Mean)",
+            "tokens",
+            True,
+        ),
         ("failed_sessions", "Failed Sessions", "count", False),
     ]
 
     bar_colors = [
-        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
-        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+        "#e74c3c",
+        "#3498db",
+        "#2ecc71",
+        "#9b59b6",
+        "#f39c12",
+        "#1abc9c",
+        "#e67e22",
+        "#34495e",
+        "#16a085",
+        "#c0392b",
     ]
 
     from collections import defaultdict
+
     treatment_values: dict[str, list[dict]] = defaultdict(list)
     for r in session_rows:
         label = _shorten_treatment_label(r["treatment"])
@@ -391,7 +507,8 @@ def _generate_session_comparison_plots(
 
         for label in treatment_labels:
             vals = [
-                float(r[col_name]) for r in treatment_values[label]
+                float(r[col_name])
+                for r in treatment_values[label]
                 if r.get(col_name) is not None
             ]
             if vals:
@@ -413,13 +530,20 @@ def _generate_session_comparison_plots(
 
         non_zero_means = [m for m in means if m > 0]
         if non_zero_means:
-            best_idx = means.index(max(non_zero_means) if higher_is_better else min(non_zero_means))
+            best_idx = means.index(
+                max(non_zero_means) if higher_is_better else min(non_zero_means)
+            )
             colors[best_idx] = "#2ecc71"
 
         x_pos = range(len(treatment_labels))
         bars = ax.bar(
-            x_pos, means, color=colors, alpha=0.85,
-            yerr=[mins, maxs], capsize=4, error_kw={"linewidth": 1.5},
+            x_pos,
+            means,
+            color=colors,
+            alpha=0.85,
+            yerr=[mins, maxs],
+            capsize=4,
+            error_kw={"linewidth": 1.5},
         )
 
         offset = max(maxs) * 0.02 if max(maxs) > 0 else max(means, default=0) * 0.02
@@ -428,12 +552,24 @@ def _generate_session_comparison_plots(
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height() + offset,
-                text, ha="center", va="bottom", fontsize=8, fontweight="bold",
+                text,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
             )
 
         for i, label in enumerate(treatment_labels):
             n_stages = len(treatment_values[label])
-            ax.text(i, 0, f"n={n_stages}", ha="center", va="bottom", fontsize=7, color="gray")
+            ax.text(
+                i,
+                0,
+                f"n={n_stages}",
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color="gray",
+            )
 
         ax.set_xticks(x_pos)
         ax.set_xticklabels(treatment_labels, rotation=30, ha="right", fontsize=9)
@@ -451,7 +587,9 @@ def _generate_session_comparison_plots(
     generated += _generate_session_scatter_plots(session_rows, output_dir, context)
 
     if generated:
-        _log(context, f"Generated {generated} session comparison plot(s) in {output_dir}")
+        _log(
+            context, f"Generated {generated} session comparison plot(s) in {output_dir}"
+        )
 
     return generated
 
@@ -464,6 +602,7 @@ def _generate_session_scatter_plots(
     """Generate scatter plots for session metric relationships across treatments."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -483,25 +622,39 @@ def _generate_session_scatter_plots(
     # (x_col, y_col, title, x_label, y_label)
     scatter_specs = [
         (
-            "session_rate_qps", "session_duration_mean_s",
+            "session_rate_qps",
+            "session_duration_mean_s",
             "Session Duration vs Session Rate",
-            "Session Rate (sessions/s)", "Session Duration Mean (s)",
+            "Session Rate (sessions/s)",
+            "Session Duration Mean (s)",
         ),
         (
-            "session_rate_qps", "events_per_session_mean",
+            "session_rate_qps",
+            "events_per_session_mean",
             "Events per Session vs Session Rate",
-            "Session Rate (sessions/s)", "Events per Session (mean)",
+            "Session Rate (sessions/s)",
+            "Events per Session (mean)",
         ),
         (
-            "session_rate_qps", "output_tokens_per_session_mean",
+            "session_rate_qps",
+            "output_tokens_per_session_mean",
             "Output Tokens per Session vs Session Rate",
-            "Session Rate (sessions/s)", "Output Tokens per Session (mean)",
+            "Session Rate (sessions/s)",
+            "Output Tokens per Session (mean)",
         ),
     ]
 
     colors = [
-        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
-        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+        "#e74c3c",
+        "#3498db",
+        "#2ecc71",
+        "#9b59b6",
+        "#f39c12",
+        "#1abc9c",
+        "#e67e22",
+        "#34495e",
+        "#16a085",
+        "#c0392b",
     ]
     markers = ["o", "s", "^", "D", "v", "P", "*", "X", "h", "p"]
 
@@ -524,9 +677,16 @@ def _generate_session_scatter_plots(
         fig, ax = plt.subplots(figsize=(10, 6))
         for i, (label, points) in enumerate(sorted(treatment_points.items())):
             xs, ys = zip(*points)
-            ax.plot(xs, ys, f"{markers[i % len(markers)]}-",
-                    color=colors[i % len(colors)], markersize=8,
-                    linewidth=2, alpha=0.8, label=label)
+            ax.plot(
+                xs,
+                ys,
+                f"{markers[i % len(markers)]}-",
+                color=colors[i % len(colors)],
+                markersize=8,
+                linewidth=2,
+                alpha=0.8,
+                label=label,
+            )
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
@@ -556,6 +716,7 @@ def _generate_scatter_plots(
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -576,20 +737,76 @@ def _generate_scatter_plots(
 
     # Scatter plot specs: (x_col, y_col, title, x_label, y_label)
     scatter_specs = [
-        ("request_qps", "ttft_mean_s", "TTFT vs Request Rate", "Request Rate (QPS)", "TTFT Mean (s)"),
-        ("request_qps", "tpot_mean_s", "TPOT vs Request Rate", "Request Rate (QPS)", "TPOT Mean (s)"),
-        ("request_qps", "itl_mean_s", "ITL vs Request Rate", "Request Rate (QPS)", "ITL Mean (s)"),
-        ("request_qps", "e2e_mean_s", "E2E Latency vs Request Rate", "Request Rate (QPS)", "E2E Mean (s)"),
-        ("output_tps", "ttft_mean_s", "TTFT vs Throughput", "Output Throughput (tokens/s)", "TTFT Mean (s)"),
-        ("output_tps", "tpot_mean_s", "TPOT vs Throughput", "Output Throughput (tokens/s)", "TPOT Mean (s)"),
-        ("request_qps", "ttft_p99_s", "TTFT P99 vs Request Rate", "Request Rate (QPS)", "TTFT P99 (s)"),
-        ("request_qps", "tpot_p99_s", "TPOT P99 vs Request Rate", "Request Rate (QPS)", "TPOT P99 (s)"),
+        (
+            "request_qps",
+            "ttft_mean_s",
+            "TTFT vs Request Rate",
+            "Request Rate (QPS)",
+            "TTFT Mean (s)",
+        ),
+        (
+            "request_qps",
+            "tpot_mean_s",
+            "TPOT vs Request Rate",
+            "Request Rate (QPS)",
+            "TPOT Mean (s)",
+        ),
+        (
+            "request_qps",
+            "itl_mean_s",
+            "ITL vs Request Rate",
+            "Request Rate (QPS)",
+            "ITL Mean (s)",
+        ),
+        (
+            "request_qps",
+            "e2e_mean_s",
+            "E2E Latency vs Request Rate",
+            "Request Rate (QPS)",
+            "E2E Mean (s)",
+        ),
+        (
+            "output_tps",
+            "ttft_mean_s",
+            "TTFT vs Throughput",
+            "Output Throughput (tokens/s)",
+            "TTFT Mean (s)",
+        ),
+        (
+            "output_tps",
+            "tpot_mean_s",
+            "TPOT vs Throughput",
+            "Output Throughput (tokens/s)",
+            "TPOT Mean (s)",
+        ),
+        (
+            "request_qps",
+            "ttft_p99_s",
+            "TTFT P99 vs Request Rate",
+            "Request Rate (QPS)",
+            "TTFT P99 (s)",
+        ),
+        (
+            "request_qps",
+            "tpot_p99_s",
+            "TPOT P99 vs Request Rate",
+            "Request Rate (QPS)",
+            "TPOT P99 (s)",
+        ),
     ]
 
     # Color palette
     colors = [
-        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
-        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+        "#e74c3c",
+        "#3498db",
+        "#2ecc71",
+        "#9b59b6",
+        "#f39c12",
+        "#1abc9c",
+        "#e67e22",
+        "#34495e",
+        "#16a085",
+        "#c0392b",
     ]
     markers = ["o", "s", "^", "D", "v", "P", "*", "X", "h", "p"]
 
@@ -621,8 +838,16 @@ def _generate_scatter_plots(
             xs, ys = zip(*points)
             color = colors[i % len(colors)]
             marker = markers[i % len(markers)]
-            ax.plot(xs, ys, f"{marker}-", color=color, markersize=8,
-                    linewidth=2, alpha=0.8, label=label)
+            ax.plot(
+                xs,
+                ys,
+                f"{marker}-",
+                color=color,
+                markersize=8,
+                linewidth=2,
+                alpha=0.8,
+                label=label,
+            )
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
@@ -686,6 +911,7 @@ def _generate_overlaid_cdf_plots(
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -716,8 +942,16 @@ def _generate_overlaid_cdf_plots(
 
     # Color palette for distinguishing treatments
     colors = [
-        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
-        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+        "#e74c3c",
+        "#3498db",
+        "#2ecc71",
+        "#9b59b6",
+        "#f39c12",
+        "#1abc9c",
+        "#e67e22",
+        "#34495e",
+        "#16a085",
+        "#c0392b",
     ]
 
     metric_specs = [
@@ -748,15 +982,35 @@ def _generate_overlaid_cdf_plots(
             label = _shorten_treatment_label(treatment)
             color = colors[i % len(colors)]
 
-            ax.plot(values, cdf, linewidth=2, label=f"{label} (n={n})",
-                    color=color, alpha=0.8)
+            ax.plot(
+                values,
+                cdf,
+                linewidth=2,
+                label=f"{label} (n={n})",
+                color=color,
+                alpha=0.8,
+            )
 
         ax.axhline(0.5, color="gray", linestyle=":", alpha=0.4, linewidth=1)
         ax.axhline(0.99, color="gray", linestyle=":", alpha=0.4, linewidth=1)
-        ax.text(ax.get_xlim()[1] * 0.98, 0.5, "P50", ha="right",
-                va="bottom", fontsize=8, color="gray")
-        ax.text(ax.get_xlim()[1] * 0.98, 0.99, "P99", ha="right",
-                va="bottom", fontsize=8, color="gray")
+        ax.text(
+            ax.get_xlim()[1] * 0.98,
+            0.5,
+            "P50",
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color="gray",
+        )
+        ax.text(
+            ax.get_xlim()[1] * 0.98,
+            0.99,
+            "P99",
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            color="gray",
+        )
 
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Cumulative Probability")
@@ -787,6 +1041,7 @@ def _log(
             context.logger.log_info(message)
     else:
         import logging
+
         logger = logging.getLogger(__name__)
         if warning:
             logger.warning(message)

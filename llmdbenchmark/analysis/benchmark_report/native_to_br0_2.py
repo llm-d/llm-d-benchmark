@@ -898,6 +898,161 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+def _aiperf_percentiles(data: dict, ms_to_s: bool = False) -> dict:
+    """Extract percentile stats from an aiperf metric block."""
+    scale = 0.001 if ms_to_s else 1.0
+
+    def val(key):
+        v = data.get(key)
+        return v * scale if v is not None else None
+
+    return {
+        "mean": val("avg"),
+        "min": val("min"),
+        "p1": val("p1"),
+        "p5": val("p5"),
+        "p10": val("p10"),
+        "p25": val("p25"),
+        "p50": val("p50"),
+        "p75": val("p75"),
+        "p90": val("p90"),
+        "p95": val("p95"),
+        "p99": val("p99"),
+        "max": val("max"),
+    }
+
+
+def import_aiperf(results_file: str) -> BenchmarkReportV02:
+    """Import data from an aiperf run as a BenchmarkReportV02.
+
+    Args:
+        results_file (str): Results file to import (profile_export_aiperf.json).
+
+    Returns:
+        BenchmarkReportV02: Imported data.
+    """
+    check_file(results_file)
+
+    results = import_yaml(results_file)
+
+    br_dict = _populate_benchmark_report_from_envars()
+
+    model_name = get_nested(  # noqa: F841
+        br_dict,
+        ["scenario", "model", "name"],
+        get_nested(results, ["input_config", "endpoint", "model_names", 0], "unknown"),
+    )
+
+    input_config = results.get("input_config", {})
+    cfg_id = config_hash(input_config)
+
+    concurrency = get_nested(input_config, ["loadgen", "concurrency"])
+    isl_mean = get_nested(results, ["input_sequence_length", "avg"])
+    osl_mean = get_nested(results, ["output_sequence_length", "avg"])
+
+    update_dict(
+        br_dict,
+        {
+            "scenario": {
+                "load": {
+                    "metadata": {
+                        "schema_version": "0.0.1",
+                        "cfg_id": cfg_id,
+                    },
+                    "standardized": {
+                        "tool": WorkloadGenerator.AIPERF,
+                        "concurrency": concurrency,
+                        "source": LoadSource.RANDOM,
+                        "input_seq_len": {
+                            "distribution": Distribution.FIXED,
+                            "value": isl_mean,
+                            "min": get_nested(
+                                results, ["input_sequence_length", "min"]
+                            ),
+                            "max": get_nested(
+                                results, ["input_sequence_length", "max"]
+                            ),
+                        },
+                        "output_seq_len": {
+                            "distribution": Distribution.FIXED,
+                            "value": osl_mean,
+                            "min": get_nested(
+                                results, ["output_sequence_length", "min"]
+                            ),
+                            "max": get_nested(
+                                results, ["output_sequence_length", "max"]
+                            ),
+                        },
+                    },
+                    "native": {
+                        "config": input_config,
+                    },
+                },
+            },
+        },
+    )
+
+    ttft = results.get("time_to_first_token", {})
+    itl = results.get("inter_token_latency", {})
+    req_lat = results.get("request_latency", {})
+    isl = results.get("input_sequence_length", {})
+    osl = results.get("output_sequence_length", {})
+
+    aggregate = {
+        "requests": {
+            "total": int(get_nested(results, ["request_count", "avg"], 0)),
+            "failures": len(results.get("error_summary", [])),
+            "input_length": {
+                "units": Units.COUNT,
+                **_aiperf_percentiles(isl),
+            },
+            "output_length": {
+                "units": Units.COUNT,
+                **_aiperf_percentiles(osl),
+            },
+        },
+        "latency": {
+            "time_to_first_token": {
+                "units": Units.S,
+                **_aiperf_percentiles(ttft, ms_to_s=True),
+            },
+            "inter_token_latency": {
+                "units": Units.S_PER_TOKEN,
+                **_aiperf_percentiles(itl, ms_to_s=True),
+            },
+            "request_latency": {
+                "units": Units.S,
+                **_aiperf_percentiles(req_lat, ms_to_s=True),
+            },
+        },
+        "throughput": {
+            "output_token_rate": {
+                "units": Units.TOKEN_PER_S,
+                "mean": get_nested(results, ["output_token_throughput", "avg"]),
+            },
+            "total_token_rate": {
+                "units": Units.TOKEN_PER_S,
+                "mean": get_nested(results, ["total_token_throughput", "avg"]),
+            },
+            "request_rate": {
+                "units": Units.QUERY_PER_S,
+                "mean": get_nested(results, ["request_throughput", "avg"]),
+            },
+        },
+    }
+
+    update_dict(
+        br_dict,
+        {
+            "results": {
+                "request_performance": {"aggregate": aggregate},
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)
+
+
 def import_inference_max(results_file: str) -> BenchmarkReportV02:
     """Import data from an InferenceMAX benchmark run as a BenchmarkReportV01.
 

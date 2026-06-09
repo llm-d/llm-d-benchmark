@@ -4,6 +4,7 @@ import sys
 from llmdbenchmark.result_store.store import StoreManager
 from llmdbenchmark.result_store.commands import register_command
 
+
 @register_command("init")
 def execute(args, logger):
     try:

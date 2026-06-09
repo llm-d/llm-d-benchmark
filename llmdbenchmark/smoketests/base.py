@@ -136,7 +136,7 @@ class BaseSmoketest:
                 )
         elif gateway_class == "epponly":
             # No Kubernetes Gateway -- the EPP service is the data plane.
-            # Hit `{model_id_label}-gaie-epp:80` directly (port 80 is the
+            # Hit `{model_id_label}-router-epp:80` directly (port 80 is the
             # extraServicePort we add for the standalone chart's Envoy
             # sidecar).
             service_ip, _, gateway_port = find_epponly_endpoint(

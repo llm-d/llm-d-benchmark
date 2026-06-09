@@ -16,7 +16,9 @@ from typing import Any
 class TokenDef:
     """A REPLACE_ENV_* profile token definition."""
 
-    config_path: str | None  # dotted path into plan config.yaml, or None for runtime-only
+    config_path: (
+        str | None
+    )  # dotted path into plan config.yaml, or None for runtime-only
     description: str
 
 
@@ -90,6 +92,7 @@ def build_env_map(
 
 def render_profile(template_content: str, env_map: dict[str, str]) -> str:
     """Replace REPLACE_ENV_{KEY} tokens in template_content. Unknown tokens are left as-is."""
+
     def _replace(match: re.Match) -> str:
         key = match.group(1)
         return env_map.get(key, match.group(0))

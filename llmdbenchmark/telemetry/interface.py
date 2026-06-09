@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+
 class TelemetryProvider(ABC):
     """Abstract base class for telemetry providers."""
 

@@ -351,7 +351,11 @@ class TestStackTracer(unittest.TestCase):
 
         def get_side_effect(api, resource_class, name, namespace=None):
             # Service lookup fails; Gateway lookup succeeds
-            if resource_class == Gateway and name == "my-gateway" and namespace == "model-ns":
+            if (
+                resource_class == Gateway
+                and name == "my-gateway"
+                and namespace == "model-ns"
+            ):
                 return gateway
             return None
 

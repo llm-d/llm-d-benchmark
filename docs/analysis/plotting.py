@@ -28,22 +28,29 @@ fignum = 0
 
 # Plot trace colors
 COLORS = [
-    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF', '#0000FF',
-    '#FF00FF', '#666666', '#000000', '#990000', '#777700', '#007700',
-    '#009999', '#000099'
+    "#FF0000",
+    "#FFAA00",
+    "#DDDD00",
+    "#00DD00",
+    "#00FFFF",
+    "#0000FF",
+    "#FF00FF",
+    "#666666",
+    "#000000",
+    "#990000",
+    "#777700",
+    "#007700",
+    "#009999",
+    "#000099",
 ]
 
 
 # Plot line styles
-LINE_STYLES = [
-    'solid', 'dashed', 'dashdot', 'dotted'
-]
+LINE_STYLES = ["solid", "dashed", "dashdot", "dotted"]
 
 
 # Plot marker styles
-MARKERS = [
-    'o', 'v', 's', '*', 'd', 'X', 'p'
-]
+MARKERS = ["o", "v", "s", "*", "d", "X", "p"]
 
 
 def _column_axis_label(col: str) -> str:
@@ -57,7 +64,7 @@ def _column_axis_label(col: str) -> str:
     """
     label = COLUMNS[col].label
     if COLUMNS[col].units:
-        label += ' (' + COLUMNS[col].units + ')'
+        label += " (" + COLUMNS[col].units + ")"
     return label
 
 
@@ -74,21 +81,21 @@ def _make_title(scenario: dict[str, Any]) -> str:
     # Columns describing a bound
     cols_bounded = []
 
-    title = ''
+    title = ""
     for col, value in scenario.items():
         if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
             if col_base(col) not in cols_bounded:
                 cols_bounded.append(col_base(col))
             # Handle bounded columns later
             continue
-        if len(title.rsplit('\n')[-1]) > 30:
-            title += '\n'
-        title += f'{COLUMNS[col].label}: {value}  '
+        if len(title.rsplit("\n")[-1]) > 30:
+            title += "\n"
+        title += f"{COLUMNS[col].label}: {value}  "
 
     # Add bounded columns to title
     for col in cols_bounded:
-        if len(title.rsplit('\n')[-1]) > 30:
-            title += '\n'
+        if len(title.rsplit("\n")[-1]) > 30:
+            title += "\n"
         # Strings describing value bound
         val_bounds = []
         for bound_type in COLUMN_BOUND_STR:
@@ -98,16 +105,15 @@ def _make_title(scenario: dict[str, Any]) -> str:
                 # This bound type is not in the scenario
                 continue
             value = scenario[col_bound]
-            val_bounds.append(f'{COLUMN_BOUND_STR[bound_type]}{value}')
-        title += f'{COLUMNS[col].label}: {" ".join(val_bounds)}  '
+            val_bounds.append(f"{COLUMN_BOUND_STR[bound_type]}{value}")
+        title += f"{COLUMNS[col].label}: {' '.join(val_bounds)}  "
 
     return title.strip()
 
 
 def plot_col_histogram(
-        runs_df: pd.DataFrame,
-        col: str,
-        num_bins: int = 50) -> plt.Figure:
+    runs_df: pd.DataFrame, col: str, num_bins: int = 50
+) -> plt.Figure:
     """Plot a histogram of values for a column.
 
     Args:
@@ -125,16 +131,15 @@ def plot_col_histogram(
     fignum += 1
     fig = plt.figure(fignum)
 
-    plt.hist(list(runs_df[col].dropna()), bins=num_bins, color='#0000FF')
-    plt.xlabel(_column_axis_label(col), fontsize='16')
-    plt.ylabel('Counts', fontsize='16')
+    plt.hist(list(runs_df[col].dropna()), bins=num_bins, color="#0000FF")
+    plt.xlabel(_column_axis_label(col), fontsize="16")
+    plt.ylabel("Counts", fontsize="16")
     return fig
 
 
 def plot_scenario_histogram(
-        runs_df: pd.DataFrame,
-        scenario: dict[str, Any],
-        num_bins: int = 50) -> dict[str, plt.Figure]:
+    runs_df: pd.DataFrame, scenario: dict[str, Any], num_bins: int = 50
+) -> dict[str, plt.Figure]:
     """
     Plot value histograms for numeric columns in a scenario having a bound.
     Any columns having a single value will be skipped.
@@ -164,20 +169,22 @@ def plot_scenario_histogram(
         plot_cols.append(col[BOUND_PREFIX_LEN:])
         # Create histogram figure
         figs[col[BOUND_PREFIX_LEN:]] = plot_col_histogram(
-            runs_df, col[BOUND_PREFIX_LEN:], num_bins)
+            runs_df, col[BOUND_PREFIX_LEN:], num_bins
+        )
 
     return figs
 
 
 def plot_scenario(
-        runs_df: pd.DataFrame,
-        scenario: dict[str, Any],
-        config_keys: list[str] | list[list[str]],
-        col_x: str,
-        col_y: str,
-        col_seg_by: str = '',
-        log_x: bool = False,
-        log_y: bool = False) -> plt.Figure:
+    runs_df: pd.DataFrame,
+    scenario: dict[str, Any],
+    config_keys: list[str] | list[list[str]],
+    col_x: str,
+    col_y: str,
+    col_seg_by: str = "",
+    log_x: bool = False,
+    log_y: bool = False,
+) -> plt.Figure:
     """Plot the metrics of a scenario from a column (Y) versus another
     column (X).
 
@@ -207,7 +214,7 @@ def plot_scenario(
     """
     for col in scenario:
         if col_base(col) not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col_base(col)}')
+            raise KeyError(f"Invalid column: {col_base(col)}")
 
     scenario = rebound_scenario(runs_df, scenario)
 
@@ -247,20 +254,21 @@ def plot_scenario(
             conf_df = runs_df
             labels = []
             for jj, val in enumerate(conf):
-                conf_df = conf_df[(conf_df[ck[jj]] == val)
-                                  ].sort_values(by=col_x)
+                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_x)
                 if ck[jj] == col_seg_by:
                     continue
-                labels.append(f'{COLUMNS[ck[jj]].label}={val}')
-            label = ', '.join(labels)
+                labels.append(f"{COLUMNS[ck[jj]].label}={val}")
+            label = ", ".join(labels)
 
             # Make plot
             plot_func(
-                conf_df[col_x], conf_df[col_y],
+                conf_df[col_x],
+                conf_df[col_y],
                 label=label,
-                marker=MARKERS[kk % len(MARKERS)], markersize=4,
+                marker=MARKERS[kk % len(MARKERS)],
+                markersize=4,
                 color=COLORS[ii % len(COLORS)],
-                linestyle=LINE_STYLES[kk % len(LINE_STYLES)]
+                linestyle=LINE_STYLES[kk % len(LINE_STYLES)],
             )
 
     if log_x and log_y:
@@ -273,23 +281,24 @@ def plot_scenario(
         plt.axis([0, None, 0, None])
 
     plt.title(_make_title(scenario))
-    plt.xlabel(_column_axis_label(col_x), fontsize='16')
-    plt.ylabel(_column_axis_label(col_y), fontsize='16')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-    plt.grid(True, linewidth=1, ls='--', color='gray')
+    plt.xlabel(_column_axis_label(col_x), fontsize="16")
+    plt.ylabel(_column_axis_label(col_y), fontsize="16")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.grid(True, linewidth=1, ls="--", color="gray")
     return fig
 
 
 def plot_scenario_tradeoff(
-        runs_df: pd.DataFrame,
-        scenario: dict[str, Any],
-        config_keys: list[str] | list[list[str]],
-        col_x: str,
-        col_y: str,
-        col_z: str,
-        col_seg_by: str = '',
-        log_x: bool = False,
-        log_y: bool = False) -> plt.Figure:
+    runs_df: pd.DataFrame,
+    scenario: dict[str, Any],
+    config_keys: list[str] | list[list[str]],
+    col_x: str,
+    col_y: str,
+    col_z: str,
+    col_seg_by: str = "",
+    log_x: bool = False,
+    log_y: bool = False,
+) -> plt.Figure:
     """Make a plot displaying the tradeoff between two columns (X and Y)
     while a third column (Z) is changed.
 
@@ -321,7 +330,7 @@ def plot_scenario_tradeoff(
     """
     for col in scenario:
         if col_base(col) not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col_base(col)}')
+            raise KeyError(f"Invalid column: {col_base(col)}")
 
     scenario = rebound_scenario(runs_df, scenario)
 
@@ -361,31 +370,39 @@ def plot_scenario_tradeoff(
             conf_df = runs_df
             labels = []
             for jj, val in enumerate(conf):
-                conf_df = conf_df[(conf_df[ck[jj]] == val)
-                                  ].sort_values(by=col_z)
+                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_z)
                 if ck[jj] == col_seg_by:
                     continue
-                labels.append(f'{COLUMNS[ck[jj]].label}={val}')
-            label = ', '.join(labels)
+                labels.append(f"{COLUMNS[ck[jj]].label}={val}")
+            label = ", ".join(labels)
 
             # Make plot
             plot_func(
-                conf_df[col_x], conf_df[col_y],
+                conf_df[col_x],
+                conf_df[col_y],
                 label=label,
-                marker=MARKERS[kk % len(MARKERS)], markersize=4,
+                marker=MARKERS[kk % len(MARKERS)],
+                markersize=4,
                 color=COLORS[ii % len(COLORS)],
-                linestyle=LINE_STYLES[kk % len(LINE_STYLES)]
+                linestyle=LINE_STYLES[kk % len(LINE_STYLES)],
             )
             # Add Z labels to plot
             for jj, val in enumerate(conf_df[col_z]):
                 if log_y:
-                    y_offset = list(conf_df[col_y])[jj] * \
-                        log10(runs_df[col_y].max() - runs_df[col_y].min()) * 0.01
+                    y_offset = (
+                        list(conf_df[col_y])[jj]
+                        * log10(runs_df[col_y].max() - runs_df[col_y].min())
+                        * 0.01
+                    )
                 else:
                     y_offset = runs_df[col_y].max() * 0.02
-                plt.text(list(conf_df[col_x])[jj],
-                         list(conf_df[col_y])[jj] + y_offset,
-                         str(val), ha='center', color=COLORS[ii % len(COLORS)])
+                plt.text(
+                    list(conf_df[col_x])[jj],
+                    list(conf_df[col_y])[jj] + y_offset,
+                    str(val),
+                    ha="center",
+                    color=COLORS[ii % len(COLORS)],
+                )
 
     if log_x and log_y:
         plt.axis([None, None, None, None])
@@ -397,23 +414,24 @@ def plot_scenario_tradeoff(
         plt.axis([0, None, 0, None])
 
     title = _make_title(scenario)
-    title += f'\n\nPoint labels: {_column_axis_label(col_z)}'
+    title += f"\n\nPoint labels: {_column_axis_label(col_z)}"
     plt.title(title)
-    plt.xlabel(_column_axis_label(col_x), fontsize='16')
-    plt.ylabel(_column_axis_label(col_y), fontsize='16')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-    plt.grid(True, linewidth=1, ls='--', color='gray')
+    plt.xlabel(_column_axis_label(col_x), fontsize="16")
+    plt.ylabel(_column_axis_label(col_y), fontsize="16")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.grid(True, linewidth=1, ls="--", color="gray")
     return fig
 
 
 def plot_pareto_tradeoff(
-        runs_df: pd.DataFrame,
-        scenario: dict[str, Any],
-        col_x: str,
-        col_y: str,
-        slos: list[SLO] = [],
-        log_x: bool = False,
-        log_y: bool = False) -> plt.Figure:
+    runs_df: pd.DataFrame,
+    scenario: dict[str, Any],
+    col_x: str,
+    col_y: str,
+    slos: list[SLO] = [],
+    log_x: bool = False,
+    log_y: bool = False,
+) -> plt.Figure:
     """Make a plot displaying the tradeoff between two columns (X and Y),
     highlighting the Pareto front and graying out points failng SLOs.
 
@@ -431,7 +449,7 @@ def plot_pareto_tradeoff(
     """
     for col in scenario:
         if col_base(col) not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col_base(col)}')
+            raise KeyError(f"Invalid column: {col_base(col)}")
 
     scenario = rebound_scenario(runs_df, scenario)
 
@@ -442,11 +460,11 @@ def plot_pareto_tradeoff(
     # From rows matching SLOs, get rows on Pareto front
     pareto_df = get_pareto_front_df(meet_slo_df, col_x, col_y)
     # Rows that fail SLOs
-    fail_slo_df = scenario_df[~scenario_df.index.isin(
-        meet_slo_df.index.tolist())]
+    fail_slo_df = scenario_df[~scenario_df.index.isin(meet_slo_df.index.tolist())]
     # Rows that meet SLOs, but are not on the Pareto front
-    meet_slo_not_pareto_df = meet_slo_df[~meet_slo_df.index.isin(
-        pareto_df.index.tolist())]
+    meet_slo_not_pareto_df = meet_slo_df[
+        ~meet_slo_df.index.isin(pareto_df.index.tolist())
+    ]
 
     if log_x and log_y:
         plot_func = plt.loglog
@@ -462,25 +480,31 @@ def plot_pareto_tradeoff(
     fig = plt.figure(fignum)
 
     plot_func(
-        pareto_df[col_x], pareto_df[col_y],
-        marker='o', markersize=4,
-        color='#FF00FF',
-        linestyle='',
-        label='Pareto front'
+        pareto_df[col_x],
+        pareto_df[col_y],
+        marker="o",
+        markersize=4,
+        color="#FF00FF",
+        linestyle="",
+        label="Pareto front",
     )
     plot_func(
-        meet_slo_not_pareto_df[col_x], meet_slo_not_pareto_df[col_y],
-        marker='o', markersize=4,
-        color='#000000',
-        linestyle='',
-        label='Meets SLOs, non-optimal'
+        meet_slo_not_pareto_df[col_x],
+        meet_slo_not_pareto_df[col_y],
+        marker="o",
+        markersize=4,
+        color="#000000",
+        linestyle="",
+        label="Meets SLOs, non-optimal",
     )
     plot_func(
-        fail_slo_df[col_x], fail_slo_df[col_y],
-        marker='o', markersize=4,
-        color='#CCCCCC',
-        linestyle='',
-        label='Fails SLOs'
+        fail_slo_df[col_x],
+        fail_slo_df[col_y],
+        marker="o",
+        markersize=4,
+        color="#CCCCCC",
+        linestyle="",
+        label="Fails SLOs",
     )
 
     if log_x and log_y:
@@ -493,8 +517,8 @@ def plot_pareto_tradeoff(
         plt.axis([0, None, 0, None])
 
     plt.title(_make_title(scenario))
-    plt.xlabel(_column_axis_label(col_x), fontsize='16')
-    plt.ylabel(_column_axis_label(col_y), fontsize='16')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-    plt.grid(True, linewidth=1, ls='--', color='gray')
+    plt.xlabel(_column_axis_label(col_x), fontsize="16")
+    plt.ylabel(_column_axis_label(col_y), fontsize="16")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
+    plt.grid(True, linewidth=1, ls="--", color="gray")
     return fig

@@ -9,6 +9,7 @@ This document lists the available load generators (harnesses) and their workload
 | `inference-perf` | Default harness, comprehensive performance testing |
 | `guidellm` | Alternative load generator |
 | `vllm-benchmark` | vLLM native benchmarking |
+| `aiperf` | NVIDIA AIPerf load generator (synthetic + dataset replay) |
 | `nop` | No-op harness for testing |
 
 ## Profiles by Harness
@@ -43,6 +44,13 @@ This document lists the available load generators (harnesses) and their workload
 | `sanity_random.yaml` | Basic validation |
 | `random_concurrent.yaml` | Concurrent stress test |
 | `sharegpt.yaml` | ShareGPT dataset |
+
+### aiperf
+
+| Profile | Use Case |
+|---------|----------|
+| `synthetic.yaml` | Synthetic ISL/OSL workload |
+| `dataset.yaml` | Replay a custom dataset (e.g. Mooncake trace). Pass `--dataset s3://...` or set `experiment.datasetUrl` to download the dataset into the harness pod. |
 
 ## Default Values
 

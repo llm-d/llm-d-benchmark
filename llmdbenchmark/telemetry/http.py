@@ -5,6 +5,7 @@ from llmdbenchmark.telemetry.interface import TelemetryProvider
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
 
+
 class HttpTelemetryProvider(TelemetryProvider):
     """HTTP POST implementation of TelemetryProvider with a background queue worker."""
 
@@ -14,7 +15,7 @@ class HttpTelemetryProvider(TelemetryProvider):
         self.logger = logger or get_logger(
             config.log_dir, verbose=config.verbose, log_name=__name__
         )
-        
+
         self.queue = queue.Queue()
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
@@ -34,7 +35,7 @@ class HttpTelemetryProvider(TelemetryProvider):
                     # Sentinel value to stop the worker
                     self.queue.task_done()
                     break
-                
+
                 self._push_payload(data)
                 self.queue.task_done()
             except Exception as e:
@@ -51,17 +52,16 @@ class HttpTelemetryProvider(TelemetryProvider):
         try:
             # We use a timeout to avoid blocking forever if the endpoint is hung
             response = requests.post(
-                self.endpoint,
-                json=data,
-                headers=headers,
-                timeout=30.0
+                self.endpoint, json=data, headers=headers, timeout=30.0
             )
             if response.status_code != 200 and response.status_code != 201:
                 self.logger.log_error(
                     f"[telemetry] Failed to push telemetry, status code: {response.status_code}"
                 )
             else:
-                self.logger.log_info("[telemetry] Telemetry pushed successfully.", emoji="📊")
+                self.logger.log_info(
+                    "[telemetry] Telemetry pushed successfully.", emoji="📊"
+                )
         except requests.Timeout:
             self.logger.log_error("[telemetry] Timeout pushing telemetry.")
         except requests.RequestException as e:
@@ -71,5 +71,3 @@ class HttpTelemetryProvider(TelemetryProvider):
         """Stop the background worker and wait for it to finish."""
         self.queue.put(None)
         self.worker_thread.join()
-
-

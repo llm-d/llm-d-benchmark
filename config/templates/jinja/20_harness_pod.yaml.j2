@@ -58,6 +58,17 @@ spec:
 {% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
+    # HuggingFace harness binaries split between the two env-var
+    # names: guidellm and a number of vLLM utilities read HF_TOKEN,
+    # while huggingface_hub-based libraries also accept
+    # HUGGING_FACE_HUB_TOKEN.  Setting both from the same secretKeyRef
+    # eliminates the question -- any harness that reads either name
+    # gets the token.
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
     - name: HUGGING_FACE_HUB_TOKEN
       valueFrom:
         secretKeyRef:
@@ -144,5 +155,26 @@ spec:
 {% endif %}
 {% if harness.serviceAccount is defined and harness.serviceAccount %}
   serviceAccountName: {{ harness.serviceAccount }}
+{% endif %}
+{% if harness.nodeSelector is defined and harness.nodeSelector %}
+  nodeSelector:
+{% for key, value in harness.nodeSelector.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if harness.tolerations is defined and harness.tolerations %}
+  tolerations:
+{% for t in harness.tolerations %}
+  - key: {{ t.key }}
+{% if t.operator is defined %}
+    operator: {{ t.operator }}
+{% endif %}
+{% if t.value is defined %}
+    value: "{{ t.value }}"
+{% endif %}
+{% if t.effect is defined %}
+    effect: {{ t.effect }}
+{% endif %}
+{% endfor %}
 {% endif %}
   restartPolicy: Never

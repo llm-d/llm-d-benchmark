@@ -89,6 +89,7 @@ class ParsedGuide:
 # Internal state machine
 # ---------------------------------------------------------------------------
 
+
 class _Section(str, Enum):
     PREAMBLE = "preamble"
     PREREQUISITES = "prerequisites"
@@ -108,7 +109,28 @@ _DETAILS_OPEN = re.compile(r"<details>", re.IGNORECASE)
 _DETAILS_CLOSE = re.compile(r"</details>", re.IGNORECASE)
 _SUMMARY_RE = re.compile(r"<summary[^>]*>(.*?)</summary>", re.IGNORECASE | re.DOTALL)
 
-_SKIP_PREFIXES = ("export ", "git clone", "git checkout", "cd ", "curl ", "envsubst", "chmod ", "#")
+# Skip-region markers.  Guide authors can wrap one or more bash blocks in
+# ``<!-- llm-d-cicd:skip start -->`` / ``<!-- llm-d-cicd:skip end -->`` to
+# instruct this parser to ignore them entirely: no GuideCommand is
+# emitted and no ``export`` variables are harvested.  The markers
+# themselves are standard HTML comments, so they render as nothing on
+# GitHub.  Whitespace inside the comment is tolerated, and matching is
+# case-insensitive.
+_SKIP_BLOCK_START = re.compile(
+    r"<!--\s*llm-d-cicd\s*:\s*skip\s+start\s*-->", re.IGNORECASE
+)
+_SKIP_BLOCK_END = re.compile(r"<!--\s*llm-d-cicd\s*:\s*skip\s+end\s*-->", re.IGNORECASE)
+
+_SKIP_PREFIXES = (
+    "export ",
+    "git clone",
+    "git checkout",
+    "cd ",
+    "curl ",
+    "envsubst",
+    "chmod ",
+    "#",
+)
 
 _KEEP_PREFIXES = ("kubectl", "helm", "kustomize", "oc ")
 
@@ -121,7 +143,12 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         return _Section.PREREQUISITES
     if "cleanup" in lower or "uninstall" in lower or "removal" in lower:
         return _Section.CLEANUP
-    if "verification" in lower or "verify" in lower or "test request" in lower or "send test" in lower:
+    if (
+        "verification" in lower
+        or "verify" in lower
+        or "test request" in lower
+        or "send test" in lower
+    ):
         return _Section.VERIFICATION
     if "monitoring" in lower:
         return _Section.MONITORING
@@ -131,7 +158,11 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         if current in (_Section.PREAMBLE, _Section.PREREQUISITES):
             return current
         return _Section.ROUTER_STANDALONE
-    if "deploy the llm-d router" in lower or "deploy the router" in lower or "router" in lower:
+    if (
+        "deploy the llm-d router" in lower
+        or "deploy the router" in lower
+        or "router" in lower
+    ):
         return _Section.ROUTER_STANDALONE
     if "benchmark" in lower or "report" in lower:
         return _Section.IGNORED
@@ -200,6 +231,15 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
 
     Returns:
         A ``ParsedGuide`` with categorised commands.
+
+    Skip regions:
+        Bash blocks wrapped between ``<!-- llm-d-cicd:skip start -->`` and
+        ``<!-- llm-d-cicd:skip end -->`` are ignored: no commands are
+        emitted and no ``export`` variables are harvested from them.
+        Heading and ``<details>`` state continue to update inside a skip
+        region so section transitions remain correct.  The markers must
+        appear outside of fenced code blocks (HTML comments inside a
+        fence are literal text and are not interpreted).
     """
     if guide_name is None:
         guide_name = readme_path.parent.name
@@ -217,7 +257,20 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
     details_mode: DeployMode | None = None
     saved_section: _Section | None = None
 
+    # llm-d-cicd:skip region tracking.  When True, completed fenced
+    # blocks are discarded instead of yielding GuideCommands / variables.
+    skip_active = False
+
     for line in lines:
+        # --- llm-d-cicd:skip markers (honored only outside code fences) ---
+        if not in_code_block:
+            if _SKIP_BLOCK_END.search(line):
+                skip_active = False
+                continue
+            if _SKIP_BLOCK_START.search(line):
+                skip_active = True
+                continue
+
         # --- <details> / </details> handling ---
         if _DETAILS_OPEN.search(line):
             details_depth += 1
@@ -258,6 +311,11 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
 
         if _CODE_FENCE_END.match(line) and in_code_block:
             in_code_block = False
+            if skip_active:
+                # Block is inside a llm-d-cicd:skip region -- drop
+                # everything (no commands, no harvested variables).
+                code_lines = []
+                continue
             joined = _join_continuations(code_lines)
             for cmd_text in joined:
                 export_match = _EXPORT_RE.match(cmd_text.strip())
@@ -268,7 +326,9 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
                 phase, default_mode = pm
                 for cmd_text in joined:
                     if _should_keep_command(cmd_text):
-                        mode = details_mode if details_mode is not None else default_mode
+                        mode = (
+                            details_mode if details_mode is not None else default_mode
+                        )
                         parsed.commands.append(
                             GuideCommand(raw=cmd_text, phase=phase, mode=mode)
                         )

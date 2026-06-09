@@ -1,4 +1,5 @@
-FROM ghcr.io/llm-d/python:3.12.9-slim-bookworm
+#FROM ghcr.io/llm-d/python:3.12.9-slim-bookworm
+FROM docker.io/library/python:3.12.9-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
@@ -62,8 +63,8 @@ WORKDIR /workspace
 # Install harnesses
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=release-v0.5.0
-ARG INFERENCE_PERF_COMMIT=v0.5.0
+ARG INFERENCE_PERF_BRANCH=main
+ARG INFERENCE_PERF_COMMIT=ad65fe09932a300dfc27fcb1d17d1aac88787ea3
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
@@ -111,10 +112,19 @@ RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
 RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
 
+ARG AIPERF_REPO=https://github.com/ai-dynamo/aiperf.git
+ARG AIPERF_BRANCH=v0.8.0
+ARG AIPERF_COMMIT=v0.8.0
+RUN git clone --branch ${AIPERF_BRANCH} ${AIPERF_REPO}
+RUN cd aiperf; \
+    git checkout ${AIPERF_COMMIT}; \
+    pip install .
+
 RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
     echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \
-    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt;
+    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt; \
+    echo "aiperf: ${AIPERF_REPO} ${AIPERF_COMMIT}" >> /workspace/repos.txt;
 
 ADD workload/harnesses/ /usr/local/bin/
 ADD llmdbenchmark/analysis/scripts/ /tmp/analysis/

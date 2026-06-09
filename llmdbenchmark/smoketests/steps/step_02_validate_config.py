@@ -40,6 +40,7 @@ class ValidateConfigStep(Step):
 
         # Only well-lit-path scenarios have dedicated validators
         from llmdbenchmark.smoketests.base import BaseSmoketest
+
         if type(validator) is BaseSmoketest:
             context.logger.log_info(
                 f"    Skipping config validation -- no dedicated validator for '{stack_name}'"

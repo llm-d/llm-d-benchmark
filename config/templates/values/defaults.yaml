@@ -98,10 +98,23 @@ _anchors:
   istio_version:                     &istio_version                     1.29.2
   agentgateway_version:              &agentgateway_version              v1.2.1
   lws_version:                       &lws_version                       0.8.0
+  # GAIE CRDs are still installed from the gateway-api-inference-extension
+  # release (`v1.5.0`). The router chart below replaces the legacy
+  # `inferencepool` / `standalone` charts from that release.
   gaie_version:                      &gaie_version                      v1.5.0
+  # llm-d-router chart version (migrated off the GAIE-published
+  # `inferencepool` / `standalone` charts onto the llm-d-owned
+  # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
+  # Used for both the standalone and gateway router charts.
+  router_chart_version:              &router_chart_version              v0
   wva_version:                       &wva_version                       0.6.0
   prometheus_version:                &prometheus_version                5.3.0
   vllm-openai_version:               &vllm-openai_version               v0.20.2
+  # The llm-d-router-endpoint-picker-dev image replaces the previous
+  # llm-d-inference-scheduler image used by the GAIE charts. Kept as a
+  # separate anchor so benchmark overrides can still target the legacy
+  # image when needed.
+  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version main
   llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
@@ -365,6 +378,18 @@ images:
     pullPolicy: *pull_always
     sourceRepo: https://github.com/vllm-project/vllm
 
+  # EPP (Endpoint Picker / Router) image. Migrated from the GAIE-shipped
+  # `llm-d-inference-scheduler` to the llm-d-owned
+  # `llm-d-router-endpoint-picker-dev` image. The historic `inferenceScheduler`
+  # key is retained below so any scenario or downstream pipeline that still
+  # overrides the legacy image keeps working until they migrate to
+  # `routerEndpointPicker`.
+  routerEndpointPicker:
+    repository: ghcr.io/llm-d/llm-d-router-endpoint-picker-dev
+    tag: *llm-d-router-endpoint-picker_version
+    pullPolicy: *pull_always
+    sourceRepo: https://github.com/llm-d/llm-d-router
+
   inferenceScheduler:
     repository: ghcr.io/llm-d/llm-d-inference-scheduler
     tag: *llm-d-inference-scheduler_version
@@ -421,9 +446,21 @@ helmRepositories:
     name: agentgateway
     url: oci://cr.agentgateway.dev/charts/
     sourceRepo: https://github.com/agentgateway/agentgateway
-  # The next three entries hold metadata only -- the charts are pulled from
+  # The next entries hold metadata only -- the charts are pulled from
   # OCI registries directly in the helmfile templates (no `url` needed for
   # `helm repo add`). They live here so the SBOM can find the source repo.
+  #
+  # `llmDRouter` is the chart family that replaced the GAIE-published
+  # `inferencepool` and `standalone` charts. The benchmark always uses
+  # `llm-d-router-gateway-dev` (or `-standalone-dev` when
+  # gateway.className=epponly), so only the source repo metadata is held
+  # here. The chart URLs themselves are constructed in
+  # `config/templates/jinja/10_helmfile-main.yaml.j2`.
+  llmDRouter:
+    sourceRepo: https://github.com/llm-d/llm-d-router
+  # Retained for backwards-compat metadata (SBOM) but no longer used to
+  # construct chart URLs. The GAIE `inferencepool` / `standalone` charts
+  # were superseded by `llmDRouter` above.
   inferencePool:
     sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
   gaie:
@@ -441,6 +478,13 @@ chartVersions:
   llmDModelservice: auto
   wva: *wva_version
   prometheusAdapter: *prometheus_version
+  # llm-d-router chart version (used by the standalone and gateway
+  # variants). Replaces the legacy `inferencePool` (GAIE chart) entry
+  # below for the EPP/router deploy.
+  llmDRouter: *router_chart_version
+  # Retained for backwards compatibility; no longer consumed by the helmfile
+  # template after the migration to `llmDRouter`. Kept so any scenario or
+  # downstream tooling still reading the legacy key continues to resolve.
   inferencePool: *gaie_version
   agentgateway: *agentgateway_version
   lws: *lws_version
@@ -572,26 +616,37 @@ gateway:
 
 # ============================================================================
 # INFERENCE EXTENSION CONFIGURATION
+#
+# This block is the benchmark's stable abstraction over the llm-d-router
+# chart's values. Field names mirror the legacy `inferenceExtension` GAIE
+# chart layout for backwards compatibility with existing scenarios; the
+# 12_router-values.yaml.j2 template maps them onto the chart's `router.*`
+# layout.
 # ============================================================================
 inferenceExtension:
   replicas: 1
   extProcPort: *ext_proc_port
   zmqPort: *zmq_port
   pluginsConfigFile: "default-plugins.yaml"
-  # Custom plugin content to embed in gaie-values.yaml.
+  # Custom plugin content to embed in router-values.yaml.
   # Keys are filenames, values are the YAML content as literal strings.
+  # Note: the new chart expects apiVersion `llm-d.ai/v1alpha1` for the
+  # EndpointPickerConfig (was `inference.networking.x-k8s.io/v1alpha1`).
   # Example:
   #   pluginsCustomConfig:
   #     my-plugins.yaml: |
-  #       apiVersion: inference.networking.x-k8s.io/v1alpha1
+  #       apiVersion: llm-d.ai/v1alpha1
   #       kind: EndpointPickerConfig
   #       ...
   pluginsCustomConfig: {}
   verbosity: "1"
   # UDS tokenizer sidecar - runs alongside EPP for precise-prefix-cache scoring.
-  # Enable in scenarios that use `precise-prefix-cache-scorer` with UDS tokenizer.
-  # Image is sourced from `images.udsTokenizer`; override that entry per scenario
-  # to change the version.
+  # In the llm-d-router chart this maps to `router.tokenizer.enabled`
+  # and the chart owns the container, sockets, and volumes -- the
+  # post-renderer / explicit sidecar block is no longer needed. The
+  # fields below remain for any legacy scenario that still provides
+  # them; they are tolerated by the renderer but not consumed by the
+  # new chart's tokenizer feature.
   sidecar:
     enabled: false
     name: tokenizer-uds
@@ -625,7 +680,7 @@ inferenceExtension:
   # Example (for istio destinationRule):
   #   inferencePoolProviderConfig:
   #     destinationRule:
-  #       host: my-model-gaie-epp
+  #       host: my-model-router-epp
   #       trafficPolicy:
   #         connectionPool:
   #           http:
@@ -1223,23 +1278,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.12/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.12/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.12/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.13/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.13/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.13/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.6.0-alpha.12
+    version: 0.6.0-alpha.13
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.6.0-alpha.12
+    tag: v0.6.0-alpha.13
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.0-alpha.12
+      tag: v0.6.0-alpha.13
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1252,7 +1307,7 @@ fma:
   launcher:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.0-alpha.12
+      tag: v0.6.0-alpha.13
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:
@@ -1299,6 +1354,8 @@ downloadJob:
 dataAccess:
   rsyncPort: *rsync_port
   runAsUser: 0
+  nodeSelector: {}
+  tolerations: []
 
 # ============================================================================
 # LABELS
@@ -1433,6 +1490,8 @@ harness:
   resources:
     cpu: 16
     memory: 32Gi
+  nodeSelector: {}
+  tolerations: []
   output: local
   inferencePerf:
     rayonNumThreads: 4
