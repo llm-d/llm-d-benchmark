@@ -81,6 +81,7 @@ def main() -> None:
 
     if args.br_version == "0.1":
         from .native_to_br0_1 import (
+            import_aiperf,
             import_nop,
             import_inference_max,
             import_vllm_benchmark,
@@ -91,6 +92,7 @@ def main() -> None:
         )
     elif args.br_version == "0.2":
         from .native_to_br0_2 import (
+            import_aiperf,
             import_inference_max,
             import_vllm_benchmark,
             import_inference_perf,
@@ -113,12 +115,19 @@ def main() -> None:
 
     if args.session:
         if args.output_file:
-            import_inference_perf_session(args.results_file).export_yaml(args.output_file)
+            import_inference_perf_session(args.results_file).export_yaml(
+                args.output_file
+            )
         else:
             print(import_inference_perf_session(args.results_file).get_yaml_str())
         sys.exit(0)
 
     match args.workload_generator:
+        case WorkloadGenerator.AIPERF:
+            if args.output_file:
+                import_aiperf(args.results_file).export_yaml(args.output_file)
+            else:
+                print(import_aiperf(args.results_file).get_yaml_str())
         case WorkloadGenerator.GUIDELLM:
             if args.index:
                 # Generate benchmark report for a specific index

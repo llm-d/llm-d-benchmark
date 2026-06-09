@@ -40,6 +40,7 @@ class ExperimentPlan:
     name: str
     harness: str | None
     profile: str | None
+    dataset_url: str | None
     setup_treatments: list[SetupTreatment]
     run_treatments_count: int
     experiment_file: Path
@@ -106,15 +107,14 @@ def _parse_setup_treatments(setup_data: dict) -> list[SetupTreatment]:
         if not isinstance(item, dict):
             logger.warning(
                 "setup.treatments[%d] is %s, expected dict -- skipping",
-                i, type(item).__name__,
+                i,
+                type(item).__name__,
             )
             continue
 
         # Constants first, then treatment-specific overrides
         flat_overrides = dict(constants)
-        flat_overrides.update(
-            {k: v for k, v in item.items() if k != "name"}
-        )
+        flat_overrides.update({k: v for k, v in item.items() if k != "name"})
 
         treatments.append(
             SetupTreatment(
@@ -157,6 +157,7 @@ def parse_experiment(path: Path) -> ExperimentPlan:
     name = experiment_meta.get("name", path.stem)
     harness = experiment_meta.get("harness")
     profile = experiment_meta.get("profile")
+    dataset_url = experiment_meta.get("datasetUrl")
 
     setup_data = data.get("setup")
     setup_treatments: list[SetupTreatment] = []
@@ -172,6 +173,7 @@ def parse_experiment(path: Path) -> ExperimentPlan:
         name=name,
         harness=harness,
         profile=profile,
+        dataset_url=dataset_url,
         setup_treatments=setup_treatments,
         run_treatments_count=run_count,
         experiment_file=path,

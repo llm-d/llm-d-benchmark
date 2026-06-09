@@ -21,10 +21,10 @@ scenario:
       enabled: false
     fma:
       enabled: false
-      iterations: 3
+      iterations: 5
 
-    gateway:
-      className: agentgateway
+#    gateway:
+#      className: agentgateway
 
     affinity:
       enabled: true
@@ -63,6 +63,7 @@ scenario:
     harness:
       name: guidellm
       experimentProfile: sanity_random.yaml
+#      executable: llm-d-benchmark.py
 
     images:
       benchmark:

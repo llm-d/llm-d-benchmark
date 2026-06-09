@@ -107,30 +107,37 @@ class WvaSmoketestMixin:
         # below would fail with "not found" against a cluster that
         # never had WVA installed in the first place.
         if not context.is_openshift:
-            report.add(CheckResult(
-                "wva_platform_gate",
-                True,
-                message=(
-                    f"WVA enabled in scenario but platform is "
-                    f"{context.platform_type}, not OpenShift -- skipping "
-                    "WVA smoketest checks (matches standup behavior)."
-                ),
-            ))
+            report.add(
+                CheckResult(
+                    "wva_platform_gate",
+                    True,
+                    message=(
+                        f"WVA enabled in scenario but platform is "
+                        f"{context.platform_type}, not OpenShift -- skipping "
+                        "WVA smoketest checks (matches standup behavior)."
+                    ),
+                )
+            )
             return
 
         cmd = context.require_cmd()
         namespace = context.require_namespace()
 
         if context.dry_run:
-            report.add(CheckResult(
-                "wva_dry_run", True,
-                message="[DRY RUN] WVA smoketest skipped",
-            ))
+            report.add(
+                CheckResult(
+                    "wva_dry_run",
+                    True,
+                    message="[DRY RUN] WVA smoketest skipped",
+                )
+            )
             return
 
         wva_ns = _nested_get(config, "wva", "namespace") or namespace
         monitoring_ns = (
-            _nested_get(config, "openshiftMonitoring", "userWorkloadMonitoringNamespace")
+            _nested_get(
+                config, "openshiftMonitoring", "userWorkloadMonitoringNamespace"
+            )
             or "openshift-user-workload-monitoring"
         )
         model_id_label = (
@@ -149,27 +156,44 @@ class WvaSmoketestMixin:
         )
 
         self._check_wva_controller(
-            cmd, wva_ns, report,
+            cmd,
+            wva_ns,
+            report,
             timeout=_WVA_CONTROLLER_TIMEOUT_SECS,
             poll_interval=_WVA_CONTROLLER_POLL_SECS,
             logger=context.logger,
         )
         self._check_prometheus_adapter(cmd, monitoring_ns, report)
         self._check_variant_autoscaling(
-            cmd, wva_ns, va_name, expected_controller_instance, report,
+            cmd,
+            wva_ns,
+            va_name,
+            expected_controller_instance,
+            report,
         )
         self._check_hpa(
-            cmd, wva_ns, va_name, decode_deployment,
-            expected_controller_instance, wva_ns, report,
+            cmd,
+            wva_ns,
+            va_name,
+            decode_deployment,
+            expected_controller_instance,
+            wva_ns,
+            report,
         )
         self._wait_for_hpa_targets(
-            cmd, wva_ns, va_name, report,
+            cmd,
+            wva_ns,
+            va_name,
+            report,
             timeout=_HPA_TARGETS_TIMEOUT_SECS,
             poll_interval=_HPA_TARGETS_POLL_SECS,
             logger=context.logger,
         )
         self._wait_for_hpa_converged(
-            cmd, wva_ns, va_name, report,
+            cmd,
+            wva_ns,
+            va_name,
+            report,
             timeout=_HPA_CONVERGED_TIMEOUT_SECS,
             poll_interval=_HPA_CONVERGED_POLL_SECS,
             logger=context.logger,
@@ -204,9 +228,13 @@ class WvaSmoketestMixin:
             elapsed = time.time() - start
 
             result = cmd.kube(
-                "get", "deployment", "workload-variant-autoscaler-controller-manager",
-                "--namespace", wva_ns,
-                "-o", "json",
+                "get",
+                "deployment",
+                "workload-variant-autoscaler-controller-manager",
+                "--namespace",
+                wva_ns,
+                "-o",
+                "json",
                 check=False,
             )
 
@@ -233,57 +261,60 @@ class WvaSmoketestMixin:
                     and restarts is not None
                     and restarts > baseline_restarts
                 ):
-                    report.add(CheckResult(
-                        "wva_controller_deployment",
-                        False,
-                        expected=f"Available, {desired}/{desired} ready, no restarts",
-                        actual=(
-                            f"Available={available}, {ready}/{desired} ready, "
-                            f"restarts={restarts} (was {baseline_restarts})"
-                        ),
-                        message=(
-                            f"WVA controller in ns/{wva_ns} is restarting "
-                            f"(restartCount {baseline_restarts}→{restarts} "
-                            f"during {int(elapsed)}s wait). Likely crash-loop; "
-                            f"check `oc logs -n {wva_ns} "
-                            f"deploy/workload-variant-autoscaler-controller-manager "
-                            f"--previous` for the failure cause."
-                        ),
-                    ))
+                    report.add(
+                        CheckResult(
+                            "wva_controller_deployment",
+                            False,
+                            expected=f"Available, {desired}/{desired} ready, no restarts",
+                            actual=(
+                                f"Available={available}, {ready}/{desired} ready, "
+                                f"restarts={restarts} (was {baseline_restarts})"
+                            ),
+                            message=(
+                                f"WVA controller in ns/{wva_ns} is restarting "
+                                f"(restartCount {baseline_restarts}→{restarts} "
+                                f"during {int(elapsed)}s wait). Likely crash-loop; "
+                                f"check `oc logs -n {wva_ns} "
+                                f"deploy/workload-variant-autoscaler-controller-manager "
+                                f"--previous` for the failure cause."
+                            ),
+                        )
+                    )
                     return
 
                 if available and desired > 0 and ready == desired:
-                    report.add(CheckResult(
-                        "wva_controller_deployment",
-                        True,
-                        expected=f"Available, {desired}/{desired} ready",
-                        actual=f"Available, {ready}/{desired} ready",
-                        message=(
-                            f"WVA controller in ns/{wva_ns}: "
-                            f"Available, {ready}/{desired} ready "
-                            f"after {int(elapsed)}s"
-                        ),
-                    ))
+                    report.add(
+                        CheckResult(
+                            "wva_controller_deployment",
+                            True,
+                            expected=f"Available, {desired}/{desired} ready",
+                            actual=f"Available, {ready}/{desired} ready",
+                            message=(
+                                f"WVA controller in ns/{wva_ns}: "
+                                f"Available, {ready}/{desired} ready "
+                                f"after {int(elapsed)}s"
+                            ),
+                        )
+                    )
                     return
 
                 last_state = f"Available={available}, {ready}/{desired} ready"
             else:
-                last_state = (
-                    f"deployment lookup failed: "
-                    f"{result.stderr.strip()[:200]}"
-                )
+                last_state = f"deployment lookup failed: {result.stderr.strip()[:200]}"
 
             if elapsed >= timeout:
-                report.add(CheckResult(
-                    "wva_controller_deployment",
-                    False,
-                    expected=f"Available, all replicas ready within {timeout}s",
-                    actual=last_state,
-                    message=(
-                        f"WVA controller in ns/{wva_ns} did not become "
-                        f"ready within {timeout}s. Last state: {last_state}"
-                    ),
-                ))
+                report.add(
+                    CheckResult(
+                        "wva_controller_deployment",
+                        False,
+                        expected=f"Available, all replicas ready within {timeout}s",
+                        actual=last_state,
+                        message=(
+                            f"WVA controller in ns/{wva_ns} did not become "
+                            f"ready within {timeout}s. Last state: {last_state}"
+                        ),
+                    )
+                )
                 return
 
             if logger is not None and int(elapsed) % 30 == 0 and int(elapsed) > 0:
@@ -300,19 +331,26 @@ class WvaSmoketestMixin:
     ) -> None:
         """Verify prometheus-adapter Deployment is Available."""
         result = cmd.kube(
-            "get", "deployment", "prometheus-adapter",
-            "--namespace", monitoring_ns,
-            "-o", "json",
+            "get",
+            "deployment",
+            "prometheus-adapter",
+            "--namespace",
+            monitoring_ns,
+            "-o",
+            "json",
             check=False,
         )
         if not result.success:
-            report.add(CheckResult(
-                "wva_prometheus_adapter", False,
-                message=(
-                    f"prometheus-adapter Deployment not found in "
-                    f"ns/{monitoring_ns}: {result.stderr.strip()[:200]}"
-                ),
-            ))
+            report.add(
+                CheckResult(
+                    "wva_prometheus_adapter",
+                    False,
+                    message=(
+                        f"prometheus-adapter Deployment not found in "
+                        f"ns/{monitoring_ns}: {result.stderr.strip()[:200]}"
+                    ),
+                )
+            )
             return
 
         try:
@@ -323,16 +361,18 @@ class WvaSmoketestMixin:
         available = _deployment_is_available(dep)
         replicas = dep.get("status", {}).get("readyReplicas", 0) or 0
         desired = dep.get("spec", {}).get("replicas", 0) or 0
-        report.add(CheckResult(
-            "wva_prometheus_adapter",
-            available and replicas == desired and desired > 0,
-            expected=f"Available, {desired}/{desired} ready",
-            actual=f"Available={available}, {replicas}/{desired} ready",
-            message=(
-                f"prometheus-adapter in ns/{monitoring_ns}: "
-                f"Available={available}, ready={replicas}/{desired}"
-            ),
-        ))
+        report.add(
+            CheckResult(
+                "wva_prometheus_adapter",
+                available and replicas == desired and desired > 0,
+                expected=f"Available, {desired}/{desired} ready",
+                actual=f"Available={available}, {replicas}/{desired} ready",
+                message=(
+                    f"prometheus-adapter in ns/{monitoring_ns}: "
+                    f"Available={available}, ready={replicas}/{desired}"
+                ),
+            )
+        )
 
     @staticmethod
     def _check_variant_autoscaling(
@@ -354,22 +394,28 @@ class WvaSmoketestMixin:
         found" log loop forever) → no metric → HPA stuck at <unknown>.
         """
         result = cmd.kube(
-            "get", "variantautoscaling.llmd.ai", va_name,
-            "--namespace", wva_ns,
-            "-o", "json",
+            "get",
+            "variantautoscaling.llmd.ai",
+            va_name,
+            "--namespace",
+            wva_ns,
+            "-o",
+            "json",
             check=False,
         )
         if not result.success:
-            report.add(CheckResult(
-                "wva_variantautoscaling",
-                False,
-                expected=f"{va_name} present in ns/{wva_ns}",
-                actual="missing",
-                message=(
-                    f"VariantAutoscaling/{va_name} in ns/{wva_ns}: "
-                    f"{result.stderr.strip()[:200]}"
-                ),
-            ))
+            report.add(
+                CheckResult(
+                    "wva_variantautoscaling",
+                    False,
+                    expected=f"{va_name} present in ns/{wva_ns}",
+                    actual="missing",
+                    message=(
+                        f"VariantAutoscaling/{va_name} in ns/{wva_ns}: "
+                        f"{result.stderr.strip()[:200]}"
+                    ),
+                )
+            )
             return
 
         try:
@@ -377,41 +423,43 @@ class WvaSmoketestMixin:
         except (json.JSONDecodeError, ValueError):
             va = {}
 
-        report.add(CheckResult(
-            "wva_variantautoscaling",
-            True,
-            expected=f"{va_name} present in ns/{wva_ns}",
-            actual="present",
-            message=f"VariantAutoscaling/{va_name} in ns/{wva_ns}: present",
-        ))
+        report.add(
+            CheckResult(
+                "wva_variantautoscaling",
+                True,
+                expected=f"{va_name} present in ns/{wva_ns}",
+                actual="present",
+                message=f"VariantAutoscaling/{va_name} in ns/{wva_ns}: present",
+            )
+        )
 
         # Critical alignment check: VA label must match controller's instance.
         labels = va.get("metadata", {}).get("labels", {}) or {}
         actual_label = labels.get("wva.llmd.ai/controller-instance", "")
         label_ok = actual_label == expected_controller_instance
-        report.add(CheckResult(
-            "wva_va_controller_instance_label",
-            label_ok,
-            expected=(
-                f"wva.llmd.ai/controller-instance="
-                f"{expected_controller_instance}"
-            ),
-            actual=(
-                f"wva.llmd.ai/controller-instance={actual_label or '(missing)'}"
-            ),
-            message=(
-                f"VariantAutoscaling/{va_name} controller-instance label: "
-                f"{actual_label or '(missing)'} "
-                f"(expected {expected_controller_instance}). "
-                "Without a matching label, the controller's predicate "
-                "skips this VA and never emits wva_desired_replicas."
-                if not label_ok
-                else
-                f"VariantAutoscaling/{va_name} carries the matching "
-                f"wva.llmd.ai/controller-instance={expected_controller_instance} "
-                "label — controller will reconcile it."
-            ),
-        ))
+        report.add(
+            CheckResult(
+                "wva_va_controller_instance_label",
+                label_ok,
+                expected=(
+                    f"wva.llmd.ai/controller-instance={expected_controller_instance}"
+                ),
+                actual=(
+                    f"wva.llmd.ai/controller-instance={actual_label or '(missing)'}"
+                ),
+                message=(
+                    f"VariantAutoscaling/{va_name} controller-instance label: "
+                    f"{actual_label or '(missing)'} "
+                    f"(expected {expected_controller_instance}). "
+                    "Without a matching label, the controller's predicate "
+                    "skips this VA and never emits wva_desired_replicas."
+                    if not label_ok
+                    else f"VariantAutoscaling/{va_name} carries the matching "
+                    f"wva.llmd.ai/controller-instance={expected_controller_instance} "
+                    "label — controller will reconcile it."
+                ),
+            )
+        )
 
     @staticmethod
     def _check_hpa(
@@ -428,19 +476,26 @@ class WvaSmoketestMixin:
         actually emits, and (best-effort) has an ``AbleToScale`` condition.
         """
         result = cmd.kube(
-            "get", "hpa", hpa_name,
-            "--namespace", wva_ns,
-            "-o", "json",
+            "get",
+            "hpa",
+            hpa_name,
+            "--namespace",
+            wva_ns,
+            "-o",
+            "json",
             check=False,
         )
         if not result.success:
-            report.add(CheckResult(
-                "wva_hpa", False,
-                message=(
-                    f"HPA/{hpa_name} not found in ns/{wva_ns}: "
-                    f"{result.stderr.strip()[:200]}"
-                ),
-            ))
+            report.add(
+                CheckResult(
+                    "wva_hpa",
+                    False,
+                    message=(
+                        f"HPA/{hpa_name} not found in ns/{wva_ns}: "
+                        f"{result.stderr.strip()[:200]}"
+                    ),
+                )
+            )
             return
 
         try:
@@ -449,16 +504,18 @@ class WvaSmoketestMixin:
             hpa = {}
 
         scale_target = hpa.get("spec", {}).get("scaleTargetRef", {}).get("name", "")
-        report.add(CheckResult(
-            "wva_hpa_target",
-            scale_target == expected_target,
-            expected=expected_target,
-            actual=scale_target,
-            message=(
-                f"HPA/{hpa_name} scaleTargetRef.name={scale_target} "
-                f"(expected {expected_target})"
-            ),
-        ))
+        report.add(
+            CheckResult(
+                "wva_hpa_target",
+                scale_target == expected_target,
+                expected=expected_target,
+                actual=scale_target,
+                message=(
+                    f"HPA/{hpa_name} scaleTargetRef.name={scale_target} "
+                    f"(expected {expected_target})"
+                ),
+            )
+        )
 
         # Selector alignment check. The metric labels the controller
         # actually emits are: variant_name (= VA's name), exported_namespace
@@ -467,9 +524,12 @@ class WvaSmoketestMixin:
         # The HPA's matchLabels must equal these or the external-metrics
         # API will return zero items and the HPA stays <unknown>.
         match_labels = (
-            hpa.get("spec", {}).get("metrics", [{}])[0]
-            .get("external", {}).get("metric", {})
-            .get("selector", {}).get("matchLabels", {})
+            hpa.get("spec", {})
+            .get("metrics", [{}])[0]
+            .get("external", {})
+            .get("metric", {})
+            .get("selector", {})
+            .get("matchLabels", {})
         ) or {}
         expected_selector = {
             "variant_name": expected_target,
@@ -481,22 +541,24 @@ class WvaSmoketestMixin:
             for k, v in expected_selector.items()
             if match_labels.get(k) != v
         ]
-        report.add(CheckResult(
-            "wva_hpa_selector_alignment",
-            not mismatches,
-            expected=", ".join(f"{k}={v}" for k, v in expected_selector.items()),
-            actual=", ".join(f"{k}={v}" for k, v in match_labels.items()) or "(empty)",
-            message=(
-                f"HPA/{hpa_name} metric selector aligned with WVA-emitted "
-                f"labels — controller→adapter→HPA path will match."
-                if not mismatches
-                else
-                f"HPA/{hpa_name} metric selector mismatch: {', '.join(mismatches)}. "
-                "These three labels (variant_name, exported_namespace, "
-                "controller_instance) must equal what the WVA controller "
-                "emits or no metric row will match."
-            ),
-        ))
+        report.add(
+            CheckResult(
+                "wva_hpa_selector_alignment",
+                not mismatches,
+                expected=", ".join(f"{k}={v}" for k, v in expected_selector.items()),
+                actual=", ".join(f"{k}={v}" for k, v in match_labels.items())
+                or "(empty)",
+                message=(
+                    f"HPA/{hpa_name} metric selector aligned with WVA-emitted "
+                    f"labels — controller→adapter→HPA path will match."
+                    if not mismatches
+                    else f"HPA/{hpa_name} metric selector mismatch: {', '.join(mismatches)}. "
+                    "These three labels (variant_name, exported_namespace, "
+                    "controller_instance) must equal what the WVA controller "
+                    "emits or no metric row will match."
+                ),
+            )
+        )
 
         # Surface the AbleToScale condition when it's present -- it's the
         # signal that prometheus-adapter is actually serving the
@@ -509,16 +571,18 @@ class WvaSmoketestMixin:
         )
         if able is not None:
             is_true = able.get("status") == "True"
-            report.add(CheckResult(
-                "wva_hpa_able_to_scale",
-                is_true,
-                expected="True",
-                actual=able.get("status", "Unknown"),
-                message=(
-                    f"HPA/{hpa_name} AbleToScale={able.get('status')} "
-                    f"reason={able.get('reason', '')}"
-                ),
-            ))
+            report.add(
+                CheckResult(
+                    "wva_hpa_able_to_scale",
+                    is_true,
+                    expected="True",
+                    actual=able.get("status", "Unknown"),
+                    message=(
+                        f"HPA/{hpa_name} AbleToScale={able.get('status')} "
+                        f"reason={able.get('reason', '')}"
+                    ),
+                )
+            )
 
     @staticmethod
     def _wait_for_hpa_targets(
@@ -551,9 +615,13 @@ class WvaSmoketestMixin:
             elapsed = time.time() - start
 
             result = cmd.kube(
-                "get", "hpa", hpa_name,
-                "--namespace", wva_ns,
-                "-o", "json",
+                "get",
+                "hpa",
+                hpa_name,
+                "--namespace",
+                wva_ns,
+                "-o",
+                "json",
                 check=False,
             )
             if result.success:
@@ -566,22 +634,24 @@ class WvaSmoketestMixin:
                 if value is not None:
                     target = _hpa_first_external_metric_target(hpa)
                     target_str = f"/{target}" if target else ""
-                    report.add(CheckResult(
-                        "wva_hpa_targets_resolved",
-                        True,
-                        expected="<numeric>",
-                        actual=str(value),
-                        message=(
-                            f"HPA/{hpa_name} TARGETS resolved: "
-                            f"{value}{target_str} after "
-                            f"{int(elapsed)}s — full WVA pipeline live"
-                        ),
-                    ))
+                    report.add(
+                        CheckResult(
+                            "wva_hpa_targets_resolved",
+                            True,
+                            expected="<numeric>",
+                            actual=str(value),
+                            message=(
+                                f"HPA/{hpa_name} TARGETS resolved: "
+                                f"{value}{target_str} after "
+                                f"{int(elapsed)}s — full WVA pipeline live"
+                            ),
+                        )
+                    )
                     return
 
                 # Capture the reason from AbleToScale for the eventual
                 # failure message, if present.
-                for c in (hpa.get("status", {}).get("conditions", []) or []):
+                for c in hpa.get("status", {}).get("conditions", []) or []:
                     if c.get("type") == "ScalingActive" and c.get("status") == "False":
                         last_able_to_scale_reason = (
                             c.get("reason", "") + ": " + c.get("message", "")
@@ -591,17 +661,19 @@ class WvaSmoketestMixin:
                 last_state = "<unknown>"
 
             if elapsed >= timeout:
-                report.add(CheckResult(
-                    "wva_hpa_targets_resolved",
-                    False,
-                    expected="<numeric>",
-                    actual=last_state,
-                    message=(
-                        f"HPA/{hpa_name} TARGETS did not resolve within "
-                        f"{timeout}s. Most recent ScalingActive=False reason: "
-                        f"{last_able_to_scale_reason or '(none reported)'}"
-                    ),
-                ))
+                report.add(
+                    CheckResult(
+                        "wva_hpa_targets_resolved",
+                        False,
+                        expected="<numeric>",
+                        actual=last_state,
+                        message=(
+                            f"HPA/{hpa_name} TARGETS did not resolve within "
+                            f"{timeout}s. Most recent ScalingActive=False reason: "
+                            f"{last_able_to_scale_reason or '(none reported)'}"
+                        ),
+                    )
+                )
                 return
 
             if logger is not None and int(elapsed) % 30 == 0 and int(elapsed) > 0:
@@ -642,9 +714,13 @@ class WvaSmoketestMixin:
             elapsed = time.time() - start
 
             result = cmd.kube(
-                "get", "hpa", hpa_name,
-                "--namespace", wva_ns,
-                "-o", "json",
+                "get",
+                "hpa",
+                hpa_name,
+                "--namespace",
+                wva_ns,
+                "-o",
+                "json",
                 check=False,
             )
 
@@ -660,8 +736,7 @@ class WvaSmoketestMixin:
                 desired = hpa.get("status", {}).get("desiredReplicas")
 
                 last_state = (
-                    f"current={current} desired={desired} "
-                    f"min={spec_min} max={spec_max}"
+                    f"current={current} desired={desired} min={spec_min} max={spec_max}"
                 )
 
                 if (
@@ -669,33 +744,37 @@ class WvaSmoketestMixin:
                     and int(current) == spec_min
                     and (desired is None or int(desired) == spec_min)
                 ):
-                    report.add(CheckResult(
-                        "wva_hpa_converged",
-                        True,
-                        expected=f"REPLICAS={spec_min} (=MINPODS)",
-                        actual=f"REPLICAS={current}",
-                        message=(
-                            f"HPA/{hpa_name} converged on idle steady-state "
-                            f"({last_state}) after {int(elapsed)}s"
-                        ),
-                    ))
+                    report.add(
+                        CheckResult(
+                            "wva_hpa_converged",
+                            True,
+                            expected=f"REPLICAS={spec_min} (=MINPODS)",
+                            actual=f"REPLICAS={current}",
+                            message=(
+                                f"HPA/{hpa_name} converged on idle steady-state "
+                                f"({last_state}) after {int(elapsed)}s"
+                            ),
+                        )
+                    )
                     return
 
             if elapsed >= timeout:
-                report.add(CheckResult(
-                    "wva_hpa_converged",
-                    False,
-                    expected="REPLICAS == MINPODS",
-                    actual=last_state,
-                    message=(
-                        f"HPA/{hpa_name} did not converge to MINPODS within "
-                        f"{timeout}s. Last state: {last_state}. "
-                        "Likely causes: scaleDown stabilization window still "
-                        "active (bump _HPA_CONVERGED_TIMEOUT_SECS), HPA can't "
-                        "patch the Deployment scale subresource, or controller "
-                        "computed desiredReplicas > minReplicas."
-                    ),
-                ))
+                report.add(
+                    CheckResult(
+                        "wva_hpa_converged",
+                        False,
+                        expected="REPLICAS == MINPODS",
+                        actual=last_state,
+                        message=(
+                            f"HPA/{hpa_name} did not converge to MINPODS within "
+                            f"{timeout}s. Last state: {last_state}. "
+                            "Likely causes: scaleDown stabilization window still "
+                            "active (bump _HPA_CONVERGED_TIMEOUT_SECS), HPA can't "
+                            "patch the Deployment scale subresource, or controller "
+                            "computed desiredReplicas > minReplicas."
+                        ),
+                    )
+                )
                 return
 
             if logger is not None and int(elapsed) % 30 == 0 and int(elapsed) > 0:
@@ -722,34 +801,46 @@ class WvaSmoketestMixin:
         query is informational, not blocking.
         """
         va_result = cmd.kube(
-            "get", "variantautoscaling.llmd.ai", resource_name,
-            "--namespace", wva_ns,
+            "get",
+            "variantautoscaling.llmd.ai",
+            resource_name,
+            "--namespace",
+            wva_ns,
             check=False,
         )
         hpa_result = cmd.kube(
-            "get", "hpa", resource_name,
-            "--namespace", wva_ns,
+            "get",
+            "hpa",
+            resource_name,
+            "--namespace",
+            wva_ns,
             check=False,
         )
 
-        va_text = va_result.stdout.strip() if va_result.success else (
-            f"(failed: {va_result.stderr.strip()[:200]})"
+        va_text = (
+            va_result.stdout.strip()
+            if va_result.success
+            else (f"(failed: {va_result.stderr.strip()[:200]})")
         )
-        hpa_text = hpa_result.stdout.strip() if hpa_result.success else (
-            f"(failed: {hpa_result.stderr.strip()[:200]})"
+        hpa_text = (
+            hpa_result.stdout.strip()
+            if hpa_result.success
+            else (f"(failed: {hpa_result.stderr.strip()[:200]})")
         )
 
-        report.add(CheckResult(
-            "wva_va_hpa_state",
-            va_result.success and hpa_result.success,
-            message=(
-                f"End-state of WVA resources in ns/{wva_ns}:\n"
-                f"  VariantAutoscaling:\n    "
-                + va_text.replace("\n", "\n    ")
-                + "\n  HorizontalPodAutoscaler:\n    "
-                + hpa_text.replace("\n", "\n    ")
-            ),
-        ))
+        report.add(
+            CheckResult(
+                "wva_va_hpa_state",
+                va_result.success and hpa_result.success,
+                message=(
+                    f"End-state of WVA resources in ns/{wva_ns}:\n"
+                    f"  VariantAutoscaling:\n    "
+                    + va_text.replace("\n", "\n    ")
+                    + "\n  HorizontalPodAutoscaler:\n    "
+                    + hpa_text.replace("\n", "\n    ")
+                ),
+            )
+        )
 
 
 def _hpa_first_external_metric_value(hpa: dict):
@@ -759,7 +850,7 @@ def _hpa_first_external_metric_value(hpa: dict):
     ``.status.currentMetrics[*].external.current.{value,averageValue}``.
     Either field may be set depending on the metric's targetType.
     """
-    for m in (hpa.get("status", {}).get("currentMetrics", []) or []):
+    for m in hpa.get("status", {}).get("currentMetrics", []) or []:
         external = m.get("external") or {}
         current = external.get("current") or {}
         for key in ("value", "averageValue"):
@@ -775,7 +866,7 @@ def _hpa_first_external_metric_target(hpa: dict) -> str:
     Used purely for logging — e.g. ``500m/1`` shows "500m" current and
     "1" target.
     """
-    for m in (hpa.get("spec", {}).get("metrics", []) or []):
+    for m in hpa.get("spec", {}).get("metrics", []) or []:
         target = (m.get("external") or {}).get("target") or {}
         for key in ("value", "averageValue"):
             v = target.get(key)
@@ -784,9 +875,7 @@ def _hpa_first_external_metric_target(hpa: dict) -> str:
     return ""
 
 
-def _wva_controller_restart_count(
-    cmd: CommandExecutor, wva_ns: str
-) -> int | None:
+def _wva_controller_restart_count(cmd: CommandExecutor, wva_ns: str) -> int | None:
     """Sum the manager-container restart counts across all controller pods.
 
     Used to detect crash-loops mid-wait without parsing logs. Returns
@@ -794,10 +883,14 @@ def _wva_controller_restart_count(
     skip the crash-loop check that round).
     """
     result = cmd.kube(
-        "get", "pods",
-        "--namespace", wva_ns,
-        "-l", "control-plane=controller-manager",
-        "-o", "json",
+        "get",
+        "pods",
+        "--namespace",
+        wva_ns,
+        "-l",
+        "control-plane=controller-manager",
+        "-o",
+        "json",
         check=False,
     )
     if not result.success:
@@ -831,7 +924,9 @@ class WvaValidator(WvaSmoketestMixin, BaseSmoketest):
     """
 
     def run_config_validation(
-        self, context: ExecutionContext, stack_path: Path,
+        self,
+        context: ExecutionContext,
+        stack_path: Path,
     ) -> SmoketestReport:
         report = SmoketestReport()
         self.run_wva_checks(context, stack_path, report)

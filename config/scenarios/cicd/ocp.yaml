@@ -15,6 +15,18 @@ scenario:
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
 
+    # Deployment method
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+    fma:
+      enabled: false
+      iterations: 5
+
+#    gateway:
+#      className: istio
+
     affinity:
       enabled: true
       nodeSelector:
@@ -49,10 +61,6 @@ scenario:
 #      workloadPvc:
 #        storageClassName: ocs-storagecluster-cephfs
 
-    fma:
-      enabled: false
-      iterations: 3
-
     vllmCommon:
       priorityClassName: nightly-gpu-critical
 
@@ -61,6 +69,7 @@ scenario:
     harness:
       name: vllm-benchmark
       experimentProfile: sanity_random.yaml
+#      executable: llm-d-benchmark.py
 
     images:
       benchmark:

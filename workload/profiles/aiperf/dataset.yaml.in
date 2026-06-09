@@ -1,0 +1,11 @@
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+endpoint-type: chat
+streaming: none
+concurrency: 16
+request-count: 500
+input-file: REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR/REPLACE_ENV_LLMDBENCH_RUN_DATASET_FILE
+custom-dataset-type: mooncake_trace
+use-server-token-count: none
+tokenizer-trust-remote-code: none
+no-server-metrics: none

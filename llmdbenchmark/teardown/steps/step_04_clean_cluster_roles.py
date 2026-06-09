@@ -50,40 +50,39 @@ class CleanClusterRolesStep(Step):
         context.logger.log_info("Deleting well-known modelservice ClusterRoles...")
         for suffix in _MODELSERVICE_ROLE_SUFFIXES:
             cr_name = f"{release}-{suffix}"
-            context.logger.log_info(
-                f"  Deleting ClusterRole/{cr_name}", emoji="🗑️"
-            )
+            context.logger.log_info(f"  Deleting ClusterRole/{cr_name}", emoji="🗑️")
             cmd.kube(
-                "delete", "--ignore-not-found=true",
-                "ClusterRole", cr_name,
+                "delete",
+                "--ignore-not-found=true",
+                "ClusterRole",
+                cr_name,
             )
 
         if context.is_openshift:
             namespaces = self._all_target_namespaces(context)
             for ns in namespaces:
-                context.logger.log_info(
-                    f"Deleting HTTPRoutes in {ns}..."
-                )
+                context.logger.log_info(f"Deleting HTTPRoutes in {ns}...")
                 result = cmd.kube(
-                    "get", "httproute",
-                    "--namespace", ns,
-                    "-o", "name",
+                    "get",
+                    "httproute",
+                    "--namespace",
+                    ns,
+                    "-o",
+                    "name",
                     "--ignore-not-found",
                 )
                 if result.success and result.stdout.strip():
                     for route in result.stdout.strip().splitlines():
-                        context.logger.log_info(
-                            f"  Deleting {route}", emoji="🗑️"
-                        )
+                        context.logger.log_info(f"  Deleting {route}", emoji="🗑️")
                         cmd.kube(
-                            "delete", "--namespace", ns,
+                            "delete",
+                            "--namespace",
+                            ns,
                             "--ignore-not-found=true",
                             route,
                         )
                 else:
-                    context.logger.log_info(
-                        f"  No HTTPRoutes found in {ns}"
-                    )
+                    context.logger.log_info(f"  No HTTPRoutes found in {ns}")
 
         if errors:
             return StepResult(
@@ -102,12 +101,20 @@ class CleanClusterRolesStep(Step):
         )
 
     def _delete_matching(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        kind: str, release: str, errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        kind: str,
+        release: str,
+        errors: list,
     ):
         """Delete cluster-scoped resources of a given kind matching the release name."""
         result = cmd.kube(
-            "get", kind, "--no-headers", "-o", "name",
+            "get",
+            kind,
+            "--no-headers",
+            "-o",
+            "name",
         )
         if not result.success or not result.stdout.strip():
             return
@@ -115,20 +122,17 @@ class CleanClusterRolesStep(Step):
         for line in result.stdout.strip().splitlines():
             resource_name = line.strip()
             if release in resource_name:
-                context.logger.log_info(
-                    f"Deleting {kind}: {resource_name}"
-                )
+                context.logger.log_info(f"Deleting {kind}: {resource_name}")
                 del_result = cmd.kube(
-                    "delete", "--ignore-not-found=true", resource_name,
+                    "delete",
+                    "--ignore-not-found=true",
+                    resource_name,
                 )
                 if not del_result.success:
                     stderr_lower = del_result.stderr.lower()
                     if "not found" in stderr_lower or "no matches" in stderr_lower:
-                        context.logger.log_info(
-                            f"Already removed: {resource_name}"
-                        )
+                        context.logger.log_info(f"Already removed: {resource_name}")
                     else:
                         errors.append(
-                            f"Failed to delete {resource_name}: "
-                            f"{del_result.stderr}"
+                            f"Failed to delete {resource_name}: {del_result.stderr}"
                         )

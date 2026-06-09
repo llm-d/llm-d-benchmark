@@ -33,7 +33,7 @@
 #     per-stack always wins.
 #
 #   - `scenario:` is a list of N stacks. Each gets its own
-#     `{model_id_label}-ms` and `{model_id_label}-gaie` Helm releases,
+#     `{model_id_label}-ms` and `{model_id_label}-router` Helm releases,
 #     its own VA + HPA, and its own auto-named download Job + PVC.
 #
 #   - One WVA controller per wva.namespace (deduplicated by
@@ -137,7 +137,7 @@ shared:
     pluginsConfigFile: "wva-plugins.yaml"
     pluginsCustomConfig:
       wva-plugins.yaml: |
-        apiVersion: inference.networking.x-k8s.io/v1alpha1
+        apiVersion: llm-d.ai/v1alpha1
         kind: EndpointPickerConfig
         featureGates:
           - flowControl

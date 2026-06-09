@@ -17,6 +17,27 @@ spec:
     volumeMounts:
     - name: requests
       mountPath: /requests
+{% if dataAccess.nodeSelector is defined and dataAccess.nodeSelector %}
+  nodeSelector:
+{% for key, value in dataAccess.nodeSelector.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if dataAccess.tolerations is defined and dataAccess.tolerations %}
+  tolerations:
+{% for t in dataAccess.tolerations %}
+  - key: {{ t.key }}
+{% if t.operator is defined %}
+    operator: {{ t.operator }}
+{% endif %}
+{% if t.value is defined %}
+    value: "{{ t.value }}"
+{% endif %}
+{% if t.effect is defined %}
+    effect: {{ t.effect }}
+{% endif %}
+{% endfor %}
+{% endif %}
 {% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
   imagePullSecrets:
   - name: {{ vllmCommon.pullSecret }}

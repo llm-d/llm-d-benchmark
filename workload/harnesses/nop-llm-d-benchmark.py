@@ -120,8 +120,14 @@ def main():
     if fma_enabled:
         deploy_methods.append("fma")
 
-    # Load Kubernetes configuration
-    config.load_kube_config()
+    # Load Kubernetes configuration: prefer in-cluster (harness pod runs in cluster),
+    # fall back to local kubeconfig for out-of-cluster invocations.
+    try:
+        config.load_incluster_config()
+        logger.info("Using in-cluster Kubernetes config")
+    except config.ConfigException as e:
+        logger.warning("In-cluster config failed (%s), falling back to kubeconfig", e)
+        config.load_kube_config()
     v1 = client.CoreV1Api()
     apps_v1 = client.AppsV1Api()
     api = client.CustomObjectsApi()

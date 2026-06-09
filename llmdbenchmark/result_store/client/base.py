@@ -2,9 +2,10 @@
 
 from abc import ABC, abstractmethod
 
+
 class StorageClient(ABC):
     """Abstract base class for all storage clients.
-    
+
     Operates purely on URIs and local paths, without knowledge of application logic.
     """
 

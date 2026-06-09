@@ -1227,11 +1227,13 @@ def _execute_experiment(args, logger):
             f"running a single cycle with spec defaults."
         )
 
-    # Wire experiment-level harness/profile as fallbacks for CLI args
+    # Wire experiment-level harness/profile/dataset as fallbacks for CLI args
     if experiment_plan.harness and not getattr(args, "harness", None):
         args.harness = experiment_plan.harness
     if experiment_plan.profile and not getattr(args, "workload", None):
         args.workload = experiment_plan.profile
+    if experiment_plan.dataset_url and not getattr(args, "dataset", None):
+        args.dataset = experiment_plan.dataset_url
 
     total_setup = len(experiment_plan.setup_treatments)
     total_run = experiment_plan.run_treatments_count

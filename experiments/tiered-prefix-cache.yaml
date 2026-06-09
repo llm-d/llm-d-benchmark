@@ -1,0 +1,153 @@
+# =====================================================================
+# Experiment: Tiered Prefix Cache Workload Matrix
+# =====================================================================
+#
+# Evaluates how the number of prefix groups and system prompt length
+# affect performance when using tiered prefix caching (CPU offloading
+# via OffloadingConnector).  The setup phase varies the number of CPU
+# blocks allocated for the KV cache tier; the run phase sweeps
+# workload characteristics to measure cache hit rates and latency.
+#
+# Usage (full DoE — automatic standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec tiered-prefix-cache experiment \
+#     --experiments workload/experiments/tiered-prefix-cache.yaml
+#
+# Usage (run-only — targets an already-running endpoint):
+#   llmdbenchmark --spec tiered-prefix-cache run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> \
+#     --namespace <NAMESPACE> \
+#     --harness inference-perf \
+#     --workload shared_prefix_synthetic.yaml \
+#     --experiments workload/experiments/tiered-prefix-cache.yaml
+#
+# The experiment form auto-detects the endpoint from stood-up stacks
+# and reads harness/profile defaults from the plan config.
+# The run-only form requires explicit --endpoint-url, --model, and
+# --namespace since there is no stood-up stack to detect from.
+#
+# =====================================================================
+
+# --- DoE Metadata (informational — not consumed by the runtime) ------
+
+experiment:
+  name: tiered-prefix-cache
+  description: >
+    Full factorial sweep of prefix group count and system prompt length
+    to measure the effect on cache utilization and inference latency
+    under tiered (CPU-offloaded) prefix caching.
+  harness: inference-perf
+  profile: shared_prefix_synthetic.yaml
+
+design:
+  type: full_factorial
+
+  setup:
+    factors:
+      - name: numCpuBlocks
+        key: vllmCommon.flags.numCpuBlocks
+        levels: [500, 1000, 2000, 5000]
+        description: CPU blocks allocated for KV cache tier
+    constants:
+      - key: model.maxModelLen
+        value: 16000
+      - key: model.blockSize
+        value: 64
+
+  run:
+    factors:
+      - name: num_groups
+        key: data.shared_prefix.num_groups
+        levels: [40, 60]
+        description: >
+          Number of distinct prefix groups.  More groups means more
+          unique system prompts competing for cache space.
+
+      - name: system_prompt_len
+        key: data.shared_prefix.system_prompt_len
+        levels: [8000, 5000, 1000]
+        unit: tokens
+        description: >
+          Length of the shared system prompt per group.  Longer prompts
+          consume more cache capacity but benefit more from caching.
+
+    constants:
+      - key: api.streaming
+        value: true
+        description: Streaming inference enabled
+      - key: data.shared_prefix.num_prompts_per_group
+        value: 32
+        description: Prompts per prefix group (held fixed)
+      - key: data.shared_prefix.question_len
+        value: 256
+        description: Per-request question length (held fixed)
+      - key: data.shared_prefix.output_len
+        value: 256
+        description: Per-request output length (held fixed)
+
+  total_setup_treatments: 4
+  total_run_treatments: 6
+  total_matrix: 24
+
+  response_variables:
+    - TTFT (Time to First Token)
+    - TPOT (Time per Output Token)
+    - ITL (Inter-Token Latency)
+    - E2EL (End-to-End Latency)
+    - Throughput (tokens/sec)
+    - Prefix cache hit rate (from vLLM metrics)
+
+# --- Runtime: Setup treatments (consumed by experiment orchestrator) -------
+
+setup:
+  constants:
+    model.maxModelLen: 16000
+    model.blockSize: 64
+  treatments:
+    - name: cpu-blocks-500
+      vllmCommon.flags.numCpuBlocks: 500
+    - name: cpu-blocks-1000
+      vllmCommon.flags.numCpuBlocks: 1000
+    - name: cpu-blocks-2000
+      vllmCommon.flags.numCpuBlocks: 2000
+    - name: cpu-blocks-5000
+      vllmCommon.flags.numCpuBlocks: 5000
+
+# --- Treatments (consumed by step_04 render_profiles) ----------------
+#
+# Full factorial: 2 levels of num_groups x 3 levels of system_prompt_len
+# = 6 treatments.
+#
+# Naming: grp{num_groups}-splen{system_prompt_len_in_k}k
+#
+# Note: The original experiment defined a fractional design with only
+# 3 treatments.  This has been expanded to the full factorial to
+# enable estimation of interaction effects between group count and
+# prompt length.
+
+treatments:
+  # --- num_groups = 40 (fewer prefix groups) ---
+  - name: grp40-splen8k
+    data.shared_prefix.num_groups: 40
+    data.shared_prefix.system_prompt_len: 8000
+
+  - name: grp40-splen5k
+    data.shared_prefix.num_groups: 40
+    data.shared_prefix.system_prompt_len: 5000
+
+  - name: grp40-splen1k
+    data.shared_prefix.num_groups: 40
+    data.shared_prefix.system_prompt_len: 1000
+
+  # --- num_groups = 60 (more prefix groups) ---
+  - name: grp60-splen8k
+    data.shared_prefix.num_groups: 60
+    data.shared_prefix.system_prompt_len: 8000
+
+  - name: grp60-splen5k
+    data.shared_prefix.num_groups: 60
+    data.shared_prefix.system_prompt_len: 5000
+
+  - name: grp60-splen1k
+    data.shared_prefix.num_groups: 60
+    data.shared_prefix.system_prompt_len: 1000

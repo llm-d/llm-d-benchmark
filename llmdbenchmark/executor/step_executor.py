@@ -52,12 +52,15 @@ class StepExecutor:
             except RuntimeError as exc:
                 self.logger.log_error(str(exc))
                 import sys
+
                 sys.exit(1)
 
         result = ExecutionResult(phase=self.context.current_phase)
         allowed_numbers = set(self.parse_step_list(step_spec)) if step_spec else None
 
-        pre_global, per_stack_steps, post_global = self._partition_steps(allowed_numbers)
+        pre_global, per_stack_steps, post_global = self._partition_steps(
+            allowed_numbers
+        )
 
         abort = self._execute_global_steps(pre_global, result)
         if abort:
@@ -284,9 +287,7 @@ class StepExecutor:
 
         return stack_result
 
-    def _safe_execute_step(
-        self, step: Step, stack_path: Path | None
-    ) -> StepResult:
+    def _safe_execute_step(self, step: Step, stack_path: Path | None) -> StepResult:
         """Execute a step, catching exceptions into a failed StepResult."""
         try:
             return step.execute(self.context, stack_path=stack_path)

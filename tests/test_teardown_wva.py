@@ -101,10 +101,7 @@ def _controller_was_uninstalled(cmd: _StubCmd) -> bool:
 
 def _va_hpa_deleted_for(cmd: _StubCmd, model_id: str) -> bool:
     expected = f"{model_id}-decode"
-    return any(
-        "delete" in args and expected in args
-        for args in cmd.kube_calls
-    )
+    return any("delete" in args and expected in args for args in cmd.kube_calls)
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +151,9 @@ class TestWvaTeardownPolicy:
             f"Expected controller preservation under --stack filter; "
             f"helm calls={cmd.helm_calls}"
         )
-        assert any(
-            "Preserving WVA controller" in m for m in ctx.logger.messages
-        ), f"Expected preservation log message; got: {ctx.logger.messages}"
+        assert any("Preserving WVA controller" in m for m in ctx.logger.messages), (
+            f"Expected preservation log message; got: {ctx.logger.messages}"
+        )
 
     def test_deep_clean_uninstalls_controller_even_with_stack_filter(
         self, tmp_path: Path
@@ -212,22 +209,22 @@ class TestWvaTeardownPolicy:
 
         # Controller uninstalled once per unique namespace
         ns_uninstalls = [
-            args for args in cmd.helm_calls
+            args
+            for args in cmd.helm_calls
             if "uninstall" in args and "workload-variant-autoscaler" in args
         ]
         namespaces = {args[args.index("--namespace") + 1] for args in ns_uninstalls}
         assert namespaces == {"ns1", "ns2"}, (
-            f"Expected controller uninstall in both ns1 and ns2; "
-            f"got {namespaces}"
+            f"Expected controller uninstall in both ns1 and ns2; got {namespaces}"
         )
 
     @pytest.mark.parametrize(
         "stack_filter,deep,expected_uninstall",
         [
-            (None, False, True),       # full scenario: uninstall
-            (None, True, True),        # full scenario + deep: uninstall
+            (None, False, True),  # full scenario: uninstall
+            (None, True, True),  # full scenario + deep: uninstall
             (["stack-a"], False, False),  # partial: preserve
-            (["stack-a"], True, True),    # partial + deep: uninstall
+            (["stack-a"], True, True),  # partial + deep: uninstall
         ],
     )
     def test_policy_matrix(
