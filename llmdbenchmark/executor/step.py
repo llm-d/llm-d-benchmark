@@ -99,12 +99,18 @@ class ExecutionResult:
             lines.append(f"Failed global steps: {len(failed_global)}")
             for r in failed_global:
                 lines.append(f"  - {r}")
+                if r.errors:
+                    for err in r.errors:
+                        lines.append(f"    * Error: {err}")
 
         for sr in self.stack_results:
             if sr.has_errors:
                 lines.append(f"Stack '{sr.stack_name}' failures:")
                 for r in sr.failed_steps:
                     lines.append(f"  - {r}")
+                    if r.errors:
+                        for err in r.errors:
+                            lines.append(f"    * Error: {err}")
 
         if not self.has_errors:
             total = len(self.global_results) + sum(
