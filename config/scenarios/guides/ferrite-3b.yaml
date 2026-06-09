@@ -1,0 +1,75 @@
+# FERRITE COMPARISON -- Qwen2.5-3B-Instruct (fp16)
+# Sibling of ferrite-7b.yaml -- see that file for the why-and-how.
+
+scenario:
+  - name: "ferrite-3b"
+
+    model:
+      name: Qwen/Qwen2.5-3B-Instruct
+      shortName: qwen-qwen25-3b
+      path: models/Qwen/Qwen2.5-3B-Instruct
+      huggingfaceId: Qwen/Qwen2.5-3B-Instruct
+      size: 30Gi
+      maxModelLen: 16384
+      blockSize: 16
+      gpuMemoryUtilization: 0.9
+
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+    gateway:
+      className: epponly
+
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 1
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+        requests:
+          memory: 24Gi
+          cpu: "8"
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 60
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+    vllmCommon:
+      kvTransfer:
+        enabled: false
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+
+    storage:
+      modelPvc:
+        size: 50Gi
+
+    workDir: "~/data/ferrite-3b"
+
+    harness:
+      name: vllm-benchmark
+      experimentProfile: ferrite_t1_lat_bs1_in2048_out128.yaml

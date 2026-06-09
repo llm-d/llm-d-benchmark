@@ -1,0 +1,76 @@
+# FERRITE COMPARISON -- Qwen2.5-7B-Instruct-FP8-dynamic
+# Sibling of ferrite-7b.yaml -- exercises H100 FP8 tensor cores.
+# Tier 3 of the matrix.
+
+scenario:
+  - name: "ferrite-7b-fp8"
+
+    model:
+      name: RedHatAI/Qwen2.5-7B-Instruct-FP8-dynamic
+      shortName: qwen-qwen25-7b-fp8
+      path: models/RedHatAI/Qwen2.5-7B-Instruct-FP8-dynamic
+      huggingfaceId: RedHatAI/Qwen2.5-7B-Instruct-FP8-dynamic
+      size: 30Gi
+      maxModelLen: 16384
+      blockSize: 16
+      gpuMemoryUtilization: 0.9
+
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+    gateway:
+      className: epponly
+
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 1
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+      resources:
+        limits:
+          memory: 32Gi
+          cpu: "8"
+        requests:
+          memory: 32Gi
+          cpu: "8"
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 60
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+    vllmCommon:
+      kvTransfer:
+        enabled: false
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+
+    storage:
+      modelPvc:
+        size: 50Gi
+
+    workDir: "~/data/ferrite-7b-fp8"
+
+    harness:
+      name: vllm-benchmark
+      experimentProfile: ferrite_t3_fp8_lat_bs1_in2048_out128.yaml

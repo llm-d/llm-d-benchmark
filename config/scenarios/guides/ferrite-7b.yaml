@@ -1,0 +1,108 @@
+# FERRITE COMPARISON BASELINE -- Qwen2.5-7B-Instruct (fp16)
+#
+# One of five sibling scenarios for the ferrite-vs-python comparison matrix
+# (see also ferrite-3b.yaml, ferrite-14b.yaml, ferrite-7b-fp8.yaml,
+# ferrite-mixtral.yaml). All share the same shape sweep -- only the model
+# (and image, when ferrite is in play) differ between them.
+#
+# WHY ONE SCENARIO PER MODEL: model.name / shortName / path / size are
+# scenario-level fields. The shape sweep is per-profile (workload/profiles/
+# vllm-benchmark/ferrite_*.yaml.in), so a single scenario times-N profiles
+# = N runs against the same deployed model. The wrapper at
+# scripts/run-ferrite-matrix.sh loops profiles via the CLI's `-w` flag.
+#
+# IMAGE: defaults to whatever python vLLM image defaults.yaml points at.
+# Once a ferrite container exists, override at standup time with
+#   -e images.vllm.repository=<repo> -e images.vllm.tag=<tag>
+# or copy this file and pin the override (e.g. ferrite-7b-rs.yaml).
+#
+# Running one cell:
+#   llmdbenchmark --spec guides/ferrite-7b standup -p <ns>
+#   llmdbenchmark --spec guides/ferrite-7b run -p <ns> \
+#       -w ferrite_t1_lat_bs1_in2048_out128.yaml
+#
+# Running the full matrix: scripts/run-ferrite-matrix.sh
+
+scenario:
+  - name: "ferrite-7b"
+
+    model:
+      name: Qwen/Qwen2.5-7B-Instruct
+      shortName: qwen-qwen25-7b
+      path: models/Qwen/Qwen2.5-7B-Instruct
+      huggingfaceId: Qwen/Qwen2.5-7B-Instruct
+      size: 50Gi
+      maxModelLen: 16384
+      blockSize: 16
+      gpuMemoryUtilization: 0.9
+
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    # epponly: skip the Kubernetes Gateway, EPP serves HTTP directly. Avoids
+    # gateway-controller install on every cluster the benchmark touches.
+    gateway:
+      className: epponly
+
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 1
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 32Gi
+          cpu: "8"
+        requests:
+          memory: 32Gi
+          cpu: "8"
+
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 60
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+    vllmCommon:
+      # No P/D disaggregation -- single-pod serving for clean ferrite-vs-python comparison.
+      kvTransfer:
+        enabled: false
+
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+
+    storage:
+      modelPvc:
+        size: 100Gi
+
+    workDir: "~/data/ferrite-7b"
+
+    # Default profile is a Tier 1 sanity cell. The wrapper script overrides
+    # via `-w` to sweep all profiles for this scenario.
+    harness:
+      name: vllm-benchmark
+      experimentProfile: ferrite_t1_lat_bs1_in2048_out128.yaml

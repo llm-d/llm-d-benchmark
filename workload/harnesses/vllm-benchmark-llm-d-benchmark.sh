@@ -4,6 +4,19 @@ mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 cd ${LLMDBENCH_RUN_WORKSPACE_DIR}/vllm/
 cp -f ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
 en=$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | yq -r .executable)
+# Map executable -> vllm bench subcommand. benchmark_serving.py is the only
+# online (endpoint-driven) variant; latency/throughput are offline (load the
+# model in-process) and don't take --base-url, so they require a different
+# deployment pattern than this harness assumes. We keep the dispatch here so
+# a future offline-capable scenario can plug in without re-patching the script.
+case "${en}" in
+  benchmark_serving.py|benchmark_serving|null|"") VLLM_BENCH_SUBCMD="serve" ;;
+  benchmark_latency.py|benchmark_latency)         VLLM_BENCH_SUBCMD="latency" ;;
+  benchmark_throughput.py|benchmark_throughput)   VLLM_BENCH_SUBCMD="throughput" ;;
+  *) echo "WARNING: unrecognized executable '${en}', defaulting to 'serve'"
+     VLLM_BENCH_SUBCMD="serve" ;;
+esac
+echo "vllm bench subcommand: ${VLLM_BENCH_SUBCMD} (from executable: ${en})"
 
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
@@ -35,13 +48,13 @@ if [[ -n "$ENDPOINT_URL" && "$ENDPOINT_URL" != "null" ]]; then
 fi
 
 echo "Running warmup with 3 prompts"
-vllm bench serve --$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^ ^g' -e 's^=none$^^g' -e 's^num-prompts=[0-9]*^num-prompts=3^')  --seed $(date +%s) > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+vllm bench ${VLLM_BENCH_SUBCMD} --$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^ ^g' -e 's^=none$^^g' -e 's^num-prompts=[0-9]*^num-prompts=3^')  --seed $(date +%s) > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 echo "Running main benchmark"
 export LLMDBENCH_HARNESS_ARGS="--$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} \
   | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' \
   | sed -e 's^=none ^ ^g' -e 's^=none$^^g') --seed $(date +%s) --save-result"
 start=$(date +%s.%N)
-vllm bench serve $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+vllm bench ${VLLM_BENCH_SUBCMD} $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 

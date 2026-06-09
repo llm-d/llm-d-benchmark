@@ -1,0 +1,76 @@
+# FERRITE COMPARISON -- Mixtral-8x7B-Instruct-v0.1 (MoE, fp16)
+# Sibling of ferrite-7b.yaml -- exercises MoE expert-routing path.
+# Tier 3 of the matrix. Two-GPU TP keeps the 47B-param weights in 80 GiB H100.
+
+scenario:
+  - name: "ferrite-mixtral"
+
+    model:
+      name: mistralai/Mixtral-8x7B-Instruct-v0.1
+      shortName: mixtral-8x7b
+      path: models/mistralai/Mixtral-8x7B-Instruct-v0.1
+      huggingfaceId: mistralai/Mixtral-8x7B-Instruct-v0.1
+      size: 200Gi
+      maxModelLen: 16384
+      blockSize: 16
+      gpuMemoryUtilization: 0.9
+
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+    gateway:
+      className: epponly
+
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 1
+      parallelism:
+        tensor: 2     # Mixtral 8x7B at fp16 needs ~96 GiB; TP=2 fits comfortably on 2x80 GiB.
+        data: 1
+        dataLocal: 1
+        workers: 1
+      resources:
+        limits:
+          memory: 128Gi
+          cpu: "16"
+        requests:
+          memory: 128Gi
+          cpu: "16"
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 90       # MoE loads more shards -- bump from 60 to 90.
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+    vllmCommon:
+      kvTransfer:
+        enabled: false
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+
+    storage:
+      modelPvc:
+        size: 300Gi
+
+    workDir: "~/data/ferrite-mixtral"
+
+    harness:
+      name: vllm-benchmark
+      experimentProfile: ferrite_t3_moe_lat_bs1_in1024_out128.yaml
