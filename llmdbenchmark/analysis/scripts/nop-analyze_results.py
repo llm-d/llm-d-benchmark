@@ -122,7 +122,7 @@ def write_benchmark_scenario(file: io.TextIOWrapper, scenario: Scenario):
     file.write(f"  Load Format          : {scenario.metadata['load_format']}\n")
     file.write(f"  Sleep Mode On        : {scenario.metadata['sleep_mode']}\n")
     file.write(
-        f"  Sleeper Limit        : {scenario.metadata.get('sleeper_limit', 'N/A')}\n"
+        f"  Max Instances        : {scenario.metadata.get('max_instances', 'N/A')}\n"
     )
     file.write(f"  Model                : {scenario.model.name}\n")
     for engine in scenario.platform.engine:

@@ -126,6 +126,8 @@ spec:
       value: "{{ fma.iterations }}"
     - name: LLMDBENCH_FMA_SLEEPER_LIMIT
       value: "{{ fma.dualPod.sleeperLimit }}"
+    - name: LLMDBENCH_FMA_MAX_INSTANCES
+      value: "{{ fma.launcher.maxInstances }}"
 {% endif %}
 {% if harness.extraEnvVars is defined and harness.extraEnvVars %}
 {% for env_entry in harness.extraEnvVars %}
