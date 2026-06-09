@@ -399,6 +399,9 @@ jobs:
             exit 1
           fi
           DEFAULT_SC=$(kubectl get storageclass  | grep "(default)" | cut -d "(" -f 1)
+          if [[ $LLMDBENCH_CICD_TARGET == 'kind ']]; then
+            exit 0
+          fi
           echo "Ensuring storageclass \"$DEFAULT_SC\" can create a pvc with accessMode \"ReadWriteMany\"..."
           cat <<PVC_EOF > pvc.yaml
           apiVersion: v1
