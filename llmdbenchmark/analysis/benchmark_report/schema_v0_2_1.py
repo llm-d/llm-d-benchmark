@@ -77,7 +77,7 @@ class MediaPayloadStats(BaseModel):
 
     count: Statistics | None = None
     """Number of media instances of this modality per request."""
-    bytes: Statistics | None = None
+    filesize: Statistics | None = None
     """Encoded size per media instance."""
 
     @model_validator(mode="after")
