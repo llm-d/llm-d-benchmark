@@ -591,7 +591,7 @@ jobs:
             git clone https://github.com/llm-d/llm-d.git
           else
             echo "### llm-d code is already present. Will then delete llm-d-benchmark"
-            pip uninstall llmdbenchmark || true
+            pip uninstall -y llmdbenchmark || true
             rm -rf ~/work/llm-d-benchmark/
           fi
           cd ~/work/llm-d/llm-d
@@ -614,7 +614,8 @@ jobs:
             curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh -o install.sh
             chmod +x install.sh
           fi
-          ./install.sh -y 2>&1
+          ./install.sh -y 2>&1 || true
+          llmdbenchmark --version
           if [[ ! -f util/debug_info_on_failure.sh ]]; then
             curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/util/debug_info_on_failure.sh -o /tmp/debug_info_on_failure.sh
             chmod +x /tmp/debug_info_on_failure.sh
@@ -638,14 +639,14 @@ jobs:
             lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.REPO_ROOT = \\\"$HOME/work/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
-            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
-            echo "### Setting \"GUIDE_NAME\" to \"$LLMDBENCH_CICD_SCENARIO""
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.REPO_ROOT'
+            echo "### Setting \"GUIDE_NAME\" to \"$LLMDBENCH_CICD_SCENARIO\""
             lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME = \\\"$LLMDBENCH_CICD_SCENARIO\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME'
             if [[ ! -z $LLMDBENCH_CICD_CONNECTOR ]]; then
-            echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\""
+              echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\""
               lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.CONNECTOR = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
               echo -n "; $lkcmd" >> ~/work/lkcmd.txt
               eval $lkcmd
