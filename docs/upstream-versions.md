@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-06-03 17:43:26` (UTC)
-- Generated against git ref: `c19cd752090ed1d99ac452ac2d2927c70ca84153`
+- Generated at: `2026-06-10 13:24:13` (UTC)
+- Generated against git ref: `6c524db8e41649304b1111edafcf83ac3c11b0fa`
 
 ## System Tool Dependencies
 
@@ -46,7 +46,7 @@ OCI registry at generation (and plan) time.
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 475 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 476 (`chartVersions.istiod`) | (unknown) |
 | **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 477 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
-| **llmDModelservice** | `v0.4.12` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 478 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
+| **llmDModelservice** | `v0.4.13` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 478 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
 | **llmDRouter** | `v0` | tag | `config/templates/values/defaults.yaml` line 484 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
 | **lws** | `0.8.0` | tag | `config/templates/values/defaults.yaml` line 490 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 | **prometheusAdapter** | `5.3.0` | tag | `config/templates/values/defaults.yaml` line 480 (`chartVersions.prometheusAdapter`) | [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts) (`https://prometheus-community.github.io/helm-charts`) |
@@ -61,7 +61,7 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v0.6.7` | tag | `config/templates/values/defaults.yaml` line 358 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **benchmark** | `v0.6.8.1` | tag | `config/templates/values/defaults.yaml` line 358 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **inferenceScheduler** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 393 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 412 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routerEndpointPicker** | `main` | tag | `config/templates/values/defaults.yaml` line 387 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker-dev`) |
@@ -92,6 +92,7 @@ captured in the snapshot table below.
 | **PyYAML** | `(unpinned)` | (unpinned) | `pyproject.toml` line 7 | [PyYAML (PyPI)](https://pypi.org/project/pyyaml/) |
 | **requests** | `(unpinned)` | (unpinned) | `pyproject.toml` line 9 | [requests (PyPI)](https://pypi.org/project/requests/) |
 | **transformers** | `(unpinned)` | (unpinned) | `pyproject.toml` line 16 | [transformers (PyPI)](https://pypi.org/project/transformers/) |
+=======
 
 
 ## Python Package Dependencies (installed snapshot)
