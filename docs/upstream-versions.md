@@ -67,8 +67,8 @@ generation (and plan) time.
 | **routerEndpointPicker** | `main` | tag | `config/templates/values/defaults.yaml` line 387 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker-dev`) |
 | **routingSidecar** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 399 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
 | **udsTokenizer** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 405 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
-| **vllm** | `v0.20.2` | tag | `config/templates/values/defaults.yaml` line 364 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllmOpenai** | `v0.20.2` | tag | `config/templates/values/defaults.yaml` line 375 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllm** | `v0.22.1` | tag | `config/templates/values/defaults.yaml` line 364 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.22.1` | tag | `config/templates/values/defaults.yaml` line 375 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)
