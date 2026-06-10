@@ -116,62 +116,6 @@ scenario:
     kustomize:
       enabled: false
 
-#    namespace:
-#      name: llm-d-precise-prefix-cache-aware
-
-    # =======================================================================================
-    # KUSTOMIZE -- Install directly from main llm-d repo "guides/<scenario name>" directory
-    # =======================================================================================
-
-      guideName: "precise-prefix-cache-aware"
-      repoPath: ""
-      repoRef: "main"
-      gaieVersion: ""
-      acceleratorBackend: "gpu/vllm"
-      monitoring: false
-      overlayPath: ""
-      extraHelmValues: []
-      extraHelmSets: {}
-
-      # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      #
-      #   - patch: |
-      #       apiVersion: apps/v1
-      #       kind: Deployment
-      #       metadata:
-      #         name: decode
-      #       spec:
-      #         template:
-      #           spec:
-      #             containers:
-      #               - name: modelserver
-      #                 env:
-      #                   - name: HF_TOKEN
-      #                     valueFrom:
-      #                       secretKeyRef:
-      #                         name: llm-d-hf-token
-      #                         key: HF_TOKEN
-      patches:
-        - patch: |
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: decode
-            spec:
-              replicas: 2
-              template:
-                spec:
-                  volumes:
-                    - name: triton-cache
-                      emptyDir: {}
-                  containers:
-                    - name: modelserver
-                      volumeMounts:
-                        - mountPath: /.triton
-                          name: triton-cache
-
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
