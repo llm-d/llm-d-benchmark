@@ -86,7 +86,6 @@ def main():
             [
                 "LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT",
                 "LLMDBENCH_FMA_ITERATIONS",
-                "LLMDBENCH_FMA_SLEEPER_LIMIT",
                 "LLMDBENCH_FMA_MAX_INSTANCES",
             ]
         )
@@ -113,7 +112,6 @@ def main():
 
     fma_launcher_port = envs.get("LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT", "0")
     fma_iterations = int(envs.get("LLMDBENCH_FMA_ITERATIONS", "0"))
-    fma_sleeper_limit = int(envs.get("LLMDBENCH_FMA_SLEEPER_LIMIT", "0"))
     fma_max_instances = int(envs.get("LLMDBENCH_FMA_MAX_INSTANCES", "0"))
 
     deploy_methods = []
@@ -136,7 +134,6 @@ def main():
 
     benchmark_result = BenchmarkResult()
     benchmark_result.scenario.deploy_methods = ",".join(deploy_methods)
-    benchmark_result.scenario.sleeper_limit = fma_sleeper_limit
     benchmark_result.scenario.max_instances = fma_max_instances
     if fma_enabled:
         try:

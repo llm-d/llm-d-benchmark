@@ -2323,7 +2323,6 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 "deploy_methods": results["scenario"]["deploy_methods"],
                 "load_format": results["scenario"]["load_format"],
                 "sleep_mode": results["scenario"]["sleep_mode"],
-                "sleeper_limit": results["scenario"].get("sleeper_limit", 0),
                 "max_instances": results["scenario"].get("max_instances", 0),
                 "gpus": results["scenario"]["gpus"],
             },

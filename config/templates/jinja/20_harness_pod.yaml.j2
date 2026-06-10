@@ -124,8 +124,6 @@ spec:
       value: "{{ fma.launcherConfigurator.port }}"
     - name: LLMDBENCH_FMA_ITERATIONS
       value: "{{ fma.iterations }}"
-    - name: LLMDBENCH_FMA_SLEEPER_LIMIT
-      value: "{{ fma.dualPod.sleeperLimit }}"
     - name: LLMDBENCH_FMA_MAX_INSTANCES
       value: "{{ fma.launcher.maxInstances }}"
 {% endif %}

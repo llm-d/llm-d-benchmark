@@ -545,7 +545,6 @@ class BenchmarkScenario:
     deploy_methods: str = ""
     load_format: LoadFormat = LoadFormat.UNKNOWN
     sleep_mode: bool = False
-    sleeper_limit: int = 0
     max_instances: int = 0
     model: ModelScenario = field(default_factory=ModelScenario)
     platform: PlatformScenario = field(default_factory=PlatformScenario)
