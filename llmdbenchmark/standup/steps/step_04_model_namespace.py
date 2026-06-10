@@ -93,9 +93,7 @@ class ModelNamespaceStep(Step):
             #             so total wall time ~ max(individual), not sum.
             launched = []
             for stack_path in pvc_stacks:
-                applied = self._apply_download_job(
-                    cmd, context, errors, stack_path
-                )
+                applied = self._apply_download_job(cmd, context, errors, stack_path)
                 if applied is not None:
                     job_name, download_yaml = applied
                     launched.append((stack_path, job_name, download_yaml))
@@ -154,16 +152,26 @@ class ModelNamespaceStep(Step):
         unit = (m.group(2) or "Gi").strip()
         table = {
             # Binary (IEC) units
-            "Ki": n / (1024 ** 2), "Mi": n / 1024,
-            "Gi": n, "Ti": n * 1024, "Pi": n * 1024 ** 2, "Ei": n * 1024 ** 3,
+            "Ki": n / (1024**2),
+            "Mi": n / 1024,
+            "Gi": n,
+            "Ti": n * 1024,
+            "Pi": n * 1024**2,
+            "Ei": n * 1024**3,
             # Decimal (SI) units - approximate to GiB
-            "K": n / (1024 ** 2), "M": n / 1024, "G": n,
-            "T": n * 1024, "P": n * 1024 ** 2, "E": n * 1024 ** 3,
+            "K": n / (1024**2),
+            "M": n / 1024,
+            "G": n,
+            "T": n * 1024,
+            "P": n * 1024**2,
+            "E": n * 1024**3,
         }
         return table.get(unit, n)
 
     def _warn_on_undersized_model_pvc(
-        self, context: ExecutionContext, pvc_stacks: list[Path],
+        self,
+        context: ExecutionContext,
+        pvc_stacks: list[Path],
     ) -> None:
         """Warn if the shared model PVC looks too small to hold all models.
 
@@ -178,9 +186,7 @@ class ModelNamespaceStep(Step):
         don't have a summing problem.
         """
         first_cfg = self._load_stack_config(pvc_stacks[0])
-        pvc_capacity_str = (
-            first_cfg.get("storage", {}).get("modelPvc", {}).get("size")
-        )
+        pvc_capacity_str = first_cfg.get("storage", {}).get("modelPvc", {}).get("size")
         capacity_gib = self._parse_size_to_gib(pvc_capacity_str)
         if capacity_gib == 0:
             return
@@ -215,9 +221,7 @@ class ModelNamespaceStep(Step):
             )
 
         uri_protocol = self._require_config(plan_config, "modelservice", "uriProtocol")
-        standalone_enabled = (
-            plan_config.get("standalone", {}).get("enabled", False)
-        )
+        standalone_enabled = plan_config.get("standalone", {}).get("enabled", False)
 
         return uri_protocol == "pvc" or standalone_enabled
 
@@ -266,10 +270,8 @@ class ModelNamespaceStep(Step):
         pvc_size = self._require_config(plan_config, "storage", "modelPvc", "size")
 
         namespace = context.require_namespace()
-        already_exists = (
-            not context.dry_run and self._check_existing_pvc(
-                cmd, context, pvc_name, pvc_size, namespace, errors
-            )
+        already_exists = not context.dry_run and self._check_existing_pvc(
+            cmd, context, pvc_name, pvc_size, namespace, errors
         )
         if not already_exists:
             result = cmd.kube("apply", "-f", str(pvc_yaml))
@@ -318,7 +320,9 @@ class ModelNamespaceStep(Step):
             return
 
         plan_config = self._load_stack_config(stack_path)
-        extra_pvc = plan_config.get("storage", {}).get("extraPvc", {}) if plan_config else {}
+        extra_pvc = (
+            plan_config.get("storage", {}).get("extraPvc", {}) if plan_config else {}
+        )
         pvc_name = extra_pvc.get("name", "")
         pvc_size = extra_pvc.get("size", "10Gi")
 
@@ -326,10 +330,8 @@ class ModelNamespaceStep(Step):
             return
 
         namespace = context.require_namespace()
-        already_exists = (
-            not context.dry_run and self._check_existing_pvc(
-                cmd, context, pvc_name, pvc_size, namespace, errors
-            )
+        already_exists = not context.dry_run and self._check_existing_pvc(
+            cmd, context, pvc_name, pvc_size, namespace, errors
         )
         if not already_exists:
             result = cmd.kube("apply", "-f", str(extra_pvc_yaml))
@@ -359,8 +361,11 @@ class ModelNamespaceStep(Step):
             )
 
     def _add_context_secret(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        errors: list, plan_config: dict | None = None,
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+        plan_config: dict | None = None,
     ):
         """Save the kubeconfig as a Secret so downstream pods can access the cluster."""
         namespace = context.require_namespace()
@@ -410,8 +415,11 @@ class ModelNamespaceStep(Step):
             )
 
     def _apply_download_job(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        errors: list, stack_path: Path,
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+        stack_path: Path,
     ) -> tuple[str, Path] | None:
         """Apply a single stack's download Job without waiting.
 
@@ -447,8 +455,13 @@ class ModelNamespaceStep(Step):
         return job_name, download_yaml
 
     def _wait_for_download_job(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        errors: list, stack_path: Path, job_name: str, download_yaml: Path,
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+        stack_path: Path,
+        job_name: str,
+        download_yaml: Path,
     ) -> None:
         """Wait for a single stack's download Job to complete, with retries.
 
@@ -460,7 +473,9 @@ class ModelNamespaceStep(Step):
         """
         plan_config = self._load_stack_config(stack_path)
         timeout = int(self._require_config(plan_config, "storage", "downloadTimeout"))
-        max_retries = int(self._require_config(plan_config, "storage", "downloadMaxRetries"))
+        max_retries = int(
+            self._require_config(plan_config, "storage", "downloadMaxRetries")
+        )
 
         for attempt in range(1, max_retries + 1):
             wait_result = cmd.wait_for_job(
@@ -631,7 +646,7 @@ class ModelNamespaceStep(Step):
         )
         if not result.success or not result.stdout.strip():
             context.logger.log_info(
-                "ℹ️  Could not read openshift.io/sa.scc.uid-range -- " "proxy_uid not set"
+                "ℹ️  Could not read openshift.io/sa.scc.uid-range -- proxy_uid not set"
             )
             return
 

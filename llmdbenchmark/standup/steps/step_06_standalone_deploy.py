@@ -69,22 +69,20 @@ class StandaloneDeployStep(Step):
 
         result = cmd.kube("apply", "-f", str(deploy_yaml))
         if not result.success:
-            errors.append(
-                f"Failed to apply standalone deployment: {result.stderr}"
-            )
+            errors.append(f"Failed to apply standalone deployment: {result.stderr}")
 
         if service_yaml:
             result = cmd.kube("apply", "-f", str(service_yaml))
             if not result.success:
-                errors.append(
-                    f"Failed to apply standalone service: {result.stderr}"
-                )
+                errors.append(f"Failed to apply standalone service: {result.stderr}")
 
         podmonitor_yaml = self._find_yaml(stack_path, "17_standalone-podmonitor")
         if podmonitor_yaml and self._has_yaml_content(podmonitor_yaml):
             # Check if PodMonitor CRD exists before attempting to apply
             crd_check = cmd.kube(
-                "get", "crd", "podmonitors.monitoring.coreos.com",
+                "get",
+                "crd",
+                "podmonitors.monitoring.coreos.com",
                 check=False,
             )
             if crd_check.success:
@@ -127,14 +125,12 @@ class StandaloneDeployStep(Step):
         try:
             with open(deploy_yaml, encoding="utf-8") as f:
                 deploy_config = yaml.safe_load(f)
-            deploy_name = deploy_config.get("metadata", {}).get(
-                "name", ""
-            )
+            deploy_name = deploy_config.get("metadata", {}).get("name", "")
         except (yaml.YAMLError, OSError):
             pass
 
         if deploy_name and not errors:
-            replicas = int( # noqa: F841
+            replicas = int(  # noqa: F841
                 self._require_config(plan_config, "standalone", "replicas")
             )
 
@@ -148,8 +144,7 @@ class StandaloneDeployStep(Step):
             )
             if not wait_result.success:
                 errors.append(
-                    "Standalone deployment pods not ready: "
-                    f"{wait_result.stderr}"
+                    f"Standalone deployment pods not ready: {wait_result.stderr}"
                 )
 
         if deploy_name and not errors and not context.dry_run:
@@ -159,28 +154,24 @@ class StandaloneDeployStep(Step):
             try:
                 with open(service_yaml, encoding="utf-8") as f:
                     svc_config = yaml.safe_load(f)
-                svc_name = svc_config.get("metadata", {}).get(
-                    "name", ""
-                )
+                svc_name = svc_config.get("metadata", {}).get("name", "")
                 if svc_name:
-                    context.deployed_endpoints[stack_path.name] = (
-                        svc_name
-                    )
+                    context.deployed_endpoints[stack_path.name] = svc_name
             except (yaml.YAMLError, OSError):
                 pass
 
         if context.is_openshift and service_yaml:
-            self._create_openshift_route(
-                cmd, context, plan_config, service_yaml
-            )
+            self._create_openshift_route(cmd, context, plan_config, service_yaml)
 
         if not errors:
             resource_types = "deployment,service,pods,secrets"
             if context.is_openshift:
                 resource_types += ",route"
             cmd.kube(
-                "get", resource_types,
-                "--namespace", namespace,
+                "get",
+                resource_types,
+                "--namespace",
+                namespace,
             )
 
         self._propagate_standup_parameters(cmd, context, plan_config)
@@ -201,37 +192,42 @@ class StandaloneDeployStep(Step):
             step_number=self.number,
             step_name=self.name,
             success=True,
-            message=(
-                f"Standalone deployment applied from {stack_path.name}"
-            ),
+            message=(f"Standalone deployment applied from {stack_path.name}"),
             stack_name=stack_path.name,
         )
 
     def _collect_logs(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespace: str, deploy_name: str
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        deploy_name: str,
     ):
         """Collect vLLM pod logs after deployment is ready."""
         logs_dir = context.setup_logs_dir()
         result = cmd.kube(
-            "get", "pods",
-            "-l", f"app={deploy_name}",
-            "--namespace", namespace,
-            "-o", "jsonpath={.items[*].metadata.name}",
+            "get",
+            "pods",
+            "-l",
+            f"app={deploy_name}",
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.items[*].metadata.name}",
         )
         if result.success and result.stdout.strip():
             pod_names = result.stdout.strip().split()
             for pod_name in pod_names:
                 log_result = cmd.kube(
-                    "logs", pod_name,
-                    "--namespace", namespace,
+                    "logs",
+                    pod_name,
+                    "--namespace",
+                    namespace,
                     "--tail=-1",
                 )
                 if log_result.success:
                     log_file = logs_dir / f"{pod_name}.log"
-                    log_file.write_text(
-                        log_result.stdout, encoding="utf-8"
-                    )
+                    log_file.write_text(log_result.stdout, encoding="utf-8")
 
     def _create_openshift_route(
         self,
@@ -260,35 +256,45 @@ class StandaloneDeployStep(Step):
                 if len(route_name) > 63:
                     route_name = route_name[:63]
                 check = cmd.kube(
-                    "get", "route", route_name,
-                    "-n", namespace, "--ignore-not-found",
+                    "get",
+                    "route",
+                    route_name,
+                    "-n",
+                    namespace,
+                    "--ignore-not-found",
                 )
                 if check.success and not check.stdout.strip():
                     cmd.kube(
-                        "expose", f"service/{svc_name}",
+                        "expose",
+                        f"service/{svc_name}",
                         f"--name={route_name}",
                         f"--target-port={inference_port}",
-                        "-n", namespace,
+                        "-n",
+                        namespace,
                     )
         except (yaml.YAMLError, OSError):
             pass
 
     def _check_priority_class(
-        self, cmd: CommandExecutor, plan_config: dict,
+        self,
+        cmd: CommandExecutor,
+        plan_config: dict,
         context: ExecutionContext,
     ) -> str | None:
         """Validate that the configured priorityClassName exists on the cluster."""
-        priority_class = (
-            plan_config.get("standalone", {}).get("priorityClassName")
-            or plan_config.get("vllmCommon", {}).get("priorityClassName", "")
-        )
+        priority_class = plan_config.get("standalone", {}).get(
+            "priorityClassName"
+        ) or plan_config.get("vllmCommon", {}).get("priorityClassName", "")
         if not priority_class or priority_class.lower() == "none":
             return None
 
         result = cmd.kube(
-            "get", "priorityclass", priority_class,
+            "get",
+            "priorityclass",
+            priority_class,
             "--ignore-not-found",
-            "-o", "jsonpath={.metadata.name}",
+            "-o",
+            "jsonpath={.metadata.name}",
             check=False,
         )
         if result.success and result.stdout.strip() == priority_class:
@@ -298,19 +304,22 @@ class StandaloneDeployStep(Step):
             return None
 
         list_result = cmd.kube(
-            "get", "priorityclass",
-            "-o", "jsonpath={.items[*].metadata.name}",
+            "get",
+            "priorityclass",
+            "-o",
+            "jsonpath={.items[*].metadata.name}",
             check=False,
         )
-        available = list_result.stdout.strip() if list_result.success else "(unable to list)"
+        available = (
+            list_result.stdout.strip() if list_result.success else "(unable to list)"
+        )
         return (
             f'PriorityClass "{priority_class}" does not exist on this cluster. '
             f"Available priority classes: {available}"
         )
 
     def _propagate_standup_parameters(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        plan_config: dict
+        self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
     ):
         """Persist deploy metadata as a ConfigMap so run-phase steps can read it."""
         from datetime import datetime, timezone
@@ -323,9 +332,7 @@ class StandaloneDeployStep(Step):
             "tool_name": "llm-d-benchmark",
             "tool_version": __version__,
             "deployed_by": context.username or "unknown",
-            "deployed_at": datetime.now(timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
+            "deployed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "cluster_name": context.cluster_name or "",
             "platform_type": context.platform_type,
             "namespace": context.namespace or "",
@@ -335,7 +342,9 @@ class StandaloneDeployStep(Step):
 
         if plan_config:
             params["model_name"] = self._require_config(plan_config, "model", "name")
-            params["model_short_name"] = self._require_config(plan_config, "model", "shortName")
+            params["model_short_name"] = self._require_config(
+                plan_config, "model", "shortName"
+            )
             params["model_huggingface_id"] = plan_config.get("model", {}).get(
                 "huggingfaceId", ""
             )
@@ -351,16 +360,21 @@ class StandaloneDeployStep(Step):
         for key, value in params.items():
             literal_args.append(f"--from-literal={key}={value}")
 
-        create_args = [
-            "create", "configmap", cm_name,
-            "--namespace", harness_ns,
-        ] + literal_args + ["--dry-run=client", "-o", "yaml"]
+        create_args = (
+            [
+                "create",
+                "configmap",
+                cm_name,
+                "--namespace",
+                harness_ns,
+            ]
+            + literal_args
+            + ["--dry-run=client", "-o", "yaml"]
+        )
 
         result = cmd.kube(*create_args)
         if result.success:
-            yaml_path = (
-                context.setup_yamls_dir() / "standup-parameters.yaml"
-            )
+            yaml_path = context.setup_yamls_dir() / "standup-parameters.yaml"
             yaml_path.write_text(result.stdout, encoding="utf-8")
             apply_result = cmd.kube("apply", "-f", str(yaml_path))
             if apply_result.success:

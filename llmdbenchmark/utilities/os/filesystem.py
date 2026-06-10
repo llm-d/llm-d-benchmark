@@ -150,7 +150,9 @@ def resolve_specification_file(
             short = str(rel).removesuffix(_SPEC_SUFFIX)
             available.append(short)
 
-    listing = "\n".join(f"  - {s}" for s in available) if available else "  (none found)"
+    listing = (
+        "\n".join(f"  - {s}" for s in available) if available else "  (none found)"
+    )
     raise FileNotFoundError(
         f"Specification '{name_or_path}' not found.\n\n"
         f"Available specifications:\n{listing}\n\n"

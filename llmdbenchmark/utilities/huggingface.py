@@ -83,8 +83,7 @@ def check_model_access(model_id: str, hf_token: str | None = None) -> ModelAcces
             model_id=model_id,
             gated=gated,
             detail=(
-                f'Model "{model_id}" is not gated -- '
-                f"access is authorized by default"
+                f'Model "{model_id}" is not gated -- access is authorized by default'
             ),
         )
 
@@ -117,10 +116,7 @@ def check_model_access(model_id: str, hf_token: str | None = None) -> ModelAcces
             model_id=model_id,
             gated=gated,
             access=access,
-            detail=(
-                f'Verified access to gated model "{model_id}" '
-                f"is authorized"
-            ),
+            detail=(f'Verified access to gated model "{model_id}" is authorized'),
         )
 
     if access == AccessStatus.UNAUTHORIZED:

@@ -1,12 +1,14 @@
 """Configuration management specific to the local result store."""
+
 import json
 from pathlib import Path
 from llmdbenchmark.result_store.store import StoreManager, StoreNotFound
 
 DEFAULT_REMOTES = {
     "prod": "gs://llm-d-benchmarks",
-    "staging": "gs://llm-d-benchmarks-staging"
+    "staging": "gs://llm-d-benchmarks-staging",
 }
+
 
 class ConfigManager:
     def __init__(self, config_path: Path = None):
@@ -14,10 +16,14 @@ class ConfigManager:
             self.config_path = Path(config_path)
         else:
             try:
-                self.config_path = StoreManager.find_store_root() / StoreManager.STORE_DIR_NAME / "config.json"
+                self.config_path = (
+                    StoreManager.find_store_root()
+                    / StoreManager.STORE_DIR_NAME
+                    / "config.json"
+                )
             except StoreNotFound:
                 self.config_path = None
-            
+
     def _load(self) -> dict:
         if not self.config_path.exists():
             return {}
@@ -38,7 +44,7 @@ class ConfigManager:
             remotes = data.get("remotes", {})
             if name in remotes:
                 return remotes[name]
-                
+
         if name in DEFAULT_REMOTES:
             return DEFAULT_REMOTES[name]
         raise ValueError(f"Remote '{name}' not found.")

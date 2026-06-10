@@ -1,0 +1,25 @@
+name: CI - PR Lint and Format Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ruff-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6.0.2
+
+      # 1. Run Linting (Checks only, does not modify any files)
+      - name: Run Ruff Lint Check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "check --unsafe-fixes --output-format=full"
+
+      # 2. Run Formatting Check (Fails if code isn't formatted, but won't modify any files)
+      - name: Run Ruff Format Check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "format --check --diff"

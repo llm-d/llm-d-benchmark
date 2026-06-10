@@ -36,25 +36,44 @@ class HarnessNamespaceStep(Step):
         harness_ns = None
         if plan_config:
             harness_ns = plan_config.get("harness", {}).get(
-                "namespace",
-                plan_config.get("namespace", {}).get("name", "")
+                "namespace", plan_config.get("namespace", {}).get("name", "")
             )
         if not harness_ns:
             harness_ns = context.require_namespace()
         context.harness_namespace = harness_ns
 
         self._create_harness_namespace(cmd, context, harness_ns, errors)
-        hf_enabled = plan_config.get("huggingface", {}).get("enabled", True) if plan_config else True
+        hf_enabled = (
+            plan_config.get("huggingface", {}).get("enabled", True)
+            if plan_config
+            else True
+        )
         if hf_enabled:
             self._create_hf_token_secret(cmd, context, plan_config, harness_ns, errors)
         else:
-            context.logger.log_info("HF token not configured -- skipping secret creation")
+            context.logger.log_info(
+                "HF token not configured -- skipping secret creation"
+            )
 
         pvc_yaml = self._find_rendered_yaml(context, "01_pvc_workload-pvc")
         if pvc_yaml:
-            pvc_name = plan_config.get("storage", {}).get("workloadPvc", {}).get("name", "workload-pvc") if plan_config else "workload-pvc"
-            harness_pvc_size = plan_config.get("harness", {}).get("pvcSize") if plan_config else None
-            pvc_size = harness_pvc_size or (plan_config.get("storage", {}).get("workloadPvc", {}).get("size", "20Gi") if plan_config else "20Gi")
+            pvc_name = (
+                plan_config.get("storage", {})
+                .get("workloadPvc", {})
+                .get("name", "workload-pvc")
+                if plan_config
+                else "workload-pvc"
+            )
+            harness_pvc_size = (
+                plan_config.get("harness", {}).get("pvcSize") if plan_config else None
+            )
+            pvc_size = harness_pvc_size or (
+                plan_config.get("storage", {})
+                .get("workloadPvc", {})
+                .get("size", "20Gi")
+                if plan_config
+                else "20Gi"
+            )
 
             if not context.dry_run and self._check_existing_pvc(
                 cmd, context, pvc_name, pvc_size, harness_ns, errors
@@ -63,9 +82,7 @@ class HarnessNamespaceStep(Step):
             else:
                 result = cmd.kube("apply", "-f", str(pvc_yaml))
                 if not result.success and "AlreadyExists" not in result.stderr:
-                    errors.append(
-                        f"Failed to create workload PVC: {result.stderr}"
-                    )
+                    errors.append(f"Failed to create workload PVC: {result.stderr}")
 
             # Verify the PVC binds before applying anything that mounts it.
             # A PVC stuck Pending (e.g. cluster has no default StorageClass
@@ -101,15 +118,11 @@ class HarnessNamespaceStep(Step):
                         errors=errors,
                     )
 
-        pod_yaml = self._find_rendered_yaml(
-            context, "06_pod_access_to_harness_data"
-        )
+        pod_yaml = self._find_rendered_yaml(context, "06_pod_access_to_harness_data")
         if pod_yaml:
             result = cmd.kube("apply", "-f", str(pod_yaml))
             if not result.success:
-                errors.append(
-                    f"Failed to create data access pod: {result.stderr}"
-                )
+                errors.append(f"Failed to create data access pod: {result.stderr}")
 
         svc_yaml = self._find_rendered_yaml(
             context, "07_service_access_to_harness_data"
@@ -117,9 +130,7 @@ class HarnessNamespaceStep(Step):
         if svc_yaml:
             result = cmd.kube("apply", "-f", str(svc_yaml))
             if not result.success:
-                errors.append(
-                    f"Failed to create data access service: {result.stderr}"
-                )
+                errors.append(f"Failed to create data access service: {result.stderr}")
 
         model_ns = context.require_namespace()
         configmap_namespaces = [harness_ns]
@@ -136,9 +147,7 @@ class HarnessNamespaceStep(Step):
             description="harness data-access pod",
         )
         if not wait_result.success:
-            errors.append(
-                f"Data access pod not ready: {wait_result.stderr}"
-            )
+            errors.append(f"Data access pod not ready: {wait_result.stderr}")
 
         if errors:
             for err in errors:
@@ -159,8 +168,11 @@ class HarnessNamespaceStep(Step):
         )
 
     def _create_harness_namespace(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        harness_ns: str, errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        harness_ns: str,
+        errors: list,
     ):
         """Create the harness namespace if it doesn't exist."""
         ns_yaml = f"""apiVersion: v1
@@ -172,24 +184,29 @@ metadata:
         yaml_path.write_text(ns_yaml, encoding="utf-8")
         result = cmd.kube("apply", "-f", str(yaml_path))
         if not result.success and "AlreadyExists" not in result.stderr:
-            errors.append(
-                f"Failed to create harness namespace: {result.stderr}"
-            )
+            errors.append(f"Failed to create harness namespace: {result.stderr}")
 
     def _create_hf_token_secret(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        plan_config: dict | None, harness_ns: str, errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict | None,
+        harness_ns: str,
+        errors: list,
     ):
         """Copy the HuggingFace token secret into the harness namespace."""
         if not plan_config:
             return
 
         hf_token_name = self._require_config(plan_config, "huggingface", "secretName")
-        hf_token_key = self._require_config(plan_config, "huggingface", "tokenKey") # noqa: F841
+        hf_token_key = self._require_config(plan_config, "huggingface", "tokenKey")  # noqa: F841
 
         check = cmd.kube(
-            "get", "secret", hf_token_name,
-            "--namespace", harness_ns,
+            "get",
+            "secret",
+            hf_token_name,
+            "--namespace",
+            harness_ns,
             "--ignore-not-found",
         )
         if check.success and check.stdout.strip():
@@ -200,9 +217,13 @@ metadata:
 
         model_ns = context.require_namespace()
         get_result = cmd.kube(
-            "get", "secret", hf_token_name,
-            "--namespace", model_ns,
-            "-o", "yaml",
+            "get",
+            "secret",
+            hf_token_name,
+            "--namespace",
+            model_ns,
+            "-o",
+            "yaml",
         )
         if get_result.success and get_result.stdout.strip():
             try:
@@ -212,17 +233,13 @@ metadata:
                     secret_doc["metadata"].pop("resourceVersion", None)
                     secret_doc["metadata"].pop("uid", None)
                     secret_doc["metadata"].pop("creationTimestamp", None)
-                    managed = secret_doc["metadata"].pop("managedFields", None) # noqa: F841
+                    managed = secret_doc["metadata"].pop("managedFields", None)  # noqa: F841
 
-                    yaml_path = (
-                        context.setup_yamls_dir() / "harness-hf-secret.yaml"
-                    )
+                    yaml_path = context.setup_yamls_dir() / "harness-hf-secret.yaml"
                     with open(yaml_path, "w", encoding="utf-8") as f:
                         yaml.dump(secret_doc, f, default_flow_style=False)
 
-                    apply_result = cmd.kube(
-                        "apply", "-f", str(yaml_path)
-                    )
+                    apply_result = cmd.kube("apply", "-f", str(yaml_path))
                     if apply_result.success:
                         context.logger.log_info(
                             f"✅ HF token secret created in {harness_ns}"
@@ -238,16 +255,17 @@ metadata:
                 )
 
     def _create_preprocesses_configmap(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespaces: list[str], errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespaces: list[str],
+        errors: list,
     ):
         """Bundle preprocess scripts into a ConfigMap and apply to each namespace."""
         preprocess_dir = context.preprocess_dir()
         config_map_name = "llm-d-benchmark-preprocesses"
 
-        context.logger.log_info(
-            "🚚 Creating configmap with preprocess scripts..."
-        )
+        context.logger.log_info("🚚 Creating configmap with preprocess scripts...")
 
         if not preprocess_dir or not preprocess_dir.is_dir():
             context.logger.log_warning(
@@ -255,9 +273,14 @@ metadata:
             )
             for ns in namespaces:
                 result = cmd.kube(
-                    "create", "configmap", config_map_name,
-                    "--namespace", ns,
-                    "--dry-run=client", "-o", "yaml",
+                    "create",
+                    "configmap",
+                    config_map_name,
+                    "--namespace",
+                    ns,
+                    "--dry-run=client",
+                    "-o",
+                    "yaml",
                 )
                 if result.success:
                     yaml_path = (
@@ -271,17 +294,15 @@ metadata:
         from_file_args = []
         file_paths = []
         try:
-            file_paths = sorted(
-                p for p in preprocess_dir.rglob("*") if p.is_file()
-            )
+            file_paths = sorted(p for p in preprocess_dir.rglob("*") if p.is_file())
             for path in file_paths:
-                from_file_args.extend([
-                    f"--from-file={path.name}={path}",
-                ])
+                from_file_args.extend(
+                    [
+                        f"--from-file={path.name}={path}",
+                    ]
+                )
         except OSError as exc:
-            context.logger.log_warning(
-                f"Error reading preprocess directory: {exc}"
-            )
+            context.logger.log_warning(f"Error reading preprocess directory: {exc}")
 
         if not from_file_args:
             context.logger.log_info(
@@ -290,10 +311,17 @@ metadata:
             return
 
         for ns in namespaces:
-            create_args = [
-                "create", "configmap", config_map_name,
-                "--namespace", ns,
-            ] + from_file_args + ["--dry-run=client", "-o", "yaml"]
+            create_args = (
+                [
+                    "create",
+                    "configmap",
+                    config_map_name,
+                    "--namespace",
+                    ns,
+                ]
+                + from_file_args
+                + ["--dry-run=client", "-o", "yaml"]
+            )
 
             result = cmd.kube(*create_args)
             if result.success:
@@ -309,14 +337,12 @@ metadata:
                     )
                 else:
                     context.logger.log_info(
-                        f"📦 ConfigMap \"{config_map_name}\" created in ns/{ns} "
+                        f'📦 ConfigMap "{config_map_name}" created in ns/{ns} '
                         f"with {len(file_paths)} file(s):"
                     )
                     for path in file_paths:
                         size_kb = path.stat().st_size / 1024
-                        context.logger.log_info(
-                            f"    │ {path.name} ({size_kb:.1f} KB)"
-                        )
+                        context.logger.log_info(f"    │ {path.name} ({size_kb:.1f} KB)")
             else:
                 context.logger.log_warning(
                     f"Failed to generate preprocesses configmap for ns/{ns}: {result.stderr}"
