@@ -543,14 +543,14 @@ results:
             count:
               mean: 1.0
               units: count
-            seconds:
+            duration:
               mean: 10.0
               units: s
           image:
             aspect_ratio:
               mean: 1.78
               units: ratio
-            bytes:
+            filesize:
               mean: 40000.0
               units: bytes
             count:
@@ -561,7 +561,7 @@ results:
               mean: 2073600.0
               units: pixels
           video:
-            bytes:
+            filesize:
               mean: 800000.0
               units: bytes
             count:

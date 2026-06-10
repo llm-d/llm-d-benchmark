@@ -56,11 +56,11 @@ assert VERSION_V02 == "0.2", (
 # Single-inheritance hierarchy so that fields shared across modalities are
 # declared exactly once:
 #
-#   MediaPayloadStats        count, bytes                 (all modalities)
+#   MediaPayloadStats        count, filesize              (all modalities)
 #     └─ VisualPayloadStats  + pixels, aspect_ratio       (image, video)
 #         ├─ ImagePayloadStats
 #         └─ VideoPayloadStats  + frames
-#     └─ AudioPayloadStats   + seconds
+#     └─ AudioPayloadStats   + duration
 #
 # Adding a modality is a new leaf class plus one field on MultiModalRequests.
 ###############################################################################
@@ -87,9 +87,9 @@ class MediaPayloadStats(BaseModel):
                 f'Invalid units "{self.count.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
             )
-        if self.bytes and self.bytes.units not in UNITS_MEMORY:
+        if self.filesize and self.filesize.units not in UNITS_MEMORY:
             raise ValueError(
-                f'Invalid units "{self.bytes.units}", must be one of:'
+                f'Invalid units "{self.filesize.units}", must be one of:'
                 f" {' '.join(UNITS_MEMORY)}"
             )
         return self
@@ -149,14 +149,14 @@ class AudioPayloadStats(MediaPayloadStats):
 
     model_config = MODEL_CONFIG.copy()
 
-    seconds: Statistics | None = None
+    duration: Statistics | None = None
     """Duration per audio instance."""
 
     @model_validator(mode="after")
     def check_audio_units(self):
-        if self.seconds and self.seconds.units not in UNITS_TIME:
+        if self.duration and self.duration.units not in UNITS_TIME:
             raise ValueError(
-                f'Invalid units "{self.seconds.units}", must be one of:'
+                f'Invalid units "{self.duration.units}", must be one of:'
                 f" {' '.join(UNITS_TIME)}"
             )
         return self

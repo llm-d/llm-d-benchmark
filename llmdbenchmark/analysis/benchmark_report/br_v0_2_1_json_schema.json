@@ -313,7 +313,7 @@
           "default": null,
           "description": "Number of media instances of this modality per request."
         },
-        "bytes": {
+        "filesize": {
           "anyOf": [
             {
               "$ref": "#/$defs/Statistics"
@@ -325,7 +325,7 @@
           "default": null,
           "description": "Encoded size per media instance."
         },
-        "seconds": {
+        "duration": {
           "anyOf": [
             {
               "$ref": "#/$defs/Statistics"
@@ -755,7 +755,7 @@
           "default": null,
           "description": "Number of media instances of this modality per request."
         },
-        "bytes": {
+        "filesize": {
           "anyOf": [
             {
               "$ref": "#/$defs/Statistics"
@@ -3289,7 +3289,7 @@
           "default": null,
           "description": "Number of media instances of this modality per request."
         },
-        "bytes": {
+        "filesize": {
           "anyOf": [
             {
               "$ref": "#/$defs/Statistics"

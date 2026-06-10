@@ -65,7 +65,7 @@ See [`br_v0_2_1_example.yaml`](br_v0_2_1_example.yaml) for a dummy example repor
 The additions, all derived from what the client can determine from the payloads it sent, are:
 
 - **`results.request_performance.aggregate.requests.request_size`** (`Statistics`): total encoded request size in bytes, capturing the large payloads typical of multi-modal requests.
-- **`results.request_performance.aggregate.requests.multimodal`**: a per-modality block (`image`, `video`, `audio`), each a distribution set over the media instances sent. `image`/`video` carry `count`, `bytes`, `pixels`, and `aspect_ratio`; `video` adds `frames`; `audio` carries `count`, `bytes`, and `seconds`.
+- **`results.request_performance.aggregate.requests.multimodal`**: a per-modality block (`image`, `video`, `audio`), each a distribution set over the media instances sent. `image`/`video` carry `count`, `filesize`, `pixels`, and `aspect_ratio`; `video` adds `frames`; `audio` carries `count`, `filesize`, and `duration`.
 - **`results.request_performance.aggregate.throughput.{image,video,audio}_rate`** (`Statistics`): per-modality delivery rates (`images/s`, `videos/s`, `audios/s`).
 
 New unit categories back these fields: `pixels` (quantity), `ratio` (for aspect ratio, distinct from a 0..1 portion), `bytes` (memory), and a media-throughput category (`images/s`, `videos/s`, `audios/s`) kept separate from the request-rate category so the existing `request_rate` guardrail is unaffected.

@@ -50,12 +50,12 @@ def test_full_multimodal_report_validates_and_roundtrips():
                                 "count": _stat("count", 2.0),
                                 "pixels": _stat("pixels", 2073600.0),
                                 "aspect_ratio": _stat("ratio", 1.78),
-                                "bytes": _stat("bytes", 40000.0),
+                                "filesize": _stat("bytes", 40000.0),
                             },
                             "video": {
                                 "frames": _stat("count", 16.0),
                             },
-                            "audio": {"seconds": _stat("s", 10.0)},
+                            "audio": {"duration": _stat("s", 10.0)},
                         },
                     },
                     "throughput": {
@@ -71,7 +71,7 @@ def test_full_multimodal_report_validates_and_roundtrips():
     mm = report.results.request_performance.aggregate.requests.multimodal
     assert mm.image.pixels.mean == 2073600.0
     assert mm.video.frames.mean == 16.0
-    assert mm.audio.seconds.mean == 10.0
+    assert mm.audio.duration.mean == 10.0
     # Survives a dump -> reload cycle.
     assert BenchmarkReportV021(**report.dump()).version == "0.2.1"
 
@@ -85,9 +85,9 @@ def test_full_multimodal_report_validates_and_roundtrips():
         (ImagePayloadStats, "count", "count"),
         (ImagePayloadStats, "pixels", "pixels"),
         (ImagePayloadStats, "aspect_ratio", "ratio"),
-        (ImagePayloadStats, "bytes", "bytes"),
+        (ImagePayloadStats, "filesize", "bytes"),
         (VideoPayloadStats, "frames", "count"),
-        (AudioPayloadStats, "seconds", "s"),
+        (AudioPayloadStats, "duration", "s"),
         (AggregateRequests, "request_size", "bytes"),
     ],
 )
@@ -105,7 +105,7 @@ def test_correct_units_accepted(model, field, units):
         # An aspect ratio is a ratio, not a portion.
         (ImagePayloadStats, "aspect_ratio", "fraction"),
         (ImagePayloadStats, "pixels", "s"),
-        (AudioPayloadStats, "seconds", "bytes"),
+        (AudioPayloadStats, "duration", "bytes"),
         (AggregateRequests, "request_size", "queries/s"),
     ],
 )
