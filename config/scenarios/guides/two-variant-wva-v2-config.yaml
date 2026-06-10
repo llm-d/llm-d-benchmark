@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workload-variant-autoscaler-wva-saturation-scaling-config
+  labels:
+    app.kubernetes.io/instance: workload-variant-autoscaler
+    app.kubernetes.io/name: workload-variant-autoscaler
+    app.kubernetes.io/managed-by: Helm
+data:
+  default: |
+    analyzerName: saturation
+    scaleUpThreshold: 0.85
+    scaleDownBoundary: 0.70
+    kvCacheThreshold: 0.80
+    queueLengthThreshold: 5
+    kvSpareTrigger: 0.1
+    queueSpareTrigger: 3
