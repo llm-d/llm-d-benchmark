@@ -11,7 +11,7 @@ scenario:
   # ============================================================================
   # Predicted Latency Based Scheduling - Qwen3-32B with 2 decode pods
   # ============================================================================
-  - name: "predicted-latency-based-scheduling"
+  - name: "predicted-latency-routing"
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
