@@ -579,6 +579,25 @@ jobs:
           echo "GCS_FULL_PATH=$GCS_FULL_PATH" >> $GITHUB_ENV
         shell: bash
 
+      - name: Conditionally clone llm-d from main repo
+        run: |
+          #find ~ -type f -name "cks_nvshmem3.3.9.patch" -print
+          cd ~
+          if [[ ! -d ~/work/llm-d ]];
+          then
+            mkdir -p ~/work/llm-d/
+            cd ~/work/llm-d/
+            echo "### llm-d code NOT found, will clone now"
+            git clone https://github.com/llm-d/llm-d.git
+          else
+            echo "### llm-d code is already present. Will then delete llm-d-benchmark"
+            pip uninstall llmdbenchmark || true
+            rm -rf ~/work/llm-d-benchmark/
+          fi
+          cd ~/work/llm-d/llm-d
+          echo "### llm-d code is present (branch $(git branch --show-current))"
+        shell: bash
+
       - name: Install llmdbenchmark
         run: |
           #find ~ -type f -name "br_v0_2_json_schema.json" -print
@@ -606,21 +625,6 @@ jobs:
           echo "### llm-d-benchmark code is present (branch $(git branch --show-current))"
         shell: bash
 
-      - name: Conditionally clone llm-d from main repo
-        run: |
-          #find ~ -type f -name "cks_nvshmem3.3.9.patch" -print
-          cd ~
-          if [[ ! -d ~/work/llm-d ]];
-          then
-            mkdir -p ~/work/llm-d/
-            cd ~/work/llm-d/
-            echo "### llm-d code NOT found, will clone now"
-            git clone https://github.com/llm-d/llm-d.git
-          fi
-          cd ~/work/llm-d/llm-d
-          echo "### llm-d code is present (branch $(git branch --show-current))"
-        shell: bash
-
       - name: Apply overrides to llm-d-benchmark scenarios (yaml)
         run: |
           touch ~/work/lkcmd.txt
@@ -635,6 +639,11 @@ jobs:
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
+            echo "### Setting \"GUIDE_NAME\" to \"$LLMDBENCH_CICD_SCENARIO""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME = \\\"$LLMDBENCH_CICD_SCENARIO\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            echo -n "; $lkcmd" >> ~/work/lkcmd.txt
+            eval $lkcmd
+            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME'
             if [[ ! -z $LLMDBENCH_CICD_CONNECTOR ]]; then
             echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\""
               lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.CONNECTOR = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
@@ -859,4 +868,3 @@ jobs:
           fi
           exit 1
         shell: bash
-
