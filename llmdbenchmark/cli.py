@@ -218,8 +218,6 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
 
         # Output directory for pre-rendered Helm manifests
         helm_dir = stack_dir / "helm"
-        print(helm_dir)
-        exit(1)
         helm_dir.mkdir(parents=True, exist_ok=True)
 
         # helmfile expects values files with specific names relative to
