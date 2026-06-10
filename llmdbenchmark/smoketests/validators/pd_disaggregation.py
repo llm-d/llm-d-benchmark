@@ -37,7 +37,13 @@ class PdDisaggregationValidator(BaseSmoketest):
             or ""
         )
 
+        is_kustomize = "kustomize" in context.deployed_methods
+        guide_name = _nested_get(config, "kustomize", "guideName") or ""
+
         prefill_enabled = _nested_get(config, "prefill", "enabled")
+        if is_kustomize:
+            prefill_enabled = True
+
         if prefill_enabled:
             prefill_pods = self.validate_role_pods(
                 cmd,
@@ -47,13 +53,18 @@ class PdDisaggregationValidator(BaseSmoketest):
                 model_short,
                 report,
                 logger=context.logger,
+                context=context,
             )
         else:
             # Verify no prefill pods exist
+            if is_kustomize and guide_name:
+                selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role=prefill"
+            else:
+                selector = f"llm-d.ai/model={model_short},llm-d.ai/role=prefill"
             prefill_pods = self.get_pod_specs(
                 cmd,
                 namespace,
-                f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",
+                selector,
             )
             report.add(
                 CheckResult(
@@ -71,9 +82,10 @@ class PdDisaggregationValidator(BaseSmoketest):
             model_short,
             report,
             logger=context.logger,
+            context=context,
         )
 
-        if decode_pods:
+        if decode_pods and not is_kustomize:
             # Shared memory volume -- only check if scenario defines it
             configured_volumes = _nested_get(config, "vllmCommon", "volumes") or []
             configured_vol_names = [
