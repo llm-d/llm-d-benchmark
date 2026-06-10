@@ -10,7 +10,7 @@
 # ============================================================================
 
 scenario:
-  - name: "precise-prefix-cache-aware"
+  - name: "precise-prefix-cache-routing"
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
