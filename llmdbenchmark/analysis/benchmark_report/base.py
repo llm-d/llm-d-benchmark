@@ -95,13 +95,17 @@ class Units(StrEnum):
 
     # Quantity
     COUNT = auto()
+    PIXELS = auto()
     # Portion
     PERCENT = auto()
     FRACTION = auto()
+    # Ratio (unbounded; unlike a portion, may exceed 1, e.g. aspect ratio)
+    RATIO = auto()
     # Time
     MS = auto()
     S = auto()
     # Memory
+    BYTES = "bytes"
     MB = "MB"
     GB = "GB"
     TB = "TB"
@@ -124,15 +128,28 @@ class Units(StrEnum):
     TOKEN_PER_S = "tokens/s"
     # Request throughput
     QUERY_PER_S = "queries/s"
+    # Media throughput (per-modality payload rates)
+    IMAGE_PER_S = "images/s"
+    VIDEO_PER_S = "videos/s"
+    AUDIO_PER_S = "audios/s"
     # Power
     WATTS = "Watts"
 
 
 # Lists of compatible units for a particular application
-UNITS_QUANTITY = [Units.COUNT]
+UNITS_QUANTITY = [Units.COUNT, Units.PIXELS]
 UNITS_PORTION = [Units.PERCENT, Units.FRACTION]
+UNITS_RATIO = [Units.RATIO]
 UNITS_TIME = [Units.MS, Units.S]
-UNITS_MEMORY = [Units.MB, Units.GB, Units.TB, Units.MIB, Units.GIB, Units.TIB]
+UNITS_MEMORY = [
+    Units.BYTES,
+    Units.MB,
+    Units.GB,
+    Units.TB,
+    Units.MIB,
+    Units.GIB,
+    Units.TIB,
+]
 UNITS_BANDWIDTH = [
     Units.MBIT_PER_S,
     Units.GBIT_PER_S,
@@ -144,6 +161,7 @@ UNITS_BANDWIDTH = [
 UNITS_GEN_LATENCY = [Units.MS_PER_TOKEN, Units.S_PER_TOKEN]
 UNITS_GEN_THROUGHPUT = [Units.TOKEN_PER_S]
 UNITS_REQUEST_THROUGHPUT = [Units.QUERY_PER_S]
+UNITS_MEDIA_THROUGHPUT = [Units.IMAGE_PER_S, Units.VIDEO_PER_S, Units.AUDIO_PER_S]
 UNITS_POWER = [Units.WATTS]
 
 ###############################################################################
