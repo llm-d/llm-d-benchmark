@@ -133,6 +133,26 @@ on:
         required: false
         type: 'string'
         default: ''
+      data_access_timeout:
+        description: 'Timeout in seconds for data access and harness run execution'
+        required: false
+        type: 'string'
+        default: '1200'
+      wait_timeout:
+        description: 'Timeout in seconds to wait for benchmark pods to complete'
+        required: false
+        type: 'string'
+        default: '1200'
+      job_timeout:
+        description: 'Timeout for the Kubernetes job itself (e.g. 2700s)'
+        required: false
+        type: 'string'
+        default: '2700s'
+      kustomize_standup_timeout:
+        description: 'Timeout in seconds for kustomize standup deploy'
+        required: false
+        type: 'string'
+        default: '1200'
 
 #  push:
 #    branches:
@@ -265,11 +285,12 @@ jobs:
       LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || '' }}
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_CICD_CLEANUP: ${{ inputs.cleanup || 'true' }}
-      LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: 1200
-      LLMDBENCH_CICD_WAIT_TIMEOUT: 1200
-      LLMDBENCH_CICD_JOB_TIMEOUT: 2700s
-      LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: 1200
-      LLMDBENCH_CICD_RUN_TIMEOUT: 3600
+      LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: ${{ inputs.data_access_timeout || '1200' }}
+      LLMDBENCH_CICD_WAIT_TIMEOUT: ${{ inputs.wait_timeout || '1200' }}
+      LLMDBENCH_CICD_JOB_TIMEOUT: ${{ inputs.job_timeout || '2700s' }}
+      LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: ${{ inputs.kustomize_standup_timeout || '1200' }}
+      LLMDBENCH_CICD_RUN_WAIT_TIMEOUT: ${{ inputs.run_wait_timeout || '3600' }}
+      LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT: ${{ inputs.run_pvc_bind_timeout || '1200' }}
       LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
       LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || 'auto' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
