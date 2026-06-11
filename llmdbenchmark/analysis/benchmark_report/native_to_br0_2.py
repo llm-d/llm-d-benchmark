@@ -47,8 +47,6 @@ def _normalize_concurrency(value: Any, zero_fallback: Any = None) -> Any:
         as_float = float(value)
     except (TypeError, ValueError):
         return value
-    if as_float == float("inf"):
-        return value
     if as_float == 0:
         return zero_fallback
     return value
