@@ -30,6 +30,30 @@ from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
 from .schema_v0_2_components import HostType
 
 
+def _normalize_concurrency(value: Any, zero_fallback: Any = None) -> Any:
+    """Map upstream "0 = unbounded" sentinels for the v0.2 schema.
+
+    LoadStandardized.concurrency is constrained to >=1, so a literal 0
+    coming back from a harness (e.g. inference-perf trace_session_replay
+    with ``concurrent_sessions: 0`` meaning "no limit") would fail
+    Pydantic validation. Substitute ``zero_fallback`` for 0 -- callers
+    that have a meaningful cap (e.g. ``num_sessions``) pass it in.
+    For callers that don't have a suitable cap, a default `zero_fallback`
+    of `None` will be used.
+    Negative and non-numeric values are returned as-is so validation
+    still rejects them.
+    """
+    if value is None:
+        return None
+    try:
+        as_float = float(value)
+    except (TypeError, ValueError):
+        return value
+    if as_float == 0:
+        return zero_fallback
+    return value
+
+
 def _load_run_metadata() -> dict:
     """Load run metadata from the YAML file written by the harness script.
 
@@ -781,7 +805,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                         "tool": WorkloadGenerator.VLLM_BENCHMARK,
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
-                        "concurrency": results.get("max_concurrency"),
+                        "concurrency": _normalize_concurrency(
+                            results.get("max_concurrency")
+                        ),
                         "source": source,
                         "input_seq_len": {
                             "distribution": isl_dist,
@@ -946,7 +972,9 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
     input_config = results.get("input_config", {})
     cfg_id = config_hash(input_config)
 
-    concurrency = get_nested(input_config, ["loadgen", "concurrency"])
+    concurrency = _normalize_concurrency(
+        get_nested(input_config, ["loadgen", "concurrency"])
+    )
     isl_mean = get_nested(results, ["input_sequence_length", "avg"])
     osl_mean = get_nested(results, ["output_sequence_length", "avg"])
 
@@ -1132,7 +1160,9 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                         "tool": WorkloadGenerator.INFERENCE_MAX,
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
-                        "concurrency": results.get("max_concurrency"),
+                        "concurrency": _normalize_concurrency(
+                            results.get("max_concurrency")
+                        ),
                         "source": source,
                         "input_seq_len": {
                             "distribution": isl_dist,
@@ -1320,8 +1350,9 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             results, ["load_summary", "requested_rate"]
                         )
                         or None,
-                        "concurrency": get_nested(
-                            results, ["load_summary", "concurrency"]
+                        "concurrency": _normalize_concurrency(
+                            get_nested(results, ["load_summary", "concurrency"]),
+                            zero_fallback=results.get("num_sessions"),
                         ),
                         "source": source,
                         # For ISL and OSL, If br_dict has config file from
@@ -2282,7 +2313,9 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
     if profile in ["async", "constant", "poisson"]:
         rate_qps = get_nested(data, ["args", "rate"])[index]
     elif profile in ["concurrent", "throughput"]:
-        concurrency = int(get_nested(data, ["args", "rate"])[index])
+        concurrency = _normalize_concurrency(
+            int(get_nested(data, ["args", "rate"])[index])
+        )
 
     prefix = None
     if "prefix_tokens" in input_args:
