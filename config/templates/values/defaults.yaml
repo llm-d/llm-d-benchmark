@@ -1305,6 +1305,7 @@ fma:
     limitsMemory: 250Mi
 
   launcher:
+    maxInstances: 4
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
       tag: v0.6.0-alpha.13

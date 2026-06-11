@@ -2323,6 +2323,7 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 "deploy_methods": results["scenario"]["deploy_methods"],
                 "load_format": results["scenario"]["load_format"],
                 "sleep_mode": results["scenario"]["sleep_mode"],
+                "max_instances": results["scenario"].get("max_instances", 0),
                 "gpus": results["scenario"]["gpus"],
             },
         },
@@ -2548,9 +2549,41 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 info["launcher_endpoint"] = launcher_info["launcher_endpoint"]
                 info["vllm_endpoint"] = launcher_info["vllm_endpoint"]
                 info["ttft"] = {"units": Units.S, "value": launcher_info["ttft"]}
+                info["launcher_creation_timestamp"] = {
+                    "units": Units.S,
+                    "value": launcher_info.get("launcher_creation_timestamp", 0.0),
+                }
+                info["launcher_node"] = launcher_info.get("launcher_node", "")
+                if launcher_info.get("t_wake") is not None:
+                    info["t_wake"] = {
+                        "units": Units.S,
+                        "value": launcher_info["t_wake"],
+                    }
+                if launcher_info.get("t_instance_create") is not None:
+                    info["t_instance_create"] = {
+                        "units": Units.S,
+                        "value": launcher_info["t_instance_create"],
+                    }
+                if launcher_info.get("t_cold_launcher") is not None:
+                    info["t_cold_launcher"] = {
+                        "units": Units.S,
+                        "value": launcher_info["t_cold_launcher"],
+                    }
                 launcher_infos.append(info)
 
             it["launcher_infos"] = launcher_infos
+            it["hot_hit_rate"] = {
+                "units": Units.COUNT,
+                "value": iteration.get("hot_hit_rate", 0.0),
+            }
+            it["warm_hit_rate"] = {
+                "units": Units.COUNT,
+                "value": iteration.get("warm_hit_rate", 0.0),
+            }
+            it["cold_launcher_hit_rate"] = {
+                "units": Units.COUNT,
+                "value": iteration.get("cold_launcher_hit_rate", 0.0),
+            }
             iterations.append(it)
 
         metadata_dict["iterations"] = iterations

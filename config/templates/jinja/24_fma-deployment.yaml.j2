@@ -44,7 +44,7 @@ metadata:
 {% endif %}
   namespace: {{ namespace.name }}
 spec:
-  maxSleepingInstances: 3
+  maxInstances: {{ fma.launcher.maxInstances }}
   podTemplate:
     metadata:
 {% if fma.launcher.podTemplate.metadata.labels is defined %}

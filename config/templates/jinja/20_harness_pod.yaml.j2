@@ -124,6 +124,8 @@ spec:
       value: "{{ fma.launcherConfigurator.port }}"
     - name: LLMDBENCH_FMA_ITERATIONS
       value: "{{ fma.iterations }}"
+    - name: LLMDBENCH_FMA_MAX_INSTANCES
+      value: "{{ fma.launcher.maxInstances }}"
 {% endif %}
 {% if harness.extraEnvVars is defined and harness.extraEnvVars %}
 {% for env_entry in harness.extraEnvVars %}
