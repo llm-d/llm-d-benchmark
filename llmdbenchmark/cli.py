@@ -837,6 +837,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_data_access_timeout=int(
             getattr(args, "data_access_timeout", 120) or 120
         ),
+        pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 

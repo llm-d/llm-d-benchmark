@@ -135,6 +135,9 @@ scenario:
     standalone:
       enabled: false
 
+    gateway:
+      className: epponly
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart

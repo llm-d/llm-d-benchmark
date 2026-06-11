@@ -121,6 +121,9 @@ scenario:
     standalone:
       enabled: false
 
+    gateway:
+      className: epponly
+
     # =========================================================================
     # WVA CONFIGURATION
     #
@@ -132,7 +135,7 @@ scenario:
 
       # Upstream well-lit-path tag. Becomes the `llm-d.ai/guide` label on the
       # VariantAutoscaling so dashboards/queries can group by guide.
-      wellLitPath: inference-scheduling
+      wellLitPath: optimized-baseline
 
       # Where to install the WVA controller.
       # Empty = use the deploy namespace (the first slot of `-p`). Override by

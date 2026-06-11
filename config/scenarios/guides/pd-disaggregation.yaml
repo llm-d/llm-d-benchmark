@@ -164,6 +164,9 @@ scenario:
     standalone:
       enabled: false
 
+    gateway:
+      className: epponly
+
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # Reference: https://github.com/llm-d/llm-d/blob/main/guides/pd-disaggregation/router/pd-disaggregation.values.yaml
