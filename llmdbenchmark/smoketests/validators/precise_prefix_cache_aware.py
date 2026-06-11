@@ -37,10 +37,18 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
             or ""
         )
 
+        is_kustomize = "kustomize" in context.deployed_methods
+        guide_name = _nested_get(config, "kustomize", "guideName") or ""
+
+        if is_kustomize and guide_name:
+            prefill_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role=prefill"
+        else:
+            prefill_selector = f"llm-d.ai/model={model_short},llm-d.ai/role=prefill"
+
         prefill_pods = self.get_pod_specs(
             cmd,
             namespace,
-            f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",
+            prefill_selector,
         )
         report.add(
             CheckResult(
@@ -60,9 +68,10 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
             model_short,
             report,
             logger=context.logger,
+            context=context,
         )
 
-        if decode_pods:
+        if decode_pods and not is_kustomize:
             pod = decode_pods[0]
             args = self.get_pod_args(pod)
 
@@ -104,12 +113,17 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
         # `app.kubernetes.io/*` labels only land on the Deployment, not
         # the Pod. We don't know the gateway mode here, so try both --
         # exactly one will match.
+        if is_kustomize:
+            epp_label_value = f"{guide_name}-epp"
+        else:
+            epp_label_value = f"{model_short}-router-epp"
+
         epp_pods: list = []
         for _mode in ("llm-d-router-gateway", "llm-d-router-standalone"):
             epp_pods = self.get_pod_specs(
                 cmd,
                 namespace,
-                f"{_mode}={model_short}-router-epp",
+                f"{_mode}={epp_label_value}",
             )
             if epp_pods:
                 break
@@ -121,7 +135,7 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
             )
         )
 
-        if decode_pods:
+        if decode_pods and not is_kustomize:
             # Shared memory volume -- only check if scenario defines it
             configured_volumes = _nested_get(config, "vllmCommon", "volumes") or []
             configured_vol_names = [
