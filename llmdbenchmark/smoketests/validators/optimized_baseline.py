@@ -1,4 +1,4 @@
-"""Validator for the inference-scheduling well-lit path."""
+"""Validator for the optimized-baseline well-lit path."""
 
 from pathlib import Path
 
@@ -8,8 +8,8 @@ from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.smoketests.validators.wva import WvaSmoketestMixin
 
 
-class InferenceSchedulingValidator(WvaSmoketestMixin, BaseSmoketest):
-    """Validates inference scheduling scenario.
+class OptimizedBaselineValidator(WvaSmoketestMixin, BaseSmoketest):
+    """Validates optimized baseline scenario.
 
     Also runs WVA resource checks (controller, prometheus-adapter, VA, HPA)
     when the rendered stack has ``wva.enabled: true``; the mixin is a no-op
