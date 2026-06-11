@@ -181,6 +181,10 @@ routing:
 {% if routing.proxy.zapTimeEncoding is defined %}
     zapTimeEncoding: {{ routing.proxy.zapTimeEncoding }}
 {% endif %}
+{% if routing.proxy.resources is defined %}
+    resources:
+{{ routing.proxy.resources | toyaml | indent(6) }}
+{% endif %}
 {% endif %}
 {% if routing.debugLevel is defined %}
     debugLevel: {{ routing.debugLevel }}
