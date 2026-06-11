@@ -183,7 +183,7 @@ routing:
 {% endif %}
 {% if routing.proxy.resources is defined %}
     resources:
-{{ routing.proxy.resources | toyaml | indent(6) }}
+{{ routing.proxy.resources | toyaml | indent(6, first=True) }}
 {% endif %}
 {% endif %}
 {% if routing.debugLevel is defined %}
