@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -212,6 +213,14 @@ def test_parse_install_sh_planner_commit(sbom_module, install_sh: Path) -> None:
     assert planner.pin == "deadbeefcafe"
     assert planner.pin_type == "commit SHA"
     assert "PLANNER_GIT" in planner.location
+
+
+def test_repo_install_sh_planner_pin_is_commit_sha(sbom_module) -> None:
+    entries = sbom_module.parse_install_sh(_REPO_ROOT / "install.sh")
+    planner = next((e for e in entries if e.name == "llm-d-planner (git)"), None)
+    assert planner is not None
+    assert re.fullmatch(r"[0-9a-f]{40}", planner.pin)
+    assert planner.pin_type == "commit SHA"
 
 
 def test_parse_install_sh_helm_diff_recorded(sbom_module, install_sh: Path) -> None:
