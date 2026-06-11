@@ -1,17 +1,12 @@
-# PREDICTED LATENCY BASED SCHEDULING WELL LIT PATH for LLM-D Deployment
+# OPTIMIZED BASELINE WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-based-scheduling
-#
-# Notes:
-# - Removed pod monitoring; can be added using decode.extraContainerConfig
-# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
-# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
 
 scenario:
   # ============================================================================
-  # Predicted Latency Based Scheduling - Qwen3-32B with 2 decode pods
+  # Optimized Baseline - Qwen3-32B with 2 decode pods
   # ============================================================================
-  - name: "predicted-latency-routing"
+  - name: "flow-control"
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
@@ -45,7 +40,7 @@ scenario:
     kustomize:
       enabled: false
 
-      guideName: "predicted-latency-routing"
+      guideName: "flow-control"
       repoPath: ""
       repoRef: "main"
       gaieVersion: ""
@@ -138,6 +133,11 @@ scenario:
     gateway:
       className: epponly
 
+    # NOTE: the `kustomize` deploy method is configured at the TOP of this
+    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
+    # because enabling it overrides this entire scenario -- see
+    # docs/kustomize.md.
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
@@ -148,68 +148,55 @@ scenario:
     # Routing / GAIE Configuration
     # -------------------------------------------------------------------------
     inferenceExtension:
-      latencyPredictor:
-        enabled: true
-      extraServicePorts:
-        - name: http
-          port: 80
-          protocol: TCP
-          targetPort: 8081
-      pluginsConfigFile: "predicted-latency-slo-plugins.yaml"
+      pluginsConfigFile: "flow-config.yaml"
       pluginsCustomConfig:
-        predicted-latency-slo-plugins.yaml: |
+        flow-config.yaml: |
           apiVersion: llm-d.ai/v1alpha1
           kind: EndpointPickerConfig
+          featureGates:
+          - flowControl
           plugins:
           - type: queue-scorer
           - type: kv-cache-utilization-scorer
           - type: prefix-cache-scorer
-          - type: metrics-data-source
+          - type: round-robin-fairness-policy
+          - type: fcfs-ordering-policy
+          - type: concurrency-detector
             parameters:
-              insecureSkipVerify: true
-              path: /metrics
-              scheme: http
-          - type: core-metrics-extractor
-          - type: predicted-latency-producer
-            parameters:
-              streamingMode: true
-          - type: prefix-cache-affinity-filter
-            name: strict-affinity-filter
-            parameters:
-              affinityThreshold: 0.99
-          - type: prefix-cache-affinity-filter
-            name: loose-affinity-filter
-            parameters:
-              affinityThreshold: 0.8
-          - type: latency-scorer
-          - type: weighted-random-picker
-          - type: slo-headroom-tier-filter
-          - type: latency-slo-admitter
+              maxConcurrency: 132
+              concurrencyMode: requests
+              headroom: 0.0
+
           schedulingProfiles:
           - name: default
             plugins:
-            - pluginRef: predicted-latency-producer
-            - pluginRef: strict-affinity-filter
-            - pluginRef: slo-headroom-tier-filter
-            - pluginRef: loose-affinity-filter
-            - pluginRef: latency-scorer
-            - pluginRef: weighted-random-picker
+            - pluginRef: queue-scorer
+              weight: 2
+            - pluginRef: kv-cache-utilization-scorer
+              weight: 2
+            - pluginRef: prefix-cache-scorer
+              weight: 3
 
-      # InferencePool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
+          flowControl:
+            maxBytes: "10Gi"
+            maxRequests: "1k"
+            defaultRequestTTL: "60s"
+            saturationDetector:
+              pluginRef: concurrency-detector
+            priorityBands:
+            - priority: 100
+              maxRequests: "500"
+              fairnessPolicyRef: round-robin-fairness-policy
+              orderingPolicyRef: fcfs-ordering-policy
+            - priority: 0
+              maxRequests: "200"
+              fairnessPolicyRef: round-robin-fairness-policy
+              orderingPolicyRef: fcfs-ordering-policy
+            - priority: -10
+              maxRequests: "50"
+              fairnessPolicyRef: round-robin-fairness-policy
+              orderingPolicyRef: fcfs-ordering-policy
+
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # -------------------------------------------------------------------------
@@ -222,6 +209,7 @@ scenario:
     # -------------------------------------------------------------------------
     decode:
       replicas: 2
+#      replicas: 8
       vllm:
         customCommand: |
           export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}

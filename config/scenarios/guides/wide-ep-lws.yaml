@@ -137,6 +137,9 @@ scenario:
     standalone:
       enabled: false
 
+    gateway:
+      className: epponly
+
     images:
       vllm:
         repository: ghcr.io/llm-d/llm-d-cuda
