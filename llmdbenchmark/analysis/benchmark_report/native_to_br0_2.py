@@ -38,6 +38,8 @@ def _normalize_concurrency(value: Any, zero_fallback: Any = None) -> Any:
     with ``concurrent_sessions: 0`` meaning "no limit") would fail
     Pydantic validation. Substitute ``zero_fallback`` for 0 -- callers
     that have a meaningful cap (e.g. ``num_sessions``) pass it in.
+    For callers that don't have a suitable cap, a default `zero_fallback`
+    of `None` will be used.
     Negative and non-numeric values are returned as-is so validation
     still rejects them.
     """
