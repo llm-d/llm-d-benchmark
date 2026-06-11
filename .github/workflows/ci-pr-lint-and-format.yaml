@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       # 1. Run Linting (Checks only, does not modify any files)
       - name: Run Ruff Lint Check
