@@ -39,10 +39,15 @@ on:
         type: 'string'
         default: 'vllm'
       infra_provider:
-        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standyp method)'
+        description: 'Target cloud provider (ONLY VALID FOR "kustomize" standup method)'
         required: false
         type: 'string'
         default: 'base'
+      offloading_target:
+        description: 'Which component should be used to hous offloaded blocks ("cpu","memory", default is "")'
+        required: false
+        type: 'string'
+        default: ''
       connector:
         description: 'Accelerator offloading connector (ONLY VALID FOR "kustomize" standyp method)'
         required: false
@@ -140,6 +145,11 @@ on:
         default: '1200'
       wait_timeout:
         description: 'Timeout in seconds to wait for benchmark pods to complete'
+        required: false
+        type: 'string'
+        default: '1200'
+      pvc_bind_timeout:
+        description: 'Timeout in seconds to wait for a pvc to be bound'
         required: false
         type: 'string'
         default: '1200'
@@ -283,14 +293,14 @@ jobs:
       LLMDBENCH_CICD_ACCELERATOR: ${{ inputs.accelerator_type || 'gpu' }}
       LLMDBENCH_CICD_BACKEND: ${{ inputs.backend_type || 'vllm' }}
       LLMDBENCH_CICD_INFRA_PROVIDER: ${{ inputs.infra_provider || '' }}
+      LLMDBENCH_CICD_OFFLOADING_TARGET: ${{ inputs.offloading_target || '' }}
       LLMDBENCH_CICD_CONNECTOR: ${{ inputs.connector || '' }}
       LLMDBENCH_CICD_CLEANUP: ${{ inputs.cleanup || 'true' }}
       LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: ${{ inputs.data_access_timeout || '1200' }}
-      LLMDBENCH_CICD_WAIT_TIMEOUT: ${{ inputs.wait_timeout || '1200' }}
       LLMDBENCH_CICD_JOB_TIMEOUT: ${{ inputs.job_timeout || '2700s' }}
       LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: ${{ inputs.kustomize_standup_timeout || '1200' }}
-      LLMDBENCH_CICD_RUN_WAIT_TIMEOUT: ${{ inputs.run_wait_timeout || '3600' }}
-      LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT: ${{ inputs.run_pvc_bind_timeout || '1200' }}
+      LLMDBENCH_CICD_RUN_WAIT_TIMEOUT: ${{ inputs.wait_timeout || '3600' }}
+      LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT: ${{ inputs.pvc_bind_timeout || '1200' }}
       LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
       LLMDBENCH_CICD_PREFILL_PODS: ${{ inputs.prefill_pods || 'auto' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
@@ -614,7 +624,7 @@ jobs:
             curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh -o install.sh
             chmod +x install.sh
           fi
-          ./install.sh -y 2>&1 || true
+          ./install.sh -y
           llmdbenchmark --version
           if [[ ! -f util/debug_info_on_failure.sh ]]; then
             curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/util/debug_info_on_failure.sh -o /tmp/debug_info_on_failure.sh
@@ -629,49 +639,63 @@ jobs:
       - name: Apply overrides to llm-d-benchmark scenarios (yaml)
         run: |
           touch ~/work/lkcmd.txt
+          export LLMDBENCH_CICD_SCENARIO_FILE=~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-            echo "### Setting \"INFRA_PROVIDER\" to \"$LLMDBENCH_CICD_INFRA_PROVIDER\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \\\"$LLMDBENCH_CICD_INFRA_PROVIDER\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            export LLMDBENCH_CICD_EFFECTIVE_GUIDE_NAME=$(echo $LLMDBENCH_CICD_SCENARIO | sed 's#/$##')
+            echo "### Setting \"INFRA_PROVIDER\" to \"$LLMDBENCH_CICD_INFRA_PROVIDER\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER = \\\"$LLMDBENCH_CICD_INFRA_PROVIDER\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
             echo -n "$lkcmd" > ~/work/lkcmd.txt
             eval $lkcmd
-            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
-            echo "### Setting \"REPO_ROOT\" to \"$HOME/work/llm-d/llm-d\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.REPO_ROOT = \\\"$HOME/work/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.guideVariableOverrides.INFRA_PROVIDER'
+            echo "### Setting \"REPO_ROOT\" to \"$HOME/work/llm-d/llm-d\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.REPO_ROOT = \\\"$HOME/work/llm-d/llm-d\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
-            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.REPO_ROOT'
-            echo "### Setting \"GUIDE_NAME\" to \"$LLMDBENCH_CICD_SCENARIO\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME = \\\"$LLMDBENCH_CICD_SCENARIO\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.guideVariableOverrides.REPO_ROOT'
+            echo "### Setting \"GUIDE_NAME\" to \"$LLMDBENCH_CICD_EFFECTIVE_GUIDE_NAME\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME = \\\"$LLMDBENCH_CICD_EFFECTIVE_GUIDE_NAME\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.GUIDE_NAME'
             if [[ ! -z $LLMDBENCH_CICD_CONNECTOR ]]; then
-              echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\""
-              lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.CONNECTOR = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+              echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+              lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.CONNECTOR = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
               echo -n "; $lkcmd" >> ~/work/lkcmd.txt
               eval $lkcmd
-              cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
+              cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
             fi
-            echo "### Setting \"repoPath\" to \"$HOME/work/llm-d/llm-d\""
-            lkcmd="yq -i \".scenario[0].kustomize.repoPath = \\\"$HOME/work/llm-d/llm-d\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            if [[ ! -z $LLMDBENCH_CICD_OFFLOADING_TARGET ]]; then
+              echo "### Setting \"VARIANT\" to \"$LLMDBENCH_CICD_OFFLOADING_TARGET\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+              lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.VARIANT = \\\"$LLMDBENCH_CICD_OFFLOADING_TARGET\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
+              echo -n "; $lkcmd" >> ~/work/lkcmd.txt
+              eval $lkcmd
+              cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.guideVariableOverrides.VARIANT'
+            fi
+            echo "### Setting \"guideName\" to \"$LLMDBENCH_CICD_EFFECTIVE_GUIDE_NAME\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideName = \\\"$LLMDBENCH_CICD_EFFECTIVE_GUIDE_NAME\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
-            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.repoPath'
-            echo "### Setting \"NAMESPACE\" to \"$LLMDBENCH_CICD_NS\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.NAMESPACE = \\\"$LLMDBENCH_CICD_NS\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.guideName'
+            echo "### Setting \"repoPath\" to \"$HOME/work/llm-d/llm-d\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.repoPath = \\\"$HOME/work/llm-d/llm-d\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
+            echo -n "; $lkcmd" >> ~/work/lkcmd.txt
+            eval $lkcmd
+            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.repoPath'
+            echo "### Setting \"NAMESPACE\" to \"$LLMDBENCH_CICD_NS\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.NAMESPACE = \\\"$LLMDBENCH_CICD_NS\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
             cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.guideVariableOverrides.NAMESPACE'
             export LLMDBENCH_CICD_BACKEND_ACCELERATOR=$(echo $LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND | sed 's^//^/^g')
-            echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\""
-            lkcmd="yq -i \".scenario[0].kustomize.acceleratorBackend = \\\"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\\\"\" ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml"
+            echo "### Setting \"acceleratorBackend\" to \"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            lkcmd="yq -i \".scenario[0].kustomize.acceleratorBackend = \\\"$LLMDBENCH_CICD_BACKEND_ACCELERATOR\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
             echo -n "; $lkcmd" >> ~/work/lkcmd.txt
             eval $lkcmd
-            cat ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml | yq '.scenario[0].kustomize.acceleratorBackend'
+            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.acceleratorBackend'
           fi
           if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
-            echo " ### Setting harness executable to \"llm-d-benchmark.py\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-            yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' ~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
+            echo " ### Setting harness executable to \"llm-d-benchmark.py\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
+            yq -i '.scenario[0].harness.executable = "llm-d-benchmark.py"' $LLMDBENCH_CICD_SCENARIO_FILE
           fi
         shell: bash
 
@@ -698,21 +722,34 @@ jobs:
       - name: Apply overrides to kustomize manifests
         run: |
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-            LLMDBENCH_CICD_KUSTOMIZE_PATH=~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_INFRA_PROVIDER
-            echo "Kustomize full path is \"$LLMDBENCH_CICD_KUSTOMIZE_PATH\""
-            detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH | yq .spec.template.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|null" | uniq | cut -d ' ' -f 2)
-            echo "LLMDBENCH_CICD_DETECTED_MODEL is \"$detected_model\""
+            LLMDBENCH_CICD_KUSTOMIZE_PATH=~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/$LLMDBENCH_CICD_OFFLOADING_TARGET/$LLMDBENCH_CICD_INFRA_PROVIDER
+            echo "Kustomize full path is \"$LLMDBENCH_CICD_KUSTOMIZE_PATH\". Will now attempt to detect model name..."
+            detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH | yq .spec.template.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
+            if [[ -z $detected_model ]]; then
+              detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH |  yq .spec.leaderWorkerTemplate.workerTemplate.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
+            fi
+            if [[ -z $detected_model ]]; then
+              echo "### ERROR: unable to detect model"
+              exit 1
+            fi
+            echo "### LLMDBENCH_CICD_DETECTED_MODEL is \"$detected_model\""
             echo "LLMDBENCH_CICD_DETECTED_MODEL=$detected_model"  >> $GITHUB_ENV
-            echo " ### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            if [[ $LLMDBENCH_CICD_SCENARIO == "predicted-latency-routing" || $LLMDBENCH_CICD_SCENARIO == "flow-control" ]]; then
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "kustomization.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "kustomization.yaml" -exec bash -c 'echo -n $1:; yq ".namePrefix" $1' _ {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "patch-vllm.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/router/ -type f -name "*.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+            fi
+            echo "### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
             for i in vllm decode prefill; do
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.template.spec.priorityClassName" $1' _ {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.template.spec.priorityClassName" $1' _ {} \;
             done
             if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
               echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
               for i in vllm decode; do
-                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
-                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
               done
             fi
             if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
@@ -743,7 +780,10 @@ jobs:
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
             export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
           fi
-          export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--wait-timeout $LLMDBENCH_CICD_RUN_WAIT_TIMEOUT --pvc-bind-timeout $LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+          export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--wait-timeout $LLMDBENCH_CICD_RUN_WAIT_TIMEOUT --pvc-bind-timeout $LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT --data-access-timeout $LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+          if [[ ! -z $LLMDBENCH_CICD_DETECTED_MODEL ]]; then
+            export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--model $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+          fi
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
             export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
             export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
@@ -802,15 +842,18 @@ jobs:
           elif [[ "$LLMDBENCH_CICD_TARGET" == "cks" && "${{ inputs.standup_method }}" == "fma" ]]; then
             echo "Temporarily unable to test \"fma\" on \"cks\" clusters"
           else
-            LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run $LLMDBENCH_EXTRA_RUN_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD --data-access-timeout $LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT --wait-timeout $LLMDBENCH_CICD_WAIT_TIMEOUT"
+            LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD run $LLMDBENCH_EXTRA_RUN_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD"
             echo "### $(cat ~/work/lkcmd.txt); $LLMDBENCH_CMD ###"
             eval $LLMDBENCH_CMD
           fi
         shell: bash
 
       - name: Teardown
-        if: env.LLMDBENCH_CICD_CLEANUP == 'true'
+        if: always()
         run: |
+          if [[ $LLMDBENCH_CICD_CLEANUP == 'false' ]]; then
+            exit 0
+          fi
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
           LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD  --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"

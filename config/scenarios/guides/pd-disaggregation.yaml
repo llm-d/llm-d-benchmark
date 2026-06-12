@@ -1,5 +1,5 @@
 # P/D DISAGGREGATION WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation/README.md
 # Migrated from bash environment variables to YAML format
 #
 # Notes:
@@ -135,6 +135,24 @@ scenario:
     #  enabled: true
 
     # -------------------------------------------------------------------------
+    # Scheduler Configuration
+    # (commented out in original -- uncomment to enable)
+    # -------------------------------------------------------------------------
+    # schedulerName: custom-binpack-scheduler
+
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    # -------------------------------------------------------------------------
     # Routing Configuration
     # -------------------------------------------------------------------------
     routing:
@@ -154,18 +172,6 @@ scenario:
     #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
     #     # gpu.nvidia.com/model: H200                        # Kubernetes
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
-    # =========================================================================
-    modelservice:
-      enabled: true
-
-    standalone:
-      enabled: false
-
-    gateway:
-      className: epponly
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
@@ -293,6 +299,10 @@ scenario:
           value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
         - name: NVSHMEM_DEBUG
           value: "INFO"
+        - name: NIXL_LOG_LEVEL
+          value: debug
+        - name: UCX_MAX_RMA_RAILS
+          value: "1"
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
@@ -378,6 +388,10 @@ scenario:
           value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
         - name: NVSHMEM_DEBUG
           value: "INFO"
+        - name: NIXL_LOG_LEVEL
+          value: debug
+        - name: UCX_MAX_RMA_RAILS
+          value: "1"
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
@@ -417,8 +431,9 @@ scenario:
 #####          k8s.v1.cni.cncf.io/networks: multi-nic-compute
 
     vllmCommon:
-#      priorityClassName: nightly-gpu-critical
-#####      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+#####      priorityClassName: nightly-gpu-critical
+######      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+#####      ucxTls: "cuda,rc,sm"
       networkResource: "auto"   # auto-detect from cluster nodes
       networkNr: "1"            # number of network devices
 
