@@ -325,12 +325,24 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
             elif actuation_condition == "T_cold_launcher":
                 cold_starts += 1
 
-            t_hot = launcher_info.get("t_wake", {})
-            t_hot_val = float(t_hot["value"]) if isinstance(t_hot, dict) else None
-            t_warm = launcher_info.get("t_instance_create", {})
-            t_warm_val = float(t_warm["value"]) if isinstance(t_warm, dict) else None
-            t_cold = launcher_info.get("t_cold_launcher", {})
-            t_cold_val = float(t_cold["value"]) if isinstance(t_cold, dict) else None
+            t_hot = launcher_info.get("t_wake")
+            t_hot_val = (
+                float(t_hot["value"])
+                if isinstance(t_hot, dict) and "value" in t_hot
+                else None
+            )
+            t_warm = launcher_info.get("t_instance_create")
+            t_warm_val = (
+                float(t_warm["value"])
+                if isinstance(t_warm, dict) and "value" in t_warm
+                else None
+            )
+            t_cold = launcher_info.get("t_cold_launcher")
+            t_cold_val = (
+                float(t_cold["value"])
+                if isinstance(t_cold, dict) and "value" in t_cold
+                else None
+            )
             node = launcher_info.get("launcher_node", "")
 
             pandas_datas.append(
