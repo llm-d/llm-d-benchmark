@@ -751,7 +751,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 ## Dependencies
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
-- [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)
+- [llm-d-modelservice v0.4.14](https://github.com/llm-d/llm-d-model-service.git)
 - [inference-perf](https://github.com/kubernetes-sigs/inference-perf)
 - [guidellm](https://github.com/vllm-project/guidellm.git)
 - [vllm](https://github.com/vllm-project/vllm.git)
