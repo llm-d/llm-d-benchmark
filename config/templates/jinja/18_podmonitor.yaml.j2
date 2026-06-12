@@ -2,17 +2,38 @@
    18_podmonitor.yaml.j2
 
    PodMonitor for Prometheus to scrape vLLM model serving pods deployed via
-   modelservice (decode/prefill).  Only rendered when
-   monitoring.podmonitor.enabled is true.  Matches bash step 09
+   modelservice (decode/prefill) or FMA (launcher pods). Only rendered when
+   monitoring.podmonitor.enabled is true. Matches bash step 09
    generate_podmonitor_yaml().
+
+   WVA path: when wva.enabled, this template also stamps the `release: llmd`
+   label (so user-workload-monitoring discovers the PodMonitor) and adds a
+   target-relabel rule that lifts the `llm-d.ai/variant` pod label onto
+   scraped metrics as `llm_d_ai_variant`. This is what WVA repo PR #1145
+   queries for variant identification — it MUST live under endpoints[].relabelings
+   (not metricRelabelings); pod-label meta is stripped before metric relabeling
+   runs (see WVA repo docs/design/controller-behavior.md).
+
+   FMA path: when fma.enabled, we don't reference a named container port at
+   all. Instead we force the scrape target to <pod-ip>:8000 with a relabel
+   rule and filter to the inference-server container only. Pattern adopted
+   from PR llm-d-incubation/llm-d-fast-model-actuation#552 — sidesteps the
+   named-port question entirely (the launcher container doesn't have to
+   declare metrics ports) and prevents accidental scraping of any sidecar
+   that might land in the same pod (state-change-reflector, etc.).
    ============================================================================ #}
 {% if monitoring is defined and monitoring.podmonitor is defined and monitoring.podmonitor.enabled | default(false) %}
+{% set _fma_enabled = (fma is defined and fma.enabled | default(false)) %}
+{% set _wva_enabled = (wva is defined and wva.enabled | default(false)) %}
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   name: vllm-{{ model_id_label }}
   namespace: {{ namespace.name }}
   labels:
+{% if _wva_enabled %}
+    release: llmd
+{% endif %}
 {% if annotations is defined and annotations.common is defined and annotations.common %}
 {% for key, value in annotations.common.items() %}
     {{ key }}: "{{ value }}"
@@ -24,7 +45,40 @@ spec:
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
       llm-d.ai/model: {{ model_id_label }}
   podMetricsEndpoints:
+{% if _fma_enabled %}
+  # FMA path: address-rewrite mode (no named port required on launcher container).
+  - interval: {{ monitoring.scrapeInterval | default('30s') }}
+    path: {{ monitoring.metricsPath | default('/metrics') }}
+    relabelings:
+      # Filter to the inference-server container only; some launcher pods may
+      # have sidecars (state-change-reflector etc.) that we don't want to scrape.
+      - sourceLabels: [__meta_kubernetes_pod_container_name]
+        action: keep
+        regex: inference-server
+      # Force scrape target to <pod-ip>:8000 -- vLLM's port inside the launcher
+      # (matches InferenceServerConfig.spec.modelServerConfig.port).
+      - sourceLabels: [__meta_kubernetes_pod_ip]
+        action: replace
+        regex: (.+)
+        replacement: $1:8000
+        targetLabel: __address__
+{% if _wva_enabled %}
+      # WVA PR #1145: lift the variant pod label onto scraped metrics so the
+      # controller's per-variant queries (e.g. on `llm_d_ai_variant`) match.
+      - sourceLabels: [__meta_kubernetes_pod_label_llm_d_ai_variant]
+        action: replace
+        targetLabel: llm_d_ai_variant
+{% endif %}
+{% else %}
+  # modelservice (decode/prefill) path: named-port reference.
   - port: {{ monitoring.podmonitor.portName | default('metrics') }}
     path: {{ monitoring.metricsPath | default('/metrics') }}
     interval: {{ monitoring.scrapeInterval | default('30s') }}
+{% if _wva_enabled %}
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_pod_label_llm_d_ai_variant]
+        action: replace
+        targetLabel: llm_d_ai_variant
+{% endif %}
+{% endif %}
 {% endif %}

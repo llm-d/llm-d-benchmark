@@ -125,7 +125,7 @@ one of them surfaces as `TARGETS: <unknown>` on the HPA - see the
 | Method | When to use |
 |---|---|
 | `-u / --wva` CLI flag on any existing scenario | Quick toggle without editing files; uses defaults from `config/templates/values/defaults.yaml` |
-| `--spec guides/workload-autoscaling` | Dedicated scenario where every WVA knob is spelled out inline so you can tweak them per-experiment |
+| `--spec guides/workload-autoscaling` | Dedicated scenario where every WVA knob is spelled out inline so you can tweak them per-experiment. Topology: modelservice (gateway/EPP only, decode disabled) + FMA (elastic vLLM) + WVA scaling the FMA requester. |
 | `--spec examples/multi-model-wva` | Multi-model scenario: two or more pools under one gateway, each with its own VA + HPA, one shared WVA controller |
 
 ### 2a. Via the CLI flag
@@ -155,7 +155,43 @@ You'd choose this scenario when you want to:
 - Author a DoE experiment that sweeps over `wva.hpa.maxReplicas` or
   `wva.variantAutoscaling.variantCost`
 
-### 2c. Via the `multi-model-wva` scenario (multiple pools, one WVA controller)
+### 2c. FMA + WVA in the same scenario
+
+`workload-autoscaling.yaml` is the canonical FMA + WVA path — there's no
+separate `fma-autoscaling` scenario. The scenario sets:
+
+- `modelservice.enabled: true` with `decode.replicas: 0` — the chart still
+  renders the gateway, EPP, InferencePool, and PodMonitor, but no decode
+  Deployment is created.
+- `fma.enabled: true` — FMA's launcher pods host vLLM and serve traffic;
+  the requester Deployment is what WVA actually scales.
+- `wva.enabled: true` — templates 27/28 retarget the VariantAutoscaling +
+  HPA at the FMA requester (`fma-requester-<model_id_label>`) when
+  `fma.enabled` is true. The variant suffix becomes `-fma` (vs `-decode`
+  for modelservice).
+
+How the FMA path differs from a pure-modelservice WVA setup:
+
+- **What scales:** the requester Deployment (admin-port shim that holds
+  the GPU lease). FMA's launcher-populator controller reconciles the
+  long-lived launcher pods to match.
+- **Variant label propagation:** the launcher pod's
+  `llm-d.ai/variant: <model_id_label>-fma` label is stamped at BIND time
+  by the dual-pods controller from the InferenceServerConfig's
+  `modelServerConfig.labels` (PR llm-d-incubation/llm-d-fast-model-actuation#552).
+  Idle launchers don't carry it, so they don't enter the InferencePool's
+  selector or get scraped as the variant.
+- **WVA controller image:** WVA repo PR #1145 (label-based variant
+  identification) is required and is not yet in any tagged WVA release.
+  The scenario pins `quay.io/braulio/llm-d-wva:v4` (a custom build with
+  #1145 baked in). Once #1145 ships in a tagged GHCR release
+  (>v0.7.0), update the scenario to point back at the official image.
+
+Use this scenario to exercise FMA actuation under WVA-driven scaling,
+or to A/B FMA vs. modelservice as the deployment mechanism while
+holding autoscaling behavior constant.
+
+### 2d. Via the `multi-model-wva` scenario (multiple pools, one WVA controller)
 
 ```bash
 llmdbenchmark --spec examples/multi-model-wva standup -p <namespace>
@@ -525,7 +561,8 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 | Shared install/teardown helpers | [`llmdbenchmark/standup/wva.py`](../llmdbenchmark/standup/wva.py) |
 | Teardown logic | [`llmdbenchmark/teardown/steps/step_01_uninstall_helm.py`](../llmdbenchmark/teardown/steps/step_01_uninstall_helm.py) |
 | Smoketest WVA mixin | [`llmdbenchmark/smoketests/validators/wva.py`](../llmdbenchmark/smoketests/validators/wva.py) |
-| WVA-enabled scenario (the one to copy/edit for new experiments) | [`config/scenarios/guides/workload-autoscaling.yaml`](../config/scenarios/guides/workload-autoscaling.yaml) |
+| WVA-enabled scenario — modelservice + FMA + WVA combined | [`config/scenarios/guides/workload-autoscaling.yaml`](../config/scenarios/guides/workload-autoscaling.yaml) |
+| FMA InferenceServerConfig + LauncherConfig + LauncherPopulationPolicy + requester Deployment (variant labels live on the ISC, propagated to launchers at bind time) | [`config/templates/jinja/24_fma-deployment.yaml.j2`](../config/templates/jinja/24_fma-deployment.yaml.j2) |
 | Multi-model WVA example (N pools, 1 gateway, 1 controller) | [`config/scenarios/examples/multi-model-wva.yaml`](../config/scenarios/examples/multi-model-wva.yaml) |
 
 ---

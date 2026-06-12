@@ -72,12 +72,16 @@ class WvaSmoketestMixin:
           2. prometheus-adapter Deployment exists and is Available in the
              user-workload-monitoring namespace.
           3. The per-stack VariantAutoscaling resource exists with the
-             expected name ({model_id_label}-decode).
+             expected name ({model_id_label}-decode for modelservice, or
+             {model_id_label}-fma when fma.enabled).
           4. The VariantAutoscaling carries the `wva.llmd.ai/controller-instance`
              label matching the controller's `CONTROLLER_INSTANCE` env (when
              set). Without this label the controller's predicate silently
              skips the VA — the most subtle WVA misconfiguration.
-          5. The per-stack HPA exists and references the decode Deployment.
+          5. The per-stack HPA exists and references the right scaleTargetRef:
+             the modelservice decode Deployment ({model_id_label}-decode) or,
+             under fma.enabled, the FMA requester Deployment
+             (fma-requester-{model_id_label}).
           6. The HPA's external-metric selector matches what WVA actually
              emits: `variant_name`, `exported_namespace`, and
              `controller_instance` all aligned with the rendered VA + chart
@@ -145,8 +149,18 @@ class WvaSmoketestMixin:
             or _nested_get(config, "model", "shortName")
             or ""
         )
-        va_name = f"{model_id_label}-decode"
-        decode_deployment = f"{model_id_label}-decode"
+        # Templates 27/28 retarget the VA + HPA at the FMA requester Deployment
+        # when fma.enabled — variant suffix becomes `-fma` (vs `-decode` for
+        # modelservice). The smoketest must follow the same gate so VA name
+        # lookup, HPA scaleTargetRef expectation, and the metric selector's
+        # variant_name all stay aligned.
+        fma_enabled = bool(_nested_get(config, "fma", "enabled") or False)
+        if fma_enabled:
+            va_name = f"{model_id_label}-fma"
+            scale_target_name = f"fma-requester-{model_id_label}"
+        else:
+            va_name = f"{model_id_label}-decode"
+            scale_target_name = f"{model_id_label}-decode"
 
         # Expected `controller_instance` value -- derived the same way the
         # 19_/27_/28_ templates do, so an empty `wva.namespace` falls back
@@ -175,10 +189,11 @@ class WvaSmoketestMixin:
             cmd,
             wva_ns,
             va_name,
-            decode_deployment,
+            scale_target_name,
             expected_controller_instance,
             wva_ns,
             report,
+            expected_variant_name=va_name,
         )
         self._wait_for_hpa_targets(
             cmd,
@@ -466,15 +481,27 @@ class WvaSmoketestMixin:
         cmd: CommandExecutor,
         wva_ns: str,
         hpa_name: str,
-        expected_target: str,
+        expected_scale_target: str,
         expected_controller_instance: str,
         expected_exported_namespace: str,
         report: SmoketestReport,
+        expected_variant_name: str | None = None,
     ) -> None:
-        """Verify the per-stack HPA exists, targets the decode Deployment,
-        carries a metric selector aligned with what the WVA controller
-        actually emits, and (best-effort) has an ``AbleToScale`` condition.
+        """Verify the per-stack HPA exists, targets the right workload, carries a
+        metric selector aligned with what the WVA controller actually emits, and
+        (best-effort) has an ``AbleToScale`` condition.
+
+        ``expected_scale_target`` is the HPA's ``scaleTargetRef.name`` — the
+        Deployment (modelservice path) or ReplicaSet (FMA path) that the HPA
+        actually rescales. ``expected_variant_name`` is the VA's name (which the
+        controller emits as the ``variant_name`` metric label). For modelservice
+        these are identical (``{model}-decode``); for FMA they diverge
+        (``fma-requester-{model}`` vs ``{model}-fma``), so the caller must pass
+        both. When omitted, ``expected_variant_name`` defaults to
+        ``expected_scale_target`` (preserves prior behavior).
         """
+        if expected_variant_name is None:
+            expected_variant_name = expected_scale_target
         result = cmd.kube(
             "get",
             "hpa",
@@ -507,12 +534,12 @@ class WvaSmoketestMixin:
         report.add(
             CheckResult(
                 "wva_hpa_target",
-                scale_target == expected_target,
-                expected=expected_target,
+                scale_target == expected_scale_target,
+                expected=expected_scale_target,
                 actual=scale_target,
                 message=(
                     f"HPA/{hpa_name} scaleTargetRef.name={scale_target} "
-                    f"(expected {expected_target})"
+                    f"(expected {expected_scale_target})"
                 ),
             )
         )
@@ -532,7 +559,7 @@ class WvaSmoketestMixin:
             .get("matchLabels", {})
         ) or {}
         expected_selector = {
-            "variant_name": expected_target,
+            "variant_name": expected_variant_name,
             "exported_namespace": expected_exported_namespace,
             "controller_instance": expected_controller_instance,
         }

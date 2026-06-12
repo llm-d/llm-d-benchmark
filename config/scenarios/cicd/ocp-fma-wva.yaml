@@ -1,0 +1,206 @@
+# OpenShift CI/CD Scenario - FMA + modelservice + WVA
+#
+# CICD-friendly variant of guides/workload-autoscaling.yaml. Same topology
+# (modelservice provides gateway/EPP/InferencePool/PodMonitor; FMA owns the
+# elastic vLLM tier; WVA scales the FMA requester Deployment) but tuned for
+# nightly CI: small model, OCP node selectors, priorityClass, /tmp workDir.
+#
+# Why this exists: nightly should validate that the FMA+WVA wiring still
+# stands up AND that scaling actually fires under load. Standing up the
+# stack is necessary but weak — WVA's whole job is to scale, which only
+# happens with traffic. The default harness (inference-perf with
+# shared_prefix_synthetic.yaml) drives the same load pattern someone running
+# the guide manually would use, so a green run means: controller deploys,
+# metric pipeline resolves to a numeric value (not <unknown>), and HPA
+# converges to its idle steady-state under no traffic / scales up under load.
+#
+# Companion scenarios:
+#   guides/workload-autoscaling.yaml  -- the well-lit-path / manual run
+#   cicd/ocp.yaml                     -- vanilla modelservice CICD nightly
+#   cicd/ocp-fma.yaml (if it exists)  -- FMA-only CICD (no autoscaling)
+#
+# See PR llm-d-incubation/llm-d-fast-model-actuation#552 for the upstream
+# demo that established the FMA+WVA contract this scenario follows
+# (variant label on ISC.modelServerConfig.labels, not LC.podTemplate; vLLM
+# port 8000; PodMonitor address-rewrite mode; requester as Deployment).
+
+scenario:
+  - name: "ocp-fma-wva-cicd"
+
+    # =========================================================================
+    # MODEL CONFIGURATION
+    #
+    # SmolLM2-360M-Instruct: small enough that FMA's level-1 sleep mode can
+    # cache 3+ sleepers per launcher (so T_HOT actuation actually fires under
+    # repeated load), and small enough that nightly GPU time stays reasonable.
+    # Matches PR #552's choice and our guides/workload-autoscaling.yaml.
+    # =========================================================================
+    model:
+      name: HuggingFaceTB/SmolLM2-360M-Instruct
+      shortName: smollm2-360m
+      path: models/HuggingFaceTB/SmolLM2-360M-Instruct
+      huggingfaceId: HuggingFaceTB/SmolLM2-360M-Instruct
+      size: 5Gi
+      maxModelLen: 8192
+      blockSize: 16
+      gpuMemoryUtilization: 0.9
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    modelservice:
+      enabled: true                    # gateway / EPP / InferencePool / PodMonitor
+
+    standalone:
+      enabled: false
+
+    fma:
+      enabled: true                    # launcher pods host vLLM, requester Deployment
+                                       # is the WVA scale target
+      iterations: 1
+
+    # =========================================================================
+    # NODE SELECTION (OCP / pokprod-style)
+    # =========================================================================
+    affinity:
+      enabled: true
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+    # =========================================================================
+    # WVA CONFIGURATION
+    # See guides/workload-autoscaling.yaml for the full annotated surface.
+    # =========================================================================
+    wva:
+      enabled: true
+      wellLitPath: workload-autoscaling
+      namespace: ""
+
+      # PR #1145 (label-based variant identification) is required for the FMA
+      # path; not yet in any tagged GHCR release of WVA. Pin to the custom
+      # build that has #1145 baked in until it ships in v0.7.x or later.
+      image:
+        repository: quay.io/braulio/llm-d-wva
+        tag: v4
+
+      replicaCount: 1
+      controller:
+        enabled: true
+      namespaceScoped: true
+
+      metrics:
+        enabled: true
+        port: 8443
+        secure: true
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      variantAutoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 4              # tighter than guide (10) for cheaper CI runs
+        variantCost: "10.0"
+        slo:
+          tpot: 10
+          ttft: 1000
+
+      hpa:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 4              # match VA cap
+        targetAvgValue: 1
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 60     # snappier than guide (120s) so
+                                                # CI sees scale events within
+                                                # the window
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+          scaleDown:
+            stabilizationWindowSeconds: 60
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+
+      vllmService:
+        enabled: false
+
+    # =========================================================================
+    # CHART VERSIONS
+    # =========================================================================
+    chartVersions:
+      wva: 0.6.0
+      prometheusAdapter: 5.2.0
+
+    # =========================================================================
+    # ROUTING / GAIE
+    # WVA needs the EPP's flowControl gate on so queue-depth metrics flow.
+    # Match guides/workload-autoscaling.yaml's plugins config exactly.
+    # =========================================================================
+    inferenceExtension:
+      pluginsConfigFile: "wva-plugins.yaml"
+      pluginsCustomConfig:
+        wva-plugins.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          featureGates:
+            - flowControl
+          plugins:
+            - type: queue-scorer
+            - type: kv-cache-utilization-scorer
+            - type: prefix-cache-scorer
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: kv-cache-utilization-scorer
+                  weight: 2
+                - pluginRef: prefix-cache-scorer
+                  weight: 3
+
+    # =========================================================================
+    # PREFILL / DECODE
+    # decode.replicas: 0 — modelservice's decode Deployment is not created.
+    # FMA owns the elastic vLLM tier. vLLM port defaults to 8000, matching
+    # the FMA InferenceServerConfig in 24_fma-deployment.yaml.j2 — no
+    # decode.vllm.servicePort override needed.
+    # =========================================================================
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 0
+
+    # =========================================================================
+    # VLLM COMMON
+    # =========================================================================
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical    # match cicd/ocp.yaml
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+
+    # =========================================================================
+    # WORKDIR + HARNESS
+    # Default harness mirrors what someone running the guide manually uses
+    # (inference-perf + shared_prefix_synthetic.yaml) so a CI run validates
+    # the same end-to-end path: real load -> vLLM metrics -> WVA controller
+    # -> prometheus-adapter -> HPA -> FMA scale events.
+    # =========================================================================
+    workDir: /tmp/llmdbenchcicd-ocp-fma-wva/
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
