@@ -79,7 +79,7 @@ tool_version_for() {
         yq)        echo "v4.53.3" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v3.19.0" ;;
-        helm-diff) echo "v3.13.0" ;;
+        helm-diff) echo "v3.15.7" ;;
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.6"  ;;
