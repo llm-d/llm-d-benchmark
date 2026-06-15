@@ -42,7 +42,7 @@ design:
 
       - name: routing_plugins
         key: inferenceExtension.pluginsConfigFile
-        levels: [default-plugins.yaml, optimized-baseline-plugins.yaml, active-request-plugins.yaml]
+        levels: [default-plugins.yaml, optimized-baseline-plugins.yaml, active-request-plugins.yaml, session-affinity-plugins.yaml]
         description: EPP routing plugin configuration
 
   run:
@@ -66,9 +66,9 @@ design:
       - key: server.ignore_eos
         value: true
 
-  total_setup_treatments: 14
+  total_setup_treatments: 16
   total_run_treatments: 1
-  total_matrix: 14
+  total_matrix: 16
 
   response_variables:
     - Achieved QPS (throughput ceiling)
@@ -113,6 +113,16 @@ setup:
       inferenceExtension.replicas: 1
       inferenceExtension.resources.requests.cpu: "4"
       inferenceExtension.pluginsConfigFile: "active-request-plugins.yaml"
+
+    - name: 1r-session-affinity
+      inferenceExtension.replicas: 1
+      inferenceExtension.resources.requests.cpu: "4"
+      inferenceExtension.pluginsConfigFile: "session-affinity-plugins.yaml"
+
+    - name: 4r-session-affinity
+      inferenceExtension.replicas: 4
+      inferenceExtension.resources.requests.cpu: "4"
+      inferenceExtension.pluginsConfigFile: "session-affinity-plugins.yaml"
 
     # --- CPU sizing (default routing) ---
     - name: 1r-1cpu

@@ -21,6 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="${NAMESPACE:-epp-benchmark}"
 EPP_RELEASE="${EPP_RELEASE:-epp-benchmark}"
 EPP_TAG="${EPP_TAG:-v0.8.0}"
+EPP_IMAGE_REPO="${EPP_IMAGE_REPO:-llm-d/llm-d-inference-scheduler}"
 SIM_IMAGE="${SIM_IMAGE:-ghcr.io/llm-d/llm-d-inference-sim:v0.8.0}"
 VLLM_IMAGE="${VLLM_IMAGE:-vllm/vllm-openai:v0.19.1}"
 BENCH_IMAGE="${BENCH_IMAGE:-ghcr.io/llm-d/llm-d-benchmark:v0.6.0}"
@@ -49,7 +50,7 @@ Options:
   -c, --config FILE       inference-perf config YAML (required unless --cleanup)
   -r, --replicas N        EPP replica count (default: 1)
   --cpu REQUEST           EPP CPU request (e.g., '4', default: no request)
-  --routing STRATEGY      Routing strategy: default|optimized-baseline|active-request (default: default)
+  --routing STRATEGY      Routing strategy: default|optimized-baseline|active-request|session-affinity (default: default)
   --gpu                   Use real vLLM on GPUs instead of simulators
   --model NAME            Model name for GPU mode (default: meta-llama/Llama-3.1-8B-Instruct)
   --model-replicas N      Model server replica count (default: 3)
@@ -154,6 +155,27 @@ schedulingProfiles:
   - pluginRef: max-score-picker
 PLUGINS
             ;;
+        session-affinity)
+            cat <<'PLUGINS'
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+- type: session-affinity-filter
+- type: kv-cache-utilization-scorer
+- type: prefix-cache-scorer
+- type: no-hit-lru-scorer
+schedulingProfiles:
+- name: default
+  plugins:
+  - pluginRef: session-affinity-filter
+  - pluginRef: kv-cache-utilization-scorer
+    weight: 2
+  - pluginRef: prefix-cache-scorer
+    weight: 3
+  - pluginRef: no-hit-lru-scorer
+    weight: 2
+PLUGINS
+            ;;
         *)
             echo "Error: unknown routing strategy: ${ROUTING}" >&2
             exit 1
@@ -168,7 +190,7 @@ HELM_ARGS=(
     --namespace "${NAMESPACE}"
     --set inferencePool.modelServers.matchLabels.app=benchmark-model
     --set inferenceExtension.image.registry=ghcr.io
-    --set inferenceExtension.image.repository=llm-d/llm-d-inference-scheduler
+    --set inferenceExtension.image.repository="${EPP_IMAGE_REPO}"
     --set inferenceExtension.image.tag="${EPP_TAG}"
     --set inferenceExtension.replicas=1
     --set inferenceExtension.resources.requests.memory="${EPP_MEMORY_REQUEST}"
@@ -183,8 +205,10 @@ fi
 PLUGINS_CONFIG=$(get_plugins_config)
 if [[ -n "${PLUGINS_CONFIG}" ]]; then
     PLUGINS_FILE="${ROUTING}-plugins.yaml"
+    PLUGINS_TMP=$(mktemp /tmp/plugins-XXXXXX.yaml)
+    echo "${PLUGINS_CONFIG}" > "${PLUGINS_TMP}"
     HELM_ARGS+=(--set "inferenceExtension.pluginsConfigFile=${PLUGINS_FILE}")
-    HELM_ARGS+=(--set "inferenceExtension.pluginsCustomConfig.${PLUGINS_FILE}=${PLUGINS_CONFIG}")
+    HELM_ARGS+=(--set-file "inferenceExtension.pluginsCustomConfig.${PLUGINS_FILE}=${PLUGINS_TMP}")
 fi
 
 if helm status "${EPP_RELEASE}" -n "${NAMESPACE}" &>/dev/null; then
@@ -192,6 +216,7 @@ if helm status "${EPP_RELEASE}" -n "${NAMESPACE}" &>/dev/null; then
     sleep 5
 fi
 helm install "${EPP_RELEASE}" "${CHART_URL}" --dependency-update "${HELM_ARGS[@]}"
+[[ -n "${PLUGINS_TMP:-}" ]] && rm -f "${PLUGINS_TMP}"
 
 # --- Step 2: Deploy model servers ---
 if [[ "${USE_GPU}" == "true" ]]; then
