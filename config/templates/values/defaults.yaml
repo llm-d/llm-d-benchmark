@@ -109,7 +109,7 @@ _anchors:
   router_chart_version:              &router_chart_version              v0
   wva_version:                       &wva_version                       0.6.0
   prometheus_version:                &prometheus_version                5.3.0
-  vllm-openai_version:               &vllm-openai_version               v0.22.1
+  vllm-openai_version:               &vllm-openai_version               v0.23.0
   # The llm-d-router-endpoint-picker-dev image replaces the previous
   # llm-d-inference-scheduler image used by the GAIE charts. Kept as a
   # separate anchor so benchmark overrides can still target the legacy
