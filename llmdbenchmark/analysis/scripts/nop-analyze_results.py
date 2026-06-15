@@ -348,6 +348,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
             pandas_datas.append(
                 {
                     "Iteration": iteration["iteration"]["value"],
+                    "vLLM Name": launcher_info["name"],
                     "Node": node,
                     "Actuation Condition": actuation_condition,
                     "T_actuation(s)": ttrr,
