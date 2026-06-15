@@ -29,7 +29,7 @@ on:
         type: 'string'
         default: 'auto'
       accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu-v6, tpu-v7) (ONLY VALID FOR "kustomize" standyp method)'
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, hpu, tpu/v6, tpu/v7) (ONLY VALID FOR "kustomize" standyp method)'
         required: false
         type: 'string'
         default: 'gpu'
@@ -158,11 +158,11 @@ on:
         required: false
         type: 'string'
         default: '2700s'
-      kustomize_standup_timeout:
-        description: 'Timeout in seconds for kustomize standup deploy'
+      standup_timeout:
+        description: 'Timeout in seconds for standup of a new llm-d stack'
         required: false
         type: 'string'
-        default: '1200'
+        default: '2400'
 
 #  push:
 #    branches:
@@ -266,7 +266,7 @@ jobs:
   skip-v7-warning:
     name: Skip TPU v7 Run
     runs-on: ubuntu-latest
-    if: inputs.accelerator_type == 'tpu-v7'
+    if: inputs.accelerator_type == 'tpu/v7' || inputs.accelerator_type == 'tpu-v7'
     steps:
       - name: Print skip message
         run: |
@@ -280,7 +280,7 @@ jobs:
 #    container:
 #      image: ghcr.io/llm-d/llm-d-benchmark:nightly
     needs: [ensure-nightly-build-image]
-    if: inputs.accelerator_type != 'tpu-v7'
+    if: inputs.accelerator_type != 'tpu/v7' && inputs.accelerator_type != 'tpu-v7'
     timeout-minutes: 240
 
     env:
@@ -298,7 +298,9 @@ jobs:
       LLMDBENCH_CICD_CLEANUP: ${{ inputs.cleanup || 'true' }}
       LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT: ${{ inputs.data_access_timeout || '1200' }}
       LLMDBENCH_CICD_JOB_TIMEOUT: ${{ inputs.job_timeout || '2700s' }}
-      LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: ${{ inputs.kustomize_standup_timeout || '1200' }}
+      LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT: ${{ inputs.standup_timeout || '2400' }}
+      LLMDBENCH_CICD_MODELSERVICE_STANDUP_TIMEOUT: ${{ inputs.standup_timeout || '2400' }}
+      LLMDBENCH_CICD_STANDALONE_STANDUP_TIMEOUT: ${{ inputs.standup_timeout || '2400' }}
       LLMDBENCH_CICD_RUN_WAIT_TIMEOUT: ${{ inputs.wait_timeout || '3600' }}
       LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT: ${{ inputs.pvc_bind_timeout || '1200' }}
       LLMDBENCH_CICD_DECODE_PODS: ${{ inputs.decode_pods || 'auto' }}
@@ -478,10 +480,10 @@ jobs:
         run: |
           kubectl create namespace "$LLMDBENCH_CICD_NS" || echo "Namespace already exists"
 
-          # Map accelerator_type (tpu-v6, tpu-v7) to GKE accelerator resource name
-          if [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v6" ]]; then
+          # Map accelerator_type (tpu/v6, tpu-v6, tpu/v7, tpu-v7) to GKE accelerator resource name
+          if [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu/v6" || "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v6" ]]; then
             ACCELERATOR="tpu-v6e-slice"
-          elif [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v7" ]]; then
+          elif [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu/v7" || "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v7" ]]; then
             ACCELERATOR="tpu7x"
           else
             echo "::error::Unsupported TPU accelerator type: $LLMDBENCH_CICD_ACCELERATOR"
@@ -778,7 +780,7 @@ jobs:
             export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
           fi
           if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT --modelservice-deploy-timeout $LLMDBENCH_CICD_MODELSERVICE_STANDUP_TIMEOUT --standalone-deploy-timeout $LLMDBENCH_CICD_STANDALONE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
           fi
           export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--wait-timeout $LLMDBENCH_CICD_RUN_WAIT_TIMEOUT --pvc-bind-timeout $LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT --data-access-timeout $LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
           if [[ ! -z $LLMDBENCH_CICD_DETECTED_MODEL ]]; then
