@@ -80,7 +80,7 @@ You should now have a directory tree that includes the following:
 ├── logs
 │   ├── 06_deploy_vllm_standalone_models.log
 │   ├── 07_deploy_setup.log
-│   ├── 08_deploy_gaie.log
+│   ├── 08_deploy_router.log
 │   └── step.log
 └── results
     └── guidellm_1762460407-none_llm-d-2b-instruct
@@ -163,7 +163,7 @@ And see results in the output directory `~/data/shared-prefix-cache-aware`
 ├── logs
 │   ├── 06_deploy_vllm_standalone_models.log
 │   ├── 07_deploy_setup.log
-│   ├── 08_deploy_gaie.log
+│   ├── 08_deploy_router.log
 │   └── step.log
 ├── results
 │   ├── inference-perf_1762875210_llm-d-32b-base
@@ -200,7 +200,7 @@ And see results in the output directory `~/data/shared-prefix-cache-aware`
 ## PD Disaggregation with vllm-benchmark
 
 - Scenario: [pd-disaggregation.sh](./scenarios/pd-disaggregation.sh)
-- Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/workload/experiments/pd-disaggregation.yaml)
+- Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/experiments/pd-disaggregation.yaml)
 
 Command (from `llm-d-benchmark` root directory):
 
@@ -260,8 +260,8 @@ You should see that prefill and decode pods are up and running:
 
 ```
 2025-09-23 15:51:26 : 🔄 Processing model 1/1: meta-llama/Llama-3.1-8B-Instruct
-2025-09-23 15:51:26 : 🚀 Installing helm chart "gaie-nam-release" via helmfile...
-2025-09-23 15:51:28 : ✅ ai-workloads-meta-lla-1b4505f6-instruct-gaie helm chart deployed successfully
+2025-09-23 15:51:26 : 🚀 Installing helm chart "router-nam-release" via helmfile...
+2025-09-23 15:51:28 : ✅ ai-workloads-meta-lla-1b4505f6-instruct-router helm chart deployed successfully
 2025-09-23 15:51:28 : ℹ️ A snapshot of the relevant (model-specific) resources on namespace "ai-workloads":
 2025-09-23 15:51:29 : ✅ Completed model deployment
 ```
@@ -290,7 +290,7 @@ The experiment will take some time to run to completion. You may decrease the ex
 ├── logs
 │   ├── 06_deploy_vllm_standalone_models.log
 │   ├── 07_deploy_setup.log
-│   ├── 08_deploy_gaie.log
+│   ├── 08_deploy_router.log
 │   └── step.log
 └── results
     └── vllm-benchmark_1758657030-setup_modelservice_NA_NA_1_4_3_4-run_1_10_llm-d-70b-instruct

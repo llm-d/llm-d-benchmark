@@ -132,11 +132,12 @@ def upstream_for_python_pkg(name: str) -> str:
 @dataclass(frozen=True)
 class Entry:
     """A single SBOM row -- shared shape across all four tables."""
+
     name: str
     pin: str
     pin_type: str
-    location: str       # e.g. "`install.sh` line 326 (`install_yq_linux`)"
-    upstream: str       # markdown link or "(unknown)"
+    location: str  # e.g. "`install.sh` line 326 (`install_yq_linux`)"
+    upstream: str  # markdown link or "(unknown)"
 
 
 # --------------------------------------------------------------------------- #
@@ -155,10 +156,17 @@ class _StdLogger:
             self._log.addHandler(handler)
         self._log.setLevel(logging.INFO if verbose else logging.WARNING)
 
-    def log_info(self, msg: str) -> None: self._log.info(msg)
-    def log_warning(self, msg: str) -> None: self._log.warning(msg)
-    def log_error(self, msg: str) -> None: self._log.error(msg)
-    def log_debug(self, msg: str) -> None: self._log.debug(msg)
+    def log_info(self, msg: str) -> None:
+        self._log.info(msg)
+
+    def log_warning(self, msg: str) -> None:
+        self._log.warning(msg)
+
+    def log_error(self, msg: str) -> None:
+        self._log.error(msg)
+
+    def log_debug(self, msg: str) -> None:
+        self._log.debug(msg)
 
 
 # --------------------------------------------------------------------------- #
@@ -171,22 +179,14 @@ _VERSION_LINE_RE = re.compile(
 _INSTALL_FN_RE = re.compile(
     r"^\s*install_(?P<tool>[a-zA-Z0-9_-]+?)_(?:linux|mac)\s*\(\s*\)\s*\{?\s*$"
 )
-_TOOLS_VAR_RE = re.compile(
-    r"^\s*tools=(?P<q>[\"'])(?P<list>[^\"']+)(?P=q)\s*$"
-)
-_PLANNER_RE = re.compile(
-    r'^\s*PLANNER_GIT="(?P<url>git\+https://[^"]+)"\s*$'
-)
-_HELM_DIFF_RE = re.compile(
-    r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)"
-)
+_TOOLS_VAR_RE = re.compile(r"^\s*tools=(?P<q>[\"'])(?P<list>[^\"']+)(?P=q)\s*$")
+_PLANNER_RE = re.compile(r'^\s*PLANNER_GIT="(?P<url>git\+https://[^"]+)"\s*$')
+_HELM_DIFF_RE = re.compile(r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)")
 # `tool_version_for()` is the authoritative pin table. Its case arms look
 # like:  helm)      echo "v4.2.0" ;;   -- this is the source of truth for
 # helm/helmfile/helm-diff/etc., which the install_<tool>_linux scrape misses
 # (helm uses no `local version=`, helmfile uses a command substitution).
-_TOOL_VERSION_FOR_FN_RE = re.compile(
-    r"^\s*tool_version_for\s*\(\s*\)\s*\{"
-)
+_TOOL_VERSION_FOR_FN_RE = re.compile(r"^\s*tool_version_for\s*\(\s*\)\s*\{")
 _TOOL_VERSION_FOR_ARM_RE = re.compile(
     r'^\s*(?P<tool>[a-zA-Z0-9_-]+)\)\s*echo\s+"?(?P<val>[^\s";]*)"?\s*;;'
 )
@@ -214,7 +214,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     helm_diff_line: int | None = None
 
     current_fn: str | None = None
-    current_fn_line: int = 0 # noqa: F841
+    current_fn_line: int = 0  # noqa: F841
     in_tvf: bool = False
     rel = install_sh_path.name
 
@@ -235,7 +235,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
         m = _INSTALL_FN_RE.match(raw)
         if m:
             current_fn = m.group("tool")
-            current_fn_line = i # noqa: F841
+            current_fn_line = i  # noqa: F841
             continue
 
         if current_fn:
@@ -268,71 +268,83 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     for tool in sorted(tools_seen):
         if tool in version_for:
             version, line_num = version_for[tool]
-            out.append(Entry(
-                name=tool,
-                pin=version,
-                pin_type="version",
-                location=f"`{rel}` line {line_num} (`tool_version_for`)",
-                upstream=upstream_for_system_tool(tool),
-            ))
+            out.append(
+                Entry(
+                    name=tool,
+                    pin=version,
+                    pin_type="version",
+                    location=f"`{rel}` line {line_num} (`tool_version_for`)",
+                    upstream=upstream_for_system_tool(tool),
+                )
+            )
         elif tool in pinned:
             version, line_num, fn_name = pinned[tool]
-            out.append(Entry(
-                name=tool,
-                pin=version,
-                pin_type="version",
-                location=f"`{rel}` line {line_num} (`{fn_name}`)",
-                upstream=upstream_for_system_tool(tool),
-            ))
+            out.append(
+                Entry(
+                    name=tool,
+                    pin=version,
+                    pin_type="version",
+                    location=f"`{rel}` line {line_num} (`{fn_name}`)",
+                    upstream=upstream_for_system_tool(tool),
+                )
+            )
         else:
             # Tool is required but its version is whatever the host provides.
-            out.append(Entry(
-                name=tool,
-                pin="system-provided",
-                pin_type="system-provided",
-                location=f"`{rel}`: `command -v` check (no pin)",
-                upstream=upstream_for_system_tool(tool),
-            ))
+            out.append(
+                Entry(
+                    name=tool,
+                    pin="system-provided",
+                    pin_type="system-provided",
+                    location=f"`{rel}`: `command -v` check (no pin)",
+                    upstream=upstream_for_system_tool(tool),
+                )
+            )
 
     # helm-diff plugin is installed via `helm plugin install`. Prefer the
     # pinned version from tool_version_for(); fall back to "latest" only if
     # no pin is recorded there.
     if "helm-diff" in version_for:
         hd_version, hd_line = version_for["helm-diff"]
-        out.append(Entry(
-            name="helm-diff",
-            pin=hd_version,
-            pin_type="plugin (version)",
-            location=f"`{rel}` line {hd_line} (`tool_version_for`)",
-            upstream=upstream_for_system_tool("helm-diff"),
-        ))
+        out.append(
+            Entry(
+                name="helm-diff",
+                pin=hd_version,
+                pin_type="plugin (version)",
+                location=f"`{rel}` line {hd_line} (`tool_version_for`)",
+                upstream=upstream_for_system_tool("helm-diff"),
+            )
+        )
     else:
-        out.append(Entry(
-            name="helm-diff",
-            pin="latest",
-            pin_type="plugin (latest)",
-            location=(
-                f"`{rel}` line {helm_diff_line} (`helm_diff_url`)"
-                if helm_diff_line is not None
-                else f"`{rel}`: `helm plugin install`"
-            ),
-            upstream=upstream_for_system_tool("helm-diff"),
-        ))
+        out.append(
+            Entry(
+                name="helm-diff",
+                pin="latest",
+                pin_type="plugin (latest)",
+                location=(
+                    f"`{rel}` line {helm_diff_line} (`helm_diff_url`)"
+                    if helm_diff_line is not None
+                    else f"`{rel}`: `helm plugin install`"
+                ),
+                upstream=upstream_for_system_tool("helm-diff"),
+            )
+        )
 
     # Planner git pin (record under system tools because it's pinned in install.sh).
     if planner_url:
         sha = planner_url.split("@")[-1] if "@" in planner_url else "(no sha)"
-        out.append(Entry(
-            name="llm-d-planner (git)",
-            pin=sha,
-            pin_type="commit SHA",
-            location=(
-                f"`{rel}` line {planner_line} (`PLANNER_GIT`)"
-                if planner_line is not None
-                else f"`{rel}` (`PLANNER_GIT`)"
-            ),
-            upstream=upstream_for_system_tool("llm-d-planner (git)"),
-        ))
+        out.append(
+            Entry(
+                name="llm-d-planner (git)",
+                pin=sha,
+                pin_type="commit SHA",
+                location=(
+                    f"`{rel}` line {planner_line} (`PLANNER_GIT`)"
+                    if planner_line is not None
+                    else f"`{rel}` (`PLANNER_GIT`)"
+                ),
+                upstream=upstream_for_system_tool("llm-d-planner (git)"),
+            )
+        )
 
     return sorted(out, key=lambda t: t.name.lower())
 
@@ -392,13 +404,15 @@ def parse_pyproject_dependencies(
         name, spec = m.group(1), m.group(2).strip()
         line_num = line_map.get(name.lower())
         loc = f"`{rel}` line {line_num}" if line_num else f"`{rel}` (`dependencies`)"
-        entries.append(Entry(
-            name=name,
-            pin=spec or "(unpinned)",
-            pin_type="constraint" if spec else "(unpinned)",
-            location=loc,
-            upstream=upstream_for_python_pkg(name),
-        ))
+        entries.append(
+            Entry(
+                name=name,
+                pin=spec or "(unpinned)",
+                pin_type="constraint" if spec else "(unpinned)",
+                location=loc,
+                upstream=upstream_for_python_pkg(name),
+            )
+        )
     return sorted(entries, key=lambda e: e.name.lower()), line_map
 
 
@@ -422,7 +436,10 @@ def collect_pip_freeze(
     try:
         result = subprocess.run(
             [str(venv_python), "-m", "pip", "freeze"],
-            capture_output=True, text=True, check=True, timeout=30,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         sys.stderr.write(f"warning: pip freeze failed ({exc})\n")
@@ -459,13 +476,15 @@ def collect_pip_freeze(
             loc = f"`{pyproj_rel}` line {line_num} (direct)"
         else:
             loc = "(transitive in `.venv`)"
-        entries.append(Entry(
-            name=name,
-            pin=pin,
-            pin_type=pin_type,
-            location=loc,
-            upstream=upstream_for_python_pkg(name),
-        ))
+        entries.append(
+            Entry(
+                name=name,
+                pin=pin,
+                pin_type=pin_type,
+                location=loc,
+                upstream=upstream_for_python_pkg(name),
+            )
+        )
     return sorted(entries, key=lambda e: e.name.lower())
 
 
@@ -475,7 +494,8 @@ def collect_pip_freeze(
 
 
 def _find_block_child_lines(
-    yaml_text: str, top_key: str,
+    yaml_text: str,
+    top_key: str,
 ) -> dict[str, int]:
     """Map immediate child keys of ``top_key:`` to their 1-based line numbers."""
     out: dict[str, int] = {}
@@ -487,7 +507,11 @@ def _find_block_child_lines(
         if not stripped or stripped.startswith("#"):
             continue
         indent = len(line) - len(stripped)
-        if indent == 0 and stripped.rstrip(":").strip() == top_key and stripped.endswith(":"):
+        if (
+            indent == 0
+            and stripped.rstrip(":").strip() == top_key
+            and stripped.endswith(":")
+        ):
             in_block = True
             block_indent = None
             continue
@@ -546,7 +570,9 @@ def collect_helm_charts(
                 pin_type = "tag (auto, unresolved)"
             else:
                 try:
-                    resolved = resolver.resolve_chart_version(repo_name, repo_url=repo_url)
+                    resolved = resolver.resolve_chart_version(
+                        repo_name, repo_url=repo_url
+                    )
                     pin_type = "tag (auto-resolved)"
                 except Exception as exc:
                     resolved = f"auto (resolution failed: {_short_err(exc)})"
@@ -565,13 +591,15 @@ def collect_helm_charts(
         if repo_url and upstream != "(unknown)":
             upstream = f"{upstream} (`{repo_url}`)"
 
-        out.append(Entry(
-            name=chart_key,
-            pin=resolved,
-            pin_type=pin_type,
-            location=loc,
-            upstream=upstream,
-        ))
+        out.append(
+            Entry(
+                name=chart_key,
+                pin=resolved,
+                pin_type=pin_type,
+                location=loc,
+                upstream=upstream,
+            )
+        )
     return sorted(out, key=lambda e: e.name.lower())
 
 
@@ -630,13 +658,15 @@ def collect_container_images(
         if repo and upstream != "(unknown)":
             upstream = f"{upstream} (`{repo}`)"
 
-        out.append(Entry(
-            name=image_key,
-            pin=resolved_tag,
-            pin_type=pin_type,
-            location=loc,
-            upstream=upstream,
-        ))
+        out.append(
+            Entry(
+                name=image_key,
+                pin=resolved_tag,
+                pin_type=pin_type,
+                location=loc,
+                upstream=upstream,
+            )
+        )
     return sorted(out, key=lambda e: e.name.lower())
 
 
@@ -657,6 +687,7 @@ def _make_resolver(resolver_factory: Any):
     if resolver_factory is not None:
         return resolver_factory(_StdLogger())
     from llmdbenchmark.parser.version_resolver import VersionResolver
+
     return VersionResolver(logger=_StdLogger())
 
 
@@ -710,7 +741,13 @@ def render_markdown(
     helm_charts = sorted(helm_charts, key=lambda e: e.name.lower())
     container_images = sorted(container_images, key=lambda e: e.name.lower())
 
-    headers = ("Dependency", "Current Pin", "Pin Type", "File Location", "Upstream Repo")
+    headers = (
+        "Dependency",
+        "Current Pin",
+        "Pin Type",
+        "File Location",
+        "Upstream Repo",
+    )
 
     parts: list[str] = []
     parts.append("# Upstream Dependency Version Tracking\n")
@@ -766,7 +803,9 @@ def render_markdown(
             "annotated with their `pyproject.toml` line.\n"
         )
         parts.append("<details>")
-        parts.append("<summary>Click to expand the full pip-freeze snapshot</summary>\n")
+        parts.append(
+            "<summary>Click to expand the full pip-freeze snapshot</summary>\n"
+        )
         parts.append(_md_table(headers, _entries_to_rows(py_installed)))
         parts.append("</details>")
 
@@ -782,8 +821,11 @@ def _git_sha(repo_root: Path) -> str:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=repo_root, capture_output=True, text=True,
-            check=True, timeout=5,
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
         )
         return result.stdout.strip()
     except Exception:
@@ -813,10 +855,14 @@ def build_sbom(
     py_direct, direct_line_map = parse_pyproject_dependencies(pyproject)
     py_installed = collect_pip_freeze(venv_python, direct_line_map, pyproject)
     helm_charts = collect_helm_charts(
-        defaults, resolve=resolve, resolver_factory=resolver_factory,
+        defaults,
+        resolve=resolve,
+        resolver_factory=resolver_factory,
     )
     container_images = collect_container_images(
-        defaults, resolve=resolve, resolver_factory=resolver_factory,
+        defaults,
+        resolve=resolve,
+        resolver_factory=resolver_factory,
     )
 
     generated_at = (
@@ -838,7 +884,8 @@ def build_sbom(
 def _strip_volatile(content: str) -> str:
     """Drop the timestamp + git-sha header lines so --check ignores them."""
     return "\n".join(
-        line for line in content.splitlines()
+        line
+        for line in content.splitlines()
         if not line.startswith("- Generated at:")
         and not line.startswith("- Generated against git ref:")
     )
@@ -847,19 +894,25 @@ def _strip_volatile(content: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument(
-        "--output", type=Path, default=_REPO_ROOT / "docs" / "upstream-versions.md",
+        "--output",
+        type=Path,
+        default=_REPO_ROOT / "docs" / "upstream-versions.md",
         help="Where to write the SBOM (default: SBOM.md at repo root).",
     )
     parser.add_argument(
-        "--no-resolve", action="store_true",
+        "--no-resolve",
+        action="store_true",
         help="Skip network calls. Mark `auto` entries as 'resolution skipped'.",
     )
     parser.add_argument(
-        "--check", action="store_true",
+        "--check",
+        action="store_true",
         help="Regenerate; exit non-zero if the file changed (precommit mode).",
     )
     parser.add_argument(
-        "--repo-root", type=Path, default=_REPO_ROOT,
+        "--repo-root",
+        type=Path,
+        default=_REPO_ROOT,
         help="Repository root (default: parent of util/).",
     )
     args = parser.parse_args(argv)
@@ -867,7 +920,9 @@ def main(argv: list[str] | None = None) -> int:
     new_content = build_sbom(args.repo_root, resolve=not args.no_resolve)
 
     if args.check:
-        existing = args.output.read_text(encoding="utf-8") if args.output.exists() else ""
+        existing = (
+            args.output.read_text(encoding="utf-8") if args.output.exists() else ""
+        )
         if _strip_volatile(existing) == _strip_volatile(new_content):
             return 0
         args.output.write_text(new_content, encoding="utf-8")

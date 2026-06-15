@@ -56,9 +56,7 @@ class AnalyzeResultsStep(Step):
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
-                message=(
-                    f"[DRY RUN] Would analyze {len(subdirs)} result set(s)"
-                ),
+                message=(f"[DRY RUN] Would analyze {len(subdirs)} result set(s)"),
             )
 
         # Run analysis for each result sub-directory
@@ -69,9 +67,7 @@ class AnalyzeResultsStep(Step):
             if not result_subdir.is_dir():
                 continue
 
-            context.logger.log_info(
-                f"Analyzing {result_subdir.name}...", emoji="🔍"
-            )
+            context.logger.log_info(f"Analyzing {result_subdir.name}...", emoji="🔍")
 
             err = run_analysis(harness_name, result_subdir, context)
             if err:
@@ -111,9 +107,7 @@ class AnalyzeResultsStep(Step):
                         emoji="📊",
                     )
             except Exception as exc:
-                context.logger.log_warning(
-                    f"Cross-treatment comparison failed: {exc}"
-                )
+                context.logger.log_warning(f"Cross-treatment comparison failed: {exc}")
 
         return StepResult(
             step_number=self.number,

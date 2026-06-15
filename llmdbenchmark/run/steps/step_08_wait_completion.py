@@ -52,9 +52,7 @@ class WaitCompletionStep(Step):
 
         # No-wait mode
         if timeout == 0:
-            context.logger.log_info(
-                "Wait timeout is 0 -- returning immediately"
-            )
+            context.logger.log_info("Wait timeout is 0 -- returning immediately")
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
@@ -89,9 +87,7 @@ class WaitCompletionStep(Step):
 
         # Wait for each pod
         for pod_name in pod_names:
-            result = wait_for_pod(
-                cmd, pod_name, harness_ns, timeout, context
-            )
+            result = wait_for_pod(cmd, pod_name, harness_ns, timeout, context)
             if result == "Succeeded":
                 succeeded += 1
             elif result == "Failed":
@@ -101,14 +97,10 @@ class WaitCompletionStep(Step):
                 errors.append(f"Pod '{pod_name}': {result}")
 
         total = len(pod_names)
-        summary = (
-            f"{succeeded}/{total} succeeded, {failed}/{total} failed"
-        )
+        summary = f"{succeeded}/{total} succeeded, {failed}/{total} failed"
 
         if errors:
-            context.logger.log_warning(
-                f"Some harness pods had issues: {summary}"
-            )
+            context.logger.log_warning(f"Some harness pods had issues: {summary}")
             # Non-fatal -- partial results may still be available
             return StepResult(
                 step_number=self.number,
@@ -119,9 +111,7 @@ class WaitCompletionStep(Step):
                 stack_name=stack_name,
             )
 
-        context.logger.log_info(
-            f"All harness pods completed successfully ({summary})"
-        )
+        context.logger.log_info(f"All harness pods completed successfully ({summary})")
         return StepResult(
             step_number=self.number,
             step_name=self.name,

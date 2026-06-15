@@ -78,6 +78,11 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
     vllm_endpoint: str = ""
     ttft: float = 0.0
     actuation_condition: FMAActuationCondition | None = None
+    launcher_creation_timestamp: float = 0.0
+    launcher_node: str = ""
+    t_wake: float | None = None
+    t_instance_create: float | None = None
+    t_cold_launcher: float | None = None
 
     def dump(self) -> dict[str, Any]:
         """Convert FMALauncherInfo to dict.
@@ -102,9 +107,9 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
 class FMAActuationCondition(StrEnum):
     """Type of actuation"""
 
-    T_LUKE_WARM = "T_luke_warm"  # when new launcher created by DPC + new vllm
-    T_WARM = "T_warm"  # when existing launcher creates new vllm
-    T_HOT = "T_hot"  # when waking up sleeping vllm
+    T_COLD_LAUNCHER = "T_cold_launcher"  # DPC creates new launcher + new vllm
+    T_WARM = "T_warm"  # existing launcher creates new vllm
+    T_HOT = "T_hot"  # waking sleeping vllm
 
     def dump(self) -> str:
         """Convert FMAActuationCondition to str.
@@ -121,6 +126,9 @@ class FMAMetricsIteration:
 
     iteration: int
     launcher_infos: list[FMALauncherInfo]
+    hot_hit_rate: float = 0.0
+    warm_hit_rate: float = 0.0
+    cold_launcher_hit_rate: float = 0.0
 
     def dump(self) -> dict[str, Any]:
         """Convert FMAMetricsIteration to dict.
@@ -268,6 +276,12 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
                 launcher_info.container_name = container.name
                 launcher_info.name = engine.name
                 launcher_info.requester_info = requester_info
+                launcher_info.launcher_creation_timestamp = (
+                    launcher_pod.metadata.creation_timestamp.astimezone(
+                        timezone.utc
+                    ).timestamp()
+                )
+                launcher_info.launcher_node = launcher_pod.spec.node_name or ""
                 launcher_info.launcher_endpoint = (
                     f"http://{launcher_pod_ip}:{fma_launcher_port}"
                 )
@@ -832,12 +846,45 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                                     FMAActuationCondition.T_HOT
                                 )
 
-                        # TODO: Improve the warm/luke_warm check instead of pod name
                         if launcher_info.actuation_condition is None:
-                            launcher_info.actuation_condition = (
-                                FMAActuationCondition.T_WARM
-                                if launcher_info.name.startswith("launcher-fma-")
-                                else FMAActuationCondition.T_LUKE_WARM
+                            if (
+                                launcher_info.launcher_creation_timestamp > 0.0
+                                and launcher_info.requester_info.creation_timestamp
+                                > 0.0
+                                and launcher_info.launcher_creation_timestamp
+                                < launcher_info.requester_info.creation_timestamp
+                            ):
+                                launcher_info.actuation_condition = (
+                                    FMAActuationCondition.T_WARM
+                                )
+                            else:
+                                launcher_info.actuation_condition = (
+                                    FMAActuationCondition.T_COLD_LAUNCHER
+                                )
+
+                        # Compute per-path timing (upper bound via Kube timestamps)
+                        ready_ts = launcher_info.requester_info.ready_timestamp
+                        creation_ts = launcher_info.requester_info.creation_timestamp
+                        if (
+                            launcher_info.actuation_condition
+                            == FMAActuationCondition.T_HOT
+                            and ready_ts > 0.0
+                        ):
+                            launcher_info.t_wake = ready_ts - creation_ts
+                        elif (
+                            launcher_info.actuation_condition
+                            == FMAActuationCondition.T_WARM
+                            and ready_ts > 0.0
+                        ):
+                            launcher_info.t_instance_create = ready_ts - creation_ts
+                        elif (
+                            launcher_info.actuation_condition
+                            == FMAActuationCondition.T_COLD_LAUNCHER
+                            and ready_ts > 0.0
+                            and launcher_info.launcher_creation_timestamp > 0.0
+                        ):
+                            launcher_info.t_cold_launcher = (
+                                ready_ts - launcher_info.launcher_creation_timestamp
                             )
 
                     except Exception as e:
@@ -845,7 +892,27 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                             f"error on benchmark FMA '{launcher_info.name}' launcher"
                         ) from e
 
-                fma_metrics_iteration = FMAMetricsIteration(iteration, launcher_infos)
+                # Compute hit rates for this iteration
+                total = len(launcher_infos)
+                hot_count = sum(
+                    li.actuation_condition == FMAActuationCondition.T_HOT
+                    for li in launcher_infos
+                )
+                warm_count = sum(
+                    li.actuation_condition == FMAActuationCondition.T_WARM
+                    for li in launcher_infos
+                )
+                cold_count = sum(
+                    li.actuation_condition == FMAActuationCondition.T_COLD_LAUNCHER
+                    for li in launcher_infos
+                )
+                fma_metrics_iteration = FMAMetricsIteration(
+                    iteration,
+                    launcher_infos,
+                    hot_hit_rate=hot_count / total if total > 0 else 0.0,
+                    warm_hit_rate=warm_count / total if total > 0 else 0.0,
+                    cold_launcher_hit_rate=cold_count / total if total > 0 else 0.0,
+                )
                 fma_metrics.iterations.append(fma_metrics_iteration)
             finally:
                 logger.info("Benchmark FMA iteration '%d' end.", iteration)

@@ -46,7 +46,9 @@ class CollectResultsStep(Step):
         if not harness_ns:
             plan_config = self._load_stack_config(stack_path)
             harness_ns = self._resolve(
-                plan_config, "harness.namespace", "namespace.name",
+                plan_config,
+                "harness.namespace",
+                "namespace.name",
             )
         if not harness_ns:
             return StepResult(
@@ -68,7 +70,9 @@ class CollectResultsStep(Step):
         # Resolve results dir prefix
         plan_config = self._load_stack_config(stack_path)
         results_dir_prefix = self._resolve(
-            plan_config, "experiment.resultsDir", default="/requests",
+            plan_config,
+            "experiment.resultsDir",
+            default="/requests",
         )
 
         # Find the data-access pod
@@ -99,12 +103,12 @@ class CollectResultsStep(Step):
                 local_path = local_results_dir / exp_id
                 local_path.mkdir(parents=True, exist_ok=True)
 
-                context.logger.log_info(
-                    f"Collecting results: {exp_id}..."
-                )
+                context.logger.log_info(f"Collecting results: {exp_id}...")
 
                 result = cmd.kube(
-                    "cp", remote_path, str(local_path),
+                    "cp",
+                    remote_path,
+                    str(local_path),
                     namespace=harness_ns,
                     check=False,
                 )
@@ -119,27 +123,28 @@ class CollectResultsStep(Step):
                         )
                     else:
                         context.logger.log_warning(
-                            f"No files collected for {exp_id} "
-                            f"(directory may be empty)"
+                            f"No files collected for {exp_id} (directory may be empty)"
                         )
                 else:
                     errors.append(
-                        f"Failed to copy results for {exp_id}: "
-                        f"{result.stderr[:200]}"
+                        f"Failed to copy results for {exp_id}: {result.stderr[:200]}"
                     )
         else:
             # Discovery mode -- list what's in the results dir
             ls_result = cmd.kube(
-                "exec", data_pod,
-                "--namespace", harness_ns,
-                "--", "ls", "-1", results_dir_prefix,
+                "exec",
+                data_pod,
+                "--namespace",
+                harness_ns,
+                "--",
+                "ls",
+                "-1",
+                results_dir_prefix,
                 check=False,
             )
             if ls_result.success and ls_result.stdout.strip():
                 dirs = ls_result.stdout.strip().split("\n")
-                context.logger.log_info(
-                    f"Found {len(dirs)} result directories on PVC"
-                )
+                context.logger.log_info(f"Found {len(dirs)} result directories on PVC")
                 for dir_name in dirs:
                     dir_name = dir_name.strip()
                     if not dir_name:
@@ -149,7 +154,9 @@ class CollectResultsStep(Step):
                     local_path.mkdir(parents=True, exist_ok=True)
 
                     result = cmd.kube(
-                        "cp", remote_path, str(local_path),
+                        "cp",
+                        remote_path,
+                        str(local_path),
                         namespace=harness_ns,
                         check=False,
                     )
@@ -180,16 +187,13 @@ class CollectResultsStep(Step):
             context.logger.log_warning(f"Collection issue: {err}")
 
         context.logger.log_info(
-            f"Collected {total_collected} total file(s) to "
-            f"{local_results_dir}"
+            f"Collected {total_collected} total file(s) to {local_results_dir}"
         )
         return StepResult(
             step_number=self.number,
             step_name=self.name,
             success=True,
-            message=(
-                f"Collected {total_collected} file(s) for {stack_name}"
-            ),
+            message=(f"Collected {total_collected} file(s) for {stack_name}"),
             stack_name=stack_name,
         )
 

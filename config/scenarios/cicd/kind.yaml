@@ -58,9 +58,15 @@ scenario:
           cpu: "250m"
           memory: 256Mi
 
-    # Minimal EPP resources for Kind. The GAIE chart's upstream defaults
-    # (4 CPU / 8 GiB request, 16 GiB limit) won't fit on a Kind node;
-    # the EPP is a stateless gRPC scorer so this is plenty for CI.
+    # Minimal EPP + Envoy resources for Kind. The llm-d-router chart's
+    # upstream defaults (EPP: 4 CPU / 8 GiB req, 16 GiB limit; Envoy
+    # sidecar: same) won't fit on a Kind node; both are stateless and
+    # this is plenty for CI.
+    #
+    # `inferenceExtension.envoySidecar` is only honored by the renderer
+    # when `gateway.className: epponly` (the standalone-mode topology
+    # where the Envoy sidecar runs inside the EPP pod). The override
+    # lands at `router.proxy.resources` in the generated values.
     inferenceExtension:
       resources:
         requests:
@@ -69,6 +75,15 @@ scenario:
         limits:
           cpu: "1"
           memory: 1Gi
+
+      envoySidecar:
+        resources:
+          requests:
+            cpu: "50m"
+            memory: 128Mi
+          limits:
+            cpu: "500m"
+            memory: 512Mi
 
     # Install Prometheus CRDs on Kind (no Prometheus Operator by default)
     monitoring:

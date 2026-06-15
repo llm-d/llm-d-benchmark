@@ -1,17 +1,21 @@
 """Utility functions for the result store."""
 
+
 def color_pad(text: str, width: int, color_code: str = "31") -> str:
     """Pads text to a given width, handling ANSI color codes for 'missing' and '#'."""
     colored_text = str(text)
     if "missing" in colored_text:
-        colored_text = colored_text.replace("missing", f"\033[{color_code}mmissing\033[0m")
+        colored_text = colored_text.replace(
+            "missing", f"\033[{color_code}mmissing\033[0m"
+        )
     if "#" in colored_text:
         colored_text = colored_text.replace("#", f"\033[{color_code}m#\033[0m")
-        
+
     if colored_text != str(text):
         # If we added color codes, we need to calculate padding based on original text length
         return colored_text + " " * (width - len(str(text)))
     return f"{str(text):<{width}}"
+
 
 def parse_report_path(relative_name: str) -> dict:
     """Parses a relative GCS path into run metadata."""

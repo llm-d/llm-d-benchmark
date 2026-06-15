@@ -837,6 +837,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_data_access_timeout=int(
             getattr(args, "data_access_timeout", 120) or 120
         ),
+        pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -1227,11 +1228,13 @@ def _execute_experiment(args, logger):
             f"running a single cycle with spec defaults."
         )
 
-    # Wire experiment-level harness/profile as fallbacks for CLI args
+    # Wire experiment-level harness/profile/dataset as fallbacks for CLI args
     if experiment_plan.harness and not getattr(args, "harness", None):
         args.harness = experiment_plan.harness
     if experiment_plan.profile and not getattr(args, "workload", None):
         args.workload = experiment_plan.profile
+    if experiment_plan.dataset_url and not getattr(args, "dataset", None):
+        args.dataset = experiment_plan.dataset_url
 
     total_setup = len(experiment_plan.setup_treatments)
     total_run = experiment_plan.run_treatments_count

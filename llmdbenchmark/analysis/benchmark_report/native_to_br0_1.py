@@ -2016,6 +2016,124 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV01:
     return load_benchmark_report(br_dict)
 
 
+def _aiperf_percentiles(data: dict, ms_to_s: bool = False) -> dict:
+    """Extract percentile stats from an aiperf metric block.
+
+    Args:
+        data: aiperf metric dict with keys avg, p1, p5, ..., p99, min, max.
+        ms_to_s: If True, convert milliseconds to seconds.
+
+    Returns:
+        dict with keys matching the benchmark report percentile schema.
+    """
+    scale = 0.001 if ms_to_s else 1.0
+
+    def val(key):
+        v = data.get(key)
+        return v * scale if v is not None else None
+
+    return {
+        "mean": val("avg"),
+        "min": val("min"),
+        "p1": val("p1"),
+        "p5": val("p5"),
+        "p10": val("p10"),
+        "p25": val("p25"),
+        "p50": val("p50"),
+        "p75": val("p75"),
+        "p90": val("p90"),
+        "p95": val("p95"),
+        "p99": val("p99"),
+        "max": val("max"),
+    }
+
+
+def import_aiperf(results_file: str) -> BenchmarkReportV01:
+    """Import data from an aiperf run as a BenchmarkReportV01.
+
+    Args:
+        results_file (str): Results file to import (profile_export_aiperf.json).
+
+    Returns:
+        BenchmarkReportV01: Imported data.
+    """
+    check_file(results_file)
+
+    results = import_yaml(results_file)
+
+    br_dict = _get_llmd_benchmark_envars()
+    if br_dict:
+        model_name = get_nested(br_dict, ["scenario", "model", "name"])
+    else:
+        model_name = get_nested(
+            results, ["input_config", "endpoint", "model_names", 0], "unknown"
+        )
+
+    ttft = results.get("time_to_first_token", {})
+    itl = results.get("inter_token_latency", {})
+    req_lat = results.get("request_latency", {})
+    isl = results.get("input_sequence_length", {})
+    osl = results.get("output_sequence_length", {})
+
+    update_dict(
+        br_dict,
+        {
+            "version": "0.1",
+            "scenario": {
+                "model": {"name": model_name},
+                "load": {
+                    "name": WorkloadGenerator.AIPERF,
+                    "args": results.get("input_config", {}),
+                },
+            },
+            "metrics": {
+                "time": {
+                    "duration": get_nested(results, ["benchmark_duration", "avg"]),
+                },
+                "requests": {
+                    "total": int(get_nested(results, ["request_count", "avg"], 0)),
+                    "failures": len(results.get("error_summary", [])),
+                    "input_length": {
+                        "units": Units.COUNT,
+                        **_aiperf_percentiles(isl),
+                    },
+                    "output_length": {
+                        "units": Units.COUNT,
+                        **_aiperf_percentiles(osl),
+                    },
+                },
+                "latency": {
+                    "time_to_first_token": {
+                        "units": Units.S,
+                        **_aiperf_percentiles(ttft, ms_to_s=True),
+                    },
+                    "inter_token_latency": {
+                        "units": Units.S_PER_TOKEN,
+                        **_aiperf_percentiles(itl, ms_to_s=True),
+                    },
+                    "request_latency": {
+                        "units": Units.S,
+                        **_aiperf_percentiles(req_lat, ms_to_s=True),
+                    },
+                },
+                "throughput": {
+                    "output_tokens_per_sec": get_nested(
+                        results, ["output_token_throughput", "avg"]
+                    ),
+                    "total_tokens_per_sec": get_nested(
+                        results, ["total_token_throughput", "avg"]
+                    ),
+                    "requests_per_sec": get_nested(
+                        results, ["request_throughput", "avg"]
+                    ),
+                },
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)
+
+
 def import_inference_max(results_file: str) -> BenchmarkReportV01:
     """Import data from an InferenceMAX benchmark run as a BenchmarkReportV01.
 
@@ -2205,6 +2323,7 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 "deploy_methods": results["scenario"]["deploy_methods"],
                 "load_format": results["scenario"]["load_format"],
                 "sleep_mode": results["scenario"]["sleep_mode"],
+                "max_instances": results["scenario"].get("max_instances", 0),
                 "gpus": results["scenario"]["gpus"],
             },
         },
@@ -2430,9 +2549,41 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 info["launcher_endpoint"] = launcher_info["launcher_endpoint"]
                 info["vllm_endpoint"] = launcher_info["vllm_endpoint"]
                 info["ttft"] = {"units": Units.S, "value": launcher_info["ttft"]}
+                info["launcher_creation_timestamp"] = {
+                    "units": Units.S,
+                    "value": launcher_info.get("launcher_creation_timestamp", 0.0),
+                }
+                info["launcher_node"] = launcher_info.get("launcher_node", "")
+                if launcher_info.get("t_wake") is not None:
+                    info["t_wake"] = {
+                        "units": Units.S,
+                        "value": launcher_info["t_wake"],
+                    }
+                if launcher_info.get("t_instance_create") is not None:
+                    info["t_instance_create"] = {
+                        "units": Units.S,
+                        "value": launcher_info["t_instance_create"],
+                    }
+                if launcher_info.get("t_cold_launcher") is not None:
+                    info["t_cold_launcher"] = {
+                        "units": Units.S,
+                        "value": launcher_info["t_cold_launcher"],
+                    }
                 launcher_infos.append(info)
 
             it["launcher_infos"] = launcher_infos
+            it["hot_hit_rate"] = {
+                "units": Units.COUNT,
+                "value": iteration.get("hot_hit_rate", 0.0),
+            }
+            it["warm_hit_rate"] = {
+                "units": Units.COUNT,
+                "value": iteration.get("warm_hit_rate", 0.0),
+            }
+            it["cold_launcher_hit_rate"] = {
+                "units": Units.COUNT,
+                "value": iteration.get("cold_launcher_hit_rate", 0.0),
+            }
             iterations.append(it)
 
         metadata_dict["iterations"] = iterations

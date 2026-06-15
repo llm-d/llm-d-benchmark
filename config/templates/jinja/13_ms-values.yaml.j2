@@ -181,6 +181,10 @@ routing:
 {% if routing.proxy.zapTimeEncoding is defined %}
     zapTimeEncoding: {{ routing.proxy.zapTimeEncoding }}
 {% endif %}
+{% if routing.proxy.resources is defined %}
+    resources:
+{{ routing.proxy.resources | toyaml | indent(6, first=True) }}
+{% endif %}
 {% endif %}
 {% if routing.debugLevel is defined %}
     debugLevel: {{ routing.debugLevel }}
@@ -524,12 +528,19 @@ decode:
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
 {% elif volume.type == 'emptyDir' %}
+{# Guard against bare `emptyDir:` (renders as YAML null and is rejected by    #}
+{# strict CRDs like LeaderWorkerSet's server-side apply) when neither medium  #}
+{# nor sizeLimit is set. Emit `emptyDir: {}` placeholder in that case.        #}
+{% if volume.emptyDir is defined and (volume.emptyDir.medium is defined or volume.emptyDir.sizeLimit is defined) %}
       emptyDir:
 {% if volume.emptyDir.medium is defined %}
         medium: {{ volume.emptyDir.medium }}
 {% endif %}
 {% if volume.emptyDir.sizeLimit is defined %}
         sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% else %}
+      emptyDir: {}
 {% endif %}
 {% elif volume.type == 'persistentVolumeClaim' %}
       persistentVolumeClaim:
@@ -558,12 +569,19 @@ decode:
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
 {% elif volume.type == 'emptyDir' %}
+{# Guard against bare `emptyDir:` (renders as YAML null and is rejected by    #}
+{# strict CRDs like LeaderWorkerSet's server-side apply) when neither medium  #}
+{# nor sizeLimit is set. Emit `emptyDir: {}` placeholder in that case.        #}
+{% if volume.emptyDir is defined and (volume.emptyDir.medium is defined or volume.emptyDir.sizeLimit is defined) %}
       emptyDir:
 {% if volume.emptyDir.medium is defined %}
         medium: {{ volume.emptyDir.medium }}
 {% endif %}
 {% if volume.emptyDir.sizeLimit is defined %}
         sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% else %}
+      emptyDir: {}
 {% endif %}
 {% elif volume.type == 'persistentVolumeClaim' %}
       persistentVolumeClaim:
@@ -927,12 +945,19 @@ prefill:
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
 {% elif volume.type == 'emptyDir' %}
+{# Guard against bare `emptyDir:` (renders as YAML null and is rejected by    #}
+{# strict CRDs like LeaderWorkerSet's server-side apply) when neither medium  #}
+{# nor sizeLimit is set. Emit `emptyDir: {}` placeholder in that case.        #}
+{% if volume.emptyDir is defined and (volume.emptyDir.medium is defined or volume.emptyDir.sizeLimit is defined) %}
       emptyDir:
 {% if volume.emptyDir.medium is defined %}
         medium: {{ volume.emptyDir.medium }}
 {% endif %}
 {% if volume.emptyDir.sizeLimit is defined %}
         sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% else %}
+      emptyDir: {}
 {% endif %}
 {% elif volume.type == 'persistentVolumeClaim' %}
       persistentVolumeClaim:
@@ -961,12 +986,19 @@ prefill:
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
 {% elif volume.type == 'emptyDir' %}
+{# Guard against bare `emptyDir:` (renders as YAML null and is rejected by    #}
+{# strict CRDs like LeaderWorkerSet's server-side apply) when neither medium  #}
+{# nor sizeLimit is set. Emit `emptyDir: {}` placeholder in that case.        #}
+{% if volume.emptyDir is defined and (volume.emptyDir.medium is defined or volume.emptyDir.sizeLimit is defined) %}
       emptyDir:
 {% if volume.emptyDir.medium is defined %}
         medium: {{ volume.emptyDir.medium }}
 {% endif %}
 {% if volume.emptyDir.sizeLimit is defined %}
         sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% else %}
+      emptyDir: {}
 {% endif %}
 {% elif volume.type == 'persistentVolumeClaim' %}
       persistentVolumeClaim:

@@ -36,10 +36,13 @@ class ValidateConfigStep(Step):
             )
 
         stack_name = stack_path.name
-        validator = get_validator(stack_name)
+        is_kustomize = "kustomize" in context.deployed_methods
+
+        validator = get_validator(stack_name, is_kustomize)
 
         # Only well-lit-path scenarios have dedicated validators
         from llmdbenchmark.smoketests.base import BaseSmoketest
+
         if type(validator) is BaseSmoketest:
             context.logger.log_info(
                 f"    Skipping config validation -- no dedicated validator for '{stack_name}'"

@@ -64,6 +64,11 @@ class KustomizeDeployStep(Step):
         repo_path = kust_config.get("repoPath") or context.llmd_repo_path or ""
         repo_ref = kust_config.get("repoRef", "main")
         gaie_version = kust_config.get("gaieVersion", "")
+        # `ROUTER_CHART_VERSION` is referenced by guide READMEs alongside
+        # `GAIE_VERSION` after the llm-d-router chart migration. Default
+        # to v0 (the published llm-d-router-* chart version) when the
+        # scenario doesn't pin one.
+        router_chart_version = kust_config.get("routerChartVersion", "") or "v0"
         accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
         monitoring = kust_config.get("monitoring", False)
         overlay_path = kust_config.get("overlayPath", "")
@@ -75,25 +80,33 @@ class KustomizeDeployStep(Step):
         )
 
         if not guide_name:
-            return self._fail(["kustomize.guideName is required"], stack_path,
-                              "kustomize.guideName not set")
+            return self._fail(
+                ["kustomize.guideName is required"],
+                stack_path,
+                "kustomize.guideName not set",
+            )
 
         self._log_kustomize_authority(context, guide_name, repo_path, repo_ref)
 
         if not repo_path:
             clone_result = self._ensure_repo_cloned(
-                cmd, context, repo_ref, errors,
+                cmd,
+                context,
+                repo_ref,
+                errors,
             )
             if clone_result is None:
-                return self._fail(errors, stack_path, "Failed to clone llm-d repo",
-                                  context=context)
+                return self._fail(
+                    errors, stack_path, "Failed to clone llm-d repo", context=context
+                )
             repo_path = clone_result
 
         readme_path = Path(repo_path) / "guides" / guide_name / "README.md"
         if not readme_path.exists():
             return self._fail(
                 [f"File does not exist: {readme_path}"],
-                stack_path, f"Guide README not found: {readme_path}",
+                stack_path,
+                f"Guide README not found: {readme_path}",
             )
 
         context.logger.log_info(f"Parsing guide README: {readme_path}")
@@ -107,10 +120,20 @@ class KustomizeDeployStep(Step):
         if not gaie_version:
             gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
 
+        # Allow the scenario / guide README to override the default. The
+        # scenario knob (kustomize.routerChartVersion) takes precedence; the
+        # README's `export ROUTER_CHART_VERSION=...` falls back next; we then
+        # fall back to the v0 default the resolver applies.
+        readme_router_chart_version = parsed.variables.get("ROUTER_CHART_VERSION", "")
+        effective_router_chart_version = (
+            router_chart_version or readme_router_chart_version or "v0"
+        )
+
         resolver = GuideVariableResolver(
             guide_name=guide_name,
             namespace=namespace,
             gaie_version=gaie_version,
+            router_chart_version=effective_router_chart_version,
             repo_path=repo_path,
             accelerator_backend=accel_backend,
             variable_overrides=kust_config.get("guideVariableOverrides", {}),
@@ -122,11 +145,13 @@ class KustomizeDeployStep(Step):
         for gc in prereq_cmds:
             resolved = resolver.resolve(gc.raw)
             if "create namespace" in resolved:
-                ns_check = cmd.kube("get", "namespace", namespace,
-                                    check=False, force=True)
+                ns_check = cmd.kube(
+                    "get", "namespace", namespace, check=False, force=True
+                )
                 if ns_check.success:
                     context.logger.log_info(
-                        f"Namespace {namespace} already exists, skipping create")
+                        f"Namespace {namespace} already exists, skipping create"
+                    )
                     continue
             context.logger.log_info(f"[prerequisites] {resolved[:120]}")
             result = self._run_resolved(cmd, resolved, check=False)
@@ -134,8 +159,9 @@ class KustomizeDeployStep(Step):
                 errors.append(f"Prerequisite failed: {result.stderr}")
 
         if errors:
-            return self._fail(errors, stack_path, "Prerequisite commands failed",
-                              context=context)
+            return self._fail(
+                errors, stack_path, "Prerequisite commands failed", context=context
+            )
 
         # --- 1b. HF token secret ---
         self._ensure_hf_token_secret(cmd, context, namespace)
@@ -145,7 +171,9 @@ class KustomizeDeployStep(Step):
         for gc in router_cmds:
             resolved = resolver.resolve(gc.raw)
             resolved = self._inject_extra_helm_args(
-                resolved, extra_helm_values, extra_helm_sets,
+                resolved,
+                extra_helm_values,
+                extra_helm_sets,
             )
             context.logger.log_info(f"[router] {resolved[:120]}")
             result = self._run_resolved(cmd, resolved, check=False)
@@ -153,65 +181,75 @@ class KustomizeDeployStep(Step):
                 errors.append(f"Router deploy failed: {result.stderr}")
 
         if errors:
-            return self._fail(errors, stack_path, "Router deployment failed",
-                              context=context)
+            return self._fail(
+                errors, stack_path, "Router deployment failed", context=context
+            )
 
         # --- 3. Model Server ---
         modelserver_cmds = parsed.get_commands(CommandPhase.MODELSERVER)
         target_cmd = self._select_modelserver_command(
-            modelserver_cmds, accel_backend, resolver,
+            modelserver_cmds,
+            accel_backend,
+            resolver,
         )
 
         if target_cmd is None:
             return self._fail(
                 [f"No modelserver command found for backend '{accel_backend}'"],
-                stack_path, "No modelserver command for backend",
+                stack_path,
+                "No modelserver command for backend",
             )
 
         resolved_ms = resolver.resolve(target_cmd.raw)
         ms_path = self._extract_kustomize_path(resolved_ms)
         if not ms_path:
             ms_path = str(
-                Path(repo_path) / "guides" / guide_name
-                / "modelserver" / accel_backend
+                Path(repo_path) / "guides" / guide_name / "modelserver" / accel_backend
             )
 
-        needs_wrapper = (
-            patches
-            or (overlay_path and Path(overlay_path).is_dir())
-        )
+        needs_wrapper = patches or (overlay_path and Path(overlay_path).is_dir())
 
         if needs_wrapper:
             kustomize_dir = self._build_overlay_wrapper(
-                context, Path(ms_path), overlay_path, patches,
+                context,
+                Path(ms_path),
+                overlay_path,
+                patches,
             )
             context.logger.log_info(
-                f"[modelserver] kubectl apply -k {kustomize_dir} (with overrides)")
-            result = cmd.kube("apply", "-n", namespace,
-                              "-k", str(kustomize_dir), check=False)
+                f"[modelserver] kubectl apply -k {kustomize_dir} (with overrides)"
+            )
+            result = cmd.kube(
+                "apply", "-n", namespace, "-k", str(kustomize_dir), check=False
+            )
         else:
-            context.logger.log_info(
-                f"[modelserver] kubectl apply -k {ms_path}")
-            result = cmd.kube("apply", "-n", namespace,
-                              "-k", ms_path, check=False)
+            context.logger.log_info(f"[modelserver] kubectl apply -k {ms_path}")
+            result = cmd.kube("apply", "-n", namespace, "-k", ms_path, check=False)
 
         if not result.success:
             errors.append(f"Model server deploy failed: {result.stderr}")
-            return self._fail(errors, stack_path, "Model server deployment failed",
-                              context=context)
+            return self._fail(
+                errors, stack_path, "Model server deployment failed", context=context
+            )
 
         # --- 4. Monitoring ---
         if monitoring:
             mon_path = (
-                Path(repo_path) / "guides" / "recipes"
-                / "modelserver" / "components" / "monitoring"
+                Path(repo_path)
+                / "guides"
+                / "recipes"
+                / "modelserver"
+                / "components"
+                / "monitoring"
             )
             context.logger.log_info(f"[monitoring] kubectl apply -k {mon_path}")
-            result = cmd.kube("apply", "-n", namespace,
-                              "-k", str(mon_path), check=False)
+            result = cmd.kube(
+                "apply", "-n", namespace, "-k", str(mon_path), check=False
+            )
             if not result.success:
                 context.logger.log_warning(
-                    f"Monitoring apply failed (non-fatal): {result.stderr}")
+                    f"Monitoring apply failed (non-fatal): {result.stderr}"
+                )
 
         # --- 5. Wait ---
         context.logger.log_info(f"Waiting for pods (timeout={deploy_timeout}s)...")
@@ -225,7 +263,8 @@ class KustomizeDeployStep(Step):
         if not wait_result.success:
             return self._fail(
                 [f"Pods not ready: {wait_result.stderr}"],
-                stack_path, "Pod readiness timeout",
+                stack_path,
+                "Pod readiness timeout",
                 context=context,
             )
 
@@ -234,8 +273,9 @@ class KustomizeDeployStep(Step):
         context.deployed_endpoints[stack_path.name] = epp_service
         context.logger.log_info(f"Endpoint registered: {epp_service}")
 
-        cmd.kube("get", "deployment,service,pods",
-                 "--namespace", namespace, check=False)
+        cmd.kube(
+            "get", "deployment,service,pods", "--namespace", namespace, check=False
+        )
 
         self._propagate_standup_parameters(cmd, context, plan_config, guide_name)
 
@@ -248,9 +288,7 @@ class KustomizeDeployStep(Step):
         )
 
     @staticmethod
-    def _run_resolved(
-        cmd: CommandExecutor, resolved: str, *, check: bool = True
-    ):
+    def _run_resolved(cmd: CommandExecutor, resolved: str, *, check: bool = True):
         tokens = shlex.split(resolved)
         if not tokens:
             return cmd.execute(resolved, check=check)
@@ -317,7 +355,9 @@ class KustomizeDeployStep(Step):
 
     @staticmethod
     def _ensure_hf_token_secret(
-        cmd: CommandExecutor, context: ExecutionContext, namespace: str,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
     ) -> None:
         import os
 
@@ -335,8 +375,11 @@ class KustomizeDeployStep(Step):
 
         secret_name = KustomizeDeployStep._HF_SECRET_NAME
         check = cmd.kube(
-            "get", "secret", secret_name,
-            "--namespace", namespace,
+            "get",
+            "secret",
+            secret_name,
+            "--namespace",
+            namespace,
             check=False,
         )
         if check.success:
@@ -346,9 +389,13 @@ class KustomizeDeployStep(Step):
             return
 
         result = cmd.kube(
-            "create", "secret", "generic", secret_name,
+            "create",
+            "secret",
+            "generic",
+            secret_name,
             f"--from-literal=HF_TOKEN={hf_token}",
-            "--namespace", namespace,
+            "--namespace",
+            namespace,
             check=False,
         )
         if result.success:
@@ -361,7 +408,10 @@ class KustomizeDeployStep(Step):
             )
 
     def _fail(
-        self, errors: list[str], stack_path: Path, message: str,
+        self,
+        errors: list[str],
+        stack_path: Path,
+        message: str,
         context: ExecutionContext | None = None,
     ) -> StepResult:
         if context:
@@ -378,8 +428,10 @@ class KustomizeDeployStep(Step):
 
     @staticmethod
     def _log_kustomize_authority(
-        context: ExecutionContext, guide_name: str,
-        repo_path: str, repo_ref: str,
+        context: ExecutionContext,
+        guide_name: str,
+        repo_path: str,
+        repo_ref: str,
     ) -> None:
         """Make it explicit that kustomize mode ignores scenario/CLI tuning.
 
@@ -394,9 +446,15 @@ class KustomizeDeployStep(Step):
         w = context.logger.log_warning
         w("kustomize mode — scenario/CLI parameters are NOT applied:")
         w(f"source      : {src} (ref '{repo_ref}'), guide '{guide_name}'")
-        w("modifiable  : kustomize.patches, overlayPath, extraHelmValues, extraHelmSets, guideVariableOverrides")
-        w("ignored     : -m/--models, model.*, replicas, parallelism, resources, gateway, all other tuning")
-        w("experiments : DoE setup sweeps do NOT apply (use kustomize.patches); run/workload treatments do")
+        w(
+            "modifiable  : kustomize.patches, overlayPath, extraHelmValues, extraHelmSets, guideVariableOverrides"
+        )
+        w(
+            "ignored     : -m/--models, model.*, replicas, parallelism, resources, gateway, all other tuning"
+        )
+        w(
+            "experiments : DoE setup sweeps do NOT apply (use kustomize.patches); run/workload treatments do"
+        )
 
     @staticmethod
     def _extract_kustomize_path(resolved_cmd: str) -> str | None:
@@ -480,15 +538,19 @@ class KustomizeDeployStep(Step):
             wrapper["patches"] = patch_entries
 
         (overlay_dir / "kustomization.yaml").write_text(
-            yaml.dump(wrapper, default_flow_style=False), encoding="utf-8",
+            yaml.dump(wrapper, default_flow_style=False),
+            encoding="utf-8",
         )
 
         context.logger.log_info(f"Overlay wrapper written to {overlay_dir}")
         return overlay_dir
 
     def _propagate_standup_parameters(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        plan_config: dict, guide_name: str,
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+        guide_name: str,
     ):
         """Persist deploy metadata as a ConfigMap."""
         from datetime import datetime, timezone
@@ -520,10 +582,17 @@ class KustomizeDeployStep(Step):
         for key, value in params.items():
             literal_args.append(f"--from-literal={key}={value}")
 
-        create_args = [
-            "create", "configmap", cm_name,
-            "--namespace", harness_ns,
-        ] + literal_args + ["--dry-run=client", "-o", "yaml"]
+        create_args = (
+            [
+                "create",
+                "configmap",
+                cm_name,
+                "--namespace",
+                harness_ns,
+            ]
+            + literal_args
+            + ["--dry-run=client", "-o", "yaml"]
+        )
 
         result = cmd.kube(*create_args)
         if result.success:

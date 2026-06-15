@@ -76,10 +76,10 @@ esac
 tool_version_for() {
     case "$1" in
         curl)      echo "8_20_0"  ;;
-        yq)        echo "v4.53.2" ;;
+        yq)        echo "v4.53.3" ;;
         helmfile)  echo "1.5.1"   ;;
-        helm)      echo "v4.2.0" ;;
-        helm-diff) echo "v3.15.7" ;;
+        helm)      echo "v3.19.0" ;;
+        helm-diff) echo "v3.13.0" ;;
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.6"  ;;
@@ -522,9 +522,20 @@ install_helmfile_linux() {
     local version=$(tool_version_for helmfile)
     local oc_arch="${ARCH_UNAME}"
     if [ "${oc_arch}" = "s390x" ]; then
-	    git clone  https://github.com/helmfile/helmfile.git
-	    cd helmfile || exit 1
-	    git checkout $version
+	    #added step to skip helmfile if it already exists
+		if command -v helmfile >/dev/null 2>&1; then
+		   current_version=$(helmfile --version | awk '{print $3}' | sed 's/^v//')
+		   if [ "$current_version" = "$version" ]; then
+		       echo "helmfile $current_version already installed"
+			   return 0
+		   fi
+		   echo "helmfile — v$current_version below pinned $version; attempting install/upgrade..."
+		fi
+		rm -rf /tmp/helmfile
+	    git clone  https://github.com/helmfile/helmfile.git /tmp/helmfile
+	    cd /tmp/helmfile || exit 1
+	    git fetch --tags
+		git checkout "v${version}"
 	    GOARCH=s390x GOOS=linux go build -o helmfile
 	    sudo mv helmfile /usr/local/bin/
 	    sudo chmod +x /usr/local/bin/helmfile
@@ -910,7 +921,7 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Install planner (from llm-d-planner)
 # ---------------------------------------------------------------------------
-PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@92b14fe09fea0ec9ff36539326b7a8df00f1022c"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"
 
 if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg planner ""

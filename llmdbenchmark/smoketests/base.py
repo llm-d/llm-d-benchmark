@@ -136,7 +136,7 @@ class BaseSmoketest:
                 )
         elif gateway_class == "epponly":
             # No Kubernetes Gateway -- the EPP service is the data plane.
-            # Hit `{model_id_label}-gaie-epp:80` directly (port 80 is the
+            # Hit `{model_id_label}-router-epp:80` directly (port 80 is the
             # extraServicePort we add for the standalone chart's Envoy
             # sidecar).
             service_ip, _, gateway_port = find_epponly_endpoint(
@@ -188,7 +188,10 @@ class BaseSmoketest:
 
         # 1. Check pods running for each configured role
         if is_kustomize:
-            roles_to_check = [("decode", "decode")]
+            if guide_name == "pd-disaggregation":
+                roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
+            else:
+                roles_to_check = [("decode", "decode")]
         elif is_standalone:
             roles_to_check = [("standalone", standalone_role)]
         else:
@@ -446,7 +449,14 @@ class BaseSmoketest:
         inference_port = (
             _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
         )
-        primary_role = roles_to_check[0] if roles_to_check else ("decode", "decode")
+        primary_role = ("decode", "decode")
+        if roles_to_check:
+            for role_info in roles_to_check:
+                if role_info[0] in ("decode", "standalone"):
+                    primary_role = role_info
+                    break
+            else:
+                primary_role = roles_to_check[0]
         if is_kustomize and guide_name:
             primary_selector = (
                 f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
@@ -968,6 +978,7 @@ class BaseSmoketest:
         model_short: str,
         report: SmoketestReport,
         logger=None,
+        context: ExecutionContext | None = None,
     ) -> list[dict]:
         """Validate all aspects of pods for a given role (decode/prefill/standalone).
 
@@ -980,11 +991,51 @@ class BaseSmoketest:
         prefix = role  # used in check names
 
         # --- Replica count ---
+        is_kustomize = (
+            ("kustomize" in context.deployed_methods)
+            if context
+            else (_nested_get(config, "kustomize", "enabled") is True)
+        )
+        guide_name = _nested_get(config, "kustomize", "guideName") or ""
+
+        if is_kustomize and guide_name:
+            role_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={role}"
+        else:
+            role_selector = f"llm-d.ai/model={model_short},llm-d.ai/role={role}"
+
         pods = self.get_pod_specs(
             cmd,
             namespace,
-            f"llm-d.ai/model={model_short},llm-d.ai/role={role}",
+            role_selector,
         )
+
+        if not pods:
+            return pods
+
+        pod = pods[0]
+        pod_name = pod.get("metadata", {}).get("name", "unknown")
+        pod_node = pod.get("spec", {}).get("nodeName", "unknown")
+        pod_ns = pod.get("metadata", {}).get("namespace", namespace)
+        group_name = role
+
+        # Emit a header check so the step renderer can group output
+        report.add(
+            CheckResult(
+                name=f"{prefix}_header",
+                passed=True,
+                message=f"Inspecting {role} pod: {pod_name} (node: {pod_node}, ns: {pod_ns})",
+                group=group_name,
+                is_header=True,
+            )
+        )
+
+        if is_kustomize:
+            # Under kustomize, the deployment is defined entirely by the guide's
+            # own manifests, ignoring the scenario's role-specific configs.
+            # We return early here to only verify that the pods exist and run,
+            # and skip the detailed config-matching checks.
+            return pods
+
         expected_replicas = role_config.get("replicas")
         if expected_replicas is not None:
             expected_replicas = int(expected_replicas)
@@ -1057,26 +1108,6 @@ class BaseSmoketest:
                         ),
                     )
                 )
-
-        if not pods:
-            return pods
-
-        pod = pods[0]
-        pod_name = pod.get("metadata", {}).get("name", "unknown")
-        pod_node = pod.get("spec", {}).get("nodeName", "unknown")
-        pod_ns = pod.get("metadata", {}).get("namespace", namespace)
-        group_name = role
-
-        # Emit a header check so the step renderer can group output
-        report.add(
-            CheckResult(
-                name=f"{prefix}_header",
-                passed=True,
-                message=f"Inspecting {role} pod: {pod_name} (node: {pod_node}, ns: {pod_ns})",
-                group=group_name,
-                is_header=True,
-            )
-        )
 
         def _tag(check: CheckResult) -> CheckResult:
             """Tag a CheckResult with its group for indented rendering."""

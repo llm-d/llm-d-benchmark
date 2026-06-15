@@ -1,0 +1,36 @@
+# =====================================================================
+# Experiment: OTEL Trace Replay Session Rate Sweep (inference-perf)
+# =====================================================================
+#
+# Sweeps the session arrival rate while replaying OTEL traces, holding
+# concurrent_sessions = 0 (rate-driven mode -- new sessions are launched
+# at session_rate per second, with no upper bound on in-flight sessions).
+#
+# Compatible harness: inference-perf
+# Compatible workload: otel_traces.yaml
+#
+# Usage:
+#   llmdbenchmark --spec config/specification/examples/gpu.yaml.j2 run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> \
+#     --namespace <NAMESPACE> \
+#     --harness inference-perf \
+#     --workload otel_traces.yaml \
+#     --experiments experiments/otel-session-rate-sweep.yaml \
+#     --analyze
+
+treatments:
+  - name: rate0p02
+    load.stages.0.session_rate: 0.02
+
+  - name: rate0p04
+    load.stages.0.session_rate: 0.04
+
+  - name: rate0p08
+    load.stages.0.session_rate: 0.08
+
+  - name: rate0p10
+    load.stages.0.session_rate: 0.10
+
+  - name: rate0p12
+    load.stages.0.session_rate: 0.12

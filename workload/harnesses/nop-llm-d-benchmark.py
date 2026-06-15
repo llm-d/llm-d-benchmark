@@ -82,7 +82,13 @@ def main():
             ]
         )
     if fma_enabled:
-        keys.extend(["LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT", "LLMDBENCH_FMA_ITERATIONS"])
+        keys.extend(
+            [
+                "LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT",
+                "LLMDBENCH_FMA_ITERATIONS",
+                "LLMDBENCH_FMA_MAX_INSTANCES",
+            ]
+        )
 
     envs.update(get_env_variables(keys))
     logger.info("Environment variables:")
@@ -106,6 +112,7 @@ def main():
 
     fma_launcher_port = envs.get("LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT", "0")
     fma_iterations = int(envs.get("LLMDBENCH_FMA_ITERATIONS", "0"))
+    fma_max_instances = int(envs.get("LLMDBENCH_FMA_MAX_INSTANCES", "0"))
 
     deploy_methods = []
     if standalone_enabled:
@@ -113,14 +120,21 @@ def main():
     if fma_enabled:
         deploy_methods.append("fma")
 
-    # Load Kubernetes configuration
-    config.load_kube_config()
+    # Load Kubernetes configuration: prefer in-cluster (harness pod runs in cluster),
+    # fall back to local kubeconfig for out-of-cluster invocations.
+    try:
+        config.load_incluster_config()
+        logger.info("Using in-cluster Kubernetes config")
+    except config.ConfigException as e:
+        logger.warning("In-cluster config failed (%s), falling back to kubeconfig", e)
+        config.load_kube_config()
     v1 = client.CoreV1Api()
     apps_v1 = client.AppsV1Api()
     api = client.CustomObjectsApi()
 
     benchmark_result = BenchmarkResult()
     benchmark_result.scenario.deploy_methods = ",".join(deploy_methods)
+    benchmark_result.scenario.max_instances = fma_max_instances
     if fma_enabled:
         try:
             logger.info("Benchmark FMA launcher start...")
