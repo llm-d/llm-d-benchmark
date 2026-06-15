@@ -300,9 +300,12 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
     file.write("  T_warm: existing launcher creates new vLLM instance\n")
     file.write("  T_hot: waking sleeping vLLM instance\n\n")
     file.write("T_actuation: Time for the Requester Pod to be ready\n")
-    file.write("T_hot: Hot-start timing (upper bound)\n")
-    file.write("T_warm: Warm-start timing (upper bound)\n")
-    file.write("T_cold_launcher: Cold-start-with-launcher timing (upper bound)\n")
+    file.write("T_hot: Hot-start timing\n")
+    file.write("T_warm: Warm-start timing\n")
+    file.write("T_cold_launcher: Cold-start-with-launcher timing\n")
+    file.write(
+        "Source: DPC = tighter timing from DPC logs, Kube = upper bound from Kube timestamps\n"
+    )
     file.write("T_first_token: Time for vLLM server to return first token\n")
     file.write("Each iteration scales ReplicaSet from 0 to 1 and then from 1 to 0\n")
 
@@ -344,6 +347,9 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
                 else None
             )
             node = launcher_info.get("launcher_node", "")
+            source = (
+                "DPC" if launcher_info.get("dpc_timing_available", False) else "Kube"
+            )
 
             pandas_datas.append(
                 {
@@ -356,6 +362,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
                     "T_warm(s)": t_warm_val,
                     "T_cold(s)": t_cold_val,
                     "T_first_token(s)": ttft,
+                    "Source": source,
                 }
             )
 
