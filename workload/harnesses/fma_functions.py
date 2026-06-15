@@ -15,6 +15,7 @@ import requests
 from kubernetes import client, watch
 from kubernetes.client.exceptions import ApiException
 
+from dpc_log_parser import parse_dpc_log_file
 from nop_functions import (
     BenchmarkResult,
     BenchmarkScenario,
@@ -83,6 +84,7 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
     t_wake: float | None = None
     t_instance_create: float | None = None
     t_cold_launcher: float | None = None
+    dpc_timing_available: bool = False
 
     def dump(self) -> dict[str, Any]:
         """Convert FMALauncherInfo to dict.
@@ -929,3 +931,65 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
             "app.kubernetes.io/component=launcher-populator",
             requests_dir,
         )
+
+        # Refine per-path timing using DPC log parsing (tighter than Kube timestamps)
+        dpc_records = parse_dpc_log_file(requests_dir)
+        if dpc_records:
+            logger.info(
+                "DPC log parsed: %d requester timing records found.",
+                len(dpc_records),
+            )
+            for fma_iter in fma_metrics.iterations:
+                for launcher_info in fma_iter.launcher_infos:
+                    requester_name = launcher_info.requester_info.name
+                    rec = dpc_records.get(requester_name)
+                    if rec is None:
+                        logger.debug(
+                            "No DPC timing record for requester '%s'.",
+                            requester_name,
+                        )
+                        continue
+
+                    if launcher_info.actuation_condition == FMAActuationCondition.T_HOT:
+                        refined = rec.t_hot()
+                        if refined is not None:
+                            logger.info(
+                                "Requester '%s': T_hot refined %.3fs -> %.3fs",
+                                requester_name,
+                                launcher_info.t_wake or 0.0,
+                                refined,
+                            )
+                            launcher_info.t_wake = refined
+                            launcher_info.dpc_timing_available = True
+                    elif (
+                        launcher_info.actuation_condition
+                        == FMAActuationCondition.T_WARM
+                    ):
+                        refined = rec.t_instance_create()
+                        if refined is not None:
+                            logger.info(
+                                "Requester '%s': T_instance_create refined %.3fs -> %.3fs",
+                                requester_name,
+                                launcher_info.t_instance_create or 0.0,
+                                refined,
+                            )
+                            launcher_info.t_instance_create = refined
+                            launcher_info.dpc_timing_available = True
+                    elif (
+                        launcher_info.actuation_condition
+                        == FMAActuationCondition.T_COLD_LAUNCHER
+                    ):
+                        refined = rec.t_cold_launcher()
+                        if refined is not None:
+                            logger.info(
+                                "Requester '%s': T_cold_launcher refined %.3fs -> %.3fs",
+                                requester_name,
+                                launcher_info.t_cold_launcher or 0.0,
+                                refined,
+                            )
+                            launcher_info.t_cold_launcher = refined
+                            launcher_info.dpc_timing_available = True
+        else:
+            logger.info(
+                "No DPC timing records found; using Kube-timestamp upper bounds."
+            )
