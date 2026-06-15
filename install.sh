@@ -522,9 +522,20 @@ install_helmfile_linux() {
     local version=$(tool_version_for helmfile)
     local oc_arch="${ARCH_UNAME}"
     if [ "${oc_arch}" = "s390x" ]; then
-	    git clone  https://github.com/helmfile/helmfile.git
-	    cd helmfile || exit 1
-	    git checkout $version
+	    #added step to skip helmfile if it already exists
+		if command -v helmfile >/dev/null 2>&1; then
+		   current_version=$(helmfile --version | awk '{print $3}' | sed 's/^v//')
+		   if [ "$current_version" = "$version" ]; then
+		       echo "helmfile $current_version already installed"
+			   return 0
+		   fi
+		   echo "helmfile — v$current_version below pinned $version; attempting install/upgrade..."
+		fi
+		rm -rf /tmp/helmfile
+	    git clone  https://github.com/helmfile/helmfile.git /tmp/helmfile
+	    cd /tmp/helmfile || exit 1
+	    git fetch --tags
+		git checkout "v${version}"
 	    GOARCH=s390x GOOS=linux go build -o helmfile
 	    sudo mv helmfile /usr/local/bin/
 	    sudo chmod +x /usr/local/bin/helmfile
