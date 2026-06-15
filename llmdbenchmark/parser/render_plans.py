@@ -113,8 +113,18 @@ class RenderPlans:
         env.filters["b64encode"] = self._b64encode_filter
         env.filters["model_id_label"] = self._model_id_label_filter
 
+        # `raise` global lets templates abort rendering with a clear
+        # error when an input is invalid for the current code path
+        # (e.g. an option that only applies to some gateway classes).
+        env.globals["raise"] = self._raise_helper
+
         self._jinja_env = env
         return env
+
+    @staticmethod
+    def _raise_helper(message: str) -> str:
+        """Abort template rendering with the given error message."""
+        raise ValueError(message)
 
     @staticmethod
     def _indent_filter(text: str, width: int = 4, first: bool = False) -> str:
