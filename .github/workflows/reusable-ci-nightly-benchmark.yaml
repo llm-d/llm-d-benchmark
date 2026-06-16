@@ -177,16 +177,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
-      conditional_runs_on: ${{ steps.set_runs_on.outputs.runners }}
-      cluster_provider: ${{ steps.set_cluster_provider.outputs.cluster_type }}
+      conditional_runs_on: ${{ steps.prepare_set_runs_on.outputs.runners }}
+      cluster_provider: ${{ steps.prepare_set_cluster_provider.outputs.cluster_type }}
 
     steps:
       - name: Install system dependencies
+        id: prepare_install_skopeo
         run: |
           sudo apt-get update
           sudo apt-get install -y skopeo yq
 
       - name: Ensure image is already built
+        id: prepare_ensure_benchmark_nightly_image
         run: |
           IMAGE="ghcr.io/llm-d/llm-d-benchmark:nightly"
           POLL=30
@@ -206,7 +208,7 @@ jobs:
         shell: bash
 
       - name: set cluster_type variable based on workflow and scenario name
-        id: set_cluster_provider
+        id: prepare_set_cluster_provider
         run: |
           IS_OCP=$(echo "${{ github.workflow }}" | grep -i "\ocp" || true)$(echo "${{ inputs.standup_scenario }}" | grep -i "ocp" || true)
           if [[ ! -z $IS_OCP ]]; then
@@ -241,7 +243,7 @@ jobs:
           echo "CLUSTER_TYPE=$CLUSTER_TYPE" >> "$GITHUB_ENV"
 
       - name: set runs-on variable based on cluster provider
-        id: set_runs_on
+        id: prepare_set_runs_on
         run: |
           echo "Cluster provider is \"$CLUSTER_TYPE\""
           if [[ "$CLUSTER_TYPE" == "ocp" ]]; then
@@ -269,6 +271,7 @@ jobs:
     if: inputs.accelerator_type == 'tpu/v7' || inputs.accelerator_type == 'tpu-v7'
     steps:
       - name: Print skip message
+        id: prepare_skip_tpu_v7_run
         run: |
           echo "::warning::TPU v7 capacity is currently not available. Skipping benchmark run."
           echo "## TPU v7 Skipped" >> $GITHUB_STEP_SUMMARY
@@ -325,29 +328,33 @@ jobs:
 
     steps:
       - name: Checkout Code
+        id: prepare_checkout_code
         uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 
       - name: Set up Python
+        id: prepare_setup_python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Create Kind cluster
+        id: infra_create_kind_cluster
         if: env.LLMDBENCH_CICD_TARGET == 'kind'
         uses: helm/kind-action@v1
         with:
           version: v0.31.0
 
       - name: Authenticate to Google Cloud
+        id: infra_authenticate_google_cloud
         if: inputs.bucket_provider == 'gcs' || env.LLMDBENCH_CICD_TARGET == 'gke'
-        id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           credentials_json: ${{ secrets.GKE_SA_KEY }}
 
       - name: Set up gcloud CLI and kubectl
+        id: infra_setup_gcloud_cli
         if: inputs.bucket_provider == 'gcs' || env.LLMDBENCH_CICD_TARGET == 'gke'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
         with:
@@ -355,6 +362,7 @@ jobs:
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
       - name: Get GKE credentials
+        id: infra_get_gke_credentials
         if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
           if [[ $LLMDBENCH_CICD_TARGET == "gke" ]]; then
@@ -364,6 +372,7 @@ jobs:
         shell: bash
 
       - name: Set up kubeconfig from secret
+        id: infra_get_kubeconfig_from_secret
         if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
           mkdir -p ~/.kube
@@ -380,6 +389,7 @@ jobs:
         shell: bash
 
       - name: Install oc (optional on install.sh)
+        id: prereq_install_oc
         if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
           if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
@@ -398,11 +408,13 @@ jobs:
           fi
 
       - name: Install specific yq version
+        id: prereq_install_yq
         uses: frenck/action-setup-yq@v1
         with:
-          version: 'v4.53.2'
+          version: 'v4.53.3'
 
       - name: Show cluster names
+        id: infra_show_cluster_names
         run: |
           echo "### Attempting to list cluster names..."
           if [[ -f ~/.kube/config ]]; then
@@ -414,12 +426,14 @@ jobs:
         shell: bash
 
       - name: Show cluster nodes
+        id: infra_show_cluster_nodes
         run: |
           echo "### Attempting to list node names..."
           kubectl get node
         shell: bash
 
       - name: Show cluster storageclasses
+        id: infra_show_cluster_storageclasses
         run: |
           echo "### Attempting to list storage classes..."
           kubectl get storageclass
@@ -476,6 +490,7 @@ jobs:
         shell: bash
 
       - name: Request TPUs (DWS)
+        id: infra_request_tpus
         if: env.LLMDBENCH_CICD_TARGET == 'gke' && contains(inputs.accelerator_type, 'tpu') && inputs.tpu_chips > 0
         run: |
           kubectl create namespace "$LLMDBENCH_CICD_NS" || echo "Namespace already exists"
@@ -558,6 +573,7 @@ jobs:
           echo "| Requested Chips | $CHIPS_TO_REQUEST |" >> $GITHUB_STEP_SUMMARY
 
       - name: Create nightly PriorityClass
+        id: infra_create_nightly_prioclass
         run: |
           echo "Creating PriorityClass \"$LLMDBENCH_CICD_PRIORITY_CLASS\"..."
           cat <<PRIORITY_EOF > prioclass.yaml
@@ -574,6 +590,7 @@ jobs:
           rm prioclass.yaml
 
       - name: Label node for simulated accelerators
+        id: infra_label_node_for_simulated_accelerators
         if: env.LLMDBENCH_CICD_TARGET == 'kind'
         run: |
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
@@ -582,6 +599,7 @@ jobs:
         shell: bash
 
       - name: Set GCS full path
+        id: prereq_set_gcs_full_path
         if: inputs.bucket_provider == 'gcs'
         run: |
           RUN_DATE=$(date +'%Y-%m-%d')
@@ -592,6 +610,7 @@ jobs:
         shell: bash
 
       - name: Conditionally clone llm-d from main repo
+        id: prereq_conditionally_clone_llmd
         run: |
           #find ~ -type f -name "cks_nvshmem3.3.9.patch" -print
           cd ~
@@ -611,6 +630,7 @@ jobs:
         shell: bash
 
       - name: Install llmdbenchmark
+        id: prereq_install_llmdbenchmark
         run: |
           #find ~ -type f -name "br_v0_2_json_schema.json" -print
           cd ~
@@ -639,6 +659,7 @@ jobs:
         shell: bash
 
       - name: Apply overrides to llm-d-benchmark scenarios (yaml)
+        id: prereqs_apply_overrides_to_llmdbenchmark_scenarios
         run: |
           touch ~/work/lkcmd.txt
           export LLMDBENCH_CICD_SCENARIO_FILE=~/work/llm-d-benchmark/llm-d-benchmark/config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO.yaml
@@ -701,70 +722,51 @@ jobs:
           fi
         shell: bash
 
-      - name: Handle namespace and secret (HF_TOKEN) creation in case of kustomize
-        run: |
-          cd ~
-          touch ~/work/lkcmd.txt
-          kubectl create namespace $LLMDBENCH_CICD_NS --dry-run=client -o yaml | kubectl apply -f -
-          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-            if [[ -z $LLMDBENCH_HF_TOKEN ]]; then
-              echo "#### Assigning fake value to LLMDBENCH_HF_TOKEN"
-              export LLMDBENCH_HF_TOKEN=hf_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
-            fi
-            echo -n $LLMDBENCH_HF_TOKEN > hf_token.txt
-            IS_PLAINTEXT=$(echo $LLMDBENCH_HF_TOKEN | grep "hf_" || true)
-            if [[ -z $IS_PLAINTEXT ]]; then
-              echo -n $LLMDBENCH_HF_TOKEN | base64 -d > hf_token.txt
-            fi
-            kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
-            rm -rf hf_token.txt
-          fi
-        shell: bash
-
       - name: Apply overrides to kustomize manifests
+        id: prereqs_apply_overrides_to_kustomize_manifests
+        if: env.LLMDBENCH_CICD_METHOD != 'kustomize'
         run: |
-          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
-            LLMDBENCH_CICD_KUSTOMIZE_PATH=~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/$LLMDBENCH_CICD_OFFLOADING_TARGET/$LLMDBENCH_CICD_INFRA_PROVIDER
-            echo "Kustomize full path is \"$LLMDBENCH_CICD_KUSTOMIZE_PATH\". Will now attempt to detect model name..."
-            detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH | yq .spec.template.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
-            if [[ -z $detected_model ]]; then
-              detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH |  yq .spec.leaderWorkerTemplate.workerTemplate.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
-            fi
-            if [[ -z $detected_model ]]; then
-              echo "### ERROR: unable to detect model"
-              exit 1
-            fi
-            echo "### LLMDBENCH_CICD_DETECTED_MODEL is \"$detected_model\""
-            echo "LLMDBENCH_CICD_DETECTED_MODEL=$detected_model"  >> $GITHUB_ENV
-            if [[ $LLMDBENCH_CICD_SCENARIO == "predicted-latency-routing" || $LLMDBENCH_CICD_SCENARIO == "flow-control" ]]; then
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "kustomization.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "kustomization.yaml" -exec bash -c 'echo -n $1:; yq ".namePrefix" $1' _ {} \;
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "patch-vllm.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/router/ -type f -name "*.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
-            fi
-            echo "### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-            for i in vllm decode prefill; do
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
-              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.template.spec.priorityClassName" $1' _ {} \;
+          LLMDBENCH_CICD_KUSTOMIZE_PATH=~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/$LLMDBENCH_CICD_OFFLOADING_TARGET/$LLMDBENCH_CICD_INFRA_PROVIDER
+          echo "Kustomize full path is \"$LLMDBENCH_CICD_KUSTOMIZE_PATH\". Will now attempt to detect model name..."
+          detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH | yq .spec.template.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
+          if [[ -z $detected_model ]]; then
+            detected_model=$(kubectl kustomize $LLMDBENCH_CICD_KUSTOMIZE_PATH |  yq .spec.leaderWorkerTemplate.workerTemplate.spec.containers[0].args | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
+          fi
+          if [[ -z $detected_model ]]; then
+            echo "### ERROR: unable to detect model"
+            exit 1
+          fi
+          echo "### LLMDBENCH_CICD_DETECTED_MODEL is \"$detected_model\""
+          echo "LLMDBENCH_CICD_DETECTED_MODEL=$detected_model"  >> $GITHUB_ENV
+          if [[ $LLMDBENCH_CICD_SCENARIO == "predicted-latency-routing" || $LLMDBENCH_CICD_SCENARIO == "flow-control" ]]; then
+            find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "kustomization.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+            find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "kustomization.yaml" -exec bash -c 'echo -n $1:; yq ".namePrefix" $1' _ {} \;
+            find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/ -type f -name "patch-vllm.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+            find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/router/ -type f -name "*.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+          fi
+          echo "### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+          for i in vllm decode prefill; do
+            find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.template.spec.priorityClassName=\"$LLMDBENCH_CICD_PRIORITY_CLASS\"" -i {} \;
+            find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.template.spec.priorityClassName" $1' _ {} \;
+          done
+          if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
+            echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            for i in vllm decode; do
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+              find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
             done
-            if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
-              echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-              for i in vllm decode; do
-                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
-                find ~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/ -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
-              done
-            fi
-            if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
-              echo "### Setting decode pods to \"$LLMDBENCH_CICD_PREFILL_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-              for i in prefill; do
-                find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
-                find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
-              done
-            fi
+          fi
+          if [[ $LLMDBENCH_CICD_PREFILL_PODS != "auto" ]]; then
+            echo "### Setting decode pods to \"$LLMDBENCH_CICD_PREFILL_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
+            for i in prefill; do
+              find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
+              find $LLMDBENCH_CICD_KUSTOMIZE_PATH -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
+            done
           fi
         shell: bash
 
       - name: Set up extra command line parameters
+        id: prereqs_setup_extrac_cli_parms_llmdbenchmark
         run: |
           export LLMDBENCH_EXTRA_CMD=""
           export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD=""
@@ -808,6 +810,7 @@ jobs:
         shell: bash
 
       - name: Cleanup target cloud
+        id: guide_teardown
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
           LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD teardown $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --methods $LLMDBENCH_CICD_METHOD"
@@ -816,7 +819,29 @@ jobs:
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
+      - name: Handle namespace and secret (HF_TOKEN) creation in case of kustomize
+        id: infra_handle_namesace_and_secret
+        run: |
+          cd ~
+          touch ~/work/lkcmd.txt
+          kubectl create namespace $LLMDBENCH_CICD_NS --dry-run=client -o yaml | kubectl apply -f -
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            if [[ -z $LLMDBENCH_HF_TOKEN ]]; then
+              echo "#### Assigning fake value to LLMDBENCH_HF_TOKEN"
+              export LLMDBENCH_HF_TOKEN=hf_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+            fi
+            echo -n $LLMDBENCH_HF_TOKEN > hf_token.txt
+            IS_PLAINTEXT=$(echo $LLMDBENCH_HF_TOKEN | grep "hf_" || true)
+            if [[ -z $IS_PLAINTEXT ]]; then
+              echo -n $LLMDBENCH_HF_TOKEN | base64 -d > hf_token.txt
+            fi
+            kubectl create secret generic llm-d-hf-token --from-file=HF_TOKEN=hf_token.txt --namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+            rm -rf hf_token.txt
+          fi
+        shell: bash
+
       - name: Standup
+        id: guide_standup
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
           LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_CICD_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
@@ -825,6 +850,7 @@ jobs:
         shell: bash
 
       - name: Debug info (on failure)
+        id: infra_debug_info
         if: failure()
         run: |
           if [[ -f /usr/local/bin/debug_info_on_failure.sh ]]; then
@@ -835,6 +861,7 @@ jobs:
         shell: bash
 
       - name: Run
+        id: benchmark_run
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
           if [[ "$LLMDBENCH_CICD_TARGET" == "kind" && "${{ inputs.standup_method }}" == "fma" ]]; then
@@ -851,6 +878,7 @@ jobs:
         shell: bash
 
       - name: Teardown
+        id: guide_teardown_again
         if: always()
         run: |
           if [[ $LLMDBENCH_CICD_CLEANUP == 'false' ]]; then
@@ -864,6 +892,7 @@ jobs:
         shell: bash
 
       - name: Debug info (on failure)
+        id: infra_debug_info_again
         if: failure()
         run: |
           if [[ -f /usr/local/bin/debug_info_on_failure.sh ]]; then
@@ -874,6 +903,7 @@ jobs:
         shell: bash
 
       - name: Upload results to GCS
+        id: infra_upload_results_to_gcs
         if: env.LLMDBENCH_CICD_TARGET != 'kind'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
@@ -890,6 +920,7 @@ jobs:
         shell: bash
 
       - name: Block waiting for Standalone baseline
+        id: infra_block_waiting_for_standalone_baseline
         if: env.LLMDBENCH_CICD_TARGET == 'ocp' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
