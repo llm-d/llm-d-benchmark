@@ -658,7 +658,7 @@ jobs:
           echo "### llm-d-benchmark code is present (branch $(git branch --show-current))"
         shell: bash
 
-      - name: Apply overrides to llm-d-benchmark scenarios (yaml)
+      - name: Apply overrides to llm-d-benchmark scenarios when using kustomize (yaml)
         id: prereqs_apply_overrides_to_llmdbenchmark_scenarios
         if: env.LLMDBENCH_CICD_METHOD == 'kustomize'
         run: |
@@ -726,7 +726,7 @@ jobs:
 
       - name: Apply overrides to kustomize manifests
         id: prereqs_apply_overrides_to_kustomize_manifests
-        if: env.LLMDBENCH_CICD_METHOD != 'kustomize'
+        if: env.LLMDBENCH_CICD_METHOD == 'kustomize'
         run: |
           LLMDBENCH_CICD_KUSTOMIZE_PATH=~/work/llm-d/llm-d/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/$LLMDBENCH_CICD_ACCELERATOR/$LLMDBENCH_CICD_BACKEND/$LLMDBENCH_CICD_CONNECTOR/$LLMDBENCH_CICD_OFFLOADING_TARGET/$LLMDBENCH_CICD_INFRA_PROVIDER
           echo "Kustomize full path is \"$LLMDBENCH_CICD_KUSTOMIZE_PATH\". Will now attempt to detect model name..."
