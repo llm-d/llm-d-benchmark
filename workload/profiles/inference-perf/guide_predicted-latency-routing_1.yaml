@@ -3,8 +3,8 @@ load:
   num_workers: 6
   request_timeout: 300.0
   stages:
-    - num_requests: 192
-      concurrency_level: 32
+    - num_requests: ${NUM_REQUESTS}
+      concurrency_level: ${CONCURRENCY}
 api:
   type: completion
   streaming: true
@@ -18,7 +18,7 @@ tokenizer:
   data:
     type: conversation_replay
     conversation_replay:
-      seed: ${CONCURRENCY}         # unique seed per concurrency level
+      seed: ${SEED}         # unique seed per concurrency level
       num_conversations: ${CONCURRENCY}   # equals concurrency_level above
       shared_system_prompt_len: 3000
       dynamic_system_prompt_len:
