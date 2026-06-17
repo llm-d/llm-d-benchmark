@@ -85,6 +85,14 @@ class RenderProfilesStep(Step):
             runtime_values["LLMDBENCH_DEPLOY_CURRENT_MODEL"] = context.model_name
             runtime_values["LLMDBENCH_DEPLOY_CURRENT_TOKENIZER"] = context.model_name
 
+        # inference-perf load-stage knobs from CLI flags (override config/defaults)
+        if context.num_requests is not None:
+            runtime_values["LLMDBENCH_RUN_NUM_REQUESTS"] = str(context.num_requests)
+        if context.concurrency is not None:
+            runtime_values["LLMDBENCH_RUN_CONCURRENCY"] = str(context.concurrency)
+        if context.seed is not None:
+            runtime_values["LLMDBENCH_RUN_SEED"] = str(context.seed)
+
         dataset_file_override: str | None = None
         if context.dataset_url:
             # For s3:// URLs the harness shell script downloads the file into
