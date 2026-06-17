@@ -8,6 +8,7 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.parser.cluster_resource_resolver import effective_accelerator_count
 from llmdbenchmark.standup import wva as wva_mod
 from llmdbenchmark.utilities.capacity_validator import run_capacity_planner
 
@@ -325,7 +326,7 @@ class WorkloadMonitoringStep(Step):
             # Only scenarios that *explicitly* set count to 0 (e.g. the
             # CPU example) are treated as CPU-only and have their GPU
             # label validation skipped.
-            method_accel_count, accel_count_source = self._effective_accelerator_count(
+            method_accel_count, accel_count_source = effective_accelerator_count(
                 method_config
             )
 
@@ -383,40 +384,6 @@ class WorkloadMonitoringStep(Step):
                             "and labelValue from the cluster)."
                         )
                 errors.append(msg)
-
-    @staticmethod
-    def _effective_accelerator_count(method_config: dict) -> tuple[int, str]:
-        """Resolve the per-pod accelerator count for a method.
-
-        Mirrors the fallback chain in ``config/templates/jinja/13_ms-values.yaml.j2``
-        line 252:
-
-            decode.accelerator.count   (explicit)
-              ↓ (if unset)
-            decode.parallelism.tensor  (canonical vLLM pattern)
-
-        Returns a ``(count, source)`` tuple where ``source`` describes
-        which field was consulted, for informative logging. Any parsing
-        failure returns ``(0, "parse-error")`` so the caller treats the
-        method as CPU-only and skips GPU-label validation — the safe
-        choice when the config is unintelligible.
-        """
-        accel = method_config.get("accelerator")
-        if isinstance(accel, dict) and "count" in accel:
-            try:
-                return int(accel["count"]), "accelerator.count (explicit)"
-            except (ValueError, TypeError):
-                return 0, "parse-error"
-
-        parallelism = method_config.get("parallelism")
-        if isinstance(parallelism, dict) and "tensor" in parallelism:
-            try:
-                return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
-            except (ValueError, TypeError):
-                return 0, "parse-error"
-
-        # Neither field present at all — assume no accelerators.
-        return 0, "unset"
 
     def _get_all_node_labels(
         self, cmd: CommandExecutor, context: ExecutionContext
