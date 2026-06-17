@@ -34,9 +34,14 @@ _anchors:
   shm_32gi: &shm_32gi 32Gi
   shm_64gi: &shm_64gi 64Gi
 
-  # GPU configuration
+  # GPU configuration.
+  # `gpu_label_value: auto` opts into cluster-side discovery: the resolver
+  # (cluster_resource_resolver.py:_resolve_accelerator_type_labels) reads
+  # actual node labels and overrides BOTH labelKey and labelValue in the
+  # plan, so any GPU model works out of the box. Scenarios that need a
+  # specific SKU can still pin a literal value (e.g. NVIDIA-H100-80GB-HBM3).
   gpu_label_key: &gpu_label_key nvidia.com/gpu.product
-  gpu_label_value: &gpu_label_value NVIDIA-H100-80GB-HBM3
+  gpu_label_value: &gpu_label_value auto
   gpu_memory_util: &gpu_memory_util 0.95
 
   # Common vLLM settings
@@ -1120,10 +1125,12 @@ standalone:
   # Node selector (optional)
   nodeSelector: {}
 
-  # Accelerator type selection (inherits from decode if not specified)
+  # Accelerator type selection (inherits from decode if not specified).
+  # `labelValue: auto` triggers cluster-side discovery; see the
+  # `gpu_label_value` anchor at the top of this file.
   acceleratorType:
     labelKey: nvidia.com/gpu.product
-    labelValue: NVIDIA-H100-80GB-HBM3
+    labelValue: auto
     # labelValues:  # Use for multiple GPU types
     #   - NVIDIA-H100-80GB-HBM3
     #   - NVIDIA-A100-SXM4-80GB

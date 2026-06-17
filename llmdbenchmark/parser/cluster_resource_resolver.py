@@ -11,6 +11,43 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+def effective_accelerator_count(method_config: dict) -> tuple[int, str]:
+    """Resolve the per-pod accelerator count for a method section.
+
+    Mirrors the fallback chain in ``config/templates/jinja/13_ms-values.yaml.j2``
+    line 252:
+
+        decode.accelerator.count   (explicit)
+          ↓ (if unset)
+        decode.parallelism.tensor  (canonical vLLM pattern -- TP degree
+                                    equals per-pod GPU count)
+
+    Returns ``(count, source)`` so callers can log which field was consulted.
+    Parsing failures return ``(0, "parse-error")`` so callers treat the method
+    as CPU-only -- the safe choice when the config is unintelligible.
+
+    Shared by the resolver (skip ``"auto"`` substitution for CPU-only
+    sections) and ``step_03_workload_monitoring`` (skip node-selector
+    validation for CPU-only sections). Keeping it in one place prevents
+    those two skip paths from drifting.
+    """
+    accel = method_config.get("accelerator")
+    if isinstance(accel, dict) and "count" in accel:
+        try:
+            return int(accel["count"]), "accelerator.count (explicit)"
+        except (ValueError, TypeError):
+            return 0, "parse-error"
+
+    parallelism = method_config.get("parallelism")
+    if isinstance(parallelism, dict) and "tensor" in parallelism:
+        try:
+            return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
+        except (ValueError, TypeError):
+            return 0, "parse-error"
+
+    return 0, "unset"
+
+
 @dataclass
 class NodeResources:
     """Discovered node resources from cluster scanning."""
@@ -349,6 +386,12 @@ class ClusterResourceResolver:
 
         When ``labelValue`` is ``"auto"``, detect the GPU product label from
         the cluster and set both ``labelKey`` and ``labelValue``.
+
+        Sections that are disabled or don't actually request accelerators
+        (CPU-only / sim scenarios such as ``cicd/kind``) are skipped silently:
+        the inherited default ``labelValue: "auto"`` is meaningless to them
+        and a failure to discover would be a false positive. This matches
+        the skip logic in ``step_03_workload_monitoring._validate_node_selectors``.
         """
         resources = self._node_resources or NodeResources()
 
@@ -362,6 +405,23 @@ class ClusterResourceResolver:
                 continue
 
             if accel_type.get("labelValue") != "auto":
+                continue
+
+            if section_dict.get("enabled") is False:
+                self.logger.log_debug(
+                    f"Skipping {section}.acceleratorType resolution: "
+                    f"{section}.enabled is false"
+                )
+                continue
+
+            accel_count, count_source = effective_accelerator_count(section_dict)
+            if accel_count == 0:
+                self.logger.log_info(
+                    f"Skipping {section}.acceleratorType resolution: "
+                    f"effective accelerator count is 0 (source: {count_source})"
+                )
+                # Leave the literal "auto" in place -- the validator already
+                # skips CPU-only sections, so it won't be looked up either.
                 continue
 
             if resources.gpu_labels:
