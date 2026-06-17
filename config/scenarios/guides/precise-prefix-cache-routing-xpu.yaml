@@ -1,0 +1,331 @@
+# PRECISE PREFIX CACHE AWARE ROUTING - Intel XPU (device-plugin) variant
+# ============================================================================
+# Adapted from config/scenarios/guides/precise-prefix-cache-routing.yaml for
+# Intel GPU (xe driver, classic device-plugin `gpu.intel.com/xe`).
+#
+# Key differences vs the NVIDIA scenario:
+#   * accelerator.type=intel-xe, resource=gpu.intel.com/xe (not nvidia.com/gpu)
+#   * vLLM image = ghcr.io/llm-d/llm-d-xpu (XPU build, not CUDA vllm-openai)
+#   * model = Qwen/Qwen3-0.6B (small, fits a single Arc/B-series GPU)
+#   * decode customCommand has NO libcuda export and NO
+#     --gpu-memory-utilization; uses --dtype float16 --enforce-eager.
+#   * Prefix caching stays ENABLED and the ZMQ KV-events publisher is kept --
+#     they are the core of precise prefix-cache-aware routing (the EPP
+#     precise-prefix-cache-scorer consumes these kv@ events).
+#   * NO DRA -- this cluster uses the CLASSIC Intel GPU device plugin, so pods
+#     request `gpu.intel.com/xe` directly.
+#   * 2 decode replicas (TP=1 each) so the router has multiple endpoints to
+#     route prefix hits across; needs 2 free XPUs.
+# ============================================================================
+
+scenario:
+  - name: "precise-prefix-cache-routing-xpu"
+
+    # =========================================================================
+    # ACCELERATOR - Intel GPU via classic device plugin (gpu.intel.com/xe)
+    # =========================================================================
+    accelerator:
+      type: intel-xe
+      resource: "gpu.intel.com/xe"
+      count: 1
+      # The llm-d-modelservice chart injects accelerator-specific env for
+      # intel-xe (VLLM_WORKER_MULTIPROC_METHOD=spawn). The benchmark macro
+      # already adds VLLM_WORKER_MULTIPROC_METHOD to the container env, so the
+      # chart default would produce a duplicate env key (rejected by
+      # server-side apply). Override the chart's intel-xe env list to empty.
+      env:
+        intel-xe: []
+
+    # =========================================================================
+    # IMAGE - vLLM XPU build (overrides the CUDA default in defaults.yaml)
+    # =========================================================================
+    images:
+      vllm:
+        repository: ghcr.io/llm-d/llm-d-xpu
+        tag: v0.7.0
+        pullPolicy: IfNotPresent
+
+    kustomize:
+      enabled: false
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-0.6B
+      shortName: qwen-qwen3-06b
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 50Gi
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.9
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # -------------------------------------------------------------------------
+    routing:
+      proxy:
+        enabled: false
+
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration (hardware-agnostic; identical to the NVIDIA
+    # scenario except the tokenizer modelName is pinned to the XPU model).
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      pluginsConfigFile: "precise-prefix-cache-config.yaml"
+      sidecar:
+        enabled: true
+      flags:
+        v: 4  # log verbosity
+      pluginsCustomConfig:
+        precise-prefix-cache-config.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: tokenizer
+              parameters:
+                modelName: Qwen/Qwen3-0.6B
+                udsTokenizerConfig:
+                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
+            - type: endpoint-notification-source
+            - type: metrics-data-source
+            - type: core-metrics-extractor
+            - type: single-profile-handler
+            - type: decode-filter
+            - type: precise-prefix-cache-scorer
+              parameters:
+                tokenProcessorConfig:
+                  blockSize: 64           # must match vLLM --block-size
+                speculativeIndexing: true
+                indexerConfig:
+                  tokenizersPoolConfig:
+                    modelName: ${model.name}
+                    workersCount: 24
+                    uds:
+                      socketFile: /tmp/tokenizer/tokenizer-uds.socket
+                  kvBlockIndexConfig:
+                    enableMetrics: true
+                kvEventsConfig:
+                  topicFilter: "kv@"
+                  concurrency: 8
+                  discoverPods: true
+                  podDiscoveryConfig:
+                    socketPort: 5556
+            - type: kv-cache-utilization-scorer
+            - type: queue-scorer
+            - type: no-hit-lru-scorer
+            - type: max-score-picker
+          dataLayer:
+            sources:
+              - pluginRef: metrics-data-source
+                extractors:
+                  - pluginRef: core-metrics-extractor
+              - pluginRef: endpoint-notification-source
+                extractors:
+                  - pluginRef: precise-prefix-cache-scorer
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: decode-filter
+                - pluginRef: kv-cache-utilization-scorer
+                  weight: 2.0
+                - pluginRef: queue-scorer
+                  weight: 2.0
+                - pluginRef: precise-prefix-cache-scorer
+                  weight: 3.0
+                - pluginRef: no-hit-lru-scorer
+                  weight: 2.0
+                - pluginRef: max-score-picker
+
+      # InferencePool Provider Configuration
+      inferencePoolProviderConfig:
+        destinationRule:
+          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
+          trafficPolicy:
+            connectionPool:
+              http:
+                http1MaxPendingRequests: 256000
+                maxRequestsPerConnection: 256000
+                http2MaxRequests: 256000
+                idleTimeout: "900s"
+              tcp:
+                maxConnections: 256000
+                maxConnectionDuration: "1800s"
+                connectTimeout: "900s"
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration (disabled; precise prefix routing runs decode-only)
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 2
+
+      # Suppress the default NVIDIA nodeAffinity. defaults.yaml sets
+      # decode.acceleratorType.labelKey=nvidia.com/gpu.product (value
+      # NVIDIA-H100-80GB-HBM3), which the Intel node does not carry, making
+      # decode pods Unschedulable. Empty dict => template skips the
+      # acceleratorTypes nodeAffinity block entirely (Intel GPUs are selected
+      # purely via the gpu.intel.com/xe resource request).
+      acceleratorType: {}
+
+      # Pod-level securityContext. supplementalGroups (gid 107 = render) gives
+      # /dev/dri access on the Intel node. Must live here (Pod field), not in
+      # extraContainerConfig.securityContext (container field). Do NOT set
+      # pod-level runAsUser/runAsGroup -- it would propagate to the routing/
+      # tokenizer sidecar (runAsNonRoot: true) and the kubelet would reject it.
+      podSecurityContext:
+        supplementalGroups:
+          - 107
+
+      vllm:
+        # XPU vLLM serve command. No libcuda export, no
+        # --gpu-memory-utilization; --dtype float16 --enforce-eager (the XPU
+        # torch.compile/inductor path crashes during warmup on this driver,
+        # "UR_RESULT_ERROR_DEVICE_LOST"; eager is the stable path).
+        # Prefix caching is left ENABLED and the ZMQ kv-events publisher is
+        # kept -- both required by the precise-prefix-cache-scorer.
+        customCommand: |
+          . /shared-config/llmdbench_env.sh
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_INFERENCE_PORT \
+          --dtype float16 \
+          --enforce-eager \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --tensor-parallel-size $TP_SIZE \
+          --prefix-caching-hash-algo sha256_cbor \
+          --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(POD_PORT)@$(MODEL_NAME)"}' \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      # Resource configuration
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+          gpu.intel.com/xe: 1
+        requests:
+          memory: 12Gi
+          cpu: "4"
+          gpu.intel.com/xe: 1
+
+      extraEnvVars:
+        - name: KV_EVENTS_ENDPOINT
+          value: "tcp://*:5556"
+        - name: DO_NOT_TRACK
+          value: "1"
+
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        ports:
+          - containerPort: 5556  # ZMQ KV-events publisher (precise prefix cache)
+            protocol: TCP
+          - containerPort: 8200  # Metrics port
+            name: metrics
+            protocol: TCP
+        securityContext:
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: IfNotPresent
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+    # =========================================================================
+    # COMMON
+    # =========================================================================
+    annotations:
+      prefill:
+        pod:
+      decode:
+        pod:
+      resources:
+        prefill:
+        decode:
+
+    vllmCommon:
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+        - name: dshm
+          mountPath: /dev/shm
+
+    # =========================================================================
+    # STORAGE
+    # kind's rancher.io/local-path provisioner only supports ReadWriteOnce
+    # (NodePath rejects ReadWriteMany), so override the RWX defaults to RWO.
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 50Gi
+        accessModes:
+          - ReadWriteOnce
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+
+    # =========================================================================
+    # TIMEOUTS
+    # =========================================================================
+    timeouts:
+      controlWait: 900000
+      harnessWait: 900000
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "~/data/precise-prefix-cache-routing-xpu"
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml
