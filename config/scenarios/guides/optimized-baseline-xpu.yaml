@@ -1,0 +1,217 @@
+# OPTIMIZED BASELINE - Intel XPU (device-plugin) variant
+# ============================================================================
+# Adapted from config/scenarios/guides/optimized-baseline.yaml for Intel GPU
+# (xe driver, classic device-plugin `gpu.intel.com/xe`). References the
+# upstream guide modelserver overlay at:
+#   llm-d/guides/optimized-baseline/modelserver/xpu/vllm
+#
+# Key differences vs the NVIDIA scenario:
+#   * accelerator.type=intel-xe, resource=gpu.intel.com/xe (not nvidia.com/gpu)
+#   * vLLM image = ghcr.io/llm-d/llm-d-xpu (XPU build, not CUDA vllm-openai)
+#   * decode.vllm.customCommand has NO libcuda export and NO
+#     --gpu-memory-utilization; uses --dtype float16 --disable-sliding-window
+#     as in the upstream XPU overlay.
+#   * model = Qwen/Qwen3-0.6B (small, fits a single Arc/B-series GPU)
+#   * NO DRA (cluster uses the classic Intel GPU device plugin)
+# ============================================================================
+
+scenario:
+  - name: "optimized-baseline-xpu"
+
+    # =========================================================================
+    # ACCELERATOR - Intel GPU via classic device plugin (gpu.intel.com/xe)
+    # =========================================================================
+    accelerator:
+      type: intel-xe
+      resource: "gpu.intel.com/xe"
+      count: 1
+      # The llm-d-modelservice chart injects accelerator-specific env for
+      # intel-xe (VLLM_WORKER_MULTIPROC_METHOD=spawn). The benchmark macro
+      # already adds VLLM_WORKER_MULTIPROC_METHOD to the container env, so the
+      # chart default would produce a duplicate env key (rejected by
+      # server-side apply). Override the chart's intel-xe env list to empty.
+      env:
+        intel-xe: []
+
+    # =========================================================================
+    # IMAGE - vLLM XPU build (overrides the CUDA default in defaults.yaml)
+    # =========================================================================
+    images:
+      vllm:
+        repository: ghcr.io/llm-d/llm-d-xpu
+        tag: v0.7.0
+        pullPolicy: IfNotPresent
+
+    # =========================================================================
+    # MODEL
+    # =========================================================================
+    model:
+      name: Qwen/Qwen3-0.6B
+      shortName: qwen-qwen3-06b
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 50Gi
+      maxModelLen: 16000
+      blockSize: 16
+      gpuMemoryUtilization: 0.9
+
+    # =========================================================================
+    # DEPLOYMENT METHOD - modelservice with standalone (epponly) router
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    kustomize:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    # =========================================================================
+    # ROUTING / GAIE
+    # =========================================================================
+    inferenceExtension:
+      pluginsConfigFile: "default-plugins.yaml"
+
+    # =========================================================================
+    # PREFILL - disabled (single-pool prefix/load-aware routing only)
+    # =========================================================================
+    prefill:
+      enabled: false
+      replicas: 0
+
+    # =========================================================================
+    # DECODE
+    # =========================================================================
+    decode:
+      replicas: 2
+
+      # Suppress the default NVIDIA nodeAffinity. defaults.yaml sets
+      # decode.acceleratorType.labelKey=nvidia.com/gpu.product (value
+      # NVIDIA-H100-80GB-HBM3), which the Intel node does not carry, making
+      # decode pods Unschedulable. Empty dict => template skips the
+      # acceleratorTypes nodeAffinity block entirely (Intel GPUs are selected
+      # purely via the gpu.intel.com/xe resource request).
+      acceleratorType: {}
+
+      # Pod-level securityContext. supplementalGroups is a Pod field (not a
+      # container field), so it must live here rather than in
+      # extraContainerConfig.securityContext. Group 107 = render, for /dev/dri.
+      # NOTE: do NOT set runAsUser/runAsGroup at the pod level. The modelservice
+      # chart injects a routing-proxy sidecar that declares runAsNonRoot: true;
+      # a pod-level runAsUser:0 would propagate to it and the kubelet rejects it
+      # ("runAsUser breaks non-root policy"). Root is needed only by the vllm
+      # container, which sets it via extraContainerConfig.securityContext below.
+      podSecurityContext:
+        supplementalGroups:
+          - 107
+
+      vllm:
+        # XPU vLLM serve command. Mirrors the upstream xpu/vllm overlay
+        # (no libcuda export, no --gpu-memory-utilization). Binds to the
+        # metrics port so the llm-d routing sidecar can bridge it.
+        # --enforce-eager: the XPU torch.compile/inductor path crashes during
+        # warmup ("level_zero backend failed with error: 20
+        # UR_RESULT_ERROR_DEVICE_LOST"); eager mode is the stable path on XPU.
+        customCommand: |
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --dtype float16 \
+          --enforce-eager \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --disable-sliding-window \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+          gpu.intel.com/xe: 1
+        requests:
+          memory: 12Gi
+          cpu: "4"
+          gpu.intel.com/xe: 1
+
+      extraEnvVars: []
+
+      # Metrics port only (no NIXL side-channel - single-node, no KV
+      # disaggregation). Container-level securityContext runs as root; the
+      # render group (107) for /dev/dri access is set at the pod level via
+      # decode.podSecurityContext (supplementalGroups is a Pod field).
+      extraContainerConfig:
+        ports:
+          - containerPort: 8200
+            name: metrics
+            protocol: TCP
+        securityContext:
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: IfNotPresent
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+    # =========================================================================
+    # COMMON (vLLM volumes)
+    # =========================================================================
+    vllmCommon:
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # =========================================================================
+    # STORAGE
+    # kind's rancher.io/local-path provisioner only supports ReadWriteOnce
+    # (NodePath rejects ReadWriteMany), so override the RWX defaults to RWO.
+    # Single-node kind => 2 decode replicas share the RWO volume on one node.
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 50Gi
+        accessModes:
+          - ReadWriteOnce
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "~/data/optimized-baseline-xpu"
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml
