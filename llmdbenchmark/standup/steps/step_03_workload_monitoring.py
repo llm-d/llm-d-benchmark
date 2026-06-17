@@ -354,17 +354,35 @@ class WorkloadMonitoringStep(Step):
             )
             return
 
+        cluster_gpu_labels: dict[str, list[str]] | None = None
         for source, key, value in selectors:
             if self._label_exists_on_nodes(node_labels, key, value):
                 context.logger.log_info(
                     f"Node selector {key}={value} ({source}) -- matched on cluster"
                 )
             else:
-                errors.append(
+                msg = (
                     f"Node selector label '{key}={value}' "
                     f"(from {source}) not found on any cluster node. "
                     "Pods using this selector will be stuck in Pending."
                 )
+                if source.endswith(".acceleratorType"):
+                    if cluster_gpu_labels is None:
+                        cluster_gpu_labels = self._collect_cluster_gpu_labels(
+                            node_labels
+                        )
+                    if cluster_gpu_labels:
+                        preview = "; ".join(
+                            f"{k}={','.join(vs)}"
+                            for k, vs in cluster_gpu_labels.items()
+                        )
+                        msg += (
+                            f" Cluster has these GPU-like labels: {preview}. "
+                            f"To auto-detect, set `{source}.labelValue: auto` "
+                            "in your scenario (resolver will discover labelKey "
+                            "and labelValue from the cluster)."
+                        )
+                errors.append(msg)
 
     @staticmethod
     def _effective_accelerator_count(method_config: dict) -> tuple[int, str]:
@@ -436,6 +454,25 @@ class WorkloadMonitoringStep(Step):
             if labels.get(key) == value:
                 return True
         return False
+
+    @staticmethod
+    def _collect_cluster_gpu_labels(
+        node_labels: list[dict[str, str]],
+    ) -> dict[str, list[str]]:
+        """Return GPU-related labels observed across nodes as {key: [values]}.
+
+        Used to make node-selector mismatches actionable: when a scenario's
+        acceleratorType doesn't match the cluster, we surface what GPU labels
+        DO exist so the user can either pin them explicitly or switch to
+        `labelValue: auto` to let the resolver substitute them in.
+        """
+        gpu_keywords = ("gpu", "accelerator", "nvidia", "amd", "habana")
+        found: dict[str, set[str]] = {}
+        for labels in node_labels:
+            for k, v in labels.items():
+                if any(kw in k.lower() for kw in gpu_keywords):
+                    found.setdefault(k, set()).add(v)
+        return {k: sorted(found[k]) for k in sorted(found)}
 
     def _capacity_planner_sanity_check(
         self,
