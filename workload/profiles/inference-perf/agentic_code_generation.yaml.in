@@ -3,8 +3,8 @@ load:
   num_workers: 8
   worker_max_concurrency: 1000
   stages:
-  - num_requests: ${NUM_REQUESTS}
-    concurrency_level: ${CONCURRENCY_LEVEL}
+  - num_requests: REPLACE_ENV_LLMDBENCH_RUN_NUM_REQUESTS
+    concurrency_level: REPLACE_ENV_LLMDBENCH_RUN_CONCURRENCY
 api:
   type: completion
   streaming: true
@@ -15,9 +15,9 @@ server:
 data:
   type: conversation_replay
   conversation_replay:
-    seed: ${SEED}
+    seed: REPLACE_ENV_LLMDBENCH_RUN_SEED
     max_model_len: 262144
-    num_conversations: ${CONCURRENCY_LEVEL}
+    num_conversations: REPLACE_ENV_LLMDBENCH_RUN_CONCURRENCY
     shared_system_prompt_len: 3000
     dynamic_system_prompt_len:
       type: lognormal
