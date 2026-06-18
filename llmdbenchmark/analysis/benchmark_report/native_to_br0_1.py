@@ -2554,6 +2554,9 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                     "value": launcher_info.get("launcher_creation_timestamp", 0.0),
                 }
                 info["launcher_node"] = launcher_info.get("launcher_node", "")
+                info["dpc_timing_available"] = launcher_info.get(
+                    "dpc_timing_available", False
+                )
                 if launcher_info.get("t_wake") is not None:
                     info["t_wake"] = {
                         "units": Units.S,

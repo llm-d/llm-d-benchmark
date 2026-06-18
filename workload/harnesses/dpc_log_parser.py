@@ -133,13 +133,21 @@ def parse_dpc_log(lines: Iterable[str]) -> dict[str, DPCTimingRecord]:
 
 
 def _is_dpc_log_file(filepath: str) -> bool:
-    """Check if a file is a DPC log by reading the first 256KB for indicator messages."""
+    """Check if a file is a DPC log by streaming for any indicator message.
+
+    Streams line-by-line and returns as soon as an indicator message is found,
+    so it is cheap for real DPC logs (the first indicator may appear well past
+    the start, after controller startup noise) and only reads to EOF for a
+    non-DPC log.
+    """
     try:
         with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-            chunk = f.read(256 * 1024)
-        return any(msg in chunk for msg in _DPC_INDICATOR_MSGS)
+            for line in f:
+                if any(msg in line for msg in _DPC_INDICATOR_MSGS):
+                    return True
     except OSError:
         return False
+    return False
 
 
 def parse_dpc_log_file(requests_dir: str) -> dict[str, DPCTimingRecord]:
@@ -149,9 +157,11 @@ def parse_dpc_log_file(requests_dir: str) -> dict[str, DPCTimingRecord]:
     loading the entire content into memory.
 
     The log file is written by write_controller_log() with the naming pattern:
-    <pod-name>--<container-name>.log. We identify DPC logs by checking the
-    first 256KB for any timing-relevant message (handles the case where
-    requesters crashed before relay and the log only contains start events).
+    <pod-name>--<container-name>.log. We identify DPC logs by streaming for any
+    timing-relevant message (handles the case where requesters crashed before
+    relay and the log only contains start events, and the case where the first
+    indicator message appears far into a large log after controller startup
+    noise).
 
     Args:
         requests_dir: Directory where controller logs were saved.

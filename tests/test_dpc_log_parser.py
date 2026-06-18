@@ -87,6 +87,28 @@ class TestParseDpcLogFile:
         records = parse_dpc_log_file(str(tmp_path))
         assert records == {}
 
+    def test_indicator_message_past_256kb_still_parsed(self, tmp_path):
+        """A DPC log whose first indicator message lands past 256KB must still parse.
+
+        Regression for the original _is_dpc_log_file heuristic, which only sniffed
+        the first 256KB. Real controller logs prepend large amounts of startup noise
+        (flag dumps, leader election, reconcile churn) before the first
+        relay/wake/create message, so the indicator can sit well past that boundary.
+        """
+        filler_line = (
+            "I0603 15:00:00.000000  1 inference-server.go:145] "
+            '"Reconciling server" serverUID="noise" requesterName="noise-pod"\n'
+        )
+        # Prepend well over 256KB of benign filler, then the real sample block.
+        filler = filler_line * (300 * 1024 // len(filler_line) + 1)
+        assert len(filler) > 256 * 1024
+        log_file = tmp_path / "dpctlr-pod--manager.log"
+        log_file.write_text(filler + SAMPLE_LOG)
+
+        records = parse_dpc_log_file(str(tmp_path))
+        assert "fma-req-1-1717424983-abcde" in records
+        assert records["fma-req-1-1717424983-abcde"].t_hot() is not None
+
     def test_file_without_relay_but_with_wake_still_parsed(self, tmp_path):
         """DPC log where requester crashed before relay should still be found."""
         partial_log = (
