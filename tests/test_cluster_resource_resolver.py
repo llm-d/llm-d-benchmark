@@ -183,3 +183,199 @@ class TestResolveAcceleratorTypeLabelsSkipping:
         assert (
             values["decode"]["acceleratorType"]["labelValue"] == "NVIDIA-A100-SXM4-80GB"
         )
+
+
+class TestAmdRocmGracefulDegradation:
+    """Cluster has GPU resources but no GPU SKU labels we know about (the
+    AMD ROCM nightly failure mode). Resolver must drop the acceleratorType
+    constraint so the template falls through to a resource-only pod spec,
+    rather than raising and blocking the entire standup.
+    """
+
+    @pytest.fixture
+    def amd_resources_no_labels(self):
+        return NodeResources(
+            accelerator_resources=["amd.com/gpu"],  # capacity says yes
+            gpu_labels={},  # but no SKU label recognised
+        )
+
+    @pytest.fixture
+    def amd_resources_with_label(self):
+        return NodeResources(
+            accelerator_resources=["amd.com/gpu"],
+            gpu_labels={"amd.com/gpu.product": ["AMD-Instinct-MI300X"]},
+        )
+
+    def test_amd_no_labels_drops_constraint_and_does_not_error(
+        self, resolver, amd_resources_no_labels
+    ):
+        resolver._node_resources = amd_resources_no_labels
+        values = {
+            "decode": {
+                "parallelism": {"tensor": 2},
+                "acceleratorType": {
+                    "labelKey": "nvidia.com/gpu.product",
+                    "labelValue": "auto",
+                },
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == []
+        # Both label fields must be GONE (not None, not "auto") so the
+        # template's `is defined` gate falls through.
+        accel = values["decode"]["acceleratorType"]
+        assert "labelKey" not in accel
+        assert "labelValue" not in accel
+
+    def test_amd_with_known_label_is_resolved_via_extended_allow_list(
+        self, resolver, amd_resources_with_label
+    ):
+        """`amd.com/gpu.product` was added to KNOWN_GPU_LABEL_KEYS."""
+        resolver._node_resources = amd_resources_with_label
+        values = {
+            "decode": {
+                "parallelism": {"tensor": 2},
+                "acceleratorType": {
+                    "labelKey": "nvidia.com/gpu.product",
+                    "labelValue": "auto",
+                },
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == []
+        assert values["decode"]["acceleratorType"]["labelKey"] == "amd.com/gpu.product"
+        assert (
+            values["decode"]["acceleratorType"]["labelValue"] == "AMD-Instinct-MI300X"
+        )
+
+    def test_no_gpus_at_all_still_errors_when_section_requests_them(self, resolver):
+        """The degradation only kicks in when the cluster HAS GPU resources.
+        Empty cluster + GPU-requesting section must still raise."""
+        resolver._node_resources = NodeResources()
+        values = {
+            "decode": {
+                "parallelism": {"tensor": 2},
+                "acceleratorType": {
+                    "labelKey": "nvidia.com/gpu.product",
+                    "labelValue": "auto",
+                },
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == ["decode.acceleratorType.labelValue"]
+
+
+class TestGpuSkuLabelHeuristic:
+    """The vendor-prefix + SKU-suffix heuristic that lets the resolver match
+    GPU SKU labels from any vendor without per-vendor maintenance.
+
+    Adding a new vendor (Intel, Habana, anything that follows the
+    ``{vendor}/gpu.{suffix}`` convention) is now zero-config: as long as
+    the vendor's accelerator resource is on the cluster, its labels match."""
+
+    @pytest.fixture
+    def looks_like(self):
+        return ClusterResourceResolver._looks_like_gpu_sku_label
+
+    def test_vendor_prefixes_extracted_from_resource_keys(self):
+        prefixes = ClusterResourceResolver._vendor_prefixes(
+            {"nvidia.com/gpu", "amd.com/gpu", "gpu.intel.com/i915", "habana.ai/gaudi"}
+        )
+        assert prefixes == {
+            "nvidia.com/",
+            "amd.com/",
+            "gpu.intel.com/",
+            "habana.ai/",
+        }
+
+    def test_vendor_prefixes_skips_keys_without_slash(self):
+        # Defensive: malformed resource keys shouldn't produce empty prefixes
+        # that would match every label.
+        assert ClusterResourceResolver._vendor_prefixes({"malformed"}) == set()
+
+    # --- vendor-prefix + SKU-suffix matches ---
+
+    def test_nvidia_product_matches_via_heuristic(self, looks_like):
+        assert looks_like("nvidia.com/gpu.product", {"nvidia.com/"})
+
+    def test_amd_product_matches_via_heuristic(self, looks_like):
+        assert looks_like("amd.com/gpu.product", {"amd.com/"})
+
+    def test_amd_family_matches_via_heuristic(self, looks_like):
+        assert looks_like("amd.com/gpu.family", {"amd.com/"})
+
+    def test_intel_family_matches_via_heuristic(self, looks_like):
+        """Intel GPU Operator labels work out of the box now."""
+        assert looks_like("gpu.intel.com/family", {"gpu.intel.com/"})
+
+    def test_habana_gaudi_matches_via_heuristic(self, looks_like):
+        assert looks_like("habana.ai/gaudi.product", {"habana.ai/"})
+
+    # --- explicit allow-list matches (cross-namespace) ---
+
+    def test_nvidia_class_label_matches_via_allow_list(self, looks_like):
+        """`gpu.nvidia.com/class` doesn't share a prefix with `nvidia.com/gpu`,
+        so the allow-list is the only path."""
+        assert looks_like("gpu.nvidia.com/class", {"nvidia.com/"})
+
+    def test_amd_product_name_matches_via_allow_list(self, looks_like):
+        """`kubernetes.amd.com/gpu.product-name` doesn't share a prefix with
+        `amd.com/gpu`, so the allow-list catches it."""
+        assert looks_like("kubernetes.amd.com/gpu.product-name", {"amd.com/"})
+
+    # --- cloud-managed labels ---
+
+    def test_gke_accelerator_label_matches_via_cloud_list(self, looks_like):
+        # No vendor prefix needed -- cloud-provider lists carry these.
+        assert looks_like("cloud.google.com/gke-accelerator", set())
+
+    # --- rejection paths ---
+
+    def test_unrelated_label_with_sku_suffix_rejected_without_vendor(self, looks_like):
+        """A label that happens to end in `.family` but lives in an unrelated
+        namespace shouldn't match when no GPU vendor is on the cluster."""
+        assert not looks_like("topology.node.kubernetes.io/family", set())
+
+    def test_unrelated_label_with_sku_suffix_rejected_with_unrelated_vendor(
+        self, looks_like
+    ):
+        """Same label, but cluster has only AMD GPUs -- still no match."""
+        assert not looks_like("topology.node.kubernetes.io/family", {"amd.com/"})
+
+    def test_nvidia_count_label_rejected_no_sku_suffix(self, looks_like):
+        """nvidia.com/gpu.count is GPU-related but it's a count not a SKU."""
+        assert not looks_like("nvidia.com/gpu.count", {"nvidia.com/"})
+
+
+class TestScanIntegratesHeuristicForIntel:
+    """End-to-end: an Intel cluster (resource = gpu.intel.com/i915) with
+    `gpu.intel.com/family: dg2` labels resolves cleanly through the resolver."""
+
+    def test_intel_cluster_resolves_via_heuristic(self):
+        resolver = ClusterResourceResolver(logger=MagicMock(), dry_run=False)
+        resolver._node_resources = NodeResources(
+            accelerator_resources=["gpu.intel.com/i915"],
+            # Mimics what _scan_nodes would have collected via the heuristic.
+            gpu_labels={"gpu.intel.com/family": ["dg2"]},
+        )
+        values = {
+            "decode": {
+                "parallelism": {"tensor": 1},
+                "acceleratorType": {
+                    "labelKey": "nvidia.com/gpu.product",
+                    "labelValue": "auto",
+                },
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == []
+        assert values["decode"]["acceleratorType"]["labelKey"] == "gpu.intel.com/family"
+        assert values["decode"]["acceleratorType"]["labelValue"] == "dg2"
