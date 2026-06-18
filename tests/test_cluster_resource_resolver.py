@@ -324,10 +324,12 @@ class TestGpuSkuLabelHeuristic:
         so the allow-list is the only path."""
         assert looks_like("gpu.nvidia.com/class", {"nvidia.com/"})
 
-    def test_amd_product_name_matches_via_allow_list(self, looks_like):
-        """`kubernetes.amd.com/gpu.product-name` doesn't share a prefix with
-        `amd.com/gpu`, so the allow-list catches it."""
-        assert looks_like("kubernetes.amd.com/gpu.product-name", {"amd.com/"})
+    def test_amd_product_name_matches_via_heuristic(self, looks_like):
+        """`amd.com/gpu.product-name` is the canonical AMD GPU Operator label.
+        It shares the `amd.com/` prefix with the `amd.com/gpu` resource AND
+        its final attribute name `product-name` is in our SKU vocabulary,
+        so the heuristic matches it without needing an allow-list entry."""
+        assert looks_like("amd.com/gpu.product-name", {"amd.com/"})
 
     # --- cloud-managed labels ---
 

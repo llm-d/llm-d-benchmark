@@ -100,15 +100,19 @@ class ClusterResourceResolver:
     # convention (the node operator sets them on accelerator-enabled nodes).
     CLOUD_PROVIDER_GPU_LABEL_KEYS = ("cloud.google.com/gke-accelerator",)
 
-    # Explicit allow-list -- retained so vendors whose labels live in a
-    # different namespace than their resource (e.g. NVIDIA's `gpu.nvidia.com/class`
-    # vs `nvidia.com/gpu` resource) still match. New vendors that follow the
-    # `{vendor}/gpu.{suffix}` convention DO NOT need to be added here; the
-    # generic heuristic in `_looks_like_gpu_sku_label` already picks them up
-    # via the vendor prefix derived from accelerator_resources.
+    # Explicit allow-list for labels that DON'T share a namespace with their
+    # vendor's accelerator resource and therefore can't be matched by the
+    # generic heuristic. ``gpu.nvidia.com/class`` is the canonical example:
+    # the resource is ``nvidia.com/gpu`` (prefix ``nvidia.com/``) but the
+    # label lives under ``gpu.nvidia.com/`` -- different prefix entirely.
+    #
+    # Conventional ``{vendor}/gpu.{attribute}`` labels (NVIDIA's standard
+    # ``nvidia.com/gpu.product``, AMD's ``amd.com/gpu.product-name``, Intel's
+    # ``gpu.intel.com/family``, etc.) DO NOT need to be added here -- the
+    # heuristic in ``_looks_like_gpu_sku_label`` matches them via the vendor
+    # prefix derived from ``accelerator_resources``.
     KNOWN_GPU_LABEL_KEYS = [
         "gpu.nvidia.com/class",
-        "kubernetes.amd.com/gpu.product-name",
     ]
 
     # Known network resource keys (checked in node status.capacity)
