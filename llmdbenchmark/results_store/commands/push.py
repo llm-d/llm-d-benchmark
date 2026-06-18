@@ -2,11 +2,11 @@
 
 import sys
 from pathlib import Path
-from llmdbenchmark.result_store.config import ConfigManager
-from llmdbenchmark.result_store.workspace import WorkspaceManager
-from llmdbenchmark.result_store.store import StoreNotFound
-from llmdbenchmark.result_store.commands import register_command
-from llmdbenchmark.result_store.client import get_storage_client, get_fallback_client
+from llmdbenchmark.results_store.config import ConfigManager
+from llmdbenchmark.results_store.workspace import WorkspaceManager
+from llmdbenchmark.results_store.store import StoreNotFound
+from llmdbenchmark.results_store.commands import register_command
+from llmdbenchmark.results_store.client import get_storage_client, get_fallback_client
 
 
 @register_command("push")

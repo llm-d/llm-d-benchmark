@@ -1,8 +1,8 @@
 """Command to initialize a local result store."""
 
 import sys
-from llmdbenchmark.result_store.store import StoreManager
-from llmdbenchmark.result_store.commands import register_command
+from llmdbenchmark.results_store.store import StoreManager
+from llmdbenchmark.results_store.commands import register_command
 
 
 @register_command("init")

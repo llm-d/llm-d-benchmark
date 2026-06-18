@@ -1,8 +1,8 @@
 """Command to manage remotes."""
 
 import sys
-from llmdbenchmark.result_store.config import ConfigManager
-from llmdbenchmark.result_store.commands import register_command
+from llmdbenchmark.results_store.config import ConfigManager
+from llmdbenchmark.results_store.commands import register_command
 
 
 @register_command("remote")

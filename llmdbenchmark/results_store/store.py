@@ -43,7 +43,7 @@ class StoreManager:
 
         store_dir.mkdir(parents=True)
         (target / "workspaces").mkdir(exist_ok=True)
-        from llmdbenchmark.result_store.config import ConfigManager
+        from llmdbenchmark.results_store.config import ConfigManager
 
         config = ConfigManager(config_path=store_dir / "config.json")
         config.init_config()
