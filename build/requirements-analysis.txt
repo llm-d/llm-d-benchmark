@@ -1,5 +1,5 @@
 kubernetes>=35.0.0
-matplotlib>=3.10.9
+matplotlib>=3.11.0
 numpy>=2.4.6
 seaborn>=0.13.2
 pandas>=3.0.3
