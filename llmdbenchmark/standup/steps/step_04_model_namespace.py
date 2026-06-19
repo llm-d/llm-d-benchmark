@@ -233,6 +233,16 @@ class ModelNamespaceStep(Step):
         if not ns_yaml:
             return
 
+        if context.non_admin:
+            # The render pipeline elides ClusterRole/ClusterRoleBinding when
+            # --non-admin is set; surface that here so it's not silent and
+            # so the 'nop' harness mismatch is callable out in the log.
+            context.logger.log_info(
+                "--non-admin: skipped ClusterRole/ClusterRoleBinding "
+                "'inference-perf-service-viewer' (only the 'nop' harness "
+                "needs them; use inference-perf / guidellm / vllm-benchmark)"
+            )
+
         result = cmd.kube("apply", "-f", str(ns_yaml))
         if not result.success:
             errors.append(f"Failed to apply namespace resources: {result.stderr}")
