@@ -3,11 +3,11 @@
 import sys
 import fnmatch
 from pathlib import Path
-from llmdbenchmark.result_store.config import ConfigManager
-from llmdbenchmark.result_store.store import StoreManager, StoreNotFound
-from llmdbenchmark.result_store.utils import parse_report_path
-from llmdbenchmark.result_store.commands import register_command
-from llmdbenchmark.result_store.client import get_storage_client, get_fallback_client
+from llmdbenchmark.results_store.config import ConfigManager
+from llmdbenchmark.results_store.store import StoreManager, StoreNotFound
+from llmdbenchmark.results_store.utils import parse_report_path
+from llmdbenchmark.results_store.commands import register_command
+from llmdbenchmark.results_store.client import get_storage_client, get_fallback_client
 
 
 @register_command("pull")

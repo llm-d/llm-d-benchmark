@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from google.cloud import storage
-from llmdbenchmark.result_store.client.base import StorageClient
+from llmdbenchmark.results_store.client.base import StorageClient
 
 
 def parse_gcs_uri(uri: str) -> tuple[str, str]:

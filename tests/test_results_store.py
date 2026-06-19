@@ -4,11 +4,11 @@ import argparse
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from llmdbenchmark.result_store.store import StoreManager, StoreNotFound
-from llmdbenchmark.result_store.config import ConfigManager
-from llmdbenchmark.result_store.workspace import WorkspaceManager
+from llmdbenchmark.results_store.store import StoreManager, StoreNotFound
+from llmdbenchmark.results_store.config import ConfigManager
+from llmdbenchmark.results_store.workspace import WorkspaceManager
 from llmdbenchmark.interface import results
-from llmdbenchmark.result_store.client.gcs import GCSClient, parse_gcs_uri
+from llmdbenchmark.results_store.client.gcs import GCSClient, parse_gcs_uri
 
 
 def test_store_initialization(tmp_path):
@@ -92,13 +92,13 @@ class ResultsStatusTest:
 
     @patch("builtins.print")
     @patch(
-        "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+        "llmdbenchmark.results_store.store.StoreManager.find_store_root",
         return_value=Path("/tmp"),
     )
     def test_status_empty(self, mock_root, mock_print):
         args = argparse.Namespace(results_command="status")
         with patch(
-            "llmdbenchmark.result_store.workspace.WorkspaceManager.list_staged",
+            "llmdbenchmark.results_store.workspace.WorkspaceManager.list_staged",
             return_value=[],
         ):
             with patch("pathlib.Path.exists", return_value=False):
@@ -109,7 +109,7 @@ class ResultsStatusTest:
 
     @patch("builtins.print")
     @patch(
-        "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+        "llmdbenchmark.results_store.store.StoreManager.find_store_root",
         return_value=Path("/tmp"),
     )
     def test_status_staged_only(self, mock_root, mock_print):
@@ -125,7 +125,7 @@ class ResultsStatusTest:
             }
         ]
         with patch(
-            "llmdbenchmark.result_store.workspace.WorkspaceManager.list_staged",
+            "llmdbenchmark.results_store.workspace.WorkspaceManager.list_staged",
             return_value=staged_data,
         ):
             with patch("pathlib.Path.exists", return_value=False):
@@ -138,7 +138,7 @@ class ResultsStatusTest:
 
     @patch("builtins.print")
     @patch(
-        "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+        "llmdbenchmark.results_store.store.StoreManager.find_store_root",
         return_value=Path("/tmp"),
     )
     def test_status_untracked_only(self, mock_root, mock_print):
@@ -150,7 +150,7 @@ class ResultsStatusTest:
             "hardware": "dummy_hardware",
         }
         with patch(
-            "llmdbenchmark.result_store.workspace.WorkspaceManager.list_staged",
+            "llmdbenchmark.results_store.workspace.WorkspaceManager.list_staged",
             return_value=[],
         ):
             with patch("pathlib.Path.exists", return_value=True):
@@ -159,7 +159,7 @@ class ResultsStatusTest:
                 ):
                     with patch("pathlib.Path.is_dir", return_value=True):
                         with patch(
-                            "llmdbenchmark.result_store.workspace.WorkspaceManager._parse_report",
+                            "llmdbenchmark.results_store.workspace.WorkspaceManager._parse_report",
                             return_value=untracked_data,
                         ):
                             results.execute(args, DummyLogger())
@@ -171,19 +171,19 @@ class ResultsStatusTest:
 
 
 @patch(
-    "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+    "llmdbenchmark.results_store.store.StoreManager.find_store_root",
     return_value=Path("/tmp"),
 )
 def test_cli_results_add(mock_root, tmp_path):
     args = argparse.Namespace(results_command="add", paths=["dummy_path"])
     logger = DummyLogger()
     with patch(
-        "llmdbenchmark.result_store.workspace.WorkspaceManager.add_workspace"
+        "llmdbenchmark.results_store.workspace.WorkspaceManager.add_workspace"
     ) as mock_add:
         with patch("pathlib.Path.exists", return_value=True):
             with patch("pathlib.Path.is_dir", return_value=True):
                 with patch(
-                    "llmdbenchmark.result_store.workspace.WorkspaceManager._parse_report",
+                    "llmdbenchmark.results_store.workspace.WorkspaceManager._parse_report",
                     return_value={
                         "scenario": "test",
                         "model": "test",
@@ -195,17 +195,17 @@ def test_cli_results_add(mock_root, tmp_path):
 
 
 @patch(
-    "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+    "llmdbenchmark.results_store.store.StoreManager.find_store_root",
     return_value=Path("/tmp"),
 )
 def test_cli_results_rm(mock_root):
     args = argparse.Namespace(results_command="rm", paths=["c6bc210e"])
     logger = DummyLogger()
     with patch(
-        "llmdbenchmark.result_store.workspace.WorkspaceManager.remove_workspace"
+        "llmdbenchmark.results_store.workspace.WorkspaceManager.remove_workspace"
     ) as mock_rm:
         with patch(
-            "llmdbenchmark.result_store.workspace.WorkspaceManager.list_staged",
+            "llmdbenchmark.results_store.workspace.WorkspaceManager.list_staged",
             return_value=[{"run_uid": "c6bc210e", "path": "/tmp/dummy"}],
         ):
             results.execute(args, logger)
@@ -213,7 +213,7 @@ def test_cli_results_rm(mock_root):
 
 
 @patch(
-    "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+    "llmdbenchmark.results_store.store.StoreManager.find_store_root",
     return_value=Path("/tmp"),
 )
 def test_cli_add_interactive_validation_loop(mock_root, tmp_path):
@@ -222,13 +222,13 @@ def test_cli_add_interactive_validation_loop(mock_root, tmp_path):
     report_data = {"scenario": "test", "model": "test", "hardware": "missing"}
 
     with patch(
-        "llmdbenchmark.result_store.workspace.WorkspaceManager.add_workspace",
+        "llmdbenchmark.results_store.workspace.WorkspaceManager.add_workspace",
         return_value=True,
     ) as mock_add:
         with patch("pathlib.Path.exists", return_value=True):
             with patch("pathlib.Path.is_dir", return_value=True):
                 with patch(
-                    "llmdbenchmark.result_store.workspace.WorkspaceManager._parse_report",
+                    "llmdbenchmark.results_store.workspace.WorkspaceManager._parse_report",
                     return_value=report_data,
                 ):
                     with patch("sys.stdout.isatty", return_value=True):
@@ -242,7 +242,7 @@ def test_cli_add_interactive_validation_loop(mock_root, tmp_path):
 
 
 @patch(
-    "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+    "llmdbenchmark.results_store.store.StoreManager.find_store_root",
     return_value=Path("/tmp"),
 )
 def test_cli_add_interactive_empty_abort(mock_root, tmp_path):
@@ -251,12 +251,12 @@ def test_cli_add_interactive_empty_abort(mock_root, tmp_path):
     report_data = {"scenario": "test", "model": "test", "hardware": "missing"}
 
     with patch(
-        "llmdbenchmark.result_store.workspace.WorkspaceManager.add_workspace"
+        "llmdbenchmark.results_store.workspace.WorkspaceManager.add_workspace"
     ) as mock_add:
         with patch("pathlib.Path.exists", return_value=True):
             with patch("pathlib.Path.is_dir", return_value=True):
                 with patch(
-                    "llmdbenchmark.result_store.workspace.WorkspaceManager._parse_report",
+                    "llmdbenchmark.results_store.workspace.WorkspaceManager._parse_report",
                     return_value=report_data,
                 ):
                     with patch("sys.stdout.isatty", return_value=True):
@@ -275,7 +275,7 @@ def test_parse_gcs_uri():
     assert prefix == ""
 
 
-@patch("llmdbenchmark.result_store.client.gcs.storage.Client")
+@patch("llmdbenchmark.results_store.client.gcs.storage.Client")
 def test_gcs_client_push(mock_storage, tmp_path):
     mock_bucket = MagicMock()
     mock_storage.return_value.bucket.return_value = mock_bucket
@@ -304,27 +304,27 @@ def test_cli_results_push():
     mock_client.push.return_value = "gs://dest"
 
     with patch(
-        "llmdbenchmark.result_store.commands.push.get_storage_client",
+        "llmdbenchmark.results_store.commands.push.get_storage_client",
         return_value=mock_client,
     ):
         with patch(
-            "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+            "llmdbenchmark.results_store.store.StoreManager.find_store_root",
             return_value=Path("/tmp"),
         ):
             with patch(
-                "llmdbenchmark.result_store.workspace.WorkspaceManager.list_staged",
+                "llmdbenchmark.results_store.workspace.WorkspaceManager.list_staged",
                 return_value=[
                     {"status": "staged", "path": "/tmp/dummy", "run_uid": "123"}
                 ],
             ):
                 with patch(
-                    "llmdbenchmark.result_store.workspace.WorkspaceManager.remove_workspace"
+                    "llmdbenchmark.results_store.workspace.WorkspaceManager.remove_workspace"
                 ):
                     results.execute(args, logger)
 
 
 @patch(
-    "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+    "llmdbenchmark.results_store.store.StoreManager.find_store_root",
     return_value=Path("/tmp"),
 )
 def test_cli_results_pull(mock_root):
@@ -340,7 +340,7 @@ def test_cli_results_pull(mock_root):
     mock_client.pull.return_value = ("/tmp/dest/123", 1)
 
     with patch(
-        "llmdbenchmark.result_store.commands.pull.get_storage_client",
+        "llmdbenchmark.results_store.commands.pull.get_storage_client",
         return_value=mock_client,
     ):
         results.execute(args, logger)
@@ -356,16 +356,16 @@ def test_cli_push_already_exists_abort():
     mock_client.exists.return_value = True
 
     with patch(
-        "llmdbenchmark.result_store.commands.push.get_storage_client",
+        "llmdbenchmark.results_store.commands.push.get_storage_client",
         return_value=mock_client,
     ):
         with patch("sys.stdout.isatty", return_value=False):
             with patch(
-                "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+                "llmdbenchmark.results_store.store.StoreManager.find_store_root",
                 return_value=Path("/tmp"),
             ):
                 with patch(
-                    "llmdbenchmark.result_store.workspace.WorkspaceManager.list_staged",
+                    "llmdbenchmark.results_store.workspace.WorkspaceManager.list_staged",
                     return_value=[
                         {"status": "staged", "path": "/tmp/dummy", "run_uid": "123"}
                     ],
@@ -379,7 +379,7 @@ def test_cli_add_not_found():
     logger = DummyLogger()
 
     with patch(
-        "llmdbenchmark.result_store.store.StoreManager.find_store_root",
+        "llmdbenchmark.results_store.store.StoreManager.find_store_root",
         return_value=Path("/tmp"),
     ):
         with patch("pathlib.Path.exists", return_value=False):
@@ -391,7 +391,7 @@ def test_cli_init_fail():
     logger = DummyLogger()
 
     with patch(
-        "llmdbenchmark.result_store.store.StoreManager.init_store",
+        "llmdbenchmark.results_store.store.StoreManager.init_store",
         side_effect=Exception("Disk Full"),
     ):
         with pytest.raises(SystemExit):

@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from llmdbenchmark.result_store.store import StoreManager, StoreNotFound
+from llmdbenchmark.results_store.store import StoreManager, StoreNotFound
 
 DEFAULT_REMOTES = {
     "prod": "gs://llm-d-benchmarks",

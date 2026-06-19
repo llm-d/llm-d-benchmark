@@ -26,5 +26,5 @@ for file_path in commands_dir.iterdir():
         and file_path.suffix == ".py"
         and file_path.name != "__init__.py"
     ):
-        module_name = f"llmdbenchmark.result_store.commands.{file_path.stem}"
+        module_name = f"llmdbenchmark.results_store.commands.{file_path.stem}"
         importlib.import_module(module_name)

@@ -2,10 +2,10 @@
 
 import sys
 import fnmatch
-from llmdbenchmark.result_store.config import ConfigManager
-from llmdbenchmark.result_store.utils import color_pad, parse_report_path
-from llmdbenchmark.result_store.commands import register_command
-from llmdbenchmark.result_store.client import get_storage_client, get_fallback_client
+from llmdbenchmark.results_store.config import ConfigManager
+from llmdbenchmark.results_store.utils import color_pad, parse_report_path
+from llmdbenchmark.results_store.commands import register_command
+from llmdbenchmark.results_store.client import get_storage_client, get_fallback_client
 
 
 @register_command("ls")

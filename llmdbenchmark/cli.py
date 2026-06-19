@@ -27,7 +27,7 @@ from llmdbenchmark.utilities.os.filesystem import (
     resolve_specification_file,
 )
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.result_store.store import StoreManager
+from llmdbenchmark.results_store.store import StoreManager
 from llmdbenchmark.telemetry import init_telemetry, get_telemetry
 import getpass
 from llmdbenchmark.interface import plan, standup, teardown, run
