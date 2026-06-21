@@ -53,7 +53,7 @@ install_crane_linux() {
 }
 
 install_jq_linux() {
-    local version=1.8.1
+    local version=1.8.2
     curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-amd64" \
         -o /tmp/jq
 }
@@ -197,7 +197,7 @@ def test_parse_install_sh_unpinned_marks_system_provided(
     entries = sbom_module.parse_install_sh(install_sh)
     by_name = {e.name: e for e in entries}
     # jq is now pinned via install_jq_linux
-    assert by_name["jq"].pin == "1.8.1"
+    assert by_name["jq"].pin == "1.8.2"
     assert by_name["jq"].pin_type == "version"
     # git has no install function, so it is system-provided
     assert by_name["git"].pin == "system-provided"
