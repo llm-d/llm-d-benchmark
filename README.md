@@ -773,6 +773,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Design of Experiments (DoE)](docs/doe.md)
 - [Lifecycle](docs/lifecycle.md)
 - [Run](docs/run.md)
+- [eval-containers harness (agentic benchmarks)](docs/eval-containers-harness.md)
 - [Standup](docs/standup.md)
 - [Kustomize deploy method](docs/kustomize.md)
 - [Reproducibility](docs/reproducibility.md)
