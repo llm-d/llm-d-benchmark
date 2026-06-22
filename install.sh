@@ -84,7 +84,7 @@ tool_version_for() {
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.7"  ;;
         skopeo)    echo "1.20.1"  ;;
-        jq)        echo "1.8.1"   ;;
+        jq)        echo "1.8.2"   ;;
         *)         echo ""        ;;
     esac
 }
