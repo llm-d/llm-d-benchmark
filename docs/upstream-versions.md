@@ -62,7 +62,7 @@ generation (and plan) time.
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
 | **benchmark** | `v0.7.0` | tag | `config/templates/values/defaults.yaml` line 363 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
-| **inferenceScheduler** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 398 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
+| **inferenceScheduler** | `v0.9.1` | tag | `config/templates/values/defaults.yaml` line 398 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 417 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routerEndpointPicker** | `main` | tag | `config/templates/values/defaults.yaml` line 392 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker-dev`) |
 | **routingSidecar** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 404 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |

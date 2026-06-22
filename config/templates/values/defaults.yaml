@@ -120,7 +120,7 @@ _anchors:
   # separate anchor so benchmark overrides can still target the legacy
   # image when needed.
   llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version main
-  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
+  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.9.1
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
   llm-d-cuda_version:                &llm-d-cuda_version                v0.7.0
