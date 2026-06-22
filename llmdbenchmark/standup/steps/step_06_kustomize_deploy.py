@@ -468,10 +468,20 @@ class KustomizeDeployStep(Step):
 
     @staticmethod
     def _select_modelserver_command(commands, accel_backend, resolver):
+        # 1. First loop: look for a command that directly matches modelserver/{accel_backend}
+        # without doing any default gpu/vllm backend replacement.
         for gc in commands:
-            resolved = resolver.resolve(gc.raw)
+            resolved = resolver.resolve(gc.raw, apply_backend=False)
             if f"modelserver/{accel_backend}" in resolved:
                 return gc
+
+        # 2. Second loop: look for a command that matches after default replacement,
+        # which acts as a fallback for cross-platform/cross-backend changes (e.g. gpu/vllm -> tpu/v7/vllm).
+        for gc in commands:
+            resolved = resolver.resolve(gc.raw, apply_backend=True)
+            if f"modelserver/{accel_backend}" in resolved:
+                return gc
+
         if commands:
             return commands[0]
         return None

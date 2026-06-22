@@ -55,11 +55,12 @@ class GuideVariableResolver:
             }
         )
 
-    def resolve(self, command: str) -> str:
+    def resolve(self, command: str, *, apply_backend: bool = True) -> str:
         """Return *command* with all placeholders resolved and paths absolutised."""
         result = self._substitute_variables(command)
         result = self._absolutise_paths(result)
-        result = self._apply_accelerator_backend(result)
+        if apply_backend:
+            result = self._apply_accelerator_backend(result)
         return result
 
     # ------------------------------------------------------------------
@@ -85,6 +86,8 @@ class GuideVariableResolver:
     def _apply_accelerator_backend(self, text: str) -> str:
         """Swap the default ``gpu/vllm`` backend for the configured one."""
         if self._accelerator_backend == "gpu/vllm":
+            return text
+        if f"modelserver/{self._accelerator_backend}" in text:
             return text
         return text.replace(
             "modelserver/gpu/vllm", f"modelserver/{self._accelerator_backend}"
