@@ -63,6 +63,10 @@ class NodeResources:
     # e.g. {"nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"]}
     gpu_labels: dict[str, list[str]] = field(default_factory=dict)
 
+    # DRA driver names from ResourceSlices, e.g. ["gpu.intel.com"]. These
+    # accelerators expose no node capacity resource or SKU label.
+    dra_drivers: list[str] = field(default_factory=list)
+
 
 class ClusterResourceResolver:
     """Resolve ``"auto"`` cluster resource values by querying node capacities and labels.
@@ -284,7 +288,13 @@ class ClusterResourceResolver:
             resources.accelerator_resources = sorted(accel_set)
             resources.network_resources = sorted(net_set)
             resources.gpu_labels = {k: sorted(v) for k, v in gpu_labels.items()}
+            resources.dra_drivers = self._scan_dra_drivers()
 
+            if resources.dra_drivers:
+                self.logger.log_info(
+                    f"Discovered DRA accelerator drivers: "
+                    f"{', '.join(resources.dra_drivers)}"
+                )
             if resources.accelerator_resources:
                 self.logger.log_info(
                     f"Discovered accelerator resources: "
@@ -310,6 +320,28 @@ class ClusterResourceResolver:
 
         self._node_resources = resources
         return resources
+
+    def _scan_dra_drivers(self) -> list[str]:
+        """Driver names from ResourceSlices (resource.k8s.io). Empty if none/unsupported."""
+        from kubernetes import client as k8s_client
+
+        drivers: set[str] = set()
+        for version in ("v1", "v1beta2", "v1beta1"):
+            try:
+                api = k8s_client.CustomObjectsApi(self._api_client)
+                slices = api.list_cluster_custom_object(
+                    group="resource.k8s.io",
+                    version=version,
+                    plural="resourceslices",
+                )
+            except Exception:
+                continue
+            for item in slices.get("items", []):
+                driver = (item.get("spec") or {}).get("driver")
+                if driver:
+                    drivers.add(driver)
+            break  # first served version wins
+        return sorted(drivers)
 
     @staticmethod
     def _vendor_prefixes(accelerator_resources: set[str] | list[str]) -> set[str]:
@@ -531,6 +563,20 @@ class ClusterResourceResolver:
                     "pods will schedule via resource request only. To require a "
                     f"specific SKU, set {section}.acceleratorType.labelKey and "
                     "labelValue explicitly in your scenario."
+                )
+                accel_type.pop("labelKey", None)
+                accel_type.pop("labelValue", None)
+                accel_type.pop("labelValues", None)
+            elif resources.dra_drivers:
+                # GPUs managed via DRA (e.g. gpu.intel.com): no node capacity
+                # resource or SKU label exists, pods schedule via ResourceClaim.
+                # Drop the acceleratorType constraint, same as the resource case.
+                self.logger.log_warning(
+                    f"Cluster uses DRA accelerator drivers "
+                    f"({', '.join(resources.dra_drivers)}) with no GPU SKU label. "
+                    f"Dropping {section}.acceleratorType constraint -- pods schedule "
+                    "via ResourceClaim. To require a specific SKU, set "
+                    f"{section}.acceleratorType.labelKey and labelValue explicitly."
                 )
                 accel_type.pop("labelKey", None)
                 accel_type.pop("labelValue", None)

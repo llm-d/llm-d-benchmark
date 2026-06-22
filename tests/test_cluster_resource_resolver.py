@@ -271,6 +271,57 @@ class TestAmdRocmGracefulDegradation:
         assert unresolved == ["decode.acceleratorType.labelValue"]
 
 
+class TestDraGracefulDegradation:
+    """Intel XPU exposes GPUs via DRA: no node capacity resource, no SKU label.
+    Resolver must drop the acceleratorType constraint (pods schedule via
+    ResourceClaim) rather than raising, just like the resource-only case.
+    """
+
+    @pytest.fixture
+    def dra_resources(self):
+        return NodeResources(dra_drivers=["gpu.intel.com"])
+
+    def test_dra_only_cluster_drops_constraint_and_does_not_error(
+        self, resolver, dra_resources
+    ):
+        resolver._node_resources = dra_resources
+        values = {
+            "decode": {
+                "parallelism": {"tensor": 1},
+                "acceleratorType": {
+                    "labelKey": "nvidia.com/gpu.product",
+                    "labelValue": "auto",
+                },
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == []
+        accel = values["decode"]["acceleratorType"]
+        assert "labelKey" not in accel
+        assert "labelValue" not in accel
+
+    def test_capacity_label_takes_precedence_over_dra(self, resolver):
+        """A real SKU label still wins -- DRA is only the last-resort drop."""
+        resolver._node_resources = NodeResources(
+            gpu_labels={"gpu.intel.com/family": ["Data Center Max"]},
+            dra_drivers=["gpu.intel.com"],
+        )
+        values = {
+            "decode": {
+                "parallelism": {"tensor": 1},
+                "acceleratorType": {"labelValue": "auto"},
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == []
+        assert values["decode"]["acceleratorType"]["labelKey"] == "gpu.intel.com/family"
+        assert values["decode"]["acceleratorType"]["labelValue"] == "Data Center Max"
+
+
 class TestGpuSkuLabelHeuristic:
     """The vendor-prefix + SKU-suffix heuristic that lets the resolver match
     GPU SKU labels from any vendor without per-vendor maintenance.
