@@ -89,7 +89,7 @@ Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kin
 
 **🚀 Access to Compute cluster with Accelerators - full pipeline**
 
-Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
+Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, Intel XPU, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
 
 - **Requirements:** cluster admin to install infra  (or utilize an namespace admin with infra pre-installed), kubeconfig, compute nodes
 - **Continue below** with [Choose a specification](#choose-a-specification) and [Deploy and benchmark](#deploy-and-benchmark-full-pipeline)
