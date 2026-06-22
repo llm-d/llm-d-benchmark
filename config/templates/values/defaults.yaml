@@ -1473,7 +1473,7 @@ gatewayProviders:
 lws:
   # Chart version managed in chartVersions.lws
   namespace: lws-system
-  helmRepository: oci://ghcr.io/kubernetes-sigs/lws
+  helmRepository: oci://registry.k8s.io/lws/charts/
 
 # ============================================================================
 # GATEWAY API CRD VERSIONS
