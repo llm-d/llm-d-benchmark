@@ -27,7 +27,7 @@ from llmdbenchmark.utilities.os.filesystem import (
     resolve_specification_file,
 )
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.result_store.store import StoreManager
+from llmdbenchmark.results_store.store import StoreManager
 from llmdbenchmark.telemetry import init_telemetry, get_telemetry
 import getpass
 from llmdbenchmark.interface import plan, standup, teardown, run
@@ -121,6 +121,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_wva=getattr(args, "wva", False),
             cli_gateway_class=getattr(args, "gateway_class", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
+            cli_non_admin=getattr(args, "non_admin", False),
         ).eval()
 
         try:
@@ -1201,6 +1202,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_wva=getattr(args, "wva", False),
         cli_gateway_class=getattr(args, "gateway_class", None),
         setup_overrides=setup_overrides,
+        cli_non_admin=getattr(args, "non_admin", False),
     ).eval()
 
     if render_plan_errors.has_errors:

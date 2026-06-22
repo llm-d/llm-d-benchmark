@@ -3,7 +3,7 @@
 import argparse
 
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.result_store.commands import COMMAND_MAP
+from llmdbenchmark.results_store.commands import COMMAND_MAP
 
 
 def add_subcommands(

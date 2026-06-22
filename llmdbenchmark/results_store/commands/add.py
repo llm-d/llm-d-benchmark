@@ -3,9 +3,9 @@
 import sys
 import fnmatch
 from pathlib import Path
-from llmdbenchmark.result_store.store import StoreManager, StoreNotFound
-from llmdbenchmark.result_store.workspace import WorkspaceManager
-from llmdbenchmark.result_store.commands import register_command
+from llmdbenchmark.results_store.store import StoreManager, StoreNotFound
+from llmdbenchmark.results_store.workspace import WorkspaceManager
+from llmdbenchmark.results_store.commands import register_command
 
 
 @register_command("add")

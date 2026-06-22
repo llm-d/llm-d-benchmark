@@ -52,6 +52,7 @@ class RenderPlans:
         cli_gateway_class: str | None = None,
         setup_overrides: dict | None = None,
         cli_stack_filter: list[str] | None = None,
+        cli_non_admin: bool = False,
     ):
         self.template_dir = Path(template_dir)
         self.defaults_file = Path(defaults_file)
@@ -80,6 +81,17 @@ class RenderPlans:
         # _resolve_model fires once per RenderPlans instance, not N times
         # in a multi-stack scenario.
         self._cli_model_multi_stack_warned: bool = False
+
+        # ``--non-admin`` propagates into the Jinja render context as
+        # ``nonAdmin`` so templates can gate cluster-scoped resources
+        # (ClusterRole, ClusterRoleBinding, etc.) the namespaced user
+        # can't create. Currently consumed by
+        # ``05_namespace_sa_rbac_secret.yaml.j2`` to skip the
+        # ``inference-perf-service-viewer`` pair -- those are only
+        # required by the ``nop`` harness's cluster-wide service
+        # discovery, so dropping them is safe for the mainstream
+        # harnesses (inference-perf, guidellm, vllm-benchmark).
+        self.cli_non_admin: bool = bool(cli_non_admin)
 
         self.logger = logger or get_logger(
             config.log_dir, verbose=config.verbose, log_name=__name__
@@ -1234,6 +1246,7 @@ class RenderPlans:
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
+        merged_values["nonAdmin"] = self.cli_non_admin
 
         epponly_errors = self._validate_epponly_constraints(
             merged_values,

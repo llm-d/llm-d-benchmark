@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 import yaml
-from llmdbenchmark.result_store.store import StoreManager
+from llmdbenchmark.results_store.store import StoreManager
 
 
 class WorkspaceManager:

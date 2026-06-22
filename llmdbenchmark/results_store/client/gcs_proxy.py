@@ -4,8 +4,8 @@ import os
 import urllib.parse
 import requests
 from llmdbenchmark.exceptions.exceptions import ConfigurationError
-from llmdbenchmark.result_store.client.base import StorageClient
-from llmdbenchmark.result_store.client.gcs import parse_gcs_uri
+from llmdbenchmark.results_store.client.base import StorageClient
+from llmdbenchmark.results_store.client.gcs import parse_gcs_uri
 from pathlib import Path
 
 
