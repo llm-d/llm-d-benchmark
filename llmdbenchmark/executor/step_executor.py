@@ -78,9 +78,16 @@ class StepExecutor:
     ) -> tuple[list[Step], list[Step], list[Step]]:
         """Split steps into pre-global, per-stack, and post-global lists.
 
-        Global steps whose number is lower than the lowest per-stack step
-        run before per-stack work (pre-global).  Global steps with a higher
-        number run after all per-stack work completes (post-global).
+        A global step at number N runs **before** per-stack work when its
+        number is ``<= min(per-stack step numbers)``, and **after** when it's
+        strictly greater. Boundary inclusion (``<=``) matters when a global
+        step shares its number with a per-stack step (e.g. the run-phase
+        ``HarnessNamespaceStep`` at 2 alongside the per-stack ``FMAWarmupStep``
+        at 2): naming-wise they're the "same step number," and the global
+        prep step is expected to set up the per-stack work that follows.
+        Without the inclusive comparator, the global prep step got demoted to
+        post_global and ran after per-stack timeouts had already fired
+        (see llm-d/llm-d-benchmark#nightly-1543).
         """
         global_steps = []
         per_stack_steps = []
@@ -95,8 +102,8 @@ class StepExecutor:
         # Find the boundary: lowest per-stack step number
         if per_stack_steps:
             min_per_stack = min(s.number for s in per_stack_steps)
-            pre_global = [s for s in global_steps if s.number < min_per_stack]
-            post_global = [s for s in global_steps if s.number >= min_per_stack]
+            pre_global = [s for s in global_steps if s.number <= min_per_stack]
+            post_global = [s for s in global_steps if s.number > min_per_stack]
         else:
             pre_global = global_steps
             post_global = []

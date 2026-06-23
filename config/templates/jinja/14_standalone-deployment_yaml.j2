@@ -149,6 +149,13 @@ spec:
         env:
         - name: HOME
           value: "{{ vllmCommon.containerHome }}"
+        # Workaround for https://github.com/vllm-project/vllm/issues/44548
+        # (vLLM v0.20.0+ with torch 2.11). torch._inductor's cache_dir() calls
+        # getpass.getuser() -> pwd.getpwuid(uid), which raises KeyError on
+        # OpenShift's random UIDs that aren't in the container's /etc/passwd.
+        # Setting USER bypasses the lookup; the value is arbitrary.
+        - name: USER
+          value: "llm-d"
         - name: HF_HOME
           value: "{{ vllmCommon.hfHome }}"
         - name: VLLM_CACHE_ROOT
