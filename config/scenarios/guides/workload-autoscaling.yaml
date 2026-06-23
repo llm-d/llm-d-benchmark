@@ -377,7 +377,12 @@ scenario:
         role: kv_both
 
       flags:
-        enforceEager: true
+        # enforceEager: false (overrides the defaults.yaml default of true).
+        # Cosmetic for the FMA path itself — FMA's launcher options are
+        # hard-coded in 24_fma-deployment.yaml.j2 and don't read this flag —
+        # but kept here to mirror the baseline scenario and to document intent
+        # if FMA's template ever starts honoring vllmCommon.flags.
+        enforceEager: false
         disableLogRequests: true
         disableUvicornAccessLog: true
         allowLongMaxModelLen: "1"

@@ -187,13 +187,27 @@ spec:
         dual-pods.llm-d.ai/admin-port: "8081"
         dual-pods.llm-d.ai/inference-server-config: fma-{{ model_id_label }}
     spec:
+      {# Pick a resolved accelerator type from decode/prefill/standalone
+         (cluster_resource_resolver.py rewrites `labelValue: auto` into the
+         concrete value, e.g. NVIDIA-H100-80GB-HBM3, before this template
+         runs). Using `operator: In` with a concrete value is required for
+         WVA's resolver to extract the accelerator name from nodeAffinity;
+         `operator: Exists` finds the key but returns no value, and WVA falls
+         back to "unresolved" — which silences its saturation engine
+         (OptimizationFailed: No saturation metrics available for model). #}
+      {% set _fma_accel = (decode.acceleratorType if decode is defined and decode.acceleratorType is defined and decode.acceleratorType.labelValue is defined
+                           else (prefill.acceleratorType if prefill is defined and prefill.acceleratorType is defined and prefill.acceleratorType.labelValue is defined
+                                 else (standalone.acceleratorType if standalone is defined and standalone.acceleratorType is defined and standalone.acceleratorType.labelValue is defined
+                                       else None))) %}
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                  - key: nvidia.com/gpu.product
-                    operator: Exists
+                  - key: {{ _fma_accel.labelKey if _fma_accel else 'nvidia.com/gpu.product' }}
+                    operator: In
+                    values:
+                      - "{{ _fma_accel.labelValue if _fma_accel else 'NVIDIA-H100-80GB-HBM3' }}"
       containers:
         - name: inference-server
           image: {{ fma.requester.image.repository }}:{{ fma.requester.image.tag }}
