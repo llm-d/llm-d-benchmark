@@ -508,6 +508,59 @@ treatments:
 - `setup.treatments[].name` -- identifier for the treatment
 - All other keys in a setup treatment are **config overrides** -- dotted key paths applied to the plan config via deep merge (e.g. `vllmCommon.flags.numCpuBlocks: 500`)
 
+#### Sweeping EPP plugins config (`router.epp.pluginsConfigFile`)
+
+The EPP's inference-scheduling plugin set (prefix-cache routing, predicted-latency
+scoring, queue policies, etc.) is selected by `router.epp.pluginsConfigFile`.
+It flows straight through to the chart at render time:
+
+```
+  router.epp.pluginsConfigFile
+       (set by setup.treatment override)
+                |
+                v
+  config/templates/jinja/12_router-values.yaml.j2
+       -> router.epp.pluginsConfigFile (pass-through)
+                |
+                v
+  llm-d-router-standalone-dev helm chart
+       -> EPP plugins ConfigMap entry selected at startup
+```
+
+Each treatment names one of the plugin config files shipped by the chart (or one
+you've added via `router.epp.pluginsCustomConfig`):
+
+```yaml
+experiment:
+  name: epp-plugin-sweep
+  harness: inference-perf
+  profile: shared_prefix_synthetic.yaml
+
+setup:
+  constants:
+    decode.replicas: 2
+    decode.parallelism.tensor: 2
+  treatments:
+    - name: default-plugins
+      router.epp.pluginsConfigFile: "default-plugins.yaml"
+    - name: precise-prefix
+      router.epp.pluginsConfigFile: "precise-prefix-cache-config.yaml"
+    - name: predicted-latency
+      router.epp.pluginsConfigFile: "predicted-latency-slo-plugins.yaml"
+    - name: wva
+      router.epp.pluginsConfigFile: "wva-plugins.yaml"
+
+treatments:
+  - name: light
+    load.stages[0].rate: 4
+    load.stages[0].duration: 60
+  - name: heavy
+    load.stages[0].rate: 32
+    load.stages[0].duration: 120
+```
+
+Yields 4 setup × 2 run = 8 result sets, each cleanly isolated.
+
 **Treatment keys:**
 - `name` (required) -- identifier used in the experiment ID and rendered profile filename
 - All other keys are **profile overrides** -- dotted key paths applied to the base profile after `REPLACE_ENV_*` substitution

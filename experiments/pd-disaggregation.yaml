@@ -154,18 +154,25 @@ setup:
       prefill.replicas: 2
       prefill.parallelism.tensor: 2
 
+    # Standalone treatments must explicitly disable modelservice -- the
+    # scenario default has modelservice.enabled=true, and deep_merge keeps it
+    # unless the treatment overrides it. Without ``modelservice.enabled: false``
+    # both deploy methods get applied and conflict on the same model PVC.
     - name: sa-d1xTP2
       standalone.enabled: true
+      modelservice.enabled: false
       decode.replicas: 1
       decode.parallelism.tensor: 2
 
     - name: sa-d1xTP4
       standalone.enabled: true
+      modelservice.enabled: false
       decode.replicas: 1
       decode.parallelism.tensor: 4
 
     - name: sa-d1xTP8
       standalone.enabled: true
+      modelservice.enabled: false
       decode.replicas: 1
       decode.parallelism.tensor: 8
 

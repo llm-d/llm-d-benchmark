@@ -128,7 +128,7 @@ scenario:
     # Routing / GAIE Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
     # -------------------------------------------------------------------------
-    inferenceExtension:
+    router:
       monitoring:
         prometheus:
           enabled: false

@@ -1003,7 +1003,7 @@ Kubernetes objects don't collide:
 | Default path | Rewritten to (N >= 2) |
 |---|---|
 | `downloadJob.name` (`download-model`) | `download-model-{model_id_label}` |
-| `inferenceExtension.monitoring.secretName` | `...-sa-metrics-reader-secret-{model_id_label}` |
+| `router.monitoring.secretName` | `...-sa-metrics-reader-secret-{model_id_label}` |
 
 Explicit overrides (in `defaults.yaml`, `shared:`, or a stack) are preserved.
 Single-stack scenarios skip the rewrite entirely.

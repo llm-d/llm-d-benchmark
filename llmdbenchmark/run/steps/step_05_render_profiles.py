@@ -12,6 +12,7 @@ from llmdbenchmark.utilities.profile_renderer import (
     build_env_map,
     render_profile_file,
     apply_overrides,
+    classify_override_miss,
 )
 
 
@@ -193,8 +194,20 @@ class RenderProfilesStep(Step):
                 # Apply treatment-specific overrides
                 if treatment_overrides:
                     rendered_content = dest_file.read_text(encoding="utf-8")
-                    overridden = apply_overrides(rendered_content, treatment_overrides)
+                    overridden, unmatched = apply_overrides(
+                        rendered_content, treatment_overrides
+                    )
                     dest_file.write_text(overridden, encoding="utf-8")
+                    # Surface silent no-ops: a treatment override whose parent
+                    # path doesn't exist in the workload profile (most often a
+                    # plan-level field like decode.replicas or
+                    # router.epp.pluginsConfigFile placed under the
+                    # top-level treatments: block instead of setup.treatments).
+                    for missed_key in unmatched:
+                        context.logger.log_warning(
+                            f"Treatment '{treatment_name}': "
+                            + classify_override_miss(missed_key)
+                        )
 
                 context.logger.log_info(
                     f"Rendered profile: {dest_file.name} (treatment={treatment_name})"

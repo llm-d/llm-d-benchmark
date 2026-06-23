@@ -137,87 +137,91 @@ scenario:
     # UDS tokenizer container, sockets, and volumes -- the legacy
     # post-renderer hack is no longer needed.
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "precise-prefix-cache-config.yaml"
-      sidecar:
+    router:
+      tokenizer:
         enabled: true
-      flags:
-        v: 4  # log verbosity
-      pluginsCustomConfig:
-        precise-prefix-cache-config.yaml: |
-          apiVersion: llm-d.ai/v1alpha1
-          kind: EndpointPickerConfig
-          plugins:
-            - type: tokenizer
-              parameters:
-                modelName: Qwen/Qwen3-32B
-                udsTokenizerConfig:
-                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
-            - type: endpoint-notification-source
-            - type: metrics-data-source
-            - type: core-metrics-extractor
-            - type: single-profile-handler
-            - type: decode-filter
-            - type: precise-prefix-cache-scorer
-              parameters:
-                tokenProcessorConfig:
-                  blockSize: 64           # must match vLLM --block-size
-                speculativeIndexing: true
-                indexerConfig:
-                  tokenizersPoolConfig:
-                    modelName: ${model.name}
-                    workersCount: 24
-                    uds:
-                      socketFile: /tmp/tokenizer/tokenizer-uds.socket
-                  kvBlockIndexConfig:
-                    enableMetrics: true
-                kvEventsConfig:
-                  topicFilter: "kv@"
-                  concurrency: 8
-                  discoverPods: true
-                  podDiscoveryConfig:
-                    socketPort: 5556
-            - type: kv-cache-utilization-scorer
-            - type: queue-scorer
-            - type: no-hit-lru-scorer
-            - type: max-score-picker
-          dataLayer:
-            sources:
-              - pluginRef: metrics-data-source
-                extractors:
-                  - pluginRef: core-metrics-extractor
-              - pluginRef: endpoint-notification-source
-                extractors:
+      epp:
+        pluginsConfigFile: "precise-prefix-cache-config.yaml"
+        flags:
+          v: 4  # log verbosity
+        pluginsCustomConfig:
+          precise-prefix-cache-config.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            plugins:
+              - type: tokenizer
+                parameters:
+                  modelName: Qwen/Qwen3-32B
+                  udsTokenizerConfig:
+                    socketFile: /tmp/tokenizer/tokenizer-uds.socket
+              - type: endpoint-notification-source
+              - type: metrics-data-source
+              - type: core-metrics-extractor
+              - type: single-profile-handler
+              - type: decode-filter
+              - type: precise-prefix-cache-scorer
+                parameters:
+                  tokenProcessorConfig:
+                    blockSize: 64           # must match vLLM --block-size
+                  speculativeIndexing: true
+                  indexerConfig:
+                    tokenizersPoolConfig:
+                      modelName: ${model.name}
+                      workersCount: 24
+                      uds:
+                        socketFile: /tmp/tokenizer/tokenizer-uds.socket
+                    kvBlockIndexConfig:
+                      enableMetrics: true
+                  kvEventsConfig:
+                    topicFilter: "kv@"
+                    concurrency: 8
+                    discoverPods: true
+                    podDiscoveryConfig:
+                      socketPort: 5556
+              - type: kv-cache-utilization-scorer
+              - type: queue-scorer
+              - type: no-hit-lru-scorer
+              - type: max-score-picker
+            dataLayer:
+              sources:
+                - pluginRef: metrics-data-source
+                  extractors:
+                    - pluginRef: core-metrics-extractor
+                - pluginRef: endpoint-notification-source
+                  extractors:
+                    - pluginRef: precise-prefix-cache-scorer
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: decode-filter
+                  - pluginRef: kv-cache-utilization-scorer
+                    weight: 2.0
+                  - pluginRef: queue-scorer
+                    weight: 2.0
                   - pluginRef: precise-prefix-cache-scorer
-          schedulingProfiles:
-            - name: default
-              plugins:
-                - pluginRef: decode-filter
-                - pluginRef: kv-cache-utilization-scorer
-                  weight: 2.0
-                - pluginRef: queue-scorer
-                  weight: 2.0
-                - pluginRef: precise-prefix-cache-scorer
-                  weight: 3.0
-                - pluginRef: no-hit-lru-scorer
-                  weight: 2.0
-                - pluginRef: max-score-picker
+                    weight: 3.0
+                  - pluginRef: no-hit-lru-scorer
+                    weight: 2.0
+                  - pluginRef: max-score-picker
 
-      # InferencePool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
+      inferencePool:
+        # InferencePool Provider Configuration -- rendered to root-level
+        # provider.{gatewayClassName}.{...} for gke/istio. Host is
+        # auto-resolved from model_id_label (e.g.
+        # {model_id_label}-router-epp) by render_plans.
+        providerConfig:
+          destinationRule:
+            trafficPolicy:
+              connectionPool:
+                http:
+                  http1MaxPendingRequests: 256000
+                  maxRequestsPerConnection: 256000
+                  http2MaxRequests: 256000
+                  idleTimeout: "900s"
+                tcp:
+                  maxConnections: 256000
+                  maxConnectionDuration: "1800s"
+                  connectTimeout: "900s"
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection

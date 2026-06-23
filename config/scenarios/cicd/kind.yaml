@@ -63,20 +63,20 @@ scenario:
     # sidecar: same) won't fit on a Kind node; both are stateless and
     # this is plenty for CI.
     #
-    # `inferenceExtension.envoySidecar` is only honored by the renderer
-    # when `gateway.className: epponly` (the standalone-mode topology
-    # where the Envoy sidecar runs inside the EPP pod). The override
-    # lands at `router.proxy.resources` in the generated values.
-    inferenceExtension:
-      resources:
-        requests:
-          cpu: "100m"
-          memory: 256Mi
-        limits:
-          cpu: "1"
-          memory: 1Gi
+    # `router.proxy` is only honored by the chart when
+    # `gateway.className: epponly` (the standalone-mode topology
+    # where the Envoy sidecar runs inside the EPP pod).
+    router:
+      epp:
+        resources:
+          requests:
+            cpu: "100m"
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
 
-      envoySidecar:
+      proxy:
         resources:
           requests:
             cpu: "50m"

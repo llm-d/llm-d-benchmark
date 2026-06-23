@@ -208,7 +208,7 @@ What the scenario layout buys you:
   away before the request reaches upstream vLLM, so pods continue to see
   plain `/v1/*` paths.
 - **`flowControl` feature gate on every pool** - enabled in the
-  `shared.inferenceExtension.pluginsCustomConfig` block and inherited by
+  `shared.router.epp.pluginsCustomConfig` block and inherited by
   every stack. This is non-optional for WVA: the controller reads EPP
   queue depth to compute scale signals, and flow-control is what
   exposes queue depth in the metrics.

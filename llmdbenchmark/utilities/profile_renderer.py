@@ -113,34 +113,112 @@ def render_profile_file(
     return dest_path
 
 
-def apply_overrides(profile_content: str, overrides: dict[str, str]) -> str:
+# Dotted-key prefixes that flag a workload-treatment override as actually
+# being a plan/scenario field. Putting any of these under top-level
+# ``treatments:`` (or ``--overrides``) is a silent no-op today -- the value
+# lands in a corner of the override dict that ``apply_overrides`` walks
+# against the workload profile YAML, where the key path never exists.
+#
+# To actually vary these fields, the user wants ``setup.treatments`` in an
+# experiment YAML (modelservice/standalone), or ``kustomize.extraHelmSets``
+# (kustomize). ``classify_override_miss`` returns a sharper hint when it
+# sees one of these prefixes.
+_PLAN_LEVEL_PREFIXES: tuple[str, ...] = (
+    "decode.",
+    "prefill.",
+    "standalone.",
+    "modelservice.",
+    "fma.",
+    "kustomize.",
+    "router.",
+    "vllmCommon.",
+    "model.",
+    "scheduler.",  # gentle warning -- could also be the K8s pod scheduler
+    "schedulerName",  # top-level K8s pod scheduler
+    "gateway.",
+    "routing.",
+    "storage.",
+    "wva.",
+    "huggingface.",
+)
+
+
+def classify_override_miss(key: str) -> str:
+    """Build a one-line hint for a workload-treatment override that didn't match.
+
+    Two classes:
+
+    - Plan/scenario field. Workload-treatment overrides only touch the
+      rendered profile YAML; we point at ``setup.treatments`` or
+      ``kustomize.extraHelmSets``.
+    - Typo / wrong harness.
+    """
+    if any(key.startswith(p) for p in _PLAN_LEVEL_PREFIXES):
+        return (
+            f"override '{key}' looks like a plan/scenario field; "
+            "workload-treatment overrides only touch the rendered profile YAML "
+            "(load.*, data.*, api.*, etc.). To vary this field, move it to "
+            "setup.treatments in an experiment YAML (modelservice/standalone "
+            "standups) or kustomize.extraHelmSets (kustomize standups)."
+        )
+    return (
+        f"override '{key}' did not match any path in the workload profile "
+        "and was silently dropped. Check the profile YAML for the correct "
+        "dotted path (typo? wrong harness?)."
+    )
+
+
+def apply_overrides(
+    profile_content: str, overrides: dict[str, str]
+) -> tuple[str, list[str]]:
     """Apply dotted key=value overrides to a rendered YAML profile.
 
     Parses the YAML, walks dotted keys to set values, and re-dumps.
-    Falls back to the original content if YAML parsing fails.
+
+    Returns ``(rendered_content, unmatched_keys)``. ``unmatched_keys`` is the
+    list of override keys whose dotted path did not exist in the profile --
+    they were silently dropped under the old API. The caller is expected to
+    log a warning per unmatched key (see :func:`classify_override_miss` for a
+    pre-built hint).
+
+    Falls back to ``(original_content, [])`` if YAML parsing fails (we can't
+    even tell what would have matched).
     """
     import yaml  # pylint: disable=import-outside-toplevel
 
     try:
         data = yaml.safe_load(profile_content)
         if not isinstance(data, dict):
-            return profile_content
+            return profile_content, []
 
+        # An override is "unmatched" when one of the PARENT keys along its
+        # dotted path doesn't exist -- in that case we can't even reach the
+        # leaf to write to, and silently dropping it is the bug we're
+        # warning about. A missing LEAF is still allowed (intentional
+        # add-new-field overrides keep working), but in practice a missing
+        # leaf with all parents present is unusual; we don't warn on it.
+        unmatched: list[str] = []
         for key, value in overrides.items():
             parts = key.split(".")
             target = data
+            parent_chain_intact = True
             for part in parts[:-1]:
                 if isinstance(target, dict) and part in target:
                     target = target[part]
                 else:
-                    target = None
+                    parent_chain_intact = False
                     break
-            if isinstance(target, dict):
+            if parent_chain_intact and isinstance(target, dict):
                 target[parts[-1]] = _coerce_value(value)
+            else:
+                unmatched.append(key)
 
-        return yaml.dump(data, default_flow_style=False, sort_keys=False)
+        return (
+            yaml.dump(data, default_flow_style=False, sort_keys=False),
+            unmatched,
+        )
     except yaml.YAMLError:
-        return profile_content
+        return profile_content, []
 
 
 def _coerce_value(value: str):

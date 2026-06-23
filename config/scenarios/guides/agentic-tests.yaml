@@ -65,8 +65,9 @@ scenario:
     #
     # NOTE: This will include the "program-aware-plugin" when merged
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "default-plugins.yaml"
+    router:
+      epp:
+        pluginsConfigFile: "default-plugins.yaml"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)

@@ -98,9 +98,7 @@ kustomize:
 
   # extraHelmValues / extraHelmSets → router helm release ONLY.
   # Keys are passed straight through to helm and therefore must match the
-  # chart's values schema. With the llm-d-router-{standalone,gateway}-dev
-  # charts the EPP replica knob lives at `router.epp.replicas`
-  # (previously `inferenceExtension.replicas` on the old GAIE chart).
+  # llm-d-router chart's values schema (`router.epp.replicas`, etc.).
   extraHelmValues: ["/abs/path/router-values.yaml"]
   extraHelmSets:
     router.epp.replicas: "2"
