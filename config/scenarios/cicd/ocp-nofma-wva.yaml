@@ -1,131 +1,22 @@
-# WORKLOAD AUTOSCALING (WVA with FMA) WELL LIT PATH for LLM-D Deployment
-#
-# Same base configuration as `inference-scheduling.yaml` (Qwen3-32B, 2 decode
-# pods, modelservice deployment) but with the Workload Variant Autoscaler
-# (WVA) explicitly enabled. All HPA / VariantAutoscaling knobs are listed
-# below even when they match defaults.yaml, so users can see the full
-# surface area in one place and tweak it per-scenario.
-#
-# WVA scales an FMA-served model deployment. Topology:
-#
-#   modelservice (decode.replicas: 0) provides gateway / EPP / InferencePool
-#     / PodMonitor; its decode Deployment is disabled — FMA owns the
-#     elastic vLLM tier instead.
-#
-#   FMA (fma.enabled: true)           launcher pods host vLLM and serve
-#     inference traffic; the requester Deployment holds the GPU lease
-#     that FMA scales.
-#
-#   WVA (wva.enabled: true)           scales the FMA requester Deployment;
-#     FMA's launcher-populator reconciles launcher pods to match.
-#
-# How EPP reaches FMA: 12_router-values.yaml.j2 emits a router.modelServers
-# selector matching `llm-d.ai/inferenceServing=true, llm-d.ai/model=<id>`.
-# 24_fma-deployment.yaml.j2 puts those labels on the InferenceServerConfig's
-# `modelServerConfig.labels` (NOT on the LauncherConfig pod template) — the
-# dual-pods controller propagates them to the launcher pod at BIND time, so
-# only launchers actually serving traffic show up in the InferencePool.
-#
-# How WVA tracks FMA: launcher pods carry `llm-d.ai/variant=<id>-fma` (also
-# applied at bind time via the ISC; label-based variant identification per
-# WVA repo PR #1145). Templates 27/28 retarget the VariantAutoscaling + HPA
-# at the FMA requester Deployment (`fma-requester-<id>`) when fma.enabled.
-#
-# Based on:
-#   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
+# This is the no-FMA baseline scenario for WVA. Topology:
+# Qwen3-32B served by 1 modelservice decode pod, scaled by WVA's HPA.
+# Mirrors guides/workload-autoscaling.yaml exactly except for fma.enabled=false
 #
 # Running:
 #
-#   llmdbenchmark --spec guides/workload-autoscaling standup -p <namespace>
-#
-# The `-u/--wva` CLI flag is NOT required with this scenario because
-# `wva.enabled: true` is already hard-coded below. Pass `-u` with the
-# plain `inference-scheduling` scenario if you want to toggle WVA on
-# without editing YAML.
-
+#   llmdbenchmark --spec cicd/ocp-nofma-wva standup -p <namespace>
 scenario:
-  # ============================================================================
-  #Inference Scheduling + WVA - Qwen3-32B served by FMA, autoscaled by WVA
-  # ============================================================================
-  - name: "inference-scheduling-wva"
+  - name: "ocp-nofma-wva-cicd"
 
-    # =========================================================================
-    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
-    # -------------------------------------------------------------------------
-    # When kustomize.enabled is true (or `-t kustomize` is passed) this
-    # scenario is deployed by applying the UPSTREAM llm-d guide directly
-    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
-    # defined ENTIRELY by the guide's own manifests:
-    #
-    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
-    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
-    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
-    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
-    #     (only run/workload treatments still apply).
-    #
-    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
-    # below:
-    #   patches / overlayPath           -> modelserver (the workload pods)
-    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
-    #   guideVariableOverrides          -> override the guide README's ${VAR}
-    # See docs/kustomize.md for the full reference and worked examples.
-    #
-    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
-    # (the deploy is keyed on guideName with no per-stack uniquification --
-    # stacks would collide). Use the modelservice method for multi-model.
-    #
-    # When kustomize.enabled is false (the DEFAULT) this whole block is
-    # inert and the scenario deploys via modelservice/standalone as
-    # configured further below.
-    # =========================================================================
     kustomize:
       enabled: false
 
-      guideName: "workload-autoscaling"
-      repoPath: ""
-      repoRef: "main"
-      gaieVersion: ""
-      acceleratorBackend: "gpu/vllm"
-      monitoring: false
-      overlayPath: ""
-      extraHelmValues: []
-      extraHelmSets: {}
-      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
-
-      # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      patches:
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: decode
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
-      #patches:
-      #  - patch: |
-      #      apiVersion: apps/v1
-      #      kind: Deployment
-      #      metadata:
-      #        name: decode
-      #      spec:
-      #        replicas: 2
-      #        template:
-      #          spec:
-      #            priorityClassName: nightly-gpu-critical
-
     # =========================================================================
     # MODEL CONFIGURATION
+    # Qwen3-32B: large enough that the per-request KV cache footprint is
+    # significant on H100 (~16GB free for KV after weights), so the heavy
+    # profile drives gpu_cache_usage_perc into the saturating range WVA's
+    # optimizer reads. Same model as guides/workload-autoscaling.yaml .
     # =========================================================================
     model:
       name: Qwen/Qwen3-32B
@@ -148,22 +39,6 @@ scenario:
 
     gateway:
       className: epponly
-    fma:
-      enabled: true                    # launcher pods host vLLM and serve traffic;
-                                       # WVA scales the requester Deployment
-      iterations: 1                    # only matters for nop-harness actuation timing
-                                       # runs; with inference-perf the requester pods
-                                       # are created once at standup and WVA drives
-                                       # scale during the run.
-
-      requester:
-        replicas: 1
-
-      # Warmup: a deliberate wait inserted in the run phase before the
-      # benchmark fires.
-      warmupTimeout: 600
-      warmupBufferSeconds: 240          # ~4 min; covers Qwen3-32B model load
-                                        # on remaining launchers in the pool
 
     # =========================================================================
     # WVA CONFIGURATION
@@ -172,38 +47,26 @@ scenario:
     # Remove a field to fall back to its default.
     # =========================================================================
     wva:
-      enabled: true                  # master switch — same effect as `-u/--wva` on CLI
+      enabled: true
 
-      # Upstream well-lit-path tag. Becomes the `llm-d.ai/guide` label on the
-      # VariantAutoscaling so dashboards/queries can group by guide.
+      # Upstream well-lit-path tag.
       wellLitPath: optimized-baseline
 
       # Where to install the WVA controller.
       # Empty = use the deploy namespace (the first slot of `-p`). Override by
       # passing `-p deploy,harness,wva` to put the controller elsewhere.
       # NOTE: With namespaceScoped=true (below), the controller ONLY watches
-      # this namespace. Putting it in a different ns from your FMA requester
-      # ReplicaSet means it won't see your VariantAutoscaling.
+      # this namespace.
       namespace: ""
 
       # Controller container image.
-      # Pin `tag` to a release version for reproducibility, or set to "auto"
-      # to let the version-resolver pick latest at plan time.
-      # NOTE: image tags use a leading "v" (v0.6.0), distinct from the
-      # helm chart version pinned in chartVersions.wva (which is bare 0.6.0).
-      # Available version tags can be listed with:
-      #   curl -sL "https://ghcr.io/token?scope=repository:llm-d/llm-d-workload-variant-autoscaler:pull" \
-      #     | jq -r .token | xargs -I{} curl -sH "Authorization: Bearer {}" \
-      #       https://ghcr.io/v2/llm-d/llm-d-workload-variant-autoscaler/tags/list
       image:
         repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
         tag: v0.8.0-rc5
 
       replicaCount: 1                # WVA controller pod replicas (1 is the chart default)
 
-      # Disable to skip installing the controller but still render the VA
-      # + HPA (rare; useful when you reuse a cluster-wide controller
-      # installed elsewhere).
+      # Disable to skip installing the controller but still render the HPA
       controller:
         enabled: true
 
@@ -353,40 +216,110 @@ scenario:
                   weight: 3
 
     # =========================================================================
-    # PREFILL / DECODE CONFIGURATION
-    #
-    # decode.replicas is forced to 0 because FMA owns the elastic vLLM tier
-    # under this topology — modelservice's decode Deployment isn't created
-    # (`13_ms-values.yaml.j2:12` short-circuits to `decode.create: false`
-    # when decode.replicas is 0). The router chart still renders gateway,
-    # EPP, and InferencePool independently of decode_create.
-    #
+    # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
     # =========================================================================
     prefill:
       enabled: false
       replicas: 0
 
     decode:
-      replicas: 0                      # FMA launcher pods serve traffic, not decode
+      replicas: 1
 
-    # =========================================================================
-    # FMA LAUNCHER POD MONITORING (REQUIRED for WVA)
-    #
-    # WVA reads vLLM metrics via prometheus-adapter → user-workload-monitoring.
-    # No PodMonitor → no metrics → HPA TARGETS stays `<unknown>` indefinitely
-    # → autoscaling silently broken.
-    #
-    #
-    # The PodMonitor template requires:
-    #   - selector matchLabels: llm-d.ai/inferenceServing=true,
-    #                           llm-d.ai/model=<model_id_label>
-    #   - endpoints[].relabelings (NOT metricRelabelings — see WVA repo
-    #     docs/design/controller-behavior.md):
-    #         sourceLabels: [__meta_kubernetes_pod_label_llm_d_ai_variant]
-    #         targetLabel: llm_d_ai_variant
-    #         action: replace
-    #   - chart label: release=llmd (so user-workload-monitoring discovers it)
-    # =========================================================================
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "16"
+        requests:
+          memory: 64Gi
+          cpu: "16"
+
+      extraEnvVars: []
+
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557  # NIXL side channel port
+            protocol: TCP
+          - containerPort: 8200  # Metrics port
+            name: metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+      # -----------------------------------------------------------------------
+      # Probes
+      #
+      # HTTP probes aligned with the upstream WVA well-lit-path guide
+      # (llm-d/guides/workload-autoscaling/ms-workload-autoscaling/values.yaml):
+      #   - startupProbe + readinessProbe use /v1/models — only returns 200
+      #     once vLLM has finished loading weights, so "Ready" truly means
+      #     "serving inference requests".
+      #   - livenessProbe uses /health — catches vLLM crash-loops (our
+      #     previous TCP-socket probe stayed green because the routing
+      #     sidecar stayed up while vLLM died).
+      #
+      # All probes target the routing sidecar port (8000 = servicePort),
+      # which proxies to vLLM on 8200. Probing 8000 exercises the full
+      # routing path end-to-end — the right signal for "benchmarking-ready".
+      # -----------------------------------------------------------------------
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 60
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+      # -----------------------------------------------------------------------
+      # PodMonitor (Prometheus scraping)
+      #
+      # Required for WVA: the WVA controller consumes vLLM metrics via
+      # prometheus-adapter; no PodMonitor → no metrics → HPA never sees a
+      # value for wva_desired_replicas → autoscaling silently broken.
+      # The `release: llmd` label is what user-workload-monitoring keys
+      # on for discovery, matching the upstream WVA guide's example.
+      # -----------------------------------------------------------------------
+      monitoring:
+        podmonitor:
+          enabled: true
+          portName: metrics
+          path: /metrics
+          interval: 30s
+          labels:
+            release: llmd
 
     # =========================================================================
     # VLLM COMMON CONFIGURATION
@@ -430,16 +363,10 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS
     # =========================================================================
-    workDir: "~/data/workload-autoscaling"
+    workDir: "/tmp/llmdbenchcicd-ocp-nofma-wva/"
 
     harness:
       name: inference-perf
-      # Use the heavy variant of shared_prefix_synthetic (8 parallel workers,
-      # ~200 RPS aggregate, larger prompts) calibrated to drive WVA's
-      # saturation gauges past the optimizer's threshold so OPTIMIZED
-      # actually climbs above 1 on this small model.
+      # Heavy variant — same load as guides/workload-autoscaling.yaml so the
+      # FMA pass and this baseline are exercised under matched RPS.
       experimentProfile: shared_prefix_synthetic_heavy.yaml
-
-    images:
-      benchmark:
-        tag: nightly

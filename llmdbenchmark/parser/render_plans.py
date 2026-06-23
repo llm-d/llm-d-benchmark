@@ -556,12 +556,6 @@ class RenderPlans:
                 "Cannot enable both standalone and fma -- choose one. Using standalone."
             )
             methods = ["standalone"]
-        if "modelservice" in methods and "fma" in methods:
-            self.logger.log_warning(
-                "Cannot enable both modelservice and fma -- "
-                "choose one. Using modelservice."
-            )
-            methods = ["modelservice"]
         if "kustomize" in methods and any(
             m in methods for m in ("standalone", "modelservice", "fma")
         ):
@@ -582,24 +576,23 @@ class RenderPlans:
             fma_config["enabled"] = False
             kustomize_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
-        elif "modelservice" in methods:
-            standalone_config["enabled"] = False
-            modelservice_config["enabled"] = True
-            fma_config["enabled"] = False
-            kustomize_config["enabled"] = False
-            self.logger.log_info("Deploy method from CLI: modelservice")
-        elif "fma" in methods:
-            standalone_config["enabled"] = False
-            modelservice_config["enabled"] = False
-            fma_config["enabled"] = True
-            kustomize_config["enabled"] = False
-            self.logger.log_info("Deploy method from CLI: fma")
         elif "kustomize" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = False
             fma_config["enabled"] = False
             kustomize_config["enabled"] = True
             self.logger.log_info("Deploy method from CLI: kustomize")
+        elif "modelservice" in methods or "fma" in methods:
+            # Either or both. FMA layers on top of modelservice (or runs
+            # alone in legacy FMA-only scenarios); the two flags are
+            # independent toggles, mirroring how the CLI's runtime
+            # _resolve_deploy_methods returns both when both are enabled.
+            standalone_config["enabled"] = False
+            kustomize_config["enabled"] = False
+            modelservice_config["enabled"] = "modelservice" in methods
+            fma_config["enabled"] = "fma" in methods
+            chosen = [m for m in ("modelservice", "fma") if m in methods]
+            self.logger.log_info(f"Deploy method(s) from CLI: {', '.join(chosen)}")
 
         return result
 

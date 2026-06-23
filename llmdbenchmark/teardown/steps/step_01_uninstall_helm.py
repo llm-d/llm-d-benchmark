@@ -1,5 +1,6 @@
 """Teardown Step 01 -- Uninstall Helm releases, OpenShift routes, and download jobs."""
 
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -7,6 +8,7 @@ import yaml
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
 from llmdbenchmark.utilities.kube_helpers import (
     force_remove_finalizers_by_selector,
     wait_for_pods_deleted,
@@ -291,8 +293,8 @@ class UninstallHelmStep(Step):
             )
             return
 
-        wva_stacks: list[tuple[str, str]] = []  # (wva_namespace, model_id_label)
-        seen_ns: set[str] = set()
+        wva_stacks: list[tuple[str, str, bool, Path]] = []
+        seen_ns: dict[str, Path] = {}  # wva_ns -> first stack_path with that ns
 
         for stack_path in context.rendered_stacks or []:
             cfg_file = stack_path / "config.yaml"
@@ -310,16 +312,20 @@ class UninstallHelmStep(Step):
                 "name", ""
             )
             model_id_label = cfg.get("model_id_label", "")
+            fma_enabled = bool((cfg.get("fma", {}) or {}).get("enabled", False))
             if wva_ns and model_id_label:
-                wva_stacks.append((wva_ns, model_id_label))
-                seen_ns.add(wva_ns)
+                wva_stacks.append((wva_ns, model_id_label, fma_enabled, stack_path))
+                if wva_ns not in seen_ns:
+                    seen_ns[wva_ns] = stack_path
 
         if not wva_stacks:
             return
 
-        # 1. Per-stack VariantAutoscaling + HPA: always delete.
-        for wva_ns, model_id_label in wva_stacks:
-            resource_name = f"{model_id_label}-decode"
+        # 1. Per-stack VariantAutoscaling + HPA: always delete. Suffix is
+        # `-fma` under FMA, `-decode` otherwise -- matches templates 27/28.
+        for wva_ns, model_id_label, fma_enabled, _stack_path in wva_stacks:
+            variant_suffix = "fma" if fma_enabled else "decode"
+            resource_name = f"{model_id_label}-{variant_suffix}"
             for kind in ("hpa", "variantautoscaling.llmd.ai"):
                 context.logger.log_info(
                     f"Deleting {kind}/{resource_name} from ns/{wva_ns}"
@@ -371,15 +377,25 @@ class UninstallHelmStep(Step):
             f"{mode_msg} prometheus-adapter and shared cluster RBAC are kept intact."
         )
         for wva_ns in sorted(seen_ns):
+            stack_path = seen_ns[wva_ns]
+            kustomize_yaml = _find_yaml(stack_path, "19_wva-kustomize")
+            if not kustomize_yaml or not _has_yaml_content(kustomize_yaml):
+                context.logger.log_info(
+                    f"WVA kustomization not found for ns/{wva_ns} "
+                    "-- skipping controller uninstall."
+                )
+                continue
             context.logger.log_info(
-                f"Uninstalling helm release "
-                f"workload-variant-autoscaler from ns/{wva_ns}"
+                f"Uninstalling WVA controller via kustomize from ns/{wva_ns}"
             )
-            uninstall = cmd.helm(
-                "uninstall",
-                "workload-variant-autoscaler",
-                "--namespace",
-                wva_ns,
+            tmp_dir = Path(tempfile.mkdtemp())
+            (tmp_dir / "kustomization.yaml").write_text(
+                kustomize_yaml.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            uninstall = cmd.kube(
+                "delete",
+                "-k",
+                str(tmp_dir),
                 "--ignore-not-found",
                 check=False,
             )

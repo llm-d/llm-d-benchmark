@@ -264,3 +264,17 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
             if d.is_dir():
                 return d
         return None
+
+
+def is_fma_only_mode(context: ExecutionContext) -> bool:
+    """True when fma is the sole deploy method (no modelservice/standalone/kustomize).
+
+    Run-phase steps use this to distinguish FMA-only scenarios (where the harness
+    talks directly to the requester pod and inference verification is skipped)
+    from FMA-on-top-of-modelservice (where routing goes through the gateway and
+    standard inference verification applies).
+    """
+    if "fma" not in context.deployed_methods:
+        return False
+    other_primaries = ("modelservice", "standalone", "kustomize")
+    return not any(m in context.deployed_methods for m in other_primaries)

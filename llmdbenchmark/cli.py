@@ -393,12 +393,16 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         if standalone:
             logger.log_info("Auto-detected deploy method from plan: standalone")
             return ["standalone"]
-        if fma:
-            logger.log_info("Auto-detected deploy method from plan: fma")
-            return ["fma"]
+        methods = []
         if modelservice:
-            logger.log_info("Auto-detected deploy method from plan: modelservice")
-            return ["modelservice"]
+            methods.append("modelservice")
+        if fma:
+            methods.append("fma")
+        if methods:
+            logger.log_info(
+                f"Auto-detected deploy method(s) from plan: {', '.join(methods)}"
+            )
+            return methods
 
     if phase == "teardown":
         raise PhaseError(
