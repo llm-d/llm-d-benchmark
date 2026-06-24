@@ -561,3 +561,7 @@ scenario:
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
+
+      smoketest:
+        modelReadyTimeout: 3600     # 1 hour
+        modelReadyPollInterval: 30  # poll every 30s
