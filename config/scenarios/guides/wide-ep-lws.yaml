@@ -58,41 +58,28 @@ scenario:
       guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
 
       # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      patches:
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: decode
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: prefill
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
+      # guide's modelserver base. The wide-ep-lws guide ships its decode
+      # and prefill resources as `LeaderWorkerSet` (not Deployment) and
+      # already injects `HF_TOKEN` from the `llm-d-hf-token` Secret in
+      # both base templates -- the standup creates that Secret from the
+      # ambient HF_TOKEN env var so no override is needed here.
+      #
+      # If you DO need to patch this guide, target the LWS resource by
+      # its actual name (e.g. `wide-ep-lws-nvidia-gpu-vllm-deepseek-v4-decode`)
+      # and use the LWS apiVersion / spec shape:
+      #
+      #   apiVersion: leaderworkerset.x-k8s.io/v1
+      #   kind: LeaderWorkerSet
+      #   metadata:
+      #     name: wide-ep-lws-nvidia-gpu-vllm-deepseek-v4-decode
+      #   spec:
+      #     leaderWorkerTemplate:
+      #       workerTemplate:
+      #         spec:
+      #           containers:
+      #             - name: vllm
+      #               ...
+      patches: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
