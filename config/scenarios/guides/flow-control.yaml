@@ -54,34 +54,11 @@ scenario:
       # Inline kustomize strategic merge patches applied on top of the
       # guide's modelserver base.  For gated models, add an HF_TOKEN
       # env var patch (the secret is auto-created from HF_TOKEN env):
-      patches:
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: decode
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
-      #patches:
-      #  - patch: |
-      #      apiVersion: apps/v1
-      #      kind: Deployment
-      #      metadata:
-      #        name: decode
-      #      spec:
-      #        replicas: 2
-      #        template:
-      #          spec:
-      #            priorityClassName: nightly-gpu-critical
+      # Default is empty -- upstream guide already injects HF_TOKEN from
+      # the `llm-d-hf-token` Secret (auto-created by standup). Add entries
+      # here only for non-token overrides (e.g. bump replicas, pin a
+      # priorityClassName) -- see optimized-baseline.yaml for an example.
+      patches: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods

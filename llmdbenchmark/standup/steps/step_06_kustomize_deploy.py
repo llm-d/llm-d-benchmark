@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import shlex
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -164,7 +166,26 @@ class KustomizeDeployStep(Step):
             )
 
         # --- 1b. HF token secret ---
-        self._ensure_hf_token_secret(cmd, context, namespace)
+        # Upstream guide manifests (since llm-d/llm-d#1684) reference
+        # `secret/llm-d-hf-token` without `optional: true`, so missing
+        # the Secret hangs every Pod in CreateContainerConfigError.
+        # Ensure it exists (or fail fast) in both the deploy namespace
+        # and the harness namespace when they differ.
+        hf_error = self._ensure_hf_token_secret(cmd, context, namespace)
+        if hf_error:
+            return self._fail(
+                [hf_error], stack_path, "HF token setup failed", context=context
+            )
+        harness_ns = getattr(context, "harness_namespace", None)
+        if harness_ns and harness_ns != namespace:
+            hf_error = self._ensure_hf_token_secret(cmd, context, harness_ns)
+            if hf_error:
+                return self._fail(
+                    [hf_error],
+                    stack_path,
+                    "HF token setup failed in harness namespace",
+                    context=context,
+                )
 
         # --- 2. Router ---
         router_cmds = parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE)
@@ -352,13 +373,41 @@ class KustomizeDeployStep(Step):
         return str(repo_dir)
 
     _HF_SECRET_NAME = "llm-d-hf-token"
+    _HF_SECRET_KEY = "HF_TOKEN"
 
     @staticmethod
     def _ensure_hf_token_secret(
         cmd: CommandExecutor,
         context: ExecutionContext,
         namespace: str,
-    ) -> None:
+    ) -> str | None:
+        """Ensure the HF token Secret exists in ``namespace``.
+
+        Kustomize-mode-only.  Upstream llm-d guide manifests (since PR
+        llm-d/llm-d#1684) reference ``secret/llm-d-hf-token`` directly
+        with no ``optional: true`` -- without it every Pod hangs in
+        ``CreateContainerConfigError``.  This helper enforces presence:
+
+        - If a Secret named ``llm-d-hf-token`` already exists in the
+          namespace, succeed and leave it alone (supports externally
+          managed Secrets via ESO / Vault / manual create).
+        - If no Secret exists and ``HF_TOKEN`` /
+          ``LLMDBENCH_HF_TOKEN`` / ``HUGGING_FACE_HUB_TOKEN`` is set in
+          the process env, create it from that value.
+        - If no Secret AND no env token, return a descriptive error
+          string so the caller can fail the step fast.
+
+        Returns ``None`` on success, or an error message string on
+        failure (caller is expected to surface via ``self._fail``).
+
+        Security: the token value is never passed on a command line
+        (which would be logged by ``CommandExecutor``).  Instead we
+        build the Secret manifest in-process, base64-encode the token,
+        write to a ``NamedTemporaryFile`` (Python defaults to mode
+        0600 on Unix), ``kubectl apply -f`` that file, then unlink it.
+        Any ``kubectl`` stderr we surface is also scrubbed of the
+        literal token value as a belt-and-braces precaution.
+        """
         import os
 
         hf_token = (
@@ -366,14 +415,13 @@ class KustomizeDeployStep(Step):
             or os.environ.get("LLMDBENCH_HF_TOKEN")
             or os.environ.get("HUGGING_FACE_HUB_TOKEN")
         )
-        if not hf_token:
-            context.logger.log_info(
-                "No HF_TOKEN in environment -- skipping secret creation "
-                "(gated models will fail)"
-            )
-            return
 
         secret_name = KustomizeDeployStep._HF_SECRET_NAME
+        secret_key = KustomizeDeployStep._HF_SECRET_KEY
+
+        # 1. Already in the cluster? Leave it alone -- supports ESO /
+        #    Vault / hand-created Secret workflows where the operator
+        #    owns rotation.  No env token required in that case.
         check = cmd.kube(
             "get",
             "secret",
@@ -386,26 +434,87 @@ class KustomizeDeployStep(Step):
             context.logger.log_info(
                 f"HF token secret '{secret_name}' already exists in {namespace}"
             )
-            return
+            return None
 
-        result = cmd.kube(
-            "create",
-            "secret",
-            "generic",
-            secret_name,
-            f"--from-literal=HF_TOKEN={hf_token}",
-            "--namespace",
-            namespace,
-            check=False,
-        )
+        # 2. No Secret AND no env token -- fail fast with actionable
+        #    instructions.  We do this *only* in the kustomize path
+        #    because upstream guide manifests now hard-require the
+        #    Secret; modelservice/standalone keep their tolerant
+        #    behaviour.
+        if not hf_token:
+            return (
+                f"HF_TOKEN is not set and Secret '{secret_name}' does not "
+                f"exist in namespace {namespace}.  A HF_TOKEN is now "
+                f"required for well-lit-path guides.\n"
+                f"\n"
+                f"Either:\n"
+                f"  1. Export HF_TOKEN (or LLMDBENCH_HF_TOKEN, "
+                f"HUGGING_FACE_HUB_TOKEN) before running standup, or\n"
+                f"  2. Pre-create the Secret:\n"
+                f"     kubectl create secret generic {secret_name} \\\n"
+                f"       --from-literal={secret_key}=<your-token> "
+                f"-n {namespace}"
+            )
+
+        # 3. Have a token, no Secret -- create it without ever putting
+        #    the token on a command line.  We build the manifest in
+        #    Python, base64-encode the token, write to a temp file
+        #    (NamedTemporaryFile is mode 0600 by default on Unix),
+        #    apply, and unlink.  The logged kubectl invocation is just
+        #    ``kubectl apply -f /tmp/xxx.yaml``.
+        token_b64 = base64.b64encode(hf_token.encode("utf-8")).decode("ascii")
+        secret_manifest = {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "type": "Opaque",
+            "metadata": {
+                "name": secret_name,
+                "namespace": namespace,
+            },
+            "data": {
+                secret_key: token_b64,
+            },
+        }
+
+        tmp_path: str | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".yaml",
+                delete=False,
+                prefix="llm-d-hf-token-",
+            ) as tmp:
+                yaml.safe_dump(secret_manifest, tmp)
+                tmp_path = tmp.name
+
+            result = cmd.kube(
+                "apply",
+                "-f",
+                tmp_path,
+                "--namespace",
+                namespace,
+                check=False,
+            )
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
+
         if result.success:
             context.logger.log_info(
                 f"Created HF token secret '{secret_name}' in {namespace}"
             )
-        else:
-            context.logger.log_warning(
-                f"Failed to create HF token secret: {result.stderr[:200]}"
-            )
+            return None
+
+        # Scrub any accidental token echo from kubectl stderr before
+        # surfacing it -- not expected for ``apply -f`` failures but
+        # cheap insurance.
+        stderr = (result.stderr or "")[:300]
+        if hf_token and hf_token in stderr:
+            stderr = stderr.replace(hf_token, "<redacted>")
+        return (
+            f"Failed to create HF token secret '{secret_name}' in "
+            f"namespace {namespace}: {stderr}"
+        )
 
     def _fail(
         self,
