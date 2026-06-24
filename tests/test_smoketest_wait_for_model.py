@@ -40,7 +40,7 @@ if "planner" not in sys.modules:
     # Module-level __getattr__ catches any name lookup (PEP 562), so we
     # don't have to enumerate the planner exports capacity_validator.py
     # uses -- future additions stay covered without test churn.
-    capacity_stub.__getattr__ = lambda name: (lambda *a, **kw: None)  # type: ignore[attr-defined]
+    capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
     sys.modules["planner"] = planner_stub
     sys.modules["planner.capacity_planner"] = capacity_stub
 
@@ -56,9 +56,7 @@ from llmdbenchmark.standup.steps.step_10_smoketest import SmoketestStep  # noqa:
 @pytest.mark.parametrize("cls", [BaseSmoketest, SmoketestStep])
 class TestResolveWaitSetting:
     def test_default_when_nothing_set(self, cls):
-        assert (
-            cls._resolve_wait_setting(None, "modelReadyTimeout", None, 1800) == 1800
-        )
+        assert cls._resolve_wait_setting(None, "modelReadyTimeout", None, 1800) == 1800
 
     def test_explicit_kwarg_wins_over_everything(self, cls):
         plan_config = {
@@ -99,9 +97,7 @@ class TestResolveWaitSetting:
         )
 
     def test_missing_harness_block_is_safe(self, cls):
-        assert (
-            cls._resolve_wait_setting({}, "modelReadyTimeout", None, 1800) == 1800
-        )
+        assert cls._resolve_wait_setting({}, "modelReadyTimeout", None, 1800) == 1800
 
     def test_missing_smoketest_subblock_is_safe(self, cls):
         plan_config = {"harness": {"name": "inference-perf"}}
@@ -192,7 +188,14 @@ class TestTimeoutReturnsError:
         )
         inst = self._build(cls)
         result = inst._wait_for_model_ready(
-            cmd, ctx, "ns", "svc", 80, "m", plan_config=None, timeout=1,
+            cmd,
+            ctx,
+            "ns",
+            "svc",
+            80,
+            "m",
+            plan_config=None,
+            timeout=1,
         )
         assert result is None
 
@@ -211,8 +214,15 @@ class TestTimeoutReturnsError:
         )
         inst = self._build(cls)
         result = inst._wait_for_model_ready(
-            cmd, ctx, "ns", "svc", 80, "m", plan_config=None,
-            timeout=10, poll_interval=1,
+            cmd,
+            ctx,
+            "ns",
+            "svc",
+            80,
+            "m",
+            plan_config=None,
+            timeout=10,
+            poll_interval=1,
         )
         assert result is None
 
@@ -234,8 +244,6 @@ class TestTimeoutReturnsError:
         )
         # Patch time.time to fast-forward past the timeout immediately on
         # the second loop iteration.
-        import time as _time
-
         clock = [0.0]
 
         def _tick():
@@ -248,7 +256,11 @@ class TestTimeoutReturnsError:
 
         inst = self._build(cls)
         err = inst._wait_for_model_ready(
-            cmd, ctx, "vezio-gpu", "svc", 80,
+            cmd,
+            ctx,
+            "vezio-gpu",
+            "svc",
+            80,
             "deepseek-ai/DeepSeek-R1-0528",
             plan_config=None,
             timeout=3,
