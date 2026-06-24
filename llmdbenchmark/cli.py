@@ -115,7 +115,13 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             version_resolver=version_resolver,
             cluster_resource_resolver=cluster_resource_resolver,
             cli_namespace=getattr(args, "namespace", None),
-            cli_model=getattr(args, "models", None),
+            # `--models` (plural) is the standup/experiment flag; `--model`
+            # (singular) is the run subcommand's flag. Fall back to the
+            # singular so RUN's render also honors the CLI model override --
+            # without this, the rendered config.yaml silently keeps the
+            # scenario default model and the summary banner shows the wrong
+            # name even though the harness ran the right model.
+            cli_model=getattr(args, "models", None) or getattr(args, "model", None),
             cli_methods=getattr(args, "methods", None),
             cli_monitoring=getattr(args, "monitoring", None),
             cli_wva=getattr(args, "wva", False),
@@ -1200,7 +1206,14 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         version_resolver=version_resolver,
         cluster_resource_resolver=cluster_resource_resolver,
         cli_namespace=getattr(args, "namespace", None),
-        cli_model=getattr(args, "models", None),
+        # `--models` (plural) is the standup/experiment flag; `--model`
+        # (singular) is the run subcommand's flag. Fall back to the
+        # singular so the run subcommand's render also honors the CLI
+        # model override -- without this, the rendered config.yaml
+        # silently keeps the scenario default model and the summary
+        # banner shows the wrong name even though the harness ran the
+        # right model (which gets its name from context.model_name).
+        cli_model=getattr(args, "models", None) or getattr(args, "model", None),
         cli_methods=getattr(args, "methods", None),
         cli_monitoring=getattr(args, "monitoring", None),
         cli_wva=getattr(args, "wva", False),
