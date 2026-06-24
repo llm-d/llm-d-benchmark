@@ -52,36 +52,26 @@ scenario:
       guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
 
       # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      patches:
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: decode
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
-      #patches:
-      #  - patch: |
-      #      apiVersion: apps/v1
-      #      kind: Deployment
-      #      metadata:
-      #        name: decode
-      #      spec:
-      #        replicas: 2
-      #        template:
-      #          spec:
-      #            priorityClassName: nightly-gpu-critical
+      # guide's modelserver base. Default is empty -- the upstream guide
+      # already injects HF_TOKEN from the `llm-d-hf-token` Secret (which
+      # the benchmark's standup auto-creates from the HF_TOKEN env var),
+      # so no patch is needed for gated-model access.
+      #
+      # Use this list to override anything else upstream sets -- e.g.
+      # bump replicas or pin a priorityClassName:
+      #
+      #   patches:
+      #     - patch: |
+      #         apiVersion: apps/v1
+      #         kind: Deployment
+      #         metadata:
+      #           name: decode
+      #         spec:
+      #           replicas: 2
+      #           template:
+      #             spec:
+      #               priorityClassName: nightly-gpu-critical
+      patches: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
