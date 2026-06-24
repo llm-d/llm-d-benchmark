@@ -1843,17 +1843,35 @@ class BaseSmoketest:
             try:
                 resp = json.loads(stdout)
             except json.JSONDecodeError:
-                if _is_retryable(stdout) and attempt < max_retries:
+                # JSON decode failed -- empty body, partial body, or
+                # garbage. All three are dominated by transient
+                # warmup races (model server still loading after
+                # /v1/models began responding, gateway flapping
+                # mid-request, sim's request handler not yet bound).
+                # We have no negative signal -- the HTTP status was
+                # already vetted as 2xx by _curl_post -- so retry
+                # unconditionally up to max_retries before falling
+                # back to /v1/chat/completions. Don't gate on
+                # _is_retryable here: that function looks for known
+                # error strings (502/503/504/...) but for "no body"
+                # there's nothing to match, and the historical
+                # `_is_retryable("") -> False` made every transient
+                # warmup race a hard smoketest failure.
+                body_preview = stdout[:200].strip() or "(empty body)"
+                if attempt < max_retries:
+                    context.logger.log_info(
+                        f"Attempt {attempt}/{max_retries}: non-JSON body "
+                        f"({body_preview[:60]}), retrying in {retry_interval}s..."
+                    )
                     time.sleep(retry_interval)
                     continue
-                # Empty body usually means the server doesn't speak this
-                # endpoint -- legacy /v1/completions is a common gap on
-                # chat-only model servers and the llm-d simulator. The
-                # caller of _try_completions checks `should_fallback`
-                # and routes to /v1/chat/completions; chat-completions
-                # has no further fallback target, so its should_fallback
-                # is a no-op (kept for symmetric error shape).
-                body_preview = stdout[:200].strip() or "(empty body)"
+                # Out of retries -- fall back to /v1/chat/completions.
+                # Modern chat-only model servers and the llm-d
+                # simulator both produce empty /v1/completions
+                # responses; the chat endpoint usually works.
+                # Chat-completions has no further fallback target so
+                # its should_fallback is a no-op (kept for symmetric
+                # error shape).
                 return {
                     "success": False,
                     "error": f"Non-JSON response from {url}: {body_preview}",
@@ -1937,17 +1955,35 @@ class BaseSmoketest:
             try:
                 resp = json.loads(stdout)
             except json.JSONDecodeError:
-                if _is_retryable(stdout) and attempt < max_retries:
+                # JSON decode failed -- empty body, partial body, or
+                # garbage. All three are dominated by transient
+                # warmup races (model server still loading after
+                # /v1/models began responding, gateway flapping
+                # mid-request, sim's request handler not yet bound).
+                # We have no negative signal -- the HTTP status was
+                # already vetted as 2xx by _curl_post -- so retry
+                # unconditionally up to max_retries before falling
+                # back to /v1/chat/completions. Don't gate on
+                # _is_retryable here: that function looks for known
+                # error strings (502/503/504/...) but for "no body"
+                # there's nothing to match, and the historical
+                # `_is_retryable("") -> False` made every transient
+                # warmup race a hard smoketest failure.
+                body_preview = stdout[:200].strip() or "(empty body)"
+                if attempt < max_retries:
+                    context.logger.log_info(
+                        f"Attempt {attempt}/{max_retries}: non-JSON body "
+                        f"({body_preview[:60]}), retrying in {retry_interval}s..."
+                    )
                     time.sleep(retry_interval)
                     continue
-                # Empty body usually means the server doesn't speak this
-                # endpoint -- legacy /v1/completions is a common gap on
-                # chat-only model servers and the llm-d simulator. The
-                # caller of _try_completions checks `should_fallback`
-                # and routes to /v1/chat/completions; chat-completions
-                # has no further fallback target, so its should_fallback
-                # is a no-op (kept for symmetric error shape).
-                body_preview = stdout[:200].strip() or "(empty body)"
+                # Out of retries -- fall back to /v1/chat/completions.
+                # Modern chat-only model servers and the llm-d
+                # simulator both produce empty /v1/completions
+                # responses; the chat endpoint usually works.
+                # Chat-completions has no further fallback target so
+                # its should_fallback is a no-op (kept for symmetric
+                # error shape).
                 return {
                     "success": False,
                     "error": f"Non-JSON response from {url}: {body_preview}",

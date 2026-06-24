@@ -69,6 +69,23 @@ class TestNonJsonTriggersFallback:
             staticmethod(lambda *a, **kw: (body_returned, None)),
         )
 
+    def _patch_curl_sequence(self, monkeypatch, bodies):
+        """Patch _curl_post to return a different body each call.
+        Use this to simulate "transient empty -> retry succeeds"."""
+        bodies_iter = iter(bodies)
+        monkeypatch.setattr(
+            BaseSmoketest,
+            "_curl_post",
+            staticmethod(lambda *a, **kw: (next(bodies_iter), None)),
+        )
+
+    def _patch_sleep(self, monkeypatch):
+        """Skip the retry_interval sleeps in tests."""
+        monkeypatch.setattr(
+            "llmdbenchmark.smoketests.base.time.sleep",
+            lambda _: None,
+        )
+
     def test_empty_body_returns_should_fallback(self, monkeypatch):
         """Empty body (chat-only server) -> should_fallback=True so the
         caller routes to /v1/chat/completions."""
@@ -116,6 +133,67 @@ class TestNonJsonTriggersFallback:
         # fixture is gone in the result).
         assert result["generated_text"] == "Washington, D.C."
         assert "should_fallback" not in result
+
+    def test_transient_empty_then_valid_succeeds(self, monkeypatch):
+        """The kind-sim warmup race: first request returns empty
+        body (sim's request handler not yet bound), second request
+        returns valid JSON. We MUST retry rather than fall back, so
+        the smoketest reports success at /v1/completions and the
+        common case stays in the primary code path."""
+        cmd, ctx = self._mocks()
+        self._patch_sleep(monkeypatch)
+        good = (
+            '{"choices": [{"text": "ok"}],'
+            '"model": "model-name", "id": "x"}'
+        )
+        self._patch_curl_sequence(monkeypatch, ["", good])
+        inst = self._build()
+        result = inst._try_completions(
+            cmd, ctx, "ns", "http://svc:80", "model-name",
+            plan_config=None, max_retries=3, retry_interval=0,
+        )
+        assert result["success"] is True
+        assert result["generated_text"] == "ok"
+        assert "should_fallback" not in result
+        # The "retrying in ..." log line fired on attempt 1
+        assert any(
+            "retrying" in str(c) for c in ctx.logger.log_info.call_args_list
+        )
+
+    def test_exhausted_retries_then_fallback(self, monkeypatch):
+        """All retries return empty (server genuinely doesn't speak
+        /v1/completions). After max_retries, return
+        should_fallback=True so chat fallback kicks in."""
+        cmd, ctx = self._mocks()
+        self._patch_sleep(monkeypatch)
+        self._patch_curl_sequence(monkeypatch, ["", "", ""])
+        inst = self._build()
+        result = inst._try_completions(
+            cmd, ctx, "ns", "http://svc:80", "model-name",
+            plan_config=None, max_retries=3, retry_interval=0,
+        )
+        assert result["success"] is False
+        assert result.get("should_fallback") is True
+        assert "(empty body)" in result["error"]
+
+    def test_transient_partial_then_valid_succeeds(self, monkeypatch):
+        """Connection cut mid-stream gives partial JSON. Same handling
+        as empty: retry, succeed on next attempt."""
+        cmd, ctx = self._mocks()
+        self._patch_sleep(monkeypatch)
+        good = (
+            '{"choices": [{"text": "ok"}],'
+            '"model": "model-name", "id": "x"}'
+        )
+        self._patch_curl_sequence(
+            monkeypatch, ['{"choices": [{"text', good],
+        )
+        inst = self._build()
+        result = inst._try_completions(
+            cmd, ctx, "ns", "http://svc:80", "model-name",
+            plan_config=None, max_retries=3, retry_interval=0,
+        )
+        assert result["success"] is True
 
 
 # ---------------------------------------------------------------------------
