@@ -1846,9 +1846,18 @@ class BaseSmoketest:
                 if _is_retryable(stdout) and attempt < max_retries:
                     time.sleep(retry_interval)
                     continue
+                # Empty body usually means the server doesn't speak this
+                # endpoint -- legacy /v1/completions is a common gap on
+                # chat-only model servers and the llm-d simulator. The
+                # caller of _try_completions checks `should_fallback`
+                # and routes to /v1/chat/completions; chat-completions
+                # has no further fallback target, so its should_fallback
+                # is a no-op (kept for symmetric error shape).
+                body_preview = stdout[:200].strip() or "(empty body)"
                 return {
                     "success": False,
-                    "error": f"Non-JSON response from {url}: {stdout[:200]}",
+                    "error": f"Non-JSON response from {url}: {body_preview}",
+                    "should_fallback": True,
                 }
 
             if _is_non_transient_error(resp):
@@ -1931,9 +1940,18 @@ class BaseSmoketest:
                 if _is_retryable(stdout) and attempt < max_retries:
                     time.sleep(retry_interval)
                     continue
+                # Empty body usually means the server doesn't speak this
+                # endpoint -- legacy /v1/completions is a common gap on
+                # chat-only model servers and the llm-d simulator. The
+                # caller of _try_completions checks `should_fallback`
+                # and routes to /v1/chat/completions; chat-completions
+                # has no further fallback target, so its should_fallback
+                # is a no-op (kept for symmetric error shape).
+                body_preview = stdout[:200].strip() or "(empty body)"
                 return {
                     "success": False,
-                    "error": f"Non-JSON response from {url}: {stdout[:200]}",
+                    "error": f"Non-JSON response from {url}: {body_preview}",
+                    "should_fallback": True,
                 }
 
             if "error" in resp:
@@ -1978,9 +1996,14 @@ class BaseSmoketest:
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
 
+        # `-w '\n%{http_code}'` appends a trailing line with the HTTP
+        # status so an empty body is still diagnosable (empty + 404 vs
+        # empty + 502 vs empty + 200 look identical to `-s` alone).
+        # We split the status off in Python before returning the body.
         curl_cmd = (
             f"'echo {payload_b64} | base64 -d | "
             f"curl -sk --max-time {timeout_seconds} "
+            f"-w \"\\n%{{http_code}}\" "
             f"-X POST {url} "
             f'-H "Content-Type: application/json" '
             f"-d @- 2>&1'"
@@ -2012,7 +2035,22 @@ class BaseSmoketest:
             detail = result.stderr[:300] or result.stdout[:300]
             return "", f"Curl to {url} failed: {detail}"
 
-        return result.stdout.strip(), None
+        # Split the trailing HTTP status off from the body. Curl writes
+        # the body followed by "\n<status>". A non-2xx status with an
+        # empty body becomes a meaningful error string instead of
+        # disappearing into "Non-JSON response: (empty body)".
+        stdout = result.stdout
+        body, _, status_part = stdout.rpartition("\n")
+        status = status_part.strip()
+        body = body.strip()
+        if status and not status.startswith("2"):
+            # Body of error responses (when the server bothered to send
+            # one) is more useful than the status alone, so include both.
+            body_preview = body[:200] or "(empty body)"
+            return body, (
+                f"Curl POST {url} returned HTTP {status}: {body_preview}"
+            )
+        return body, None
 
     def _print_demo_command(
         self,
