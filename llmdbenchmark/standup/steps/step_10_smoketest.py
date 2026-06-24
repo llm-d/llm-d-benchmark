@@ -390,11 +390,15 @@ class SmoketestStep(Step):
         class defaults.
         """
         timeout = self._resolve_wait_setting(
-            plan_config, "modelReadyTimeout", timeout,
+            plan_config,
+            "modelReadyTimeout",
+            timeout,
             self._DEFAULT_MODEL_READY_TIMEOUT,
         )
         poll_interval = self._resolve_wait_setting(
-            plan_config, "modelReadyPollInterval", poll_interval,
+            plan_config,
+            "modelReadyPollInterval",
+            poll_interval,
             self._DEFAULT_MODEL_READY_POLL_INTERVAL,
         )
 

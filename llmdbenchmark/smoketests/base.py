@@ -413,9 +413,7 @@ class BaseSmoketest:
                 url_path_prefix=url_path_prefix,
             )
             if wait_err:
-                report.add(
-                    CheckResult("model_ready", False, message=wait_err)
-                )
+                report.add(CheckResult("model_ready", False, message=wait_err))
 
         # 4. Test service/gateway. Skipped when model_ready already
         # timed out -- the assertion would fail with a cryptic Envoy
@@ -1637,11 +1635,15 @@ class BaseSmoketest:
         over the class defaults.
         """
         timeout = self._resolve_wait_setting(
-            plan_config, "modelReadyTimeout", timeout,
+            plan_config,
+            "modelReadyTimeout",
+            timeout,
             self._DEFAULT_MODEL_READY_TIMEOUT,
         )
         poll_interval = self._resolve_wait_setting(
-            plan_config, "modelReadyPollInterval", poll_interval,
+            plan_config,
+            "modelReadyPollInterval",
+            poll_interval,
             self._DEFAULT_MODEL_READY_POLL_INTERVAL,
         )
 
@@ -1848,15 +1850,21 @@ class BaseSmoketest:
         # Resolve retry budget from plan config (scenarios can tune)
         # falling back to the class defaults.
         max_retries = self._resolve_wait_setting(
-            plan_config, "inferenceMaxRetries", max_retries,
+            plan_config,
+            "inferenceMaxRetries",
+            max_retries,
             self._DEFAULT_INFERENCE_MAX_RETRIES,
         )
         retry_interval = self._resolve_wait_setting(
-            plan_config, "inferenceRetryBaseInterval", retry_interval,
+            plan_config,
+            "inferenceRetryBaseInterval",
+            retry_interval,
             self._DEFAULT_INFERENCE_RETRY_BASE,
         )
         retry_max_interval = self._resolve_wait_setting(
-            plan_config, "inferenceRetryMaxInterval", retry_max_interval,
+            plan_config,
+            "inferenceRetryMaxInterval",
+            retry_max_interval,
             self._DEFAULT_INFERENCE_RETRY_MAX,
         )
 
@@ -1876,7 +1884,11 @@ class BaseSmoketest:
                         f"Attempt {attempt}/{max_retries}: {err[:80]}, "
                         f"retrying in {self._compute_backoff(attempt, retry_interval, retry_max_interval)}s..."
                     )
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": err}
 
@@ -1903,7 +1915,11 @@ class BaseSmoketest:
                         f"Attempt {attempt}/{max_retries}: non-JSON body "
                         f"({body_preview[:60]}), retrying in {retry_interval}s..."
                     )
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 # Out of retries -- fall back to /v1/chat/completions.
                 # Modern chat-only model servers and the llm-d
@@ -1933,13 +1949,21 @@ class BaseSmoketest:
                 if isinstance(error_msg, dict):
                     error_msg = error_msg.get("message", str(error_msg))
                 if attempt < max_retries:
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": str(error_msg)}
 
             if "choices" not in resp or not resp["choices"]:
                 if attempt < max_retries:
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {
                     "success": False,
@@ -1949,7 +1973,11 @@ class BaseSmoketest:
             first = resp["choices"][0]
             if not first.get("text") and not first.get("message"):
                 if attempt < max_retries:
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": f"No generated text from {url}"}
 
@@ -1983,15 +2011,21 @@ class BaseSmoketest:
         # Same retry budget as /v1/completions -- the chat fallback also
         # benefits from giving the server time to warm up.
         max_retries = self._resolve_wait_setting(
-            plan_config, "inferenceMaxRetries", max_retries,
+            plan_config,
+            "inferenceMaxRetries",
+            max_retries,
             self._DEFAULT_INFERENCE_MAX_RETRIES,
         )
         retry_interval = self._resolve_wait_setting(
-            plan_config, "inferenceRetryBaseInterval", retry_interval,
+            plan_config,
+            "inferenceRetryBaseInterval",
+            retry_interval,
             self._DEFAULT_INFERENCE_RETRY_BASE,
         )
         retry_max_interval = self._resolve_wait_setting(
-            plan_config, "inferenceRetryMaxInterval", retry_max_interval,
+            plan_config,
+            "inferenceRetryMaxInterval",
+            retry_max_interval,
             self._DEFAULT_INFERENCE_RETRY_MAX,
         )
 
@@ -2004,7 +2038,11 @@ class BaseSmoketest:
                         f"Chat attempt {attempt}/{max_retries}: {err[:80]}, "
                         f"retrying in {self._compute_backoff(attempt, retry_interval, retry_max_interval)}s..."
                     )
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": err}
 
@@ -2031,7 +2069,11 @@ class BaseSmoketest:
                         f"Attempt {attempt}/{max_retries}: non-JSON body "
                         f"({body_preview[:60]}), retrying in {retry_interval}s..."
                     )
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 # Out of retries -- fall back to /v1/chat/completions.
                 # Modern chat-only model servers and the llm-d
@@ -2051,13 +2093,21 @@ class BaseSmoketest:
                 if isinstance(error_msg, dict):
                     error_msg = error_msg.get("message", str(error_msg))
                 if _is_retryable(str(error_msg)) and attempt < max_retries:
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": str(error_msg)}
 
             if "choices" not in resp or not resp["choices"]:
                 if attempt < max_retries:
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": f"Missing choices from {url}"}
 
@@ -2065,7 +2115,11 @@ class BaseSmoketest:
             text = message.get("content", "").strip()
             if not text:
                 if attempt < max_retries:
-                    time.sleep(self._compute_backoff(attempt, retry_interval, retry_max_interval))
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": f"No content in response from {url}"}
 
@@ -2095,7 +2149,7 @@ class BaseSmoketest:
         curl_cmd = (
             f"'echo {payload_b64} | base64 -d | "
             f"curl -sk --max-time {timeout_seconds} "
-            f"-w \"\\n%{{http_code}}\" "
+            f'-w "\\n%{{http_code}}" '
             f"-X POST {url} "
             f'-H "Content-Type: application/json" '
             f"-d @- 2>&1'"
@@ -2139,9 +2193,7 @@ class BaseSmoketest:
             # Body of error responses (when the server bothered to send
             # one) is more useful than the status alone, so include both.
             body_preview = body[:200] or "(empty body)"
-            return body, (
-                f"Curl POST {url} returned HTTP {status}: {body_preview}"
-            )
+            return body, (f"Curl POST {url} returned HTTP {status}: {body_preview}")
         return body, None
 
     def _print_demo_command(

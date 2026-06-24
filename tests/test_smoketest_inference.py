@@ -93,8 +93,13 @@ class TestNonJsonTriggersFallback:
         self._patch_curl(monkeypatch, "")
         inst = self._build()
         result = inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "model-name",
-            plan_config=None, max_retries=1,
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "model-name",
+            plan_config=None,
+            max_retries=1,
         )
         assert result["success"] is False
         assert result.get("should_fallback") is True, (
@@ -108,8 +113,13 @@ class TestNonJsonTriggersFallback:
         self._patch_curl(monkeypatch, "<html><body>404 Not Found</body></html>")
         inst = self._build()
         result = inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "model-name",
-            plan_config=None, max_retries=1,
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "model-name",
+            plan_config=None,
+            max_retries=1,
         )
         assert result.get("should_fallback") is True
         # Body preview is included for debugging
@@ -124,8 +134,13 @@ class TestNonJsonTriggersFallback:
         self._patch_curl(monkeypatch, body)
         inst = self._build()
         result = inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "model-name",
-            plan_config=None, max_retries=1,
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "model-name",
+            plan_config=None,
+            max_retries=1,
         )
         assert result["success"] is True
         # _try_completions strips the text before returning -- pin that
@@ -142,23 +157,24 @@ class TestNonJsonTriggersFallback:
         common case stays in the primary code path."""
         cmd, ctx = self._mocks()
         self._patch_sleep(monkeypatch)
-        good = (
-            '{"choices": [{"text": "ok"}],'
-            '"model": "model-name", "id": "x"}'
-        )
+        good = '{"choices": [{"text": "ok"}],"model": "model-name", "id": "x"}'
         self._patch_curl_sequence(monkeypatch, ["", good])
         inst = self._build()
         result = inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "model-name",
-            plan_config=None, max_retries=3, retry_interval=0,
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "model-name",
+            plan_config=None,
+            max_retries=3,
+            retry_interval=0,
         )
         assert result["success"] is True
         assert result["generated_text"] == "ok"
         assert "should_fallback" not in result
         # The "retrying in ..." log line fired on attempt 1
-        assert any(
-            "retrying" in str(c) for c in ctx.logger.log_info.call_args_list
-        )
+        assert any("retrying" in str(c) for c in ctx.logger.log_info.call_args_list)
 
     def test_exhausted_retries_then_fallback(self, monkeypatch):
         """All retries return empty (server genuinely doesn't speak
@@ -169,8 +185,14 @@ class TestNonJsonTriggersFallback:
         self._patch_curl_sequence(monkeypatch, ["", "", ""])
         inst = self._build()
         result = inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "model-name",
-            plan_config=None, max_retries=3, retry_interval=0,
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "model-name",
+            plan_config=None,
+            max_retries=3,
+            retry_interval=0,
         )
         assert result["success"] is False
         assert result.get("should_fallback") is True
@@ -181,17 +203,21 @@ class TestNonJsonTriggersFallback:
         as empty: retry, succeed on next attempt."""
         cmd, ctx = self._mocks()
         self._patch_sleep(monkeypatch)
-        good = (
-            '{"choices": [{"text": "ok"}],'
-            '"model": "model-name", "id": "x"}'
-        )
+        good = '{"choices": [{"text": "ok"}],"model": "model-name", "id": "x"}'
         self._patch_curl_sequence(
-            monkeypatch, ['{"choices": [{"text', good],
+            monkeypatch,
+            ['{"choices": [{"text', good],
         )
         inst = self._build()
         result = inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "model-name",
-            plan_config=None, max_retries=3, retry_interval=0,
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "model-name",
+            plan_config=None,
+            max_retries=3,
+            retry_interval=0,
         )
         assert result["success"] is True
 
@@ -210,12 +236,12 @@ class TestExponentialBackoff:
     @pytest.mark.parametrize(
         "attempt,expected",
         [
-            (1, 15),    # base
-            (2, 30),    # 2x
-            (3, 60),    # 4x
-            (4, 120),   # 8x, hits cap
-            (5, 120),   # cap
-            (6, 120),   # cap (defensive)
+            (1, 15),  # base
+            (2, 30),  # 2x
+            (3, 60),  # 4x
+            (4, 120),  # 8x, hits cap
+            (5, 120),  # cap
+            (6, 120),  # cap (defensive)
         ],
     )
     def test_compute_backoff_sequence(self, attempt, expected):
@@ -259,7 +285,11 @@ class TestExponentialBackoff:
         )
         inst = BaseSmoketest.__new__(BaseSmoketest)
         inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "m",
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "m",
             plan_config=None,
             max_retries=4,
             retry_interval=15,
@@ -295,7 +325,11 @@ class TestExponentialBackoff:
         }
         inst = BaseSmoketest.__new__(BaseSmoketest)
         inst._try_completions(
-            cmd, ctx, "ns", "http://svc:80", "m",
+            cmd,
+            ctx,
+            "ns",
+            "http://svc:80",
+            "m",
             plan_config=plan_config,
         )
         # 3 attempts -> 2 sleeps: 30s, 60s (2x base hits the 60s cap)
@@ -329,7 +363,11 @@ class TestCurlPostStatusParsing:
         stdout = '{"choices":[{"text":"hi"}]}\n200'
         cmd = self._make_cmd(self._mock_kube_result(stdout))
         body, err = BaseSmoketest._curl_post(
-            cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+            cmd,
+            "ns",
+            "http://svc/v1/completions",
+            {"x": 1},
+            plan_config=None,
         )
         assert err is None
         assert body == '{"choices":[{"text":"hi"}]}'
@@ -341,7 +379,11 @@ class TestCurlPostStatusParsing:
         stdout = "\n200"
         cmd = self._make_cmd(self._mock_kube_result(stdout))
         body, err = BaseSmoketest._curl_post(
-            cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+            cmd,
+            "ns",
+            "http://svc/v1/completions",
+            {"x": 1},
+            plan_config=None,
         )
         assert err is None
         assert body == ""
@@ -353,7 +395,11 @@ class TestCurlPostStatusParsing:
         stdout = "\n404"
         cmd = self._make_cmd(self._mock_kube_result(stdout))
         body, err = BaseSmoketest._curl_post(
-            cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+            cmd,
+            "ns",
+            "http://svc/v1/completions",
+            {"x": 1},
+            plan_config=None,
         )
         assert err is not None
         assert "HTTP 404" in err
@@ -368,7 +414,11 @@ class TestCurlPostStatusParsing:
         )
         cmd = self._make_cmd(self._mock_kube_result(stdout))
         body, err = BaseSmoketest._curl_post(
-            cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+            cmd,
+            "ns",
+            "http://svc/v1/completions",
+            {"x": 1},
+            plan_config=None,
         )
         assert err is not None
         assert "HTTP 502" in err
@@ -380,7 +430,11 @@ class TestCurlPostStatusParsing:
             stdout = f"server error\n{status}"
             cmd = self._make_cmd(self._mock_kube_result(stdout))
             body, err = BaseSmoketest._curl_post(
-                cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+                cmd,
+                "ns",
+                "http://svc/v1/completions",
+                {"x": 1},
+                plan_config=None,
             )
             assert err is not None
             assert f"HTTP {status}" in err
@@ -392,7 +446,11 @@ class TestCurlPostStatusParsing:
         bad_result.stderr = "Error from server (Forbidden): pods is forbidden"
         cmd = self._make_cmd(bad_result)
         body, err = BaseSmoketest._curl_post(
-            cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+            cmd,
+            "ns",
+            "http://svc/v1/completions",
+            {"x": 1},
+            plan_config=None,
         )
         assert body == ""
         assert err is not None
@@ -403,7 +461,11 @@ class TestCurlPostStatusParsing:
         result.dry_run = True
         cmd = self._make_cmd(result)
         body, err = BaseSmoketest._curl_post(
-            cmd, "ns", "http://svc/v1/completions", {"x": 1}, plan_config=None,
+            cmd,
+            "ns",
+            "http://svc/v1/completions",
+            {"x": 1},
+            plan_config=None,
         )
         assert body == ""
         assert err is None
