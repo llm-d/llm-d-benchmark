@@ -66,7 +66,7 @@ generation (and plan) time.
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 418 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routerEndpointPicker** | `main` | tag | `config/templates/values/defaults.yaml` line 393 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker-dev`) |
 | **routingSidecar** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 405 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
-| **udsTokenizer** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 411 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
+| **udsTokenizer** | `v0.9.0` | tag | `config/templates/values/defaults.yaml` line 411 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
 | **vllm** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 370 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 | **vllmOpenai** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 381 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 

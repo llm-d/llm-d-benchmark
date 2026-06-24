@@ -65,7 +65,7 @@ def _images() -> dict:
         },
         "udsTokenizer": {
             "repository": "ghcr.io/llm-d/llm-d-uds-tokenizer",
-            "tag": "v0.8.0",
+            "tag": "v0.9.0",
             "pullPolicy": "IfNotPresent",
         },
         "broken": {
@@ -85,7 +85,7 @@ class TestImageKeyExpansion:
         resolver = _make_resolver(monkeypatch)
         owner = {"imageKey": "udsTokenizer"}
         resolver._resolve_image_override(owner, _images(), "test")
-        assert owner["image"] == "ghcr.io/llm-d/llm-d-uds-tokenizer:v0.8.0"
+        assert owner["image"] == "ghcr.io/llm-d/llm-d-uds-tokenizer:v0.9.0"
         assert owner["imagePullPolicy"] == "IfNotPresent"
         assert "imageKey" not in owner
 
