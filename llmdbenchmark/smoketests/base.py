@@ -400,8 +400,9 @@ class BaseSmoketest:
                 )
 
         # 3. Wait for model ready (/v1/models)
+        wait_err: str | None = None
         if report.passed:
-            self._wait_for_model_ready(
+            wait_err = self._wait_for_model_ready(
                 cmd,
                 context,
                 namespace,
@@ -411,9 +412,22 @@ class BaseSmoketest:
                 plan_config,
                 url_path_prefix=url_path_prefix,
             )
+            if wait_err:
+                report.add(
+                    CheckResult("model_ready", False, message=wait_err)
+                )
 
-        # 4. Test service/gateway
+        # 4. Test service/gateway. Skipped when model_ready already
+        # timed out -- the assertion would fail with a cryptic Envoy
+        # "upstream connection refused" that buries the real cause
+        # (model still loading) under transport-layer noise.
         service_test_passed = False
+        if wait_err:
+            context.logger.log_info(
+                "Skipping service/gateway assertion -- model_ready check "
+                "already reported the underlying failure"
+            )
+            return report
         context.logger.log_info(
             f'Testing service/gateway "{service_ip}" (port {gateway_port})'
             f"{' [prefix=' + url_path_prefix + ']' if url_path_prefix else ''}..."
@@ -1587,6 +1601,13 @@ class BaseSmoketest:
             )
             time.sleep(poll_interval)
 
+    # Default 30 minutes -- accommodates large models (DeepSeek-R1,
+    # Llama-3.1-405B, Qwen3-235B etc.) where weight download + load
+    # across N workers can take 15+ minutes. Small models finish in
+    # seconds and exit immediately; the larger ceiling is upside-free.
+    _DEFAULT_MODEL_READY_TIMEOUT = 1800
+    _DEFAULT_MODEL_READY_POLL_INTERVAL = 15
+
     def _wait_for_model_ready(
         self,
         cmd: CommandExecutor,
@@ -1596,24 +1617,61 @@ class BaseSmoketest:
         port: str | int,
         expected_model: str,
         plan_config: dict | None = None,
-        timeout: int = 300,
-        poll_interval: int = 15,
+        timeout: int | None = None,
+        poll_interval: int | None = None,
         url_path_prefix: str = "",
-    ):
+    ) -> str | None:
+        """Poll ``/v1/models`` until the expected model is served.
+
+        Returns ``None`` on success, or a human-readable error message
+        on timeout (caller is expected to surface it as a check failure
+        -- the historical "log warning and silently proceed" was wrong
+        because the subsequent assertion would then fail with the
+        cryptic Envoy "upstream connection refused" instead of the
+        actual cause).
+
+        Timeout / poll interval can be overridden per-scenario via
+        ``harness.smoketest.modelReadyTimeout`` and
+        ``harness.smoketest.modelReadyPollInterval`` in the plan
+        config; explicit kwargs win over plan-config values which win
+        over the class defaults.
+        """
+        timeout = self._resolve_wait_setting(
+            plan_config, "modelReadyTimeout", timeout,
+            self._DEFAULT_MODEL_READY_TIMEOUT,
+        )
+        poll_interval = self._resolve_wait_setting(
+            plan_config, "modelReadyPollInterval", poll_interval,
+            self._DEFAULT_MODEL_READY_POLL_INTERVAL,
+        )
+
         context.logger.log_info(
-            f"Waiting for model to be ready at {host}:{port} (timeout {timeout}s)..."
+            f"Waiting for model '{expected_model}' at {host}:{port} "
+            f"(timeout {timeout}s, poll every {poll_interval}s)..."
         )
         start = time.time()
         attempt = 0
+        last_progress_log = 0.0
+        # Log first 3 polls verbosely, then once per ~60s. A 30-minute
+        # wait at 15s polls would otherwise produce 120 "not ready yet"
+        # lines -- noise that obscures the surrounding standup output.
+        verbose_attempts = 3
+        progress_interval = 60.0
 
         while True:
             elapsed = time.time() - start
             if elapsed > timeout:
-                context.logger.log_warning(
-                    f"Model readiness wait timed out after {timeout}s -- "
-                    f"proceeding with smoketest assertions"
+                err = (
+                    f"Model '{expected_model}' did not become ready at "
+                    f"{host}:{port} within {timeout}s. For large models "
+                    f"(DeepSeek-R1, Llama-3.1-405B, etc.) increase the "
+                    f"wait via `harness.smoketest.modelReadyTimeout: 3600` "
+                    f"in your scenario, or check the model-server logs:\n"
+                    f"  kubectl logs -n {namespace} "
+                    f"-l llm-d.ai/role=decode -c vllm --tail=100"
                 )
-                return
+                context.logger.log_error(err)
+                return err
 
             attempt += 1
             result = test_model_serving(
@@ -1628,19 +1686,52 @@ class BaseSmoketest:
             )
 
             if cmd.dry_run:
-                return
+                return None
 
             if result is None:
                 context.logger.log_info(
-                    f"Model ready at {host}:{port} (ok) ({int(elapsed)}s elapsed)"
+                    f"Model '{expected_model}' ready at {host}:{port} "
+                    f"({int(elapsed)}s, attempt {attempt})"
                 )
-                return
+                return None
 
             remaining = int(timeout - elapsed)
-            context.logger.log_info(
-                f"Model not ready yet (attempt {attempt}, {remaining}s remaining)..."
-            )
+            if attempt <= verbose_attempts or (
+                elapsed - last_progress_log >= progress_interval
+            ):
+                context.logger.log_info(
+                    f"Model not ready yet (attempt {attempt}, "
+                    f"{int(elapsed)}s elapsed, {remaining}s remaining)..."
+                )
+                last_progress_log = elapsed
             time.sleep(poll_interval)
+
+    @staticmethod
+    def _resolve_wait_setting(
+        plan_config: dict | None,
+        key: str,
+        explicit: int | None,
+        default: int,
+    ) -> int:
+        """Pick a wait timeout / poll interval.
+
+        Priority: explicit kwarg > plan_config.harness.smoketest.<key> >
+        class default. Plan-config values that aren't a positive int are
+        ignored (with no log -- scenario authors typo'ing this is rare
+        enough that we'd rather not fire false-positive warnings).
+        """
+        if explicit is not None:
+            return explicit
+        if plan_config:
+            cfg = ((plan_config.get("harness") or {}).get("smoketest") or {}).get(key)
+            if cfg is not None:
+                try:
+                    cfg_int = int(cfg)
+                    if cfg_int > 0:
+                        return cfg_int
+                except (TypeError, ValueError):
+                    pass
+        return default
 
     def _test_openshift_route(
         self,
