@@ -197,6 +197,112 @@ class TestNonJsonTriggersFallback:
 
 
 # ---------------------------------------------------------------------------
+# Exponential backoff between retries
+# ---------------------------------------------------------------------------
+
+
+class TestExponentialBackoff:
+    """Waits between retries should grow so a slow-to-warm server gets
+    more time on later attempts. With base=15s, cap=120s:
+        attempt 1 -> 15s, 2 -> 30s, 3 -> 60s, 4 -> 120s, 5 -> 120s (capped)
+    Total budget over 5 attempts: ~225s (3.75 min)."""
+
+    @pytest.mark.parametrize(
+        "attempt,expected",
+        [
+            (1, 15),    # base
+            (2, 30),    # 2x
+            (3, 60),    # 4x
+            (4, 120),   # 8x, hits cap
+            (5, 120),   # cap
+            (6, 120),   # cap (defensive)
+        ],
+    )
+    def test_compute_backoff_sequence(self, attempt, expected):
+        assert BaseSmoketest._compute_backoff(attempt, 15, 120) == expected
+
+    def test_compute_backoff_below_attempt_1_returns_base(self):
+        """Defensive: garbage input falls back to the base interval."""
+        assert BaseSmoketest._compute_backoff(0, 15, 120) == 15
+        assert BaseSmoketest._compute_backoff(-3, 15, 120) == 15
+
+    def test_compute_backoff_respects_cap(self):
+        """Cap below base is honored even when 2^0 * base would exceed it
+        (edge case, but pins the cap-wins-on-tie semantic)."""
+        assert BaseSmoketest._compute_backoff(1, 100, 50) == 50
+
+    def test_default_retry_budget_pinned(self):
+        """If someone reverts to the old 3-attempt / 15s-flat budget we
+        want a loud failure. Old default gave only 30s of total wait,
+        too short for warmup races on slower clusters."""
+        assert BaseSmoketest._DEFAULT_INFERENCE_MAX_RETRIES == 5
+        assert BaseSmoketest._DEFAULT_INFERENCE_RETRY_BASE == 15
+        assert BaseSmoketest._DEFAULT_INFERENCE_RETRY_MAX == 120
+
+    def test_actual_backoff_used_in_completions_loop(self, monkeypatch):
+        """The sleep durations called during a real retry sequence
+        match the backoff schedule, not the flat retry_interval."""
+        cmd = MagicMock()
+        cmd.dry_run = False
+        ctx = MagicMock()
+        # Always-empty stdout, no err -> drives JSON-decode-failure
+        # branch on every attempt and exhausts retries.
+        monkeypatch.setattr(
+            BaseSmoketest,
+            "_curl_post",
+            staticmethod(lambda *a, **kw: ("", None)),
+        )
+        sleeps: list[int] = []
+        monkeypatch.setattr(
+            "llmdbenchmark.smoketests.base.time.sleep",
+            lambda s: sleeps.append(s),
+        )
+        inst = BaseSmoketest.__new__(BaseSmoketest)
+        inst._try_completions(
+            cmd, ctx, "ns", "http://svc:80", "m",
+            plan_config=None,
+            max_retries=4,
+            retry_interval=15,
+            retry_max_interval=120,
+        )
+        # 4 attempts -> 3 sleeps in between (no sleep after final attempt)
+        assert sleeps == [15, 30, 60]
+
+    def test_plan_config_can_lengthen_retry_budget(self, monkeypatch):
+        """A scenario shipping a slow-to-warm model can crank the budget
+        without touching code."""
+        cmd = MagicMock()
+        cmd.dry_run = False
+        ctx = MagicMock()
+        monkeypatch.setattr(
+            BaseSmoketest,
+            "_curl_post",
+            staticmethod(lambda *a, **kw: ("", None)),
+        )
+        sleeps: list[int] = []
+        monkeypatch.setattr(
+            "llmdbenchmark.smoketests.base.time.sleep",
+            lambda s: sleeps.append(s),
+        )
+        plan_config = {
+            "harness": {
+                "smoketest": {
+                    "inferenceMaxRetries": 3,
+                    "inferenceRetryBaseInterval": 30,
+                    "inferenceRetryMaxInterval": 60,
+                },
+            },
+        }
+        inst = BaseSmoketest.__new__(BaseSmoketest)
+        inst._try_completions(
+            cmd, ctx, "ns", "http://svc:80", "m",
+            plan_config=plan_config,
+        )
+        # 3 attempts -> 2 sleeps: 30s, 60s (2x base hits the 60s cap)
+        assert sleeps == [30, 60]
+
+
+# ---------------------------------------------------------------------------
 # _curl_post: HTTP status code parsing
 # ---------------------------------------------------------------------------
 
