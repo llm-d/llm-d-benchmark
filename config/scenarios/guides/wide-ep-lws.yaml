@@ -166,22 +166,39 @@ scenario:
     # The plugins block uses the `llm-d.ai/v1alpha1` apiVersion shipped
     # by the llm-d-router-{standalone,gateway}-dev charts.
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      replicas: 1
-      flags:
-        v: 2
+    router:
+      inferencePool:
+        failureMode: "FailOpen"
+        # Inference Pool Provider Configuration -- rendered to root-level
+        # provider.{gatewayClassName}.{...} for gke/istio. Host is
+        # auto-resolved from model_id_label by render_plans.
+        providerConfig:
+          destinationRule:
+            trafficPolicy:
+              connectionPool:
+                http:
+                  http1MaxPendingRequests: 256000
+                  maxRequestsPerConnection: 256000
+                  http2MaxRequests: 256000
+                  idleTimeout: "900s"
+                tcp:
+                  maxConnections: 256000
+                  maxConnectionDuration: "1800s"
+                  connectTimeout: "900s"
+      epp:
+        replicas: 1
+        flags:
+          v: 2
+        pluginsConfigFile: "default-plugins.yaml"
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
 
-      failureMode: "FailOpen"
-
-      pluginsConfigFile: "default-plugins.yaml"
-      resources:
-        requests:
-          cpu: "4"
-          memory: 8Gi
-        limits:
-          memory: 16Gi
-
-      sidecar:
+      # Envoy sidecar tunables for the standalone chart (epponly only).
+      proxy:
         args:
           - "--service-node"
           - "envoy-sidecar"
@@ -195,29 +212,12 @@ scenario:
           - "60"
           - "-c"
           - "/etc/envoy/envoy.yaml"
-        # Resource requests and limits for the Envoy sidecar.
         resources:
           requests:
             cpu: "4"
             memory: 8Gi
           limits:
             memory: 16Gi
-
-      # Inference Pool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)

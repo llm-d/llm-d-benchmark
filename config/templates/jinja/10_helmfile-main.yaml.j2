@@ -17,9 +17,8 @@ helmDefaults:
    upstream GAIE registry
    (`oci://registry.k8s.io/gateway-api-inference-extension/charts/{standalone,inferencepool}`)
    to the llm-d-owned `llm-d-router-{standalone,gateway}-dev` charts in
-   ghcr.io/llm-d/charts. Their values structure also changed -- see
-   12_router-values.yaml.j2 for how the benchmark's `inferenceExtension.*` /
-   `inferencePool.*` config is mapped onto the new `router.*` layout. #}
+   ghcr.io/llm-d/charts. The scenario layer uses the chart's `router.*`
+   keys directly -- see 12_router-values.yaml.j2 for the renderer. #}
 {% set _epponly = (gateway.className | default('') == 'epponly') %}
 {% set _gaie_chart = 'oci://ghcr.io/llm-d/charts/llm-d-router-standalone-dev' if _epponly else 'oci://ghcr.io/llm-d/charts/llm-d-router-gateway-dev' %}
 

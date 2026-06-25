@@ -39,7 +39,7 @@ class TestPerStackIdentity:
             "model_id_label": label,
             "storage": {"modelPvc": {"name": "model-pvc", "size": "50Gi"}},
             "downloadJob": {"name": "download-model"},
-            "inferenceExtension": {
+            "router": {
                 "monitoring": {
                     "secretName": "inference-gateway-sa-metrics-reader-secret",
                     "interval": "10s",
@@ -54,7 +54,7 @@ class TestPerStackIdentity:
         assert out["storage"]["modelPvc"]["name"] == "model-pvc"
         assert out["downloadJob"]["name"] == "download-model"
         assert (
-            out["inferenceExtension"]["monitoring"]["secretName"]
+            out["router"]["monitoring"]["secretName"]
             == "inference-gateway-sa-metrics-reader-secret"
         )
 
@@ -63,7 +63,7 @@ class TestPerStackIdentity:
         values = self._base_values(label="qwen-07df-6b")
         out = renderer._resolve_per_stack_identity(values, total_stacks=2)
         assert out["downloadJob"]["name"] == "download-model-qwen-07df-6b"
-        assert out["inferenceExtension"]["monitoring"]["secretName"] == (
+        assert out["router"]["monitoring"]["secretName"] == (
             "inference-gateway-sa-metrics-reader-secret-qwen-07df-6b"
         )
 
@@ -76,9 +76,9 @@ class TestPerStackIdentity:
     def test_multi_stack_preserves_explicit_override(self, renderer):
         """Explicit scenario overrides must not be rewritten."""
         values = self._base_values(label="qwen-07df-6b")
-        values["inferenceExtension"]["monitoring"]["secretName"] = "custom-secret"
+        values["router"]["monitoring"]["secretName"] = "custom-secret"
         out = renderer._resolve_per_stack_identity(values, total_stacks=2)
-        assert out["inferenceExtension"]["monitoring"]["secretName"] == "custom-secret"
+        assert out["router"]["monitoring"]["secretName"] == "custom-secret"
         # Unchanged paths still get the default rewrite
         assert out["downloadJob"]["name"] == "download-model-qwen-07df-6b"
 

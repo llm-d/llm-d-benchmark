@@ -124,55 +124,56 @@ scenario:
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "flow-config.yaml"
-      pluginsCustomConfig:
-        flow-config.yaml: |
-          apiVersion: llm-d.ai/v1alpha1
-          kind: EndpointPickerConfig
-          featureGates:
-          - flowControl
-          plugins:
-          - type: queue-scorer
-          - type: kv-cache-utilization-scorer
-          - type: prefix-cache-scorer
-          - type: round-robin-fairness-policy
-          - type: fcfs-ordering-policy
-          - type: concurrency-detector
-            parameters:
-              maxConcurrency: 132
-              concurrencyMode: requests
-              headroom: 0.0
-
-          schedulingProfiles:
-          - name: default
+    router:
+      epp:
+        pluginsConfigFile: "flow-config.yaml"
+        pluginsCustomConfig:
+          flow-config.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            featureGates:
+            - flowControl
             plugins:
-            - pluginRef: queue-scorer
-              weight: 2
-            - pluginRef: kv-cache-utilization-scorer
-              weight: 2
-            - pluginRef: prefix-cache-scorer
-              weight: 3
+            - type: queue-scorer
+            - type: kv-cache-utilization-scorer
+            - type: prefix-cache-scorer
+            - type: round-robin-fairness-policy
+            - type: fcfs-ordering-policy
+            - type: concurrency-detector
+              parameters:
+                maxConcurrency: 132
+                concurrencyMode: requests
+                headroom: 0.0
 
-          flowControl:
-            maxBytes: "10Gi"
-            maxRequests: "1k"
-            defaultRequestTTL: "60s"
-            saturationDetector:
-              pluginRef: concurrency-detector
-            priorityBands:
-            - priority: 100
-              maxRequests: "500"
-              fairnessPolicyRef: round-robin-fairness-policy
-              orderingPolicyRef: fcfs-ordering-policy
-            - priority: 0
-              maxRequests: "200"
-              fairnessPolicyRef: round-robin-fairness-policy
-              orderingPolicyRef: fcfs-ordering-policy
-            - priority: -10
-              maxRequests: "50"
-              fairnessPolicyRef: round-robin-fairness-policy
-              orderingPolicyRef: fcfs-ordering-policy
+            schedulingProfiles:
+            - name: default
+              plugins:
+              - pluginRef: queue-scorer
+                weight: 2
+              - pluginRef: kv-cache-utilization-scorer
+                weight: 2
+              - pluginRef: prefix-cache-scorer
+                weight: 3
+
+            flowControl:
+              maxBytes: "10Gi"
+              maxRequests: "1k"
+              defaultRequestTTL: "60s"
+              saturationDetector:
+                pluginRef: concurrency-detector
+              priorityBands:
+              - priority: 100
+                maxRequests: "500"
+                fairnessPolicyRef: round-robin-fairness-policy
+                orderingPolicyRef: fcfs-ordering-policy
+              - priority: 0
+                maxRequests: "200"
+                fairnessPolicyRef: round-robin-fairness-policy
+                orderingPolicyRef: fcfs-ordering-policy
+              - priority: -10
+                maxRequests: "50"
+                fairnessPolicyRef: round-robin-fairness-policy
+                orderingPolicyRef: fcfs-ordering-policy
 
     # -------------------------------------------------------------------------
     # Prefill Configuration

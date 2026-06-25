@@ -225,31 +225,32 @@ scenario:
     # above to enable context-length-aware routing.
     # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
     # =========================================================================
-    # inferenceExtension:
-    #   pluginsConfigFile: "context-length-aware-config.yaml"
-    #   flags:
-    #     v: "2"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
-    #   sidecar:
+    # router:
+    #   tokenizer:
     #     enabled: true
-    #   pluginsCustomConfig:
-    #     context-length-aware-config.yaml: |
-    #       apiVersion: llm-d.ai/v1alpha1
-    #       kind: EndpointPickerConfig
-    #       plugins:
-    #         - type: tokenizer
-    #           parameters:
-    #             modelName: "${model.name}"
-    #             udsTokenizerConfig:
-    #               socketFile: /tmp/tokenizer/tokenizer-uds.socket
-    #         - type: context-length-aware
-    #           parameters:
-    #             label: llm-d.ai/context-length-range
-    #             enableFiltering: true
-    #       schedulingProfiles:
-    #         - name: default
-    #           plugins:
-    #             - pluginRef: tokenizer
-    #             - pluginRef: context-length-aware
+    #   epp:
+    #     pluginsConfigFile: "context-length-aware-config.yaml"
+    #     flags:
+    #       v: "2"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
+    #     pluginsCustomConfig:
+    #       context-length-aware-config.yaml: |
+    #         apiVersion: llm-d.ai/v1alpha1
+    #         kind: EndpointPickerConfig
+    #         plugins:
+    #           - type: tokenizer
+    #             parameters:
+    #               modelName: "${model.name}"
+    #               udsTokenizerConfig:
+    #                 socketFile: /tmp/tokenizer/tokenizer-uds.socket
+    #           - type: context-length-aware
+    #             parameters:
+    #               label: llm-d.ai/context-length-range
+    #               enableFiltering: true
+    #         schedulingProfiles:
+    #           - name: default
+    #             plugins:
+    #               - pluginRef: tokenizer
+    #               - pluginRef: context-length-aware
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration

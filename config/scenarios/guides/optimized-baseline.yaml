@@ -137,8 +137,9 @@ scenario:
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "default-plugins.yaml"
+    router:
+      epp:
+        pluginsConfigFile: "default-plugins.yaml"
 
     # -------------------------------------------------------------------------
     # Prefill Configuration

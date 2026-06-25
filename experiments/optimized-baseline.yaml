@@ -90,6 +90,32 @@ design:
     - E2EL (End-to-End Latency)
     - Throughput (tokens/sec)
 
+# --- Runtime: Setup treatments (consumed by experiment orchestrator) -------
+#
+# Sweep the EPP plugins config (scheduling strategy) across 4 levels. Each
+# treatment triggers a full standup -> run -> teardown cycle with the named
+# plugins config. router.epp.pluginsConfigFile flows through
+# 12_router-values.yaml.j2 to the llm-d-router-standalone-dev helm chart.
+#
+# NOTE: this only propagates on modelservice (or standalone) standups; on
+# kustomize standups the rendered router-values.yaml is ignored. See
+# workload/README.md#critical-setup-treatments-dont-propagate-via-kustomize-standup.
+
+setup:
+  constants:
+    # Lock everything else so the only signal across setups is the plugin set.
+    decode.replicas: 2
+    decode.parallelism.tensor: 2
+  treatments:
+    - name: inf-sche-none
+      router.epp.pluginsConfigFile: default-plugins.yaml
+    - name: inf-sche-prefix
+      router.epp.pluginsConfigFile: precise-prefix-cache-config.yaml
+    - name: inf-sche-kv
+      router.epp.pluginsConfigFile: kv-cache-aware-plugins.yaml
+    - name: inf-sche-queue
+      router.epp.pluginsConfigFile: queue-based-plugins.yaml
+
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #
 # Full factorial: 3 levels of question_len x 3 levels of output_len
