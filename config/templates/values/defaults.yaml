@@ -112,16 +112,15 @@ _anchors:
   # `inferencepool` / `standalone` charts onto the llm-d-owned
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
   # Used for both the standalone and gateway router charts.
-  router_chart_version:              &router_chart_version              v0
-  wva_version:                       &wva_version                       0.6.0
+  router_chart_version:              &router_chart_version              v0.9.0
+  wva_version:                       &wva_version                       0.8.0
   prometheus_version:                &prometheus_version                5.3.0
   vllm-openai_version:               &vllm-openai_version               v0.23.0
-  # The llm-d-router-endpoint-picker-dev image replaces the previous
-  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version main
-  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0
-  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
-  llm-d-cuda_version:                &llm-d-cuda_version                v0.7.0
-  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
+  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.9.0
+  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.9.0
+  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.23.0
+  llm-d-cuda_version:                &llm-d-cuda_version                v0.8.0
+  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.9.2
   llm-d-benchmark_version:           &llm-d-benchmark_version           v0.7.0
 
   # Common labels
@@ -383,23 +382,27 @@ images:
   # EPP (Endpoint Picker / Router) image -- llm-d-owned, sourced from the
   # llm-d-router chart family.
   routerEndpointPicker:
-    repository: ghcr.io/llm-d/llm-d-router-endpoint-picker-dev
+    repository: ghcr.io/llm-d/llm-d-router-endpoint-picker
     tag: *llm-d-router-endpoint-picker_version
     pullPolicy: *pull_always
     sourceRepo: https://github.com/llm-d/llm-d-router
 
   routingSidecar:
-    repository: ghcr.io/llm-d/llm-d-routing-sidecar
+    repository: ghcr.io/llm-d/llm-d-router-disagg-sidecar
     tag: *llm-d-routing-sidecar_version
     pullPolicy: *pull_if_not_present
-    sourceRepo: https://github.com/llm-d/llm-d-routing-sidecar
+    sourceRepo: https://github.com/llm-d/llm-d-router
 
   udsTokenizer:
-    repository: ghcr.io/llm-d/llm-d-uds-tokenizer
+    repository: docker.io/vllm/vllm-openai
     tag: *llm-d-uds-tokenizer_version
-    pullPolicy: *pull_if_not_present
-    sourceRepo: https://github.com/llm-d/llm-d-kv-cache
-    sourcePath: services/uds_tokenizer
+    pullPolicy: *pull_always
+    sourceRepo: https://github.com/vllm-project/vllm
+#    repository: ghcr.io/llm-d/llm-d-uds-tokenizer
+#    tag: *llm-d-uds-tokenizer_version
+#    pullPolicy: *pull_if_not_present
+#    sourceRepo: https://github.com/llm-d/llm-d-kv-cache
+#    sourcePath: services/uds_tokenizer
 
   python:
     repository: python
