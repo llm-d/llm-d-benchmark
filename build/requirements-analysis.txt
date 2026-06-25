@@ -5,4 +5,4 @@ seaborn>=0.13.2
 pandas>=3.0.3
 pydantic>=2.13.3
 PyYAML>=6.0.3
-scipy>=1.16.0
+scipy>=1.18.0
