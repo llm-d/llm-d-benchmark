@@ -1,4 +1,4 @@
-kubernetes>=35.0.0
+kubernetes>=36.0.2
 matplotlib>=3.11.0
 numpy>=2.5.0
 seaborn>=0.13.2
