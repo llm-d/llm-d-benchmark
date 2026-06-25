@@ -32,7 +32,7 @@ spec:
       # ISC labels stamped at bind time; modelservice via 13_ms-values.yaml.j2).
       # Selecting on `guide` keeps the PodMonitor identical for both paths
       # — same as Braulio's working FMA+WVA setup in PR #552/#579.
-      llm-d.ai/guide: "{{ wva.wellLitPath | default('optimized-baseline') }}"
+      llm-d.ai/guide: "{{ wva.wellLitPath }}"
 {% else %}
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
       llm-d.ai/model: {{ model_id_label }}
