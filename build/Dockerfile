@@ -61,18 +61,19 @@ sed -i 's^\-e^^' /etc/rsyncd.conf; ln -s /usr/bin/sleep /usr/local/bin/sleep; ln
 WORKDIR /workspace
 
 # Install harnesses
+RUN pip install --upgrade pip setuptools setuptools-rust wheel
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=ad65fe09932a300dfc27fcb1d17d1aac88787ea3
+ARG INFERENCE_PERF_BRANCH=v0.6.0
+ARG INFERENCE_PERF_COMMIT=v0.6.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
     pip install .
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BENCHMARK_BRANCH=v0.17.1
-ARG VLLM_BENCHMARK_COMMIT=95c0f928cdeeaa21c4906e73cee6a156e1b3b995
+ARG VLLM_BENCHMARK_BRANCH=v0.23.0
+ARG VLLM_BENCHMARK_COMMIT=v0.23.0
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
@@ -98,8 +99,8 @@ RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.6.0
-ARG GUIDELLM_COMMIT=v0.6.0
+ARG GUIDELLM_BRANCH=v0.6.1
+ARG GUIDELLM_COMMIT=v0.6.1
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \

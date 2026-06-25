@@ -370,6 +370,7 @@ scenario:
     # VLLM COMMON CONFIGURATION
     # =========================================================================
     vllmCommon:
+#      priorityClassName: nightly-gpu-critical
       kvTransfer:
         enabled: true
         connector: NixlConnector
