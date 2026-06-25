@@ -63,8 +63,8 @@ WORKDIR /workspace
 # Install harnesses
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=ad65fe09932a300dfc27fcb1d17d1aac88787ea3
+ARG INFERENCE_PERF_BRANCH=v0.6.0
+ARG INFERENCE_PERF_COMMIT=v0.6.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
