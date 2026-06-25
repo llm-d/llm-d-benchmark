@@ -26,9 +26,12 @@ spec:
       # EPP InferencePool selector keys (see 12_router-values.yaml.j2:217-218):
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing | default('true') }}"
       llm-d.ai/model: "{{ model_id_label }}"
+{% set _fma_guide_label = wva.wellLitPath
+                         if (wva is defined and wva.enabled | default(false))
+                         else ((kustomize.guideName if kustomize is defined and kustomize.guideName else '') or scenarioName) %}
+      llm-d.ai/guide: "{{ _fma_guide_label }}"
 {% if wva is defined and wva.enabled | default(false) %}
       llm-d.ai/variant: "{{ model_id_label }}-fma"
-      llm-d.ai/guide: "{{ wva.wellLitPath | default('optimized-baseline') }}"
 {% endif %}
     env_vars:
       HF_HOME: "{{ fma.modelMountPath }}"

@@ -1457,6 +1457,7 @@ class RenderPlans:
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
         merged_values["nonAdmin"] = self.cli_non_admin
+        merged_values["scenarioName"] = self.scenarios_file.stem
 
         epponly_errors = self._validate_epponly_constraints(
             merged_values,
