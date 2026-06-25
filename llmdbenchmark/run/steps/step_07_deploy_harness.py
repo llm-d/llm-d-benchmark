@@ -531,11 +531,13 @@ class DeployHarnessStep(Step):
             local_path = local_results_dir / dir_name
             local_path.mkdir(parents=True, exist_ok=True)
 
+            cp_args = ["cp"]
+            if not cmd.openshift:
+                cp_args.append("--retries=5")
+            cp_args.extend([remote_path, str(local_path)])
+
             cp_result = cmd.kube(
-                "cp",
-                "--retries=5",
-                remote_path,
-                str(local_path),
+                *cp_args,
                 namespace=namespace,
                 check=False,
             )
