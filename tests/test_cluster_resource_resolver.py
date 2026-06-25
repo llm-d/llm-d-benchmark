@@ -432,3 +432,117 @@ class TestScanIntegratesHeuristicForIntel:
         assert unresolved == []
         assert values["decode"]["acceleratorType"]["labelKey"] == "gpu.intel.com/family"
         assert values["decode"]["acceleratorType"]["labelValue"] == "dg2"
+
+
+class TestGpuLabelPrioritySelection:
+    """Tests for _select_best_gpu_label_key priority-based selection."""
+
+    def test_prefers_product_over_family(self):
+        gpu_labels = {
+            "nvidia.com/gpu.family": ["Hopper"],
+            "nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"],
+        }
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "nvidia.com/gpu.product"
+        )
+
+    def test_prefers_product_over_class(self):
+        gpu_labels = {
+            "gpu.nvidia.com/class": ["H100"],
+            "nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"],
+        }
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "nvidia.com/gpu.product"
+        )
+
+    def test_prefers_product_name_over_family(self):
+        gpu_labels = {
+            "amd.com/gpu.family": ["CDNA3"],
+            "amd.com/gpu.product-name": ["AMD-Instinct-MI300X"],
+        }
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "amd.com/gpu.product-name"
+        )
+
+    def test_prefers_family_over_class(self):
+        gpu_labels = {
+            "gpu.nvidia.com/class": ["H100"],
+            "nvidia.com/gpu.family": ["Hopper"],
+        }
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "nvidia.com/gpu.family"
+        )
+
+    def test_cloud_provider_label_highest_priority(self):
+        gpu_labels = {
+            "nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"],
+            "nvidia.com/gpu.family": ["Hopper"],
+            "cloud.google.com/gke-accelerator": ["nvidia-tesla-h100"],
+        }
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "cloud.google.com/gke-accelerator"
+        )
+
+    def test_single_label_returns_that_label(self):
+        gpu_labels = {"gpu.intel.com/family": ["dg2"]}
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "gpu.intel.com/family"
+        )
+
+    def test_empty_raises_value_error(self):
+        with pytest.raises(ValueError, match="gpu_labels is empty"):
+            ClusterResourceResolver._select_best_gpu_label_key({})
+
+    def test_unknown_label_falls_back_to_sorted_order(self):
+        """When none of the labels match known priorities, use sorted order."""
+        gpu_labels = {
+            "vendor.com/gpu.unknown-b": ["value1"],
+            "vendor.com/gpu.unknown-a": ["value2"],
+        }
+        # Falls back to sorted order
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "vendor.com/gpu.unknown-a"
+        )
+
+    def test_product_priority_with_multiple_vendors(self):
+        """When multiple vendors present, still prefer product attribute."""
+        gpu_labels = {
+            "amd.com/gpu.family": ["CDNA3"],
+            "nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"],
+            "intel.com/gpu.family": ["dg2"],
+        }
+        # NVIDIA product should win over Intel/AMD family
+        assert (
+            ClusterResourceResolver._select_best_gpu_label_key(gpu_labels)
+            == "nvidia.com/gpu.product"
+        )
+
+
+class TestAffinityNodeSelectorUsesLabelPriority:
+    """Verify that affinity.nodeSelector resolution uses priority selection."""
+
+    def test_affinity_prefers_product_over_family(self):
+        resolver = ClusterResourceResolver(logger=MagicMock(), dry_run=False)
+        resolver._node_resources = NodeResources(
+            accelerator_resources=["nvidia.com/gpu"],
+            gpu_labels={
+                "nvidia.com/gpu.family": ["Hopper"],
+                "nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"],
+            },
+        )
+        values = {"affinity": {"nodeSelector": "auto"}}
+        unresolved: list[str] = []
+        resolver._resolve_affinity_node_selector(values, unresolved)
+
+        assert unresolved == []
+        assert values["affinity"]["nodeSelector"] == {
+            "nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"
+        }
+        assert values["affinity"]["enabled"] is True

@@ -102,6 +102,18 @@ class ClusterResourceResolver:
         }
     )
 
+    # Priority order for GPU label attribute selection when multiple labels
+    # are available. Labels are matched by their final attribute name (after
+    # the last `/` or `.`). Cloud provider labels (no attribute suffix) are
+    # treated as highest priority. Earlier items are preferred.
+    GPU_LABEL_PRIORITY = [
+        None,  # Cloud provider labels (cloud.google.com/gke-accelerator)
+        "product",  # Most specific SKU identifier
+        "product-name",  # AMD's variant of product
+        "family",  # GPU family (less specific than product)
+        "class",  # GPU class (least specific)
+    ]
+
     # Cloud-managed accelerator labels that don't follow the vendor-prefix
     # convention (the node operator sets them on accelerator-enabled nodes).
     CLOUD_PROVIDER_GPU_LABEL_KEYS = ("cloud.google.com/gke-accelerator",)
@@ -385,6 +397,36 @@ class ClusterResourceResolver:
         attribute = label_key.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
         return attribute in cls.GPU_SKU_LABEL_ATTRIBUTES
 
+    @classmethod
+    def _select_best_gpu_label_key(cls, gpu_labels: dict[str, list[str]]) -> str:
+        """Select the most appropriate GPU label key from available options.
+
+        Uses GPU_LABEL_PRIORITY to prefer more specific labels (e.g., product)
+        over less specific ones (e.g., family, class). Cloud provider labels
+        (no attribute suffix) are highest priority.
+
+        Returns the first key in priority order, or the first key in sorted
+        order if none match the priority list (should not happen in practice).
+        """
+        if not gpu_labels:
+            raise ValueError("gpu_labels is empty")
+
+        # Try each priority level in order
+        for priority_attr in cls.GPU_LABEL_PRIORITY:
+            for label_key in gpu_labels:
+                if priority_attr is None:
+                    # Cloud provider labels have no attribute suffix
+                    if label_key in cls.CLOUD_PROVIDER_GPU_LABEL_KEYS:
+                        return label_key
+                else:
+                    # Extract attribute from label key
+                    attr = label_key.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
+                    if attr == priority_attr:
+                        return label_key
+
+        # Fallback: return first key in sorted order (for determinism)
+        return sorted(gpu_labels.keys())[0]
+
     def _resolve_accelerator_resource(
         self,
         values: dict,
@@ -474,7 +516,7 @@ class ClusterResourceResolver:
         resources = self._node_resources or NodeResources()
 
         if resources.gpu_labels:
-            label_key = next(iter(resources.gpu_labels))
+            label_key = self._select_best_gpu_label_key(resources.gpu_labels)
             label_value = resources.gpu_labels[label_key][0]
 
             affinity["nodeSelector"] = {label_key: label_value}
@@ -536,7 +578,7 @@ class ClusterResourceResolver:
                 continue
 
             if resources.gpu_labels:
-                label_key = next(iter(resources.gpu_labels))
+                label_key = self._select_best_gpu_label_key(resources.gpu_labels)
                 label_value = resources.gpu_labels[label_key][0]
 
                 accel_type["labelKey"] = label_key
