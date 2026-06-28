@@ -77,7 +77,9 @@ scenario:
       # the single-container standalone bundle. Swap for any published
       # evals/<benchmark>--<agent>-standalone image to run a different eval.
       benchmark:
-        repository: ghcr.io/exgentic/evals/gaia--claude-code-standalone
+        # codex agent: its web search is client-side, so it works on
+        # non-Anthropic served models (unlike claude-code's server-side one).
+        repository: ghcr.io/exgentic/evals/gaia--codex-standalone
         tag: v0.1.0
         pullPolicy: IfNotPresent
 
