@@ -13,7 +13,9 @@ spec:
     imagePullPolicy: {{ images.benchmark.pullPolicy }}
     securityContext:
       runAsUser: {{ dataAccess.runAsUser }}
-    command: ["rsync", "--daemon", "--no-detach", "--port={{ dataAccess.rsyncPort }}", "--log-file=/dev/stdout"]
+    # Keep-alive so the framework can `kubectl cp` results off the PVC (tar-based,
+    # not rsync). Slim benchmark images may not ship rsync, so fall back to idling.
+    command: ["sh", "-c", "command -v rsync >/dev/null 2>&1 && exec rsync --daemon --no-detach --port={{ dataAccess.rsyncPort }} --log-file=/dev/stdout || exec sleep infinity"]
     volumeMounts:
     - name: requests
       mountPath: /requests

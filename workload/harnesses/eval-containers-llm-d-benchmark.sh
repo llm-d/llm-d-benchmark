@@ -40,7 +40,10 @@ fi
 # agent's LLM calls land on the deployed llm-d model.
 endpoint="${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL:?endpoint not provided}"
 endpoint="${endpoint%/}"
-[[ "$endpoint" == */v1 ]] || endpoint="$endpoint/v1"
+# The in-pod gateway (bifrost) is an OpenAI-compatible client: it appends the
+# `/v1/chat/completions` path itself, so its upstream base must be the ROOT, not
+# `.../v1` (a `/v1` suffix would double to `.../v1/v1/...` -> upstream 404).
+endpoint="${endpoint%/v1}"
 export OPENAI_API_BASE="$endpoint"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-llm-d}"  # pragma: allowlist secret (placeholder; llm-d ignores it)
 export EVAL_MODEL="openai/${LLMDBENCH_DEPLOY_CURRENT_MODEL:?model not provided}"

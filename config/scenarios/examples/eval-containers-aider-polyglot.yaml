@@ -37,6 +37,12 @@ scenario:
       maxModelLen: 1024
       size: 2Gi
 
+    # The eval-containers harness runs an offline agentic benchmark against the
+    # served endpoint -- it pulls nothing from HuggingFace, so skip the
+    # framework's HF_TOKEN injection (no llm-d-hf-token secret required).
+    huggingface:
+      enabled: false
+
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
@@ -257,9 +263,12 @@ scenario:
     #                 LLMDBENCH_VLLM_COMMON_PVC_ACCESS_MODE=ReadWriteOnce
     # -------------------------------------------------------------------------
     storage:
-      # Uncomment to override storage class:
-      # workloadPvc:
-      #   storageClassName: standard-rwx       # GKE
+      # Harness results PVC. kind's local-path provisioner is ReadWriteOnce-only
+      # and single-node, so RWO works there; a multi-node cluster with RWX storage
+      # can override accessModes + storageClassName.
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
       modelPvc:
         # storageClassName: standard-rwx       # GKE
         # storageClassName: shared-vast       # Kubernetes

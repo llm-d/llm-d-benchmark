@@ -390,6 +390,11 @@ class HarnessConfig(BaseModel):
     profile: str | None = None
     experimentProfile: str | None = None
     executable: str
+    # Optional pod-entrypoint override. step_07 reads harness.entrypoint
+    # (default: the llm-d-benchmark.sh launcher); harnesses whose image has no
+    # launcher in /usr/local/bin (e.g. eval-containers, which runs a standalone
+    # eval image) point this at their script in the mounted scripts ConfigMap.
+    entrypoint: str | None = None
     condaEnvName: str
     waitTimeout: int = Field(ge=0)
     loadParallelism: int = Field(ge=1)

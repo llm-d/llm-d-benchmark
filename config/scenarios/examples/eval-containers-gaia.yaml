@@ -258,9 +258,12 @@ scenario:
     #                 LLMDBENCH_VLLM_COMMON_PVC_ACCESS_MODE=ReadWriteOnce
     # -------------------------------------------------------------------------
     storage:
-      # Uncomment to override storage class:
-      # workloadPvc:
-      #   storageClassName: standard-rwx       # GKE
+      # Harness results PVC. kind's local-path provisioner is ReadWriteOnce-only
+      # and single-node, so RWO works there; a multi-node cluster with RWX storage
+      # can override accessModes + storageClassName.
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
       modelPvc:
         # storageClassName: standard-rwx       # GKE
         # storageClassName: shared-vast       # Kubernetes
