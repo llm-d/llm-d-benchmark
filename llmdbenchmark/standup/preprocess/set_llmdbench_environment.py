@@ -187,7 +187,8 @@ if deps_present["ip"]:
     )
     for line in ip_route_list_command_output.stdout.split("\n"):
         if line and line.count("default") and not default_interface:
-            default_interface = line.split()[-1]
+            pre_dev, post_dev = line.split("dev")
+            default_interface = post_dev.split()[0]
             break
 
     for line in ip_route_list_command_output.stdout.split("\n"):

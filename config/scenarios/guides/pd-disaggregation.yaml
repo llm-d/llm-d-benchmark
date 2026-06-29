@@ -333,7 +333,9 @@ scenario:
         - name: NCCL_EXCLUDE_IB_HCA
           value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
         - name: NVSHMEM_DEBUG
-          value: "INFO"
+          value: "none"
+        - name: NCCL_DEBUG
+          value: "WARN"
         - name: NIXL_LOG_LEVEL
           value: debug
         - name: UCX_MAX_RMA_RAILS
@@ -422,7 +424,9 @@ scenario:
         - name: NCCL_EXCLUDE_IB_HCA
           value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
         - name: NVSHMEM_DEBUG
-          value: "INFO"
+          value: "none"
+        - name: NCCL_DEBUG
+          value: "WARN"
         - name: NIXL_LOG_LEVEL
           value: debug
         - name: UCX_MAX_RMA_RAILS
@@ -467,7 +471,6 @@ scenario:
 
     vllmCommon:
 #      priorityClassName: nightly-gpu-critical
-#####      priorityClassName: nightly-gpu-critical
 ######      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
 #####      ucxTls: "cuda,rc,sm"
       networkResource: "auto"   # auto-detect from cluster nodes
