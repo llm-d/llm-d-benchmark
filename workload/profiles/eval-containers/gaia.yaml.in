@@ -1,11 +1,4 @@
-# eval-containers / gaia profile.  See aider-polyglot.yaml.in for how a profile
-# relates to the harness pod image.
-#
-# GAIA is a web/tool agentic benchmark: the agent browses and uses tools, so the
-# harness pod needs egress to the internet (set internet=true on the deployment
-# and ensure any NetworkPolicy allows egress). If the deployment gates the
-# dataset behind a HuggingFace token, enable huggingface.* in the scenario so the
-# pod template injects HF_TOKEN.
+# eval-containers / gaia profile (needs internet egress; HF token if gated).
 harness: eval-containers
 benchmark: gaia
 description: "GAIA general AI-assistant tasks -- 165 tasks, internet + tool use, multi-turn."

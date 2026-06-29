@@ -12,6 +12,7 @@ import uuid
 import hashlib
 import json
 import binascii
+from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
 
@@ -1282,22 +1283,18 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     serving-perf signal lives in the OTel gateway traces (one span per LLM
     call). This reads ``traces.jsonl`` for request latency + throughput and the
     task ``result.json`` for the reward. The reward is a task-correctness signal
-    with no slot in the perf schema, so it rides in ``results.metadata`` -- the
-    format's documented escape hatch for non-standard data. Server-side
+    with no slot in the perf schema, so it rides in ``results.observability`` --
+    the format's extra-permitted area for ad-hoc result metrics. Server-side
     observability (KV cache, queue depth) is not produced here; the framework
     scrapes that from the served pods, harness-agnostic.
     """
-    import json as _json
-    import statistics as _stats
-    from pathlib import Path as _Path
-
-    res = _Path(results_file)
+    res = Path(results_file)
     root = res.parent.parent if res.parent.name == "task" else res.parent
 
     def _read(rel: str) -> dict:
         try:
-            return _json.loads((root / rel).read_text(encoding="utf-8"))
-        except Exception:
+            return json.loads((root / rel).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             return {}
 
     reward = _read("task/result.json")
@@ -1316,8 +1313,8 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
             if not line:
                 continue
             try:
-                doc = _json.loads(line)
-            except Exception:
+                doc = json.loads(line)
+            except json.JSONDecodeError:
                 continue
             for rs in doc.get("resourceSpans", []):
                 for ss in rs.get("scopeSpans", []):
@@ -1337,7 +1334,7 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             )
                         ):
                             continue
-                        n_calls += 1  # count the call even if it carries no timing
+                        n_calls += 1
                         st = int(sp.get("startTimeUnixNano", 0) or 0)
                         en = int(sp.get("endTimeUnixNano", 0) or 0)
                         if st and en and en > st:
@@ -1346,12 +1343,7 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             t_last = en if t_last is None else max(t_last, en)
                         for a in sp.get("attributes", []):
                             k = a.get("key", "")
-                            v = a.get("value", {})
-                            raw = v.get("intValue", v.get("stringValue"))
-                            try:
-                                iv = int(raw)
-                            except (TypeError, ValueError):
-                                iv = 0
+                            iv = int(a.get("value", {}).get("intValue") or 0)
                             if k.endswith("input_tokens") or k.endswith(
                                 "prompt_tokens"
                             ):
@@ -1361,29 +1353,19 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             ):
                                 out_tok += iv
 
-    def _pct(xs: list[float], p: float):
-        if not xs:
-            return None
-        if len(xs) == 1:
-            return xs[0]
-        i = p / 100 * (len(xs) - 1)
-        lo = int(i)
-        hi = min(lo + 1, len(xs) - 1)
-        return xs[lo] + (xs[hi] - xs[lo]) * (i - lo)
-
     def _stat(xs: list[float]):
         if not xs:
             return None
-        xs = sorted(xs)
+        a = np.array(xs, dtype=float)
         return {
             "units": Units.MS,
-            "mean": _stats.fmean(xs),
-            "stddev": _stats.pstdev(xs) if len(xs) > 1 else 0.0,
-            "min": xs[0],
-            "p50": _pct(xs, 50),
-            "p90": _pct(xs, 90),
-            "p99": _pct(xs, 99),
-            "max": xs[-1],
+            "mean": float(a.mean()),
+            "stddev": float(a.std()),
+            "min": float(a.min()),
+            "p50": float(np.percentile(a, 50)),
+            "p90": float(np.percentile(a, 90)),
+            "p99": float(np.percentile(a, 99)),
+            "max": float(a.max()),
         }
 
     n = n_calls
@@ -1395,7 +1377,7 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     # The harness-pod skeleton fills scenario.load.* from the run env; provide
     # agentic-appropriate defaults so the report is valid outside a pod too.
     load = br_dict.setdefault("scenario", {}).setdefault("load", {})
-    load.setdefault("metadata", {})
+    load.setdefault("metadata", {})  # required by the v0.2 schema
     std = load.setdefault("standardized", {})
     std.setdefault("tool", "eval-containers")
     std.setdefault("tool_version", "")

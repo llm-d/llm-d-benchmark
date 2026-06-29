@@ -1,11 +1,4 @@
-# eval-containers / aider-polyglot profile.
-#
-# The benchmark, agent, task dataset and grader all live in the harness pod
-# image (images.benchmark = evals/aider-polyglot--claude-code-standalone); this
-# pod selects ONE task by its parallel index and points the eval's in-pod
-# gateway at the deployed model. The fields below are informational -- the
-# eval-containers entrypoint reads model/endpoint from the environment, not from
-# this file (kept for parity with other harness profiles and for the record).
+# eval-containers / aider-polyglot profile (fields read from env, not here).
 harness: eval-containers
 benchmark: aider-polyglot
 description: "Exercism polyglot code-editing -- 6 languages, 225 tasks, fully offline, multi-turn."

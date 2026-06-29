@@ -187,7 +187,7 @@ def _convert_via_api(
     try:
         if writer_name == "eval-containers":
             # Agentic harness: request/session perf from OTel + reward in
-            # results.metadata. 0.2-only; skip other versions quietly.
+            # results.observability. 0.2-only; skip other versions quietly.
             if br_version != "0.2":
                 return None
             from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (

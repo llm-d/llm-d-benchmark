@@ -69,18 +69,13 @@ spec:
         secretKeyRef:
           name: {{ huggingface.secretName }}
           key: {{ huggingface.tokenKey }}
-          # Optional: harnesses that don't pull from HF (e.g. offline agentic
-          # evals, or run-only against an external endpoint with no deployed
-          # stack) run fine without the secret instead of failing to start.
+          # optional: offline / external-endpoint harnesses start without the secret.
           optional: true
     - name: HUGGING_FACE_HUB_TOKEN
       valueFrom:
         secretKeyRef:
           name: {{ huggingface.secretName }}
           key: {{ huggingface.tokenKey }}
-          # Optional: harnesses that don't pull from HF (e.g. offline agentic
-          # evals, or run-only against an external endpoint with no deployed
-          # stack) run fine without the secret instead of failing to start.
           optional: true
 {% endif %}
     - name: POD_NAME

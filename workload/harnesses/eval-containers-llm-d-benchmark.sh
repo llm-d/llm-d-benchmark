@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
 #
-# eval-containers harness for llm-d-benchmark.
-#
-# Runs ONE eval-containers task per parallel harness pod against the deployed
-# llm-d endpoint, so a whole agentic benchmark (aider-polyglot, gaia, ...) fans
-# out as one isolated container per task with  -j <#tasks>.
-#
-# Plugs in additively: this script ships in the llmdbench-harness-scripts
-# ConfigMap (mounted at /workspace/harnesses) and the harness pod image is set
-# to a published evals/<benchmark>--<agent>-standalone bundle via
-# images.benchmark in the scenario. No edit to the llm-d-benchmark framework is
-# required -- set harness.entrypoint to this script so it runs in place of the
-# default load-generator entrypoint (which is not present in the eval image).
-#
-#   ... run -c <scenario-with-eval-containers-harness> -j <#tasks>
+# eval-containers harness: runs ONE eval-containers task per parallel harness pod
+# against the deployed llm-d endpoint, so a benchmark fans out with -j <#tasks>.
+# Set harness.entrypoint to this script -- the eval image has no load-generator
+# entrypoint of its own.
 #
 set -euo pipefail
 
@@ -51,18 +41,14 @@ export EVAL_MODEL="openai/${LLMDBENCH_DEPLOY_CURRENT_MODEL:?model not provided}"
 echo "eval-containers: task=$EVAL_TASK_ID model=$EVAL_MODEL endpoint=$OPENAI_API_BASE"
 
 # --- run the eval ------------------------------------------------------------
-# /entrypoint.sh is the image's ENTRYPOINT: it stages /app for EVAL_TASK_ID
-# (prompt, starter files, grader ground truth) and then execs the pipeline we
-# pass it. EVAL_BENCHMARK and EVAL_AGENT are baked into the
-# evals/<benchmark>--<agent> image, so the only axis this pod chooses is the task.
+# image ENTRYPOINT stages /app for EVAL_TASK_ID, then execs the pipeline.
 rc=0
 "${EVAL_CONTAINERS_ENTRYPOINT:-/entrypoint.sh}" \
   "${EVAL_CONTAINERS_RUN:-/usr/local/bin/run}" || rc=$?
 
 # --- hand results back to llm-d-benchmark's collector ------------------------
-# The pipeline writes the reward + agent logs + OTel traces under /output.
 output_dir="${EVAL_OUTPUT_DIR:-/output}"
-[[ -d "$output_dir" ]] && cp -a "$output_dir/." "$results_dir/" 2>/dev/null || true
+if [[ -d "$output_dir" ]]; then cp -a "$output_dir/." "$results_dir/"; fi
 printf 'harness_name: eval-containers\nharness_rc: %s\ntask_id: %s\nmodel: %s\n' \
   "$rc" "$EVAL_TASK_ID" "$EVAL_MODEL" > "$results_dir/run_metadata.yaml"
 
