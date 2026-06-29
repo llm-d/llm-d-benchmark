@@ -1,9 +1,13 @@
 name: CI - Nightly Run Benchmark on OCP ("WVA+FMA" autoscaling path)
 
 # Mirrors ci-nightly-benchmark-ocp-fma.yaml but targets the WVA(modelservice)+FMA scenario
-# under inference-perf load. Default harness
-# is inference-perf + shared_prefix_synthetic.yaml (same as running
-# guides/workload-autoscaling.yaml manually).
+# under inference-perf load. Default harness is inference-perf +
+# shared_prefix_synthetic_heavy.yaml — calibrated to drive WVA's saturation
+# gauges past the optimizer's threshold so HPA actually scales out during
+# the run. The light shared_prefix_synthetic.yaml profile peaks at 20 RPS,
+# which doesn't saturate even one Qwen3-32B replica, so neither path
+# exercises autoscaling and FMA pays its steady-state overhead with no
+# scaling benefit to amortize it. Override via inputs.workload if needed.
 #
 # This workflow runs TWO benchmark passes for direct comparison:
 #   1. baseline (WVA without FMA) — `cicd/ocp-nofma-wva`
@@ -95,7 +99,10 @@ on:
       workload:
         description: 'Workload profile (under workload/profiles/<harness>/)'
         required: false
-        default: 'shared_prefix_synthetic.yaml'
+        # Default to the heavy variant (calibrated to drive WVA saturation
+        # past the scale-up threshold). Override to shared_prefix_synthetic.yaml
+        # for a light-load smoke test of the deployment chain itself.
+        default: 'shared_prefix_synthetic_heavy.yaml'
         type: 'string'
       wait_timeout:
         # The reusable workflow's default is 3600s, but CI runs of the
@@ -137,7 +144,7 @@ jobs:
       dry_run: ${{ inputs.dry_run || 'false' }}
       verbose: ${{ inputs.verbose || 'false' }}
       harness: ${{ inputs.harness || 'inference-perf' }}
-      workload: ${{ inputs.workload || 'shared_prefix_synthetic.yaml' }}
+      workload: ${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}
       wait_timeout: ${{ inputs.wait_timeout || '5400' }}
     secrets: inherit
 
@@ -177,7 +184,7 @@ jobs:
       dry_run: ${{ inputs.dry_run || 'false' }}
       verbose: ${{ inputs.verbose || 'false' }}
       harness: ${{ inputs.harness || 'inference-perf' }}
-      workload: ${{ inputs.workload || 'shared_prefix_synthetic.yaml' }}
+      workload: ${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}
       wait_timeout: ${{ inputs.wait_timeout || '5400' }}
     secrets: inherit
 

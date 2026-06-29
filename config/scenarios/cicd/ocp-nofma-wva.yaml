@@ -271,6 +271,22 @@ scenario:
       additionalVolumes: []
 
       # -----------------------------------------------------------------------
+      # vLLM args
+      #
+      # `--no-enable-prefix-caching` is set here so the decode pod's vLLM
+      # configuration matches the FMA launcher's (which hard-codes
+      # `--no-enable-prefix-caching` in config/templates/jinja/24_fma-
+      # deployment.yaml.j2). Without this, baseline gets a massive unfair
+      # advantage on shared-prefix workloads (heavy profile = 4000-token
+      # shared prefix × 32 reuses per group → ~16× fewer prefill tokens
+      # with caching on). Keeping both sides apples-to-apples means we're
+      # benchmarking the scaling/scheduling path, not vLLM's prefix cache.
+      # -----------------------------------------------------------------------
+      vllm:
+        additionalFlags:
+          - "--no-enable-prefix-caching"
+
+      # -----------------------------------------------------------------------
       # Probes
       #
       # HTTP probes aligned with the upstream WVA well-lit-path guide
@@ -332,7 +348,14 @@ scenario:
         role: kv_both
 
       flags:
-        enforceEager: true
+        # enforceEager: false (overrides the defaults.yaml default of true).
+        # CUDA graphs improve decode throughput ~10-30% on H100 by eliminating
+        # per-kernel launch overhead. Symmetric with FMA's launcher, which has
+        # never run with --enforce-eager (its options string in
+        # 24_fma-deployment.yaml.j2 doesn't include it). With this set to true,
+        # baseline got an unfair perf handicap that masked real architectural
+        # comparisons.
+        enforceEager: false
         disableLogRequests: true
         disableUvicornAccessLog: true
         allowLongMaxModelLen: "1"
