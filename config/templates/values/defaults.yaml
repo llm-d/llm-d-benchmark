@@ -112,20 +112,15 @@ _anchors:
   # `inferencepool` / `standalone` charts onto the llm-d-owned
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
   # Used for both the standalone and gateway router charts.
-  router_chart_version:              &router_chart_version              v0
-  wva_version:                       &wva_version                       0.6.0
+  router_chart_version:              &router_chart_version              v0.9.0
+  wva_version:                       &wva_version                       0.8.0
   prometheus_version:                &prometheus_version                5.3.0
   vllm-openai_version:               &vllm-openai_version               v0.23.0
-  # The llm-d-router-endpoint-picker-dev image replaces the previous
-  # llm-d-inference-scheduler image used by the GAIE charts. Kept as a
-  # separate anchor so benchmark overrides can still target the legacy
-  # image when needed.
-  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version main
-  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
-  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0
-  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
-  llm-d-cuda_version:                &llm-d-cuda_version                v0.7.0
-  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
+  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.9.0
+  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.9.0
+  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.23.0
+  llm-d-cuda_version:                &llm-d-cuda_version                v0.8.0
+  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.9.2
   llm-d-benchmark_version:           &llm-d-benchmark_version           v0.7.0
 
   # Common labels
@@ -384,36 +379,30 @@ images:
     pullPolicy: *pull_always
     sourceRepo: https://github.com/vllm-project/vllm
 
-  # EPP (Endpoint Picker / Router) image. Migrated from the GAIE-shipped
-  # `llm-d-inference-scheduler` to the llm-d-owned
-  # `llm-d-router-endpoint-picker-dev` image. The historic `inferenceScheduler`
-  # key is retained below so any scenario or downstream pipeline that still
-  # overrides the legacy image keeps working until they migrate to
-  # `routerEndpointPicker`.
+  # EPP (Endpoint Picker / Router) image -- llm-d-owned, sourced from the
+  # llm-d-router chart family.
   routerEndpointPicker:
-    repository: ghcr.io/llm-d/llm-d-router-endpoint-picker-dev
+    repository: ghcr.io/llm-d/llm-d-router-endpoint-picker
     tag: *llm-d-router-endpoint-picker_version
     pullPolicy: *pull_always
     sourceRepo: https://github.com/llm-d/llm-d-router
 
-  inferenceScheduler:
-    repository: ghcr.io/llm-d/llm-d-inference-scheduler
-    tag: *llm-d-inference-scheduler_version
-    pullPolicy: *pull_always
-    sourceRepo: https://github.com/llm-d/llm-d-inference-scheduler
-
   routingSidecar:
-    repository: ghcr.io/llm-d/llm-d-routing-sidecar
+    repository: ghcr.io/llm-d/llm-d-router-disagg-sidecar
     tag: *llm-d-routing-sidecar_version
     pullPolicy: *pull_if_not_present
-    sourceRepo: https://github.com/llm-d/llm-d-routing-sidecar
+    sourceRepo: https://github.com/llm-d/llm-d-router
 
   udsTokenizer:
-    repository: ghcr.io/llm-d/llm-d-uds-tokenizer
+    repository: docker.io/vllm/vllm-openai
     tag: *llm-d-uds-tokenizer_version
-    pullPolicy: *pull_if_not_present
-    sourceRepo: https://github.com/llm-d/llm-d-kv-cache
-    sourcePath: services/uds_tokenizer
+    pullPolicy: *pull_always
+    sourceRepo: https://github.com/vllm-project/vllm
+#    repository: ghcr.io/llm-d/llm-d-uds-tokenizer
+#    tag: *llm-d-uds-tokenizer_version
+#    pullPolicy: *pull_if_not_present
+#    sourceRepo: https://github.com/llm-d/llm-d-kv-cache
+#    sourcePath: services/uds_tokenizer
 
   python:
     repository: python
@@ -625,77 +614,76 @@ gateway:
       memory: *memory_4gi
 
 # ============================================================================
-# INFERENCE EXTENSION CONFIGURATION
+# ROUTER CONFIGURATION
 #
-# This block is the benchmark's stable abstraction over the llm-d-router
-# chart's values. Field names mirror the legacy `inferenceExtension` GAIE
-# chart layout for backwards compatibility with existing scenarios; the
-# 12_router-values.yaml.j2 template maps them onto the chart's `router.*`
-# layout.
+# Scenario-level keys for the llm-d-router chart. Mirrors the chart's
+# top-level `router:` shape; the 12_router-values.yaml.j2 template passes
+# this through largely unchanged, with a few benchmark-specific niceties
+# (HF token env injection, zmq port expansion into the extraContainerPorts
+# / extraServicePorts arrays, EPP image resolution from
+# `images.routerEndpointPicker`, and tokenizer.modelName fallback to
+# model.name).
 # ============================================================================
-inferenceExtension:
-  replicas: 1
-  extProcPort: *ext_proc_port
-  zmqPort: *zmq_port
-  pluginsConfigFile: "default-plugins.yaml"
-  # Custom plugin content to embed in router-values.yaml.
-  # Keys are filenames, values are the YAML content as literal strings.
-  # Note: the new chart expects apiVersion `llm-d.ai/v1alpha1` for the
-  # EndpointPickerConfig (was `inference.networking.x-k8s.io/v1alpha1`).
-  # Example:
-  #   pluginsCustomConfig:
-  #     my-plugins.yaml: |
-  #       apiVersion: llm-d.ai/v1alpha1
-  #       kind: EndpointPickerConfig
-  #       ...
-  pluginsCustomConfig: {}
-  verbosity: "1"
-  # UDS tokenizer sidecar - runs alongside EPP for precise-prefix-cache scoring.
-  # In the llm-d-router chart this maps to `router.tokenizer.enabled`
-  # and the chart owns the container, sockets, and volumes -- the
-  # post-renderer / explicit sidecar block is no longer needed. The
-  # fields below remain for any legacy scenario that still provides
-  # them; they are tolerated by the renderer but not consumed by the
-  # new chart's tokenizer feature.
-  sidecar:
+router:
+  epp:
+    replicas: 1
+    extProcPort: *ext_proc_port
+    # Used to populate router.epp.extraContainerPorts and
+    # router.extraServicePorts with the zmq port (the EPP needs the
+    # container port for the kv-events publisher, and the service port
+    # so other pods can reach the publisher).
+    zmqPort: *zmq_port
+    pluginsConfigFile: "default-plugins.yaml"
+    # Custom plugin content to embed in router-values.yaml.
+    # Keys are filenames, values are the YAML content as literal strings.
+    # The chart expects apiVersion `llm-d.ai/v1alpha1` for the
+    # EndpointPickerConfig (the legacy `inference.networking.x-k8s.io/v1alpha1`
+    # is also accepted but deprecated).
+    # Example:
+    #   pluginsCustomConfig:
+    #     my-plugins.yaml: |
+    #       apiVersion: llm-d.ai/v1alpha1
+    #       kind: EndpointPickerConfig
+    #       ...
+    pluginsCustomConfig: {}
+    verbosity: "1"
+    # Resources are intentionally NOT set here.
+    # CI runners override this in their scenario YAML -- see
+    # config/scenarios/cicd/kind.yaml for an example.
+    # Extra volumes / mounts on the EPP container (e.g. shared dirs).
+    volumes: []
+    volumeMounts: []
+  # UDS tokenizer is a first-class chart feature. Flip
+  # `router.tokenizer.enabled: true` and the chart wires up the
+  # tokenizer container, sockets, and volumes itself. When `enabled`
+  # is true and `modelName` is unset, the template falls back to
+  # `model.name`.
+  tokenizer:
     enabled: false
-    name: tokenizer-uds
-    imagePullPolicy: IfNotPresent
-    env:
-      - name: TOKENIZERS_DIR
-        value: /tokenizers
-      - name: HF_HOME
-        value: /tokenizers
-    volumeMounts:
-      - mountPath: /tokenizers
-        name: tokenizers
-      - mountPath: /tmp/tokenizer
-        name: tokenizer-uds
-  # Resources are intentionally NOT set here.
-  # CI runners override this in their scenario YAML -- see
-  # config/scenarios/cicd/kind-sim.yaml for an example.
-  # Extra volumes and volume mounts for the EPP pod (e.g., tokenizer sidecar shared volumes)
-  volumes: []
-  volumeMounts: []
-  # Monitoring configuration for the EPP (Endpoint Picker Pod)
+  inferencePool:
+    failureMode: "FailOpen"
+    # Provider-specific config rendered to the values root as
+    # `provider.{gatewayClassName}.{...}` for gke/istio (epponly and
+    # agentgateway don't consume this).
+    # Example (istio):
+    #   providerConfig:
+    #     destinationRule:
+    #       trafficPolicy:
+    #         connectionPool:
+    #           http:
+    #             h2UpgradePolicy: DO_NOT_UPGRADE
+    providerConfig: {}
   monitoring:
+    # Service-account token secret name for the Prometheus scraper.
+    # Multi-stack scenarios sharing one namespace get a per-stack
+    # rewrite of this name in render_plans to avoid Helm ownership
+    # collisions.
     secretName: inference-gateway-sa-metrics-reader-secret
     interval: "10s"
     prometheus:
       enabled: true
       auth:
         enabled: true
-  # Provider-specific config for the InferencePool resource.
-  # When non-empty, rendered under inferencePool.provider.{gatewayClassName}.
-  # Example (for istio destinationRule):
-  #   inferencePoolProviderConfig:
-  #     destinationRule:
-  #       host: my-model-router-epp
-  #       trafficPolicy:
-  #         connectionPool:
-  #           http:
-  #             h2UpgradePolicy: DO_NOT_UPGRADE
-  inferencePoolProviderConfig: {}
 
 # ============================================================================
 # ROUTING / PROXY CONFIGURATION
@@ -1290,23 +1278,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.13/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.13/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.13/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.6.0-alpha.13
+    version: 0.6.0
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.6.0-alpha.13
+    tag: v0.6.0
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.0-alpha.13
+      tag: v0.6.0
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1320,7 +1308,7 @@ fma:
     maxInstances: 4
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.0-alpha.13
+      tag: v0.6.0
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:

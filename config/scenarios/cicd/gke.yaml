@@ -34,7 +34,7 @@ scenario:
         cloud.google.com/gke-accelerator: nvidia-h100-80gb
 
     # Disable monitoring for CI/CD
-    inferenceExtension:
+    router:
       monitoring:
         prometheus:
           enabled: false

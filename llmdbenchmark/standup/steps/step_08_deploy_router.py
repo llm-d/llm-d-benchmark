@@ -165,11 +165,9 @@ class DeployRouterStep(Step):
             if not content:
                 return
 
-            # The rendered values now use the `router.*` layout from the
-            # llm-d-router chart, so monitoring lives at
-            # `router.monitoring.prometheus.enabled` (not the legacy
-            # `inferenceExtension.monitoring.prometheus.enabled` the GAIE
-            # chart used).
+            # The rendered values use the llm-d-router chart's `router.*`
+            # layout, so monitoring lives at
+            # `router.monitoring.prometheus.enabled`.
             router = content.get("router", {})
             monitoring = router.get("monitoring", {})
             prometheus = monitoring.get("prometheus", {})

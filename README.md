@@ -302,7 +302,7 @@ This uses the same harness, profile rendering, and result collection pipeline --
 > [!TIP]
 > `run` can also be used in debug mode (`-d` / `--debug`) which starts the harness pod with `sleep infinity` so you can exec into it and run commands interactively. See [this example](docs/tutorials/run/run_interactively_example.md).
 
-See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
+See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality. Worked examples for sweeping the EPP plugins config (`router.epp.pluginsConfigFile`) and the Kubernetes pod scheduler (`schedulerName`) -- including the kustomize propagation caveat and a dry-run verification one-liner -- live under [workload/README.md#sweeping-epp-plugins-config-routerepppluginsconfigfile](workload/README.md#sweeping-epp-plugins-config-routerepppluginsconfigfile).
 
 ## Next Steps
 

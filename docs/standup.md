@@ -289,7 +289,7 @@ When `epponly` is selected, standup automatically:
 | HTTPRoute                | Rendered                                               | **Not rendered**                                             |
 | Provider control plane   | istio / agentgateway controller installed via helmfile | **Not installed**                                            |
 | Endpoint                 | `Gateway` resource IP                                  | `{model_id_label}-router-epp` Service ClusterIP, port 80     |
-| Number of EPP replicas   | Configurable                                           | **1** (matches default `inferenceExtension.replicas: 1`)     |
+| Number of EPP replicas   | Configurable                                           | **1** (matches default `router.epp.replicas: 1`)             |
 | Multi-stack support      | Yes                                                    | **No** (single-stack only)                                   |
 
 #### Example scenario using epponly

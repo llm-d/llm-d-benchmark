@@ -61,7 +61,7 @@
 # To add a third model: copy one of the stack blocks, give it a unique
 # short descriptive `name` and a unique `model.*`. The parser auto-
 # derives unique `downloadJob.name` and
-# `inferenceExtension.monitoring.secretName` values from the model ID
+# `router.monitoring.secretName` values from the model ID
 # label, so nothing else needs per-stack customization.
 
 # ============================================================================
@@ -133,27 +133,28 @@ shared:
   # flowControl feature gate is required for WVA autoscaling (EPP queue
   # depth drives the scaling signal).
   # --------------------------------------------------------------------------
-  inferenceExtension:
-    pluginsConfigFile: "wva-plugins.yaml"
-    pluginsCustomConfig:
-      wva-plugins.yaml: |
-        apiVersion: llm-d.ai/v1alpha1
-        kind: EndpointPickerConfig
-        featureGates:
-          - flowControl
-        plugins:
-          - type: queue-scorer
-          - type: kv-cache-utilization-scorer
-          - type: prefix-cache-scorer
-        schedulingProfiles:
-          - name: default
-            plugins:
-              - pluginRef: queue-scorer
-                weight: 2
-              - pluginRef: kv-cache-utilization-scorer
-                weight: 2
-              - pluginRef: prefix-cache-scorer
-                weight: 3
+  router:
+    epp:
+      pluginsConfigFile: "wva-plugins.yaml"
+      pluginsCustomConfig:
+        wva-plugins.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          featureGates:
+            - flowControl
+          plugins:
+            - type: queue-scorer
+            - type: kv-cache-utilization-scorer
+            - type: prefix-cache-scorer
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: kv-cache-utilization-scorer
+                  weight: 2
+                - pluginRef: prefix-cache-scorer
+                  weight: 3
 
   # --------------------------------------------------------------------------
   # VLLM COMMON - same across pools. Individual flags can be overridden

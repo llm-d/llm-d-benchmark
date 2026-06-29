@@ -59,7 +59,7 @@ RUN ARCH=$(uname -m) && \
     chmod +x /usr/local/bin/yq
 
 # -----------------------------
-# Install OpenShift CLI 
+# Install OpenShift CLI
 # -----------------------------
 RUN ARCH=$(uname -m) && \
     curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.20/openshift-client-linux-${ARCH}-rhel9.tar.gz && \
@@ -118,15 +118,15 @@ RUN cd /tmp/arrow/python && \
 # Install inference-perf (FULL deps now possible)
 # -----------------------------
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=v0.4.0
+ARG INFERENCE_PERF_BRANCH=v0.6.0
+ARG INFERENCE_PERF_COMMIT=v0.6.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
     python -m pip install .
 
 # -----------------------------------------------------------------------------
-# s390x | numa-build: build numactl from source 
+# s390x | numa-build: build numactl from source
 # -----------------------------------------------------------------------------
 
 ARG NUMACTL_VERSION=2.0.16
@@ -265,7 +265,7 @@ ENV CARGO_HOME=/root/.cargo
 ENV RUSTUP_HOME=/root/.rustup
 ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
 
-ARG VLLM_VERSION=v0.18.0
+ARG VLLM_VERSION=v0.23.0
 ARG OUTLINES_CORE_VERSION
 
     # Clone vllm just to read requirements/common.txt for the version pin
@@ -371,8 +371,8 @@ RUN VLLM_TARGET_DEVICE=cpu VLLM_CPU_MOE_PREPACK=0 \
 # ----------------
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.5.3
-ARG GUIDELLM_COMMIT=v0.5.3
+ARG GUIDELLM_BRANCH=v0.6.1
+ARG GUIDELLM_COMMIT=v0.6.1
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
@@ -388,10 +388,20 @@ RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
 RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
 
+ARG AIPERF_REPO=https://github.com/ai-dynamo/aiperf.git
+ARG AIPERF_BRANCH=v0.8.0
+ARG AIPERF_COMMIT=v0.8.0
+RUN git clone --branch ${AIPERF_BRANCH} ${AIPERF_REPO}
+RUN cd aiperf; \
+    git checkout ${AIPERF_COMMIT}; \
+    pip install .
+
 RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
     echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \
-    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt;
+    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt; \
+    echo "aiperf: ${AIPERF_REPO} ${AIPERF_COMMIT}" >> /workspace/repos.txt;
+
 
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 

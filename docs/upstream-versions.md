@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-06-22 17:14:28` (UTC)
-- Generated against git ref: `641b549e649baac936e25b34ef2aae8b066bf43d`
+- Generated at: `2026-06-25 18:40:49` (UTC)
+- Generated against git ref: `1903eddc44c423515b15f58a4b5cae634392b67f`
 
 ## System Tool Dependencies
 
@@ -50,7 +50,7 @@ OCI registry at generation (and plan) time.
 | **llmDRouter** | `v0` | tag | `config/templates/values/defaults.yaml` line 490 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
 | **lws** | `0.9.0` | tag | `config/templates/values/defaults.yaml` line 496 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 | **prometheusAdapter** | `5.3.0` | tag | `config/templates/values/defaults.yaml` line 486 (`chartVersions.prometheusAdapter`) | [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts) (`https://prometheus-community.github.io/helm-charts`) |
-| **wva** | `0.6.0` | tag | `config/templates/values/defaults.yaml` line 485 (`chartVersions.wva`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) (`oci://ghcr.io/llm-d/workload-variant-autoscaler`) |
+| **wva** | `0.8.0` | tag | `config/templates/values/defaults.yaml` line 474 (`chartVersions.wva`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) (`oci://ghcr.io/llm-d/workload-variant-autoscaler`) |>>>>>>> main
 
 
 ## Container Image Dependencies
@@ -61,14 +61,13 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v0.7.0` | tag | `config/templates/values/defaults.yaml` line 364 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
-| **inferenceScheduler** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 399 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
-| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 418 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routerEndpointPicker** | `main` | tag | `config/templates/values/defaults.yaml` line 393 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker-dev`) |
-| **routingSidecar** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 405 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
-| **udsTokenizer** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 411 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
-| **vllm** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 370 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllmOpenai** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 381 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **benchmark** | `v0.7.0` | tag | `config/templates/values/defaults.yaml` line 359 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 407 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
+| **routerEndpointPicker** | `v0.9.0` | tag | `config/templates/values/defaults.yaml` line 384 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
+| **routingSidecar** | `v0.9.0` | tag | `config/templates/values/defaults.yaml` line 390 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
+| **udsTokenizer** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 396 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllm** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 365 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.23.0` | tag | `config/templates/values/defaults.yaml` line 376 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)

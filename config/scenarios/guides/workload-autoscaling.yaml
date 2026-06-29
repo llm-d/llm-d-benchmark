@@ -307,27 +307,28 @@ scenario:
     # EndpointPickerConfig (the default one the gaie chart ships has no
     # `featureGates` block). We inline it here and point `pluginsConfigFile`
     # at this filename so the chart mounts it as the active config.
-    inferenceExtension:
-      pluginsConfigFile: "wva-plugins.yaml"
-      pluginsCustomConfig:
-        wva-plugins.yaml: |
-          apiVersion: llm-d.ai/v1alpha1
-          kind: EndpointPickerConfig
-          featureGates:
-            - flowControl
-          plugins:
-            - type: queue-scorer
-            - type: kv-cache-utilization-scorer
-            - type: prefix-cache-scorer
-          schedulingProfiles:
-            - name: default
-              plugins:
-                - pluginRef: queue-scorer
-                  weight: 2
-                - pluginRef: kv-cache-utilization-scorer
-                  weight: 2
-                - pluginRef: prefix-cache-scorer
-                  weight: 3
+    router:
+      epp:
+        pluginsConfigFile: "wva-plugins.yaml"
+        pluginsCustomConfig:
+          wva-plugins.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            featureGates:
+              - flowControl
+            plugins:
+              - type: queue-scorer
+              - type: kv-cache-utilization-scorer
+              - type: prefix-cache-scorer
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: queue-scorer
+                    weight: 2
+                  - pluginRef: kv-cache-utilization-scorer
+                    weight: 2
+                  - pluginRef: prefix-cache-scorer
+                    weight: 3
 
     # =========================================================================
     # PREFILL / DECODE CONFIGURATION
@@ -369,13 +370,19 @@ scenario:
     # VLLM COMMON CONFIGURATION
     # =========================================================================
     vllmCommon:
+#      priorityClassName: nightly-gpu-critical
       kvTransfer:
         enabled: true
         connector: NixlConnector
         role: kv_both
 
       flags:
-        enforceEager: true
+        # enforceEager: false (overrides the defaults.yaml default of true).
+        # Cosmetic for the FMA path itself — FMA's launcher options are
+        # hard-coded in 24_fma-deployment.yaml.j2 and don't read this flag —
+        # but kept here to mirror the baseline scenario and to document intent
+        # if FMA's template ever starts honoring vllmCommon.flags.
+        enforceEager: false
         disableLogRequests: true
         disableUvicornAccessLog: true
         allowLongMaxModelLen: "1"

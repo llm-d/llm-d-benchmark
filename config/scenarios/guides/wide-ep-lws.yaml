@@ -166,22 +166,59 @@ scenario:
     # The plugins block uses the `llm-d.ai/v1alpha1` apiVersion shipped
     # by the llm-d-router-{standalone,gateway}-dev charts.
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      replicas: 1
-      flags:
-        v: 2
-
-      failureMode: "FailOpen"
-
-      pluginsConfigFile: "default-plugins.yaml"
-      resources:
-        requests:
-          cpu: "4"
-          memory: 8Gi
-        limits:
-          memory: 16Gi
-
-      sidecar:
+    router:
+      extraServicePorts:
+        - name: http
+          port: 80
+          protocol: TCP
+          targetPort: 8081
+      epp:
+        replicas: 1
+        flags:
+          v: 2
+      pluginsConfigFile: "wide-ep-lws-config.yaml"
+      pluginsCustomConfig:
+        wide-ep-lws-config.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: disagg-headers-handler
+          - type: always-disagg-pd-decider
+          - type: disagg-profile-handler
+            parameters:
+              deciderPluginName: always-disagg-pd-decider
+          - type: prefill-filter
+          - type: decode-filter
+          - type: prefix-cache-scorer
+          - type: queue-scorer
+          - type: active-request-scorer
+          schedulingProfiles:
+          - name: prefill
+            plugins:
+            - pluginRef: prefill-filter
+            - pluginRef: prefix-cache-scorer
+              weight: 3
+            - pluginRef: queue-scorer
+              weight: 2
+            - pluginRef: active-request-scorer
+              weight: 2
+          - name: decode
+            plugins:
+            - pluginRef: decode-filter
+            - pluginRef: active-request-scorer
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
+      proxy:
+        # CLI args for the Envoy sidecar. Override the chart's defaults of
+        # `--log-level trace` (very expensive under load) and no `--concurrency`
+        # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+        # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+        # equivalent below; trace-level logging would burn a meaningful share of
+        # the sidecar's CPU at high QPS.
         args:
           - "--service-node"
           - "envoy-sidecar"
@@ -202,22 +239,41 @@ scenario:
             memory: 8Gi
           limits:
             memory: 16Gi
-
-      # Inference Pool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
+      inferencePool:
+        failureMode: "FailOpen"
+        providerConfig:
+          destinationRule:
+            trafficPolicy:
+              connectionPool:
+                http:
+                  http1MaxPendingRequests: 256000
+                  maxRequestsPerConnection: 256000
+                  http2MaxRequests: 256000
+                  idleTimeout: "900s"
+                tcp:
+                  maxConnections: 256000
+                  maxConnectionDuration: "1800s"
+                  connectTimeout: "900s"
+      modelServers:
+        protocol: http
+        # targetPorts must list all 8 DP rank ports so the EPP routes requests
+        # to all ranks. Without this, only rank 0 receives traffic.
+        targetPorts:
+          - number: 8000
+          - number: 8001
+          - number: 8002
+          - number: 8003
+          - number: 8004
+          - number: 8005
+          - number: 8006
+          - number: 8007
+        matchLabels:
+          llm-d.ai/guide: "wide-ep-lws"
+      tracing:
+        otelExporterEndpoint: "http://localhost:4317"
+        sampling:
+          sampler: "parentbased_traceidratio"
+          samplerArg: "0.1"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
