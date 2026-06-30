@@ -263,6 +263,14 @@ spec:
 {% endif %}
         - name: HOME
           value: "{{ vllmCommon.containerHome }}"
+        # Workaround for https://github.com/vllm-project/vllm/issues/44548:
+        # vLLM v0.20.0+ (torch 2.11) calls getpass.getuser() at import time,
+        # which raises KeyError under OpenShift's restricted-v2 SCC (random
+        # UID not in /etc/passwd). Setting USER bypasses the pwd lookup; the
+        # value is arbitrary. Without this the standalone pod CrashLoopBackOffs
+        # on restricted-v2 (CI) while running fine under anyuid (dev ns).
+        - name: USER
+          value: "llm-d"
         - name: HF_HOME
           value: "{{ vllmCommon.hfHome }}"
         - name: MODEL_NAME
