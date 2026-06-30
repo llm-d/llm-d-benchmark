@@ -1127,7 +1127,7 @@ standalone:
   # Image configuration (inherits from images.vllm if not specified)
   image:
     repository: docker.io/vllm/vllm-openai
-    tag: auto
+    tag: *vllm-openai_version
     pullPolicy: Always
 
   # Parallelism configuration
