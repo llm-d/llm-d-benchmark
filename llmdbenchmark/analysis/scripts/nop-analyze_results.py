@@ -307,7 +307,10 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
         "Source: DPC = tighter timing from DPC logs, Kube = upper bound from Kube timestamps\n"
     )
     file.write("T_first_token: Time for vLLM server to return first token\n")
-    file.write("Each iteration scales ReplicaSet from 0 to 1 and then from 1 to 0\n")
+    file.write(
+        "Each iteration scales the requester Deployment from 0 to 1 "
+        "and then from 1 to 0\n"
+    )
 
     hot_starts = 0
     warm_starts = 0

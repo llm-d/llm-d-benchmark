@@ -112,13 +112,13 @@ class UninstallHelmStep(Step):
         """
         # Delete requester to start the unbinding
         context.logger.log_info(
-            f"  Deleting FMA requester ReplicaSet in {namespace} "
+            f"  Deleting FMA requester Deployment in {namespace} "
             "(before Helm uninstall)",
             emoji="🗑️",
         )
         cmd.kube(
             "delete",
-            "replicaset",
+            "deployment",
             "--selector=stood-up-via=fma",
             "--namespace",
             namespace,
