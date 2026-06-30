@@ -160,7 +160,7 @@ scenario:
       # passing `-p deploy,harness,wva` to put the controller elsewhere.
       # NOTE: With namespaceScoped=true (below), the controller ONLY watches
       # this namespace. Putting it in a different ns from your FMA requester
-      # ReplicaSet means it won't see your VariantAutoscaling.
+      # Deployment means it won't see your HPA.
       namespace: ""
 
       # Controller container image.

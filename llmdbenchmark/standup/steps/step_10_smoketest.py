@@ -549,14 +549,14 @@ class SmoketestStep(Step):
         model_label = plan_config.get("model_id_label", "")
         for resource, name in [
             ("InferenceServerConfig", f"fma-{model_label}"),
-            ("LauncherrConfig", f"fma-{model_label}"),
+            ("LauncherConfig", f"fma-{model_label}"),
             ("LauncherPopulationPolicy", f"fma-{model_label}"),
-            ("ReplicaSet", f"fma-requester-{model_label}"),
+            ("Deployment", f"fma-requester-{model_label}"),
         ]:
             result = cmd.kube("get", resource, "-n", namespace, name, check=False)
             if not result.success:
                 errors.append(f"Failed to query {resource} {name}: {result.stderr}")
-            elif result.stdout.strip().split() == "":
+            elif not result.stdout.strip():
                 errors.append(f"{resource} {name} not found.")
 
         if errors:

@@ -329,9 +329,9 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
     v1: client.CoreV1Api,
     namespace: str,
     label_selector: str,
-    rs_uid: str,
+    rs_uid: str | None,
     replicas: int,
-    replicaset_name: str,
+    deployment_name: str,
     timeout: float,
 ) -> list[FMARequesterInfo] | None:
     """
@@ -348,7 +348,7 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
     ready_requester_pods = set()
 
     for p in pods:
-        if not is_owned_by_rs(p, rs_uid):
+        if rs_uid is not None and not is_owned_by_rs(p, rs_uid):
             continue
 
         requester_info = FMARequesterInfo()
@@ -368,7 +368,7 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
             ready_requester_pods.add(p.metadata.name)
 
     logger.info(
-        "Initial ReplicaSet Pods: %d, Ready: %d Replicas %d",
+        "Initial Requester Pods: %d, Ready: %d Replicas %d",
         len(all_requester_pods),
         len(ready_requester_pods),
         replicas,
@@ -394,7 +394,7 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
                 name = pod.metadata.name
                 event_type = event["type"]
 
-                if not is_owned_by_rs(pod, rs_uid):
+                if rs_uid is not None and not is_owned_by_rs(pod, rs_uid):
                     continue
 
                 if event_type == "DELETED":
@@ -425,7 +425,7 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
                         ready_requester_pods.discard(name)
 
                 logger.info(
-                    "Watch ReplicaSet Pods: %d, Ready: %d Replicas %d",
+                    "Watch Requester Pods: %d, Ready: %d Replicas %d",
                     len(all_requester_pods),
                     len(ready_requester_pods),
                     replicas,
@@ -447,42 +447,42 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
             w.stop()
             logger.info(
                 "Timed out waiting for requester %s pods to become ready after %.1f secs.",
-                replicaset_name,
+                deployment_name,
                 elapsed,
             )
             return None
 
 
-def wait_for_replicaset_scale(
-    apps_v1: client.AppsV1Api, namespace: str, replicaset_name: str, timeout: float
+def wait_for_deployment_scale(
+    apps_v1: client.AppsV1Api, namespace: str, deployment_name: str, timeout: float
 ) -> bool:
-    """wait for replicaset to scale"""
+    """wait for the requester Deployment to reach its desired replica count"""
 
     start = time.perf_counter()
     while True:
         try:
-            rs = apps_v1.read_namespaced_replica_set(replicaset_name, namespace)
+            dep = apps_v1.read_namespaced_deployment(deployment_name, namespace)
         except ApiException:
             logger.exception(
-                "Error reading ReplicatSet '%s:%s'", namespace, replicaset_name
+                "Error reading Deployment '%s:%s'", namespace, deployment_name
             )
             return False
 
-        desired = rs.spec.replicas or 0
-        actual = rs.status.replicas or 0
+        desired = dep.spec.replicas or 0
+        actual = dep.status.replicas or 0
 
         logger.info(
-            "ReplicatSet '%s:%s' replicas actual %d desired %d",
+            "Deployment '%s:%s' replicas actual %d desired %d",
             namespace,
-            replicaset_name,
+            deployment_name,
             actual,
             desired,
         )
         if actual == desired:
             logger.info(
-                "ReplicatSet '%s:%s' replicas actual %d reached",
+                "Deployment '%s:%s' replicas actual %d reached",
                 namespace,
-                replicaset_name,
+                deployment_name,
                 actual,
             )
             return True
@@ -491,11 +491,11 @@ def wait_for_replicaset_scale(
         if elapsed > timeout:
             logger.info(
                 (
-                    "Timed out waiting for ReplicatSet '%s:%s' "
+                    "Timed out waiting for Deployment '%s:%s' "
                     "to have the desired replicas %d after %d secs."
                 ),
                 namespace,
-                replicaset_name,
+                deployment_name,
                 desired,
                 elapsed,
             )
@@ -505,69 +505,65 @@ def wait_for_replicaset_scale(
     return False
 
 
-def scale_replicaset(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def scale_deployment(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     v1: client.CoreV1Api,
     apps_v1: client.AppsV1Api,
-    replicaset_name: str,
+    deployment_name: str,
     namespace: str,
     replicas: int,
     timeout: float,
 ) -> list[FMARequesterInfo] | None:
-    """scale ReplicaSet and wait for pods to be ready"""
+    """scale the requester Deployment and wait for its pods to be ready."""
 
     if replicas < 0:
         logger.info("Replicas must be >= 0 and not %d", replicas)
         return None
 
-    # Scale ReplicaSet
+    # Scale the Deployment
     try:
-        apps_v1.patch_namespaced_replica_set(
-            name=replicaset_name,
+        apps_v1.patch_namespaced_deployment(
+            name=deployment_name,
             namespace=namespace,
             body={"spec": {"replicas": replicas}},
         )
         logger.info(
-            "Scaled ReplicaSet '%s:%s' to '%d'", namespace, replicaset_name, replicas
+            "Scaled Deployment '%s:%s' to '%d'", namespace, deployment_name, replicas
         )
     except ApiException:
         logger.exception(
-            "Error scaling ReplicatSet '%s:%s' to '%d'",
+            "Error scaling Deployment '%s:%s' to '%d'",
             namespace,
-            replicaset_name,
+            deployment_name,
             replicas,
         )
         return None
 
     if replicas == 0:
-        # wait fot it to set replicas to 0 and then return
+        # wait for it to set replicas to 0 and then return
         return (
             []
-            if wait_for_replicaset_scale(apps_v1, namespace, replicaset_name, timeout)
+            if wait_for_deployment_scale(apps_v1, namespace, deployment_name, timeout)
             else None
         )
 
     label_selector = None
-    rs_uid = None
     try:
-        rs = apps_v1.read_namespaced_replica_set(replicaset_name, namespace)
-        selector = rs.spec.selector.match_labels
+        dep = apps_v1.read_namespaced_deployment(deployment_name, namespace)
+        selector = dep.spec.selector.match_labels
         if not selector:
             logger.info(
-                "ReplicaSet '%s:%s' has no match_labels selector.",
+                "Deployment '%s:%s' has no match_labels selector.",
                 namespace,
-                replicaset_name,
+                deployment_name,
             )
             return None
         label_selector = ",".join(f"{k}={v}" for k, v in selector.items())
-        rs_uid = rs.metadata.uid
     except ApiException:
-        logger.exception(
-            "Error reading ReplicatSet '%s:%s'", namespace, replicaset_name
-        )
+        logger.exception("Error reading Deployment '%s:%s'", namespace, deployment_name)
         return None
 
     return wait_for_requester_pods(
-        v1, namespace, label_selector, rs_uid, replicas, replicaset_name, timeout
+        v1, namespace, label_selector, None, replicas, deployment_name, timeout
     )
 
 
@@ -710,26 +706,26 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
     domain = urlparse(endpoint_url).netloc
     arr = domain.split(".")
     if len(arr) == 0:
-        raise RuntimeError(f"Unable to extract replicaset name from {domain}.")
+        raise RuntimeError(f"Unable to extract deployment name from {domain}.")
 
-    replicaset_name = arr[0]
-    replicaset = None
+    deployment_name = arr[0]
+    deployment = None
     try:
-        replicaset = apps_v1.read_namespaced_replica_set(
-            name=replicaset_name, namespace=namespace
+        deployment = apps_v1.read_namespaced_deployment(
+            name=deployment_name, namespace=namespace
         )
     except ApiException as e:
-        raise RuntimeError(f"Unable to read replicaset '{replicaset_name}'.") from e
+        raise RuntimeError(f"Unable to read deployment '{deployment_name}'.") from e
 
     # make sure to start with 0 replicas
-    desired = replicaset.spec.replicas or 0
+    desired = deployment.spec.replicas or 0
     if desired > 0:
         # should start with 0 replicas, scale to it
         if (
-            scale_replicaset(v1, apps_v1, replicaset_name, namespace, 0, FMA_TIMEOUT)
+            scale_deployment(v1, apps_v1, deployment_name, namespace, 0, FMA_TIMEOUT)
             is None
         ):
-            raise RuntimeError(f"Unable to scale replicaset {replicaset_name} to 0.")
+            raise RuntimeError(f"Unable to scale deployment {deployment_name} to 0.")
 
     try:  # pylint: disable=too-many-nested-blocks
         fma_metrics = FMAMetrics()
@@ -737,13 +733,13 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
         for iteration in range(1, iterations + 1):  # pylint: disable=too-many-nested-blocks
             try:
                 logger.info("Benchmark FMA iteration '%d' start...", iteration)
-                # scale replicaset to 1
-                requester_infos = scale_replicaset(
-                    v1, apps_v1, replicaset_name, namespace, 1, FMA_TIMEOUT
+                # scale the requester Deployment to 1
+                requester_infos = scale_deployment(
+                    v1, apps_v1, deployment_name, namespace, 1, FMA_TIMEOUT
                 )
                 if requester_infos is None:
                     raise RuntimeError(
-                        f"Unable to scale replicaset {replicaset_name} to 1."
+                        f"Unable to scale deployment {deployment_name} to 1."
                     )
 
                 launcher_infos = get_fma_launcher_infos(
@@ -781,15 +777,15 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                             f"error on benchmark FMA '{launcher_info.name}' launcher"
                         ) from e
 
-                # scale replicaset to 0
+                # scale the requester Deployment back to 0
                 if (
-                    scale_replicaset(
-                        v1, apps_v1, replicaset_name, namespace, 0, FMA_TIMEOUT
+                    scale_deployment(
+                        v1, apps_v1, deployment_name, namespace, 0, FMA_TIMEOUT
                     )
                     is None
                 ):
                     raise RuntimeError(
-                        f"Unable to scale replicaset {replicaset_name} to 0."
+                        f"Unable to scale deployment {deployment_name} to 0."
                     )
 
                 for launcher_info in launcher_infos:

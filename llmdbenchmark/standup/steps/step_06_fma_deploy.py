@@ -141,7 +141,7 @@ class FMADeployStep(Step):
         if len(errors) == 0:
             resource_types = (
                 "InferenceServerConfig,LauncherConfig,"
-                "LauncherPopulationPolicy,ReplicaSet,pods"
+                "LauncherPopulationPolicy,deployment,replicaset,pods"
             )
             cmd.kube(
                 "get",
