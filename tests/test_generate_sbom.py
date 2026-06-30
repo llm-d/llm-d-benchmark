@@ -74,7 +74,7 @@ tools="curl helm helmfile"
 
 tool_version_for() {
     case "$1" in
-        curl)      echo "8_20_0"  ;;
+        curl)      echo "8_21_0"  ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
         helm-diff) echo "v3.15.7" ;;
@@ -247,7 +247,7 @@ def test_tool_version_for_is_authoritative(
     assert by_name["helm"].pin_type == "version"
     assert "tool_version_for" in by_name["helm"].location
 
-    assert by_name["curl"].pin == "8_20_0"
+    assert by_name["curl"].pin == "8_21_0"
     assert "tool_version_for" in by_name["curl"].location
 
 
