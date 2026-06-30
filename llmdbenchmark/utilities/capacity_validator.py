@@ -225,8 +225,8 @@ def validate_vllm_params(
                     non_torch_mem = estimate_vllm_non_torch_memory(params.tp)
                     total_intermediate = activation_mem + cuda_graph_mem + non_torch_mem
 
-                    info(f"Peak activation memory per GPU: " f"{activation_mem:.2f} GB")
-                    info(f"Non-torch memory per GPU: " f"{non_torch_mem:.2f} GB")
+                    info(f"Peak activation memory per GPU: {activation_mem:.2f} GB")
+                    info(f"Non-torch memory per GPU: {non_torch_mem:.2f} GB")
                     info(
                         f"Total intermediate memory per GPU: "
                         f"{total_intermediate:.2f} GB"
@@ -277,7 +277,7 @@ def validate_vllm_params(
                         _log_config_suggestions(msg, params)
 
                     else:
-                        info(f"Allocatable KV cache memory: " f"{avail_kv:.2f} GB")
+                        info(f"Allocatable KV cache memory: {avail_kv:.2f} GB")
                         info(
                             f"Per-request KV cache "
                             f"(max_model_len={params.max_model_len}): "
@@ -302,7 +302,7 @@ def validate_vllm_params(
                         )
 
             except (AttributeError, Exception) as exc:
-                msg(f"Cannot estimate model memory or KV cache for " f"{model}: {exc}")
+                msg(f"Cannot estimate model memory or KV cache for {model}: {exc}")
         else:
             msg("Model architecture info not available -- skipping memory checks.")
 
@@ -363,9 +363,7 @@ def _extract_params(
     accelerator_nr = int(
         method_config.get(
             "acceleratorNr",
-            method_accel_count
-            or global_accel_count
-            or tp * pp * dp,
+            method_accel_count or global_accel_count or tp * pp * dp,
         )
     )
     accel_type = method_config.get("acceleratorType", {}).get(
@@ -441,7 +439,7 @@ def run_capacity_planner(
             params = _extract_params(plan_config, method, ignore_failures)
             if params:
                 log.log_info(
-                    f"Validating {method} vLLM arguments for " f"{params.models} ..."
+                    f"Validating {method} vLLM arguments for {params.models} ..."
                 )
                 all_messages.extend(validate_vllm_params(params, log))
             else:

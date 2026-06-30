@@ -103,15 +103,26 @@ setup:
   constants:
     model.maxModelLen: 16000
     model.blockSize: 64
+    # KV-transfer must be enabled for the OffloadingConnector's num_cpu_blocks
+    # to mean anything -- _macros.j2:64-65 only emits the
+    # --kv-transfer-config JSON when kvTransfer.enabled is true.
+    vllmCommon.kvTransfer.enabled: true
+    vllmCommon.kvTransfer.connector: OffloadingConnector
+    vllmCommon.kvTransfer.role: kv_both
   treatments:
+    # The override key MUST be ``vllmCommon.kvTransfer.extraConfig.num_cpu_blocks``
+    # (renders to ``kv_connector_extra_config.num_cpu_blocks`` in the
+    # --kv-transfer-config JSON via _macros.j2:64-65). A previous version of
+    # this file used ``vllmCommon.flags.numCpuBlocks`` which silently no-op'd
+    # because no template reads that path.
     - name: cpu-blocks-500
-      vllmCommon.flags.numCpuBlocks: 500
+      vllmCommon.kvTransfer.extraConfig.num_cpu_blocks: 500
     - name: cpu-blocks-1000
-      vllmCommon.flags.numCpuBlocks: 1000
+      vllmCommon.kvTransfer.extraConfig.num_cpu_blocks: 1000
     - name: cpu-blocks-2000
-      vllmCommon.flags.numCpuBlocks: 2000
+      vllmCommon.kvTransfer.extraConfig.num_cpu_blocks: 2000
     - name: cpu-blocks-5000
-      vllmCommon.flags.numCpuBlocks: 5000
+      vllmCommon.kvTransfer.extraConfig.num_cpu_blocks: 5000
 
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #

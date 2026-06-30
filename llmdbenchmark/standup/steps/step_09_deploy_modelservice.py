@@ -132,16 +132,6 @@ class DeployModelserviceStep(Step):
                 )
 
         if not errors:
-            decode_wait = cmd.wait_for_pods(
-                label="llm-d.ai/role=decode",
-                namespace=namespace,
-                timeout=timeout,
-                poll_interval=10,
-                description="decode pods",
-            )
-            if not decode_wait.success:
-                errors.append(f"Decode pods not ready: {decode_wait.stderr}")
-
             decode_cfg = plan_config.get("decode", {})  # noqa: F841
             expected_replicas = int(
                 self._require_config(plan_config, "decode", "replicas")
@@ -154,6 +144,23 @@ class DeployModelserviceStep(Step):
                     )
                 )
                 expected_replicas = expected_replicas * workers
+
+            # When decode.replicas == 0 there are no decode pods to wait for.
+            if expected_replicas > 0:
+                decode_wait = cmd.wait_for_pods(
+                    label="llm-d.ai/role=decode",
+                    namespace=namespace,
+                    timeout=timeout,
+                    poll_interval=10,
+                    description="decode pods",
+                )
+                if not decode_wait.success:
+                    errors.append(f"Decode pods not ready: {decode_wait.stderr}")
+            else:
+                context.logger.log_info(
+                    "decode.replicas=0 -- skipping decode-pod wait "
+                    "(FMA owns model server lifecycle when fma.enabled=true)"
+                )
             if expected_replicas > 1 and not context.dry_run:
                 pod_count_result = cmd.kube(
                     "get",

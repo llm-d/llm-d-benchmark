@@ -1,9 +1,10 @@
 import os
 import platform
 
+
 def get_curl_image():
     arch = os.getenv("TARGET_ARCH", "").lower()
-    
+
     if not arch:
         arch = platform.machine()
 

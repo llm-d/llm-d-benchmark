@@ -89,7 +89,7 @@ Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kin
 
 **🚀 Access to Compute cluster with Accelerators - full pipeline**
 
-Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
+Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, Intel XPU, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
 
 - **Requirements:** cluster admin to install infra  (or utilize an namespace admin with infra pre-installed), kubeconfig, compute nodes
 - **Continue below** with [Choose a specification](#choose-a-specification) and [Deploy and benchmark](#deploy-and-benchmark-full-pipeline)
@@ -302,7 +302,7 @@ This uses the same harness, profile rendering, and result collection pipeline --
 > [!TIP]
 > `run` can also be used in debug mode (`-d` / `--debug`) which starts the harness pod with `sleep infinity` so you can exec into it and run commands interactively. See [this example](docs/tutorials/run/run_interactively_example.md).
 
-See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
+See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality. Worked examples for sweeping the EPP plugins config (`router.epp.pluginsConfigFile`) and the Kubernetes pod scheduler (`schedulerName`) -- including the kustomize propagation caveat and a dry-run verification one-liner -- live under [workload/README.md#sweeping-epp-plugins-config-routerepppluginsconfigfile](workload/README.md#sweeping-epp-plugins-config-routerepppluginsconfigfile).
 
 ## Next Steps
 
@@ -751,7 +751,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 ## Dependencies
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
-- [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)
+- [llm-d-modelservice v0.4.14](https://github.com/llm-d/llm-d-model-service.git)
 - [inference-perf](https://github.com/kubernetes-sigs/inference-perf)
 - [guidellm](https://github.com/vllm-project/guidellm.git)
 - [vllm](https://github.com/vllm-project/vllm.git)

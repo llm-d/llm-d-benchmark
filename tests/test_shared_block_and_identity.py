@@ -39,7 +39,7 @@ class TestPerStackIdentity:
             "model_id_label": label,
             "storage": {"modelPvc": {"name": "model-pvc", "size": "50Gi"}},
             "downloadJob": {"name": "download-model"},
-            "inferenceExtension": {
+            "router": {
                 "monitoring": {
                     "secretName": "inference-gateway-sa-metrics-reader-secret",
                     "interval": "10s",
@@ -54,7 +54,7 @@ class TestPerStackIdentity:
         assert out["storage"]["modelPvc"]["name"] == "model-pvc"
         assert out["downloadJob"]["name"] == "download-model"
         assert (
-            out["inferenceExtension"]["monitoring"]["secretName"]
+            out["router"]["monitoring"]["secretName"]
             == "inference-gateway-sa-metrics-reader-secret"
         )
 
@@ -63,7 +63,7 @@ class TestPerStackIdentity:
         values = self._base_values(label="qwen-07df-6b")
         out = renderer._resolve_per_stack_identity(values, total_stacks=2)
         assert out["downloadJob"]["name"] == "download-model-qwen-07df-6b"
-        assert out["inferenceExtension"]["monitoring"]["secretName"] == (
+        assert out["router"]["monitoring"]["secretName"] == (
             "inference-gateway-sa-metrics-reader-secret-qwen-07df-6b"
         )
 
@@ -76,9 +76,9 @@ class TestPerStackIdentity:
     def test_multi_stack_preserves_explicit_override(self, renderer):
         """Explicit scenario overrides must not be rewritten."""
         values = self._base_values(label="qwen-07df-6b")
-        values["inferenceExtension"]["monitoring"]["secretName"] = "custom-secret"
+        values["router"]["monitoring"]["secretName"] = "custom-secret"
         out = renderer._resolve_per_stack_identity(values, total_stacks=2)
-        assert out["inferenceExtension"]["monitoring"]["secretName"] == "custom-secret"
+        assert out["router"]["monitoring"]["secretName"] == "custom-secret"
         # Unchanged paths still get the default rewrite
         assert out["downloadJob"]["name"] == "download-model-qwen-07df-6b"
 
@@ -165,6 +165,7 @@ class TestSharedInfraStackIndex:
     @pytest.fixture
     def resolve(self):
         from llmdbenchmark.parser.render_plans import RenderPlans
+
         return RenderPlans._resolve_shared_infra_stack_index
 
     def test_all_modelservice_first_is_owner(self, resolve):
@@ -206,6 +207,7 @@ class TestHelmfileDeclaresRelease:
     @pytest.fixture
     def check(self):
         from llmdbenchmark.standup.steps.step_07_deploy_setup import DeploySetupStep
+
         return DeploySetupStep._helmfile_declares_release
 
     def _write(self, tmp_path, content):
@@ -214,32 +216,41 @@ class TestHelmfileDeclaresRelease:
         return p
 
     def test_release_declared(self, check, tmp_path):
-        p = self._write(tmp_path, """
+        p = self._write(
+            tmp_path,
+            """
 releases:
   - name: infra-llmdbench
     chart: foo/bar
-""")
+""",
+        )
         assert check(p, "infra-llmdbench") is True
 
     def test_release_absent(self, check, tmp_path):
-        p = self._write(tmp_path, """
+        p = self._write(
+            tmp_path,
+            """
 releases:
   - name: model-a-ms
     chart: foo/bar
-""")
+""",
+        )
         assert check(p, "infra-llmdbench") is False
 
     def test_label_value_does_not_match(self, check, tmp_path):
         """Guards against the old substring-match false positive: a label
         value or similar 'name: X' occurrence must NOT be mistaken for a
         release declaration."""
-        p = self._write(tmp_path, """
+        p = self._write(
+            tmp_path,
+            """
 releases:
   - name: model-a-ms
     chart: foo/bar
     labels:
       name: infra-llmdbench
-""")
+""",
+        )
         assert check(p, "infra-llmdbench") is False
 
     def test_empty_file(self, check, tmp_path):
@@ -256,6 +267,7 @@ class TestGatewayRoutesHealth:
     @pytest.fixture
     def check(self):
         from llmdbenchmark.smoketests.base import BaseSmoketest
+
         return BaseSmoketest._gateway_routes_health
 
     def test_non_shared_always_routes(self, check):
@@ -284,6 +296,7 @@ class TestCliModelOverrideMultiStack:
     @pytest.fixture
     def renderer(self):
         from llmdbenchmark.parser.render_plans import RenderPlans
+
         logger = MagicMock()
         logger.log_warning = MagicMock()
         logger.log_info = MagicMock()
@@ -351,7 +364,10 @@ class TestCliModelOverrideMultiStack:
     def test_stack_filter_leaves_non_matching_stack_alone(self, renderer):
         """--stack NAME + -m MODEL -> sibling stacks preserve their model."""
         renderer.cli_stack_filter = ["qwen3-06b"]
-        sibling_values = {"model": {"name": "orig-sibling"}, "namespace": {"name": "ns"}}
+        sibling_values = {
+            "model": {"name": "orig-sibling"},
+            "namespace": {"name": "ns"},
+        }
         out = renderer._resolve_model(
             sibling_values, total_stacks=2, stack_name="llama-31-8b"
         )
@@ -368,8 +384,10 @@ class TestCliModelOverrideMultiStack:
 
 class TestPrintEndpointsTable:
     """cli._print_endpoints_table - tolerates Path-typed specification_file."""
+
     def _mock_ctx(self, tmp_path, stacks_with_models):
         from unittest.mock import MagicMock
+
         ctx = MagicMock()
         ctx.namespace = "test-ns"
         rendered = []
@@ -388,7 +406,7 @@ class TestPrintEndpointsTable:
 
     def _capturing_logger(self):
         lines: list[str] = []
-        logger = MagicMock = type("L", (), {})() # noqa: F841
+        logger = MagicMock = type("L", (), {})()  # noqa: F841
         logger.log_info = lambda msg: lines.append(str(msg))
         logger.log_warning = lambda msg: lines.append("WARN:" + str(msg))
         logger.log_plain = lambda msg: lines.append(str(msg))
@@ -400,15 +418,24 @@ class TestPrintEndpointsTable:
         from pathlib import Path
         from llmdbenchmark.cli import _print_endpoints_table
 
-        ctx = self._mock_ctx(tmp_path, [
-            ("pool-a", "Qwen/Qwen3-0.6B", "http://gw:80/pool-a"),
-        ])
+        ctx = self._mock_ctx(
+            tmp_path,
+            [
+                ("pool-a", "Qwen/Qwen3-0.6B", "http://gw:80/pool-a"),
+            ],
+        )
         logger, lines = self._capturing_logger()
 
         # This is the real shape coming from RenderSpecification - a Path.
-        args = type("A", (), {"specification_file": Path(
-            "/abs/path/config/specification/guides/multi-model-wva.yaml.j2"
-        )})()
+        args = type(
+            "A",
+            (),
+            {
+                "specification_file": Path(
+                    "/abs/path/config/specification/guides/multi-model-wva.yaml.j2"
+                )
+            },
+        )()
 
         _print_endpoints_table(ctx, logger, args)  # must not raise
 
@@ -422,9 +449,12 @@ class TestPrintEndpointsTable:
         """Bare spec name (e.g. 'gpu') should flow through unchanged."""
         from llmdbenchmark.cli import _print_endpoints_table
 
-        ctx = self._mock_ctx(tmp_path, [
-            ("pool-a", "Qwen/Qwen3-0.6B", "http://gw:80/pool-a"),
-        ])
+        ctx = self._mock_ctx(
+            tmp_path,
+            [
+                ("pool-a", "Qwen/Qwen3-0.6B", "http://gw:80/pool-a"),
+            ],
+        )
         logger, lines = self._capturing_logger()
         args = type("A", (), {"specification_file": "guides/multi-model-wva"})()
 
@@ -437,6 +467,7 @@ class TestPrintEndpointsTable:
         from llmdbenchmark.cli import _print_endpoints_table
 
         from unittest.mock import MagicMock
+
         ctx = MagicMock()
         ctx.rendered_stacks = []
         ctx.deployed_endpoints = {}
@@ -455,9 +486,12 @@ class TestPrintEndpointsTable:
         """log_plain lines end up in every handler - including log files."""
         from llmdbenchmark.cli import _print_endpoints_table
 
-        ctx = self._mock_ctx(tmp_path, [
-            ("pool-a", "Qwen/Qwen3-0.6B", "http://gw:80/pool-a"),
-        ])
+        ctx = self._mock_ctx(
+            tmp_path,
+            [
+                ("pool-a", "Qwen/Qwen3-0.6B", "http://gw:80/pool-a"),
+            ],
+        )
         # Capturing logger records log_plain calls too so the assertion
         # below holds regardless of whether a real FileHandler is attached.
         plain_lines: list[str] = []
@@ -480,6 +514,7 @@ class TestRenderStackFilterValidation:
 
     def _write_scenario(self, tmp_path, names):
         import yaml as _yaml
+
         stacks = [{"name": n, "model": {"name": f"m/{n}"}} for n in names]
         p = tmp_path / "scenario.yaml"
         p.write_text(_yaml.safe_dump({"scenario": stacks}), encoding="utf-8")
@@ -487,6 +522,7 @@ class TestRenderStackFilterValidation:
 
     def _renderer(self, tmp_path, scenario_path, cli_stack_filter):
         from llmdbenchmark.parser.render_plans import RenderPlans
+
         # Minimal instance; bypass __init__ and set only what eval() needs
         r = RenderPlans.__new__(RenderPlans)
         logger = MagicMock()
@@ -525,9 +561,7 @@ class TestRenderStackFilterValidation:
         # to the filter and fine for this test's purpose.
         result = r.eval()
         for err in result.global_errors or []:
-            assert "unknown stack" not in err.lower(), (
-                f"Valid filter rejected: {err}"
-            )
+            assert "unknown stack" not in err.lower(), f"Valid filter rejected: {err}"
 
     def test_no_filter_is_noop(self, tmp_path):
         scenario = self._write_scenario(tmp_path, ["a", "b"])
@@ -545,6 +579,7 @@ class TestParseSizeToGib:
         from llmdbenchmark.standup.steps.step_04_model_namespace import (
             ModelNamespaceStep,
         )
+
         return ModelNamespaceStep._parse_size_to_gib
 
     def test_gibibytes(self, parse):
@@ -579,6 +614,7 @@ class TestRequiresPvcDownload:
         from llmdbenchmark.standup.steps.step_04_model_namespace import (
             ModelNamespaceStep,
         )
+
         return ModelNamespaceStep()
 
     def test_pvc_protocol_needs_pvc(self, step):
@@ -609,32 +645,38 @@ class TestComputeGatewayPathPrefix:
 
     def test_default_returns_empty(self):
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
+
         cfg = {}
         assert compute_gateway_path_prefix(cfg, "pool-a") == ""
 
     def test_standalone_returns_empty(self):
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
+
         cfg = {"httpRoute": {"mode": "shared", "pathPrefix": "/{stack.name}"}}
         assert compute_gateway_path_prefix(cfg, "pool-a", is_standalone=True) == ""
 
     def test_per_stack_mode_returns_empty(self):
         """httpRoute.mode: per-stack (or unset) -> no prefix injection."""
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
+
         cfg = {"httpRoute": {"mode": "per-stack", "pathPrefix": "/ignored"}}
         assert compute_gateway_path_prefix(cfg, "pool-a") == ""
 
     def test_shared_mode_substitutes_stack_name(self):
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
+
         cfg = {"httpRoute": {"mode": "shared", "pathPrefix": "/{stack.name}"}}
         assert compute_gateway_path_prefix(cfg, "pool-a") == "/pool-a"
 
     def test_shared_mode_preserves_nested_prefix(self):
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
+
         cfg = {"httpRoute": {"mode": "shared", "pathPrefix": "/{stack.name}/v1"}}
         assert compute_gateway_path_prefix(cfg, "pool-a") == "/pool-a/v1"
 
     def test_missing_stack_name_returns_empty(self):
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
+
         cfg = {"httpRoute": {"mode": "shared", "pathPrefix": "/{stack.name}"}}
         assert compute_gateway_path_prefix(cfg, "") == ""
 
@@ -645,6 +687,7 @@ class TestParseEndpoint:
     @pytest.fixture
     def parse(self):
         from llmdbenchmark.run.steps.step_04_verify_model import VerifyModelStep
+
         return VerifyModelStep._parse_endpoint
 
     def test_plain_endpoint(self, parse):

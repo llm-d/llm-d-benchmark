@@ -198,6 +198,14 @@
   value: "1"
 - name: HOME
   value: "{{ vllmCommon.containerHome }}"
+{# Workaround for https://github.com/vllm-project/vllm/issues/44548     #}
+{# (vLLM v0.20.0+ with torch 2.11). torch._inductor's cache_dir() calls #}
+{# getpass.getuser() -> pwd.getpwuid(uid), which raises KeyError on     #}
+{# OpenShift's random UIDs (e.g. 1003520000) that aren't in /etc/passwd #}
+{# inside the container. Setting USER bypasses the lookup; "llm-d" is   #}
+{# arbitrary -- any non-empty value works.                              #}
+- name: USER
+  value: "llm-d"
 {# Only emit HF_HOME when the modelservice chart will NOT. With
    modelservice.uriProtocol == 'hf' (mirrors 13_ms-values.yaml.j2) the
    chart mounts an hf:// cache and injects its own HF_HOME=/model-cache;

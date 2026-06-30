@@ -187,7 +187,8 @@ if deps_present["ip"]:
     )
     for line in ip_route_list_command_output.stdout.split("\n"):
         if line and line.count("default") and not default_interface:
-            default_interface = line.split()[-1]
+            pre_dev, post_dev = line.split("dev")
+            default_interface = post_dev.split()[0]
             break
 
     for line in ip_route_list_command_output.stdout.split("\n"):
@@ -543,7 +544,9 @@ if nixl_list:
     print(f"INFO: Adding environment variables {env_vars} to {env_file_name}")
     print()
     first_device = nccl_list[0]
-    first_octect = hca_info[nccl_list[0]]["ipv4"].split(".")[0]
+    if first_device in hca_info:
+        if "ipv4" in hca_info[first_device]:
+            first_octect = hca_info[first_device]["ipv4"].split(".")[0]
     nccl_list = ",".join(nccl_list)
     nixl_list = ",".join(nixl_list)
     ips_for_fping = " ".join(ips_for_fping)
@@ -561,7 +564,8 @@ if nixl_list:
     if "NCCL_SOCKET_IFNAME" not in options.omitenvvars:
         env_file_contents.append(f'export NCCL_SOCKET_IFNAME="{default_interface}"')
     if "NCCL_IB_GID_INDEX" not in options.omitenvvars:
-        env_file_contents.append(f"export NCCL_IB_GID_INDEX={s_gid[0]}")
+        if s_gid:
+            env_file_contents.append(f"export NCCL_IB_GID_INDEX={s_gid[0]}")
     env_file_contents.append("\n".join(init_container_commands))
     if "NVSHMEM_HCA_LIST" in env_vars != "none":
         if "GLOO_SOCKET_IFNAME" not in options.omitenvvars:
@@ -581,7 +585,8 @@ if nixl_list:
                 f'export NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME="{default_interface}"'
             )
         if "NVSHMEM_IB_GID_INDEX" not in options.omitenvvars:
-            env_file_contents.append(f'export NVSHMEM_IB_GID_INDEX="{s_gid[0]}"')
+            if s_gid:
+                env_file_contents.append(f'export NVSHMEM_IB_GID_INDEX="{s_gid[0]}"')
         if "NVSHMEM_ENABLE_NIC_PE_MAPPING" not in options.omitenvvars:
             env_file_contents.append(
                 f'export NVSHMEM_ENABLE_NIC_PE_MAPPING="{nvshmem_enable_nic_pe_mapping}"'

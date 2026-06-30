@@ -128,7 +128,7 @@ scenario:
     # Routing / GAIE Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
     # -------------------------------------------------------------------------
-    inferenceExtension:
+    router:
       monitoring:
         prometheus:
           enabled: false
@@ -292,6 +292,33 @@ scenario:
     routing:
       proxy:
         enabled: false
+
+    # =========================================================================
+    # GATEWAY -- toggle the router topology
+    # -------------------------------------------------------------------------
+    # `epponly` is the llm-d "Standalone Mode" router topology
+    # (see https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md):
+    # no Kubernetes Gateway is installed, the router Helm chart is swapped
+    # from `llm-d-router-gateway-dev` to `llm-d-router-standalone-dev`,
+    # and the EPP pod runs an Envoy sidecar that serves HTTP directly on
+    # the `{model_id_label}-router-epp`
+    # Service (port 80 -> 8081). HTTPRoute and `llm-d-infra` are not
+    # rendered, no gateway-provider control plane is installed.
+    #
+    # Flip this to any of the gateway-backed options to switch topology
+    # without changing anything else in the scenario:
+    #   epponly                     -- no Gateway (default here)
+    #   istio                       -- istio-base + istiod + Gateway + HTTPRoute
+    #   agentgateway                -- agentgateway controller + Gateway + HTTPRoute
+    #   gke                         -- GKE-managed Gateway + HTTPRoute
+    #   data-science-gateway-class  -- OpenDataHub managed Gateway + HTTPRoute
+    #
+    # This setting is ignored when `kustomize.enabled: true` (or when
+    # `-t kustomize` is passed) -- in that mode the upstream llm-d guide
+    # manifests are applied verbatim and define their own router topology.
+    # =========================================================================
+    gateway:
+      className: epponly
 
     # -------------------------------------------------------------------------
     # Infrastructure / Gateway Configuration

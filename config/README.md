@@ -132,9 +132,9 @@ scenario:
 
 Render-time conveniences that activate only when `len(scenario) >= 2`:
 
-- `downloadJob.name` and `inferenceExtension.monitoring.secretName` are
-  auto-suffixed with each stack's `model_id_label` so parallel download
-  Jobs and sibling gaie Helm releases don't collide. Explicit overrides
+- `downloadJob.name` and `router.monitoring.secretName` are auto-suffixed
+  with each stack's `model_id_label` so parallel download Jobs and
+  sibling router Helm releases don't collide. Explicit overrides
   (in `defaults.yaml`, `shared:`, or per-stack) are preserved.
 - `storage.modelPvc.name` is **not** suffixed - every stack writes weights
   to a distinct `model.path` subdirectory on one shared PVC. This matches
@@ -275,7 +275,7 @@ Jinja2 templates that produce Kubernetes resource definitions. Each template cor
 | `16_pvc_extra-pvc.yaml.j2` | Extra PVCs (e.g., scratch space) |
 | `17_standalone-podmonitor.yaml.j2` | Standalone PodMonitor for metrics |
 | `18_podmonitor.yaml.j2` | Modelservice PodMonitor for metrics |
-| `19_wva-values.yaml.j2` | Workload Variant Autoscaler values |
+| `19_wva-kustomize.yaml.j2` | Workload Variant Autoscaler kustomize wrapper |
 | `20_harness_pod.yaml.j2` | Benchmark harness pod |
 | `21_prometheus-adapter-values.yaml.j2` | Prometheus adapter values |
 | `22_prometheus-rbac.yaml.j2` | Prometheus RBAC resources |
@@ -312,7 +312,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `lws` | LeaderWorkerSet configuration |
 | `agentgateway` | agentgateway provider configuration |
 | `openshiftMonitoring` | OpenShift-specific monitoring settings |
-| `inferenceExtension` | GAIE plugin configuration |
+| `router` | llm-d-router chart values (EPP, tokenizer, inferencePool, monitoring) |
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
 
@@ -389,13 +389,14 @@ scenario:
         - name: SERVED_MODEL_NAME
           value: "${model.name}"
 
-    inferenceExtension:
-      pluginsCustomConfig:
-        my-config.yaml: |
-          plugins:
-            - type: tokenizer
-              parameters:
-                modelName: "${model.name}"
+    router:
+      epp:
+        pluginsCustomConfig:
+          my-config.yaml: |
+            plugins:
+              - type: tokenizer
+                parameters:
+                  modelName: "${model.name}"
 ```
 
 Shell variables like `$VLLM_METRICS_PORT` are preserved for runtime resolution. Config variables like `${model.name}` are substituted at render time.
@@ -469,7 +470,7 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
 | `chartVersions.agentgateway` | `v2.2.3` | agentgateway chart version |
-| `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
+| `chartVersions.lws` | `0.9.0` | LeaderWorkerSet chart version |
 
 Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
 
@@ -887,33 +888,34 @@ scenario:
         dataLocal: 1
         workers: 1
 
-    # Configure the inference extension with context-length-aware plugin.
+    # Configure the router EPP with the context-length-aware plugin.
     # `apiVersion: llm-d.ai/v1alpha1` is the canonical API group on the
     # llm-d-router charts; the legacy
     # `inference.networking.x-k8s.io/v1alpha1` is still accepted but
     # deprecated.
-    inferenceExtension:
-      pluginsConfigFile: "context-length-aware-config.yaml"
-      sidecar:
+    router:
+      tokenizer:
         enabled: true
-      pluginsCustomConfig:
-        context-length-aware-config.yaml: |
-          apiVersion: llm-d.ai/v1alpha1
-          kind: EndpointPickerConfig
-          plugins:
-            - type: tokenizer
-              parameters:
-                modelName: "${model.name}"
-                udsTokenizerConfig:
-                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
-            - type: context-length-aware
-              parameters:
-                label: llm-d.ai/context-length-range
-                enableFiltering: true
-          schedulingProfiles:
-            - name: default
-              plugins:
-                - pluginRef: tokenizer
+      epp:
+        pluginsConfigFile: "context-length-aware-config.yaml"
+        pluginsCustomConfig:
+          context-length-aware-config.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            plugins:
+              - type: tokenizer
+                parameters:
+                  modelName: "${model.name}"
+                  udsTokenizerConfig:
+                    socketFile: /tmp/tokenizer/tokenizer-uds.socket
+              - type: context-length-aware
+                parameters:
+                  label: llm-d.ai/context-length-range
+                  enableFiltering: true
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: tokenizer
                 - pluginRef: context-length-aware
 
     # Preprocess script and kubeconfig secret volume are required
@@ -950,7 +952,7 @@ At pod startup, the preprocess script:
 
 ### Standalone Deployments
 
-Context-length-aware routing is **not applicable** to standalone deployments. Standalone mode has no inference extension (EPP) or routing layer, so there is nothing to route requests based on context length. The `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` fields only apply to the modelservice deployment path.
+Context-length-aware routing is **not applicable** to standalone deployments. Standalone mode has no router EPP or routing layer, so there is nothing to route requests based on context length. The `contextLengthRanges`, `vllmVariants`, and `router.epp` fields only apply to the modelservice deployment path.
 
 ### Verifying the Setup
 
@@ -985,8 +987,8 @@ See the commented-out sections in the example scenarios for the exact configurat
 ### Reference
 
 - [llm-d inference scheduler architecture: context-length-aware](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md#contextlengthaware)
-- [GPU example scenario](scenarios/examples/gpu.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` configuration
-- [Spyre example scenario](scenarios/examples/spyre.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` configuration with Spyre-specific volumes
+- [GPU example scenario](scenarios/examples/gpu.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `router.epp` configuration
+- [Spyre example scenario](scenarios/examples/spyre.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `router.epp` configuration with Spyre-specific volumes
 
 ---
 
@@ -1133,12 +1135,12 @@ Flow control is an EPP (inference scheduler) feature that manages request queuin
 
 #### Enabling flow control
 
-Flow control is configured through the GAIE plugin configuration. The specific plugin config file is set in the scenario YAML:
+Flow control is configured through the EPP plugin configuration. The specific plugin config file is set in the scenario YAML:
 
 ```yaml
-inferenceExtension:
-  plugins:
-    configFile: flow-control-config  # name of the plugin config
+router:
+  epp:
+    pluginsConfigFile: flow-control-config.yaml  # name of the plugin config
 ```
 
 #### Monitoring flow control
@@ -1146,7 +1148,7 @@ inferenceExtension:
 When flow control is active, additional Prometheus metrics are emitted by the EPP pod (see [Monitoring and Metrics](#monitoring-and-metrics) below for the full list). To scrape these metrics, enable EPP monitoring:
 
 ```yaml
-inferenceExtension:
+router:
   monitoring:
     prometheus:
       enabled: true
@@ -1225,10 +1227,10 @@ See [metrics_collection.md](../docs/metrics_collection.md) for the full list of 
 
 #### EPP (Inference Scheduler) monitoring
 
-The inference extension has its own monitoring config under `inferenceExtension.monitoring`:
+The router EPP has its own monitoring config under `router.monitoring`:
 
 ```yaml
-inferenceExtension:
+router:
   monitoring:
     secretName: inference-gateway-sa-metrics-reader-secret
     interval: "10s"
@@ -1280,7 +1282,7 @@ The `--monitoring` and `--no-monitoring` flags control monitoring across both st
 
 **`--no-monitoring` (standup):**
 - Disables PodMonitor creation (`monitoring.podmonitor.enabled: false`)
-- Disables GAIE ServiceMonitor creation (`inferenceExtension.monitoring.prometheus.enabled: false`)
+- Disables router ServiceMonitor creation (`router.monitoring.prometheus.enabled: false`)
 - Use this when the cluster lacks Prometheus CRDs (PodMonitor, ServiceMonitor) and you want to avoid CRD-not-found errors during Helm install
 
 **No flag passed:**
@@ -1336,7 +1338,7 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 |-----|---------|---------|
 | `images.vllm` | `ghcr.io/llm-d/llm-d-cuda:auto` | Modelservice decode/prefill pods, standalone fallback |
 | `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod |
-| `images.inferenceScheduler` | `ghcr.io/llm-d/llm-d-inference-scheduler:auto` | GAIE inference extension |
+| `images.routerEndpointPicker` | `ghcr.io/llm-d/llm-d-router-endpoint-picker-dev:auto` | llm-d-router EPP |
 | `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar (proxy in front of vLLM) |
 | `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | EPP sidecar (precise-prefix-cache scoring); also used as an init container in some scenarios |
 | `images.python` | `python:3.10` | Utility containers |
@@ -1358,15 +1360,15 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 |----------|-------------|-----------|
 | `04_download_job.yaml.j2` | `images.benchmark` | Model download job |
 | `06_pod_access_to_harness_data.yaml.j2` | `images.benchmark` | Harness data access pod |
-| `12_router-values.yaml.j2` | `images.routerEndpointPicker` (legacy: `images.inferenceScheduler`) | llm-d router EPP |
+| `12_router-values.yaml.j2` | `images.routerEndpointPicker` | llm-d-router EPP |
 | `13_ms-values.yaml.j2` (decode) | `images.vllm` | Decode pods in modelservice |
 | `13_ms-values.yaml.j2` (prefill) | `images.vllm` | Prefill pods in modelservice |
 | `13_ms-values.yaml.j2` (sidecar) | `images.routingSidecar` | Routing sidecar in modelservice |
 | `13_ms-values.yaml.j2` (init containers) | `images.<imageKey>` | Per-init-container, via `imageKey:` (defaults to `images.benchmark`) |
-| `12_router-values.yaml.j2` (tokenizer) | `images.udsTokenizer` | EPP UDS tokenizer (when `inferenceExtension.sidecar.enabled: true`) |
+| `12_router-values.yaml.j2` (tokenizer) | `images.udsTokenizer` | EPP UDS tokenizer (when `router.tokenizer.enabled: true`) |
 | `14_standalone-deployment_yaml.j2` | `standalone.image` | Standalone vLLM container |
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
-| `19_wva-values.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
+| `19_wva-kustomize.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
 | `20_harness_pod.yaml.j2` | `images.benchmark` | Benchmark harness pod |
 
 ### Fallback Chains
@@ -1462,16 +1464,16 @@ scenario:
         tag: dev-branch
 ```
 
-**Inference scheduler (GAIE):**
+**Router EPP:**
 
-Override `images.inferenceScheduler`:
+Override `images.routerEndpointPicker`:
 
 ```yaml
 scenario:
   - name: "my-deployment"
     images:
-      inferenceScheduler:
-        repository: my-registry/llm-d-inference-scheduler
+      routerEndpointPicker:
+        repository: my-registry/llm-d-router-endpoint-picker
         tag: v1.2.3
 ```
 
@@ -1490,7 +1492,7 @@ scenario:
         tag: dev
 ```
 
-There is no per-block image field on `routing.proxy` or `inferenceExtension.sidecar` -- the `images.*` entry is the single source of truth.
+There is no per-block image field on `routing.proxy` or `router.tokenizer` -- the `images.*` entry is the single source of truth.
 
 **Init containers** (`decode.initContainers[*]`, `prefill.initContainers[*]`, `standalone.initContainers[*]`):
 

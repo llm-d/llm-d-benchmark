@@ -8,6 +8,7 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.parser.cluster_resource_resolver import effective_accelerator_count
 from llmdbenchmark.standup import wva as wva_mod
 from llmdbenchmark.utilities.capacity_validator import run_capacity_planner
 
@@ -163,11 +164,15 @@ class WorkloadMonitoringStep(Step):
         """
         val = str(val).strip()
         suffixes = {
-            "k": 1_000, "K": 1_000,
+            "k": 1_000,
+            "K": 1_000,
             "Ki": 1_024,
-            "M": 1_000_000, "Mi": 1_048_576,
-            "G": 1_000_000_000, "Gi": 1_073_741_824,
-            "T": 1_000_000_000_000, "Ti": 1_099_511_627_776,
+            "M": 1_000_000,
+            "Mi": 1_048_576,
+            "G": 1_000_000_000,
+            "Gi": 1_073_741_824,
+            "T": 1_000_000_000_000,
+            "Ti": 1_099_511_627_776,
         }
         for suffix, multiplier in sorted(suffixes.items(), key=lambda x: -len(x[0])):
             if val.endswith(suffix):
@@ -321,7 +326,7 @@ class WorkloadMonitoringStep(Step):
             # Only scenarios that *explicitly* set count to 0 (e.g. the
             # CPU example) are treated as CPU-only and have their GPU
             # label validation skipped.
-            method_accel_count, accel_count_source = self._effective_accelerator_count(
+            method_accel_count, accel_count_source = effective_accelerator_count(
                 method_config
             )
 
@@ -346,55 +351,39 @@ class WorkloadMonitoringStep(Step):
         if node_labels is None:
             # kubectl call failed -- warn but don't block
             context.logger.log_warning(
-                "Could not retrieve node labels -- " "skipping node selector validation"
+                "Could not retrieve node labels -- skipping node selector validation"
             )
             return
 
+        cluster_gpu_labels: dict[str, list[str]] | None = None
         for source, key, value in selectors:
             if self._label_exists_on_nodes(node_labels, key, value):
                 context.logger.log_info(
-                    f"Node selector {key}={value} ({source}) -- " "matched on cluster"
+                    f"Node selector {key}={value} ({source}) -- matched on cluster"
                 )
             else:
-                errors.append(
+                msg = (
                     f"Node selector label '{key}={value}' "
                     f"(from {source}) not found on any cluster node. "
                     "Pods using this selector will be stuck in Pending."
                 )
-
-    @staticmethod
-    def _effective_accelerator_count(method_config: dict) -> tuple[int, str]:
-        """Resolve the per-pod accelerator count for a method.
-
-        Mirrors the fallback chain in ``config/templates/jinja/13_ms-values.yaml.j2``
-        line 252:
-
-            decode.accelerator.count   (explicit)
-              ↓ (if unset)
-            decode.parallelism.tensor  (canonical vLLM pattern)
-
-        Returns a ``(count, source)`` tuple where ``source`` describes
-        which field was consulted, for informative logging. Any parsing
-        failure returns ``(0, "parse-error")`` so the caller treats the
-        method as CPU-only and skips GPU-label validation — the safe
-        choice when the config is unintelligible.
-        """
-        accel = method_config.get("accelerator")
-        if isinstance(accel, dict) and "count" in accel:
-            try:
-                return int(accel["count"]), "accelerator.count (explicit)"
-            except (ValueError, TypeError):
-                return 0, "parse-error"
-
-        parallelism = method_config.get("parallelism")
-        if isinstance(parallelism, dict) and "tensor" in parallelism:
-            try:
-                return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
-            except (ValueError, TypeError):
-                return 0, "parse-error"
-
-        # Neither field present at all — assume no accelerators.
-        return 0, "unset"
+                if source.endswith(".acceleratorType"):
+                    if cluster_gpu_labels is None:
+                        cluster_gpu_labels = self._collect_cluster_gpu_labels(
+                            node_labels
+                        )
+                    if cluster_gpu_labels:
+                        preview = "; ".join(
+                            f"{k}={','.join(vs)}"
+                            for k, vs in cluster_gpu_labels.items()
+                        )
+                        msg += (
+                            f" Cluster has these GPU-like labels: {preview}. "
+                            f"To auto-detect, set `{source}.labelValue: auto` "
+                            "in your scenario (resolver will discover labelKey "
+                            "and labelValue from the cluster)."
+                        )
+                errors.append(msg)
 
     def _get_all_node_labels(
         self, cmd: CommandExecutor, context: ExecutionContext
@@ -432,6 +421,25 @@ class WorkloadMonitoringStep(Step):
             if labels.get(key) == value:
                 return True
         return False
+
+    @staticmethod
+    def _collect_cluster_gpu_labels(
+        node_labels: list[dict[str, str]],
+    ) -> dict[str, list[str]]:
+        """Return GPU-related labels observed across nodes as {key: [values]}.
+
+        Used to make node-selector mismatches actionable: when a scenario's
+        acceleratorType doesn't match the cluster, we surface what GPU labels
+        DO exist so the user can either pin them explicitly or switch to
+        `labelValue: auto` to let the resolver substitute them in.
+        """
+        gpu_keywords = ("gpu", "accelerator", "nvidia", "amd", "habana")
+        found: dict[str, set[str]] = {}
+        for labels in node_labels:
+            for k, v in labels.items():
+                if any(kw in k.lower() for kw in gpu_keywords):
+                    found.setdefault(k, set()).add(v)
+        return {k: sorted(found[k]) for k in sorted(found)}
 
     def _capacity_planner_sanity_check(
         self,
@@ -528,9 +536,8 @@ class WorkloadMonitoringStep(Step):
         # prometheus-adapter + ClusterRole: cluster-wide, install once
         # from the first stack's rendered templates.
         first_stack, first_cfg = pairs[0]
-        monitoring_ns = (
-            first_cfg.get("openshiftMonitoring", {})
-            .get("userWorkloadMonitoringNamespace", "openshift-user-workload-monitoring")
+        monitoring_ns = first_cfg.get("openshiftMonitoring", {}).get(
+            "userWorkloadMonitoringNamespace", "openshift-user-workload-monitoring"
         )
 
         prom_ca_cert = wva_mod.extract_prometheus_ca_cert(cmd, context.logger)
@@ -559,7 +566,9 @@ class WorkloadMonitoringStep(Step):
             )
 
         # One WVA controller per unique wva.namespace.
-        for wva_ns, (stack_path, plan_config) in wva_mod.unique_wva_namespaces(pairs).items():
+        for wva_ns, (stack_path, plan_config) in wva_mod.unique_wva_namespaces(
+            pairs
+        ).items():
             wva_mod.apply_wva_namespace_label(cmd, stack_path, wva_ns)
             wva_mod.install_wva_for_namespace(
                 cmd=cmd,

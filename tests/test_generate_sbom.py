@@ -53,7 +53,7 @@ install_crane_linux() {
 }
 
 install_jq_linux() {
-    local version=1.8.1
+    local version=1.8.2
     curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-amd64" \
         -o /tmp/jq
 }
@@ -74,7 +74,7 @@ tools="curl helm helmfile"
 
 tool_version_for() {
     case "$1" in
-        curl)      echo "8_20_0"  ;;
+        curl)      echo "8_21_0"  ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
         helm-diff) echo "v3.15.7" ;;
@@ -191,12 +191,13 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
 
 
 def test_parse_install_sh_unpinned_marks_system_provided(
-    sbom_module, install_sh: Path,
+    sbom_module,
+    install_sh: Path,
 ) -> None:
     entries = sbom_module.parse_install_sh(install_sh)
     by_name = {e.name: e for e in entries}
     # jq is now pinned via install_jq_linux
-    assert by_name["jq"].pin == "1.8.1"
+    assert by_name["jq"].pin == "1.8.2"
     assert by_name["jq"].pin_type == "version"
     # git has no install function, so it is system-provided
     assert by_name["git"].pin == "system-provided"
@@ -235,7 +236,8 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
 
 
 def test_tool_version_for_is_authoritative(
-    sbom_module, install_sh_tvf: Path,
+    sbom_module,
+    install_sh_tvf: Path,
 ) -> None:
     """tool_version_for() is the source of truth for pinned tools."""
     entries = sbom_module.parse_install_sh(install_sh_tvf)
@@ -245,12 +247,13 @@ def test_tool_version_for_is_authoritative(
     assert by_name["helm"].pin_type == "version"
     assert "tool_version_for" in by_name["helm"].location
 
-    assert by_name["curl"].pin == "8_20_0"
+    assert by_name["curl"].pin == "8_21_0"
     assert "tool_version_for" in by_name["curl"].location
 
 
 def test_tool_version_for_overrides_install_fn_scrape(
-    sbom_module, install_sh_tvf: Path,
+    sbom_module,
+    install_sh_tvf: Path,
 ) -> None:
     """helmfile's tool_version_for pin (1.5.1) wins over the install-fn
     `local version=1.1.3` scrape."""
@@ -261,7 +264,8 @@ def test_tool_version_for_overrides_install_fn_scrape(
 
 
 def test_helm_diff_pinned_from_tool_version_for(
-    sbom_module, install_sh_tvf: Path,
+    sbom_module,
+    install_sh_tvf: Path,
 ) -> None:
     entries = sbom_module.parse_install_sh(install_sh_tvf)
     by_name = {e.name: e for e in entries}
@@ -276,7 +280,8 @@ def test_helm_diff_pinned_from_tool_version_for(
 
 
 def test_parse_pyproject_records_line_numbers(
-    sbom_module, pyproject_file: Path,
+    sbom_module,
+    pyproject_file: Path,
 ) -> None:
     entries, line_map = sbom_module.parse_pyproject_dependencies(pyproject_file)
     by_name = {e.name: e for e in entries}
@@ -307,7 +312,9 @@ class _FakeResolver:
     def __init__(self, *_args, **_kwargs) -> None:
         pass
 
-    def resolve_chart_version(self, chart_name: str, repo_url: str | None = None) -> str:
+    def resolve_chart_version(
+        self, chart_name: str, repo_url: str | None = None
+    ) -> str:
         return f"resolved-{chart_name}"
 
     def resolve_image_tag(self, registry: str, repository: str) -> str:
@@ -342,7 +349,8 @@ def test_helm_charts_resolves_auto(sbom_module, defaults_yaml: Path) -> None:
 
 
 def test_helm_charts_no_resolve_marks_skipped(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     charts = sbom_module.collect_helm_charts(defaults_yaml, resolve=False)
     by_name = {c.name: c for c in charts}
@@ -351,7 +359,8 @@ def test_helm_charts_no_resolve_marks_skipped(
 
 
 def test_helm_charts_resolution_failure_marked(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     charts = sbom_module.collect_helm_charts(
         defaults_yaml,
@@ -365,7 +374,8 @@ def test_helm_charts_resolution_failure_marked(
 
 
 def test_helm_charts_appends_repo_url_to_upstream(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     charts = sbom_module.collect_helm_charts(
         defaults_yaml,
@@ -374,7 +384,10 @@ def test_helm_charts_appends_repo_url_to_upstream(
     )
     by_name = {c.name: c for c in charts}
     # Known chart whose helmRepositories url should be appended.
-    assert "https://llm-d-incubation.github.io/llm-d-infra/" in by_name["llmDInfra"].upstream
+    assert (
+        "https://llm-d-incubation.github.io/llm-d-infra/"
+        in by_name["llmDInfra"].upstream
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -398,7 +411,8 @@ def test_container_images_resolves_auto(sbom_module, defaults_yaml: Path) -> Non
 
 
 def test_container_images_no_resolve_marks_skipped(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     images = sbom_module.collect_container_images(defaults_yaml, resolve=False)
     by_name = {i.name: i for i in images}
@@ -470,7 +484,13 @@ def test_render_markdown_deterministic(sbom_module) -> None:
 def test_render_markdown_uses_bold_names_and_backticked_pins(sbom_module) -> None:
     out = sbom_module.render_markdown(
         system_tools=[
-            sbom_module.Entry("yq", "v4.52.5", "version", "`install.sh` line 326", "[mikefarah/yq](http://x)"),
+            sbom_module.Entry(
+                "yq",
+                "v4.52.5",
+                "version",
+                "`install.sh` line 326",
+                "[mikefarah/yq](http://x)",
+            ),
         ],
         py_direct=[],
         py_installed=[],
@@ -486,19 +506,28 @@ def test_render_markdown_uses_bold_names_and_backticked_pins(sbom_module) -> Non
 
 def test_render_markdown_installed_snapshot_only_when_present(sbom_module) -> None:
     out_empty = sbom_module.render_markdown(
-        system_tools=[], py_direct=[], py_installed=[],
-        helm_charts=[], container_images=[],
-        git_sha="x", generated_at_utc="y",
+        system_tools=[],
+        py_direct=[],
+        py_installed=[],
+        helm_charts=[],
+        container_images=[],
+        git_sha="x",
+        generated_at_utc="y",
     )
     assert "(installed snapshot)" not in out_empty
 
     out_with = sbom_module.render_markdown(
-        system_tools=[], py_direct=[],
+        system_tools=[],
+        py_direct=[],
         py_installed=[
-            sbom_module.Entry("requests", "2.33.1", "version", "(transitive in `.venv`)", "x"),
+            sbom_module.Entry(
+                "requests", "2.33.1", "version", "(transitive in `.venv`)", "x"
+            ),
         ],
-        helm_charts=[], container_images=[],
-        git_sha="x", generated_at_utc="y",
+        helm_charts=[],
+        container_images=[],
+        git_sha="x",
+        generated_at_utc="y",
     )
     assert "(installed snapshot)" in out_with
 
@@ -519,43 +548,66 @@ def _scaffold_repo(tmp_path: Path) -> Path:
 
 
 def test_check_mode_returns_nonzero_on_mismatch(
-    sbom_module, tmp_path: Path,
+    sbom_module,
+    tmp_path: Path,
 ) -> None:
     repo = _scaffold_repo(tmp_path)
     out_path = repo / "SBOM.md"
     out_path.write_text("stale content\n", encoding="utf-8")
 
-    rc = sbom_module.main([
-        "--check", "--no-resolve",
-        "--repo-root", str(repo),
-        "--output", str(out_path),
-    ])
+    rc = sbom_module.main(
+        [
+            "--check",
+            "--no-resolve",
+            "--repo-root",
+            str(repo),
+            "--output",
+            str(out_path),
+        ]
+    )
     assert rc == 1
     assert "Upstream Dependency" in out_path.read_text(encoding="utf-8")
 
-    rc2 = sbom_module.main([
-        "--check", "--no-resolve",
-        "--repo-root", str(repo),
-        "--output", str(out_path),
-    ])
+    rc2 = sbom_module.main(
+        [
+            "--check",
+            "--no-resolve",
+            "--repo-root",
+            str(repo),
+            "--output",
+            str(out_path),
+        ]
+    )
     assert rc2 == 0
 
 
 def test_check_mode_ignores_volatile_lines(sbom_module, tmp_path: Path) -> None:
     repo = _scaffold_repo(tmp_path)
     out = repo / "SBOM.md"
-    rc = sbom_module.main([
-        "--no-resolve", "--repo-root", str(repo), "--output", str(out),
-    ])
+    rc = sbom_module.main(
+        [
+            "--no-resolve",
+            "--repo-root",
+            str(repo),
+            "--output",
+            str(out),
+        ]
+    )
     assert rc == 0
     first = out.read_text(encoding="utf-8")
     altered = first.replace("Generated at: ", "Generated at: 1970-01-01 00:00:00 ")
     out.write_text(altered, encoding="utf-8")
 
-    rc2 = sbom_module.main([
-        "--check", "--no-resolve",
-        "--repo-root", str(repo), "--output", str(out),
-    ])
+    rc2 = sbom_module.main(
+        [
+            "--check",
+            "--no-resolve",
+            "--repo-root",
+            str(repo),
+            "--output",
+            str(out),
+        ]
+    )
     assert rc2 == 0
 
 
@@ -595,7 +647,8 @@ def test_upstream_for_python_pkg_uses_pypi(sbom_module) -> None:
 
 
 def test_helm_charts_unknown_source_repo_marks_unknown(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     # inferencePool in the fixture has sourceRepo set; remove it on the fly to
     # exercise the unknown path.
@@ -611,7 +664,8 @@ def test_helm_charts_unknown_source_repo_marks_unknown(
 
 
 def test_container_images_reads_source_path(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     """The optional sourcePath should appear in the rendered upstream link."""
     text = defaults_yaml.read_text(encoding="utf-8")
@@ -626,7 +680,8 @@ def test_container_images_reads_source_path(
 
 
 def test_container_images_unknown_source_repo_marks_unknown(
-    sbom_module, defaults_yaml: Path,
+    sbom_module,
+    defaults_yaml: Path,
 ) -> None:
     images = sbom_module.collect_container_images(defaults_yaml, resolve=False)
     by_name = {i.name: i for i in images}

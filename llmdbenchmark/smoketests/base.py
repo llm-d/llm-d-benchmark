@@ -188,7 +188,10 @@ class BaseSmoketest:
 
         # 1. Check pods running for each configured role
         if is_kustomize:
-            roles_to_check = [("decode", "decode")]
+            if guide_name == "pd-disaggregation":
+                roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
+            else:
+                roles_to_check = [("decode", "decode")]
         elif is_standalone:
             roles_to_check = [("standalone", standalone_role)]
         else:
@@ -397,8 +400,9 @@ class BaseSmoketest:
                 )
 
         # 3. Wait for model ready (/v1/models)
+        wait_err: str | None = None
         if report.passed:
-            self._wait_for_model_ready(
+            wait_err = self._wait_for_model_ready(
                 cmd,
                 context,
                 namespace,
@@ -408,9 +412,20 @@ class BaseSmoketest:
                 plan_config,
                 url_path_prefix=url_path_prefix,
             )
+            if wait_err:
+                report.add(CheckResult("model_ready", False, message=wait_err))
 
-        # 4. Test service/gateway
+        # 4. Test service/gateway. Skipped when model_ready already
+        # timed out -- the assertion would fail with a cryptic Envoy
+        # "upstream connection refused" that buries the real cause
+        # (model still loading) under transport-layer noise.
         service_test_passed = False
+        if wait_err:
+            context.logger.log_info(
+                "Skipping service/gateway assertion -- model_ready check "
+                "already reported the underlying failure"
+            )
+            return report
         context.logger.log_info(
             f'Testing service/gateway "{service_ip}" (port {gateway_port})'
             f"{' [prefix=' + url_path_prefix + ']' if url_path_prefix else ''}..."
@@ -446,7 +461,14 @@ class BaseSmoketest:
         inference_port = (
             _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
         )
-        primary_role = roles_to_check[0] if roles_to_check else ("decode", "decode")
+        primary_role = ("decode", "decode")
+        if roles_to_check:
+            for role_info in roles_to_check:
+                if role_info[0] in ("decode", "standalone"):
+                    primary_role = role_info
+                    break
+            else:
+                primary_role = roles_to_check[0]
         if is_kustomize and guide_name:
             primary_selector = (
                 f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
@@ -968,6 +990,7 @@ class BaseSmoketest:
         model_short: str,
         report: SmoketestReport,
         logger=None,
+        context: ExecutionContext | None = None,
     ) -> list[dict]:
         """Validate all aspects of pods for a given role (decode/prefill/standalone).
 
@@ -980,11 +1003,51 @@ class BaseSmoketest:
         prefix = role  # used in check names
 
         # --- Replica count ---
+        is_kustomize = (
+            ("kustomize" in context.deployed_methods)
+            if context
+            else (_nested_get(config, "kustomize", "enabled") is True)
+        )
+        guide_name = _nested_get(config, "kustomize", "guideName") or ""
+
+        if is_kustomize and guide_name:
+            role_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={role}"
+        else:
+            role_selector = f"llm-d.ai/model={model_short},llm-d.ai/role={role}"
+
         pods = self.get_pod_specs(
             cmd,
             namespace,
-            f"llm-d.ai/model={model_short},llm-d.ai/role={role}",
+            role_selector,
         )
+
+        if not pods:
+            return pods
+
+        pod = pods[0]
+        pod_name = pod.get("metadata", {}).get("name", "unknown")
+        pod_node = pod.get("spec", {}).get("nodeName", "unknown")
+        pod_ns = pod.get("metadata", {}).get("namespace", namespace)
+        group_name = role
+
+        # Emit a header check so the step renderer can group output
+        report.add(
+            CheckResult(
+                name=f"{prefix}_header",
+                passed=True,
+                message=f"Inspecting {role} pod: {pod_name} (node: {pod_node}, ns: {pod_ns})",
+                group=group_name,
+                is_header=True,
+            )
+        )
+
+        if is_kustomize:
+            # Under kustomize, the deployment is defined entirely by the guide's
+            # own manifests, ignoring the scenario's role-specific configs.
+            # We return early here to only verify that the pods exist and run,
+            # and skip the detailed config-matching checks.
+            return pods
+
         expected_replicas = role_config.get("replicas")
         if expected_replicas is not None:
             expected_replicas = int(expected_replicas)
@@ -1057,26 +1120,6 @@ class BaseSmoketest:
                         ),
                     )
                 )
-
-        if not pods:
-            return pods
-
-        pod = pods[0]
-        pod_name = pod.get("metadata", {}).get("name", "unknown")
-        pod_node = pod.get("spec", {}).get("nodeName", "unknown")
-        pod_ns = pod.get("metadata", {}).get("namespace", namespace)
-        group_name = role
-
-        # Emit a header check so the step renderer can group output
-        report.add(
-            CheckResult(
-                name=f"{prefix}_header",
-                passed=True,
-                message=f"Inspecting {role} pod: {pod_name} (node: {pod_node}, ns: {pod_ns})",
-                group=group_name,
-                is_header=True,
-            )
-        )
 
         def _tag(check: CheckResult) -> CheckResult:
             """Tag a CheckResult with its group for indented rendering."""
@@ -1556,6 +1599,13 @@ class BaseSmoketest:
             )
             time.sleep(poll_interval)
 
+    # Default 30 minutes -- accommodates large models (DeepSeek-R1,
+    # Llama-3.1-405B, Qwen3-235B etc.) where weight download + load
+    # across N workers can take 15+ minutes. Small models finish in
+    # seconds and exit immediately; the larger ceiling is upside-free.
+    _DEFAULT_MODEL_READY_TIMEOUT = 1800
+    _DEFAULT_MODEL_READY_POLL_INTERVAL = 15
+
     def _wait_for_model_ready(
         self,
         cmd: CommandExecutor,
@@ -1565,24 +1615,65 @@ class BaseSmoketest:
         port: str | int,
         expected_model: str,
         plan_config: dict | None = None,
-        timeout: int = 300,
-        poll_interval: int = 15,
+        timeout: int | None = None,
+        poll_interval: int | None = None,
         url_path_prefix: str = "",
-    ):
+    ) -> str | None:
+        """Poll ``/v1/models`` until the expected model is served.
+
+        Returns ``None`` on success, or a human-readable error message
+        on timeout (caller is expected to surface it as a check failure
+        -- the historical "log warning and silently proceed" was wrong
+        because the subsequent assertion would then fail with the
+        cryptic Envoy "upstream connection refused" instead of the
+        actual cause).
+
+        Timeout / poll interval can be overridden per-scenario via
+        ``harness.smoketest.modelReadyTimeout`` and
+        ``harness.smoketest.modelReadyPollInterval`` in the plan
+        config; explicit kwargs win over plan-config values which win
+        over the class defaults.
+        """
+        timeout = self._resolve_wait_setting(
+            plan_config,
+            "modelReadyTimeout",
+            timeout,
+            self._DEFAULT_MODEL_READY_TIMEOUT,
+        )
+        poll_interval = self._resolve_wait_setting(
+            plan_config,
+            "modelReadyPollInterval",
+            poll_interval,
+            self._DEFAULT_MODEL_READY_POLL_INTERVAL,
+        )
+
         context.logger.log_info(
-            f"Waiting for model to be ready at {host}:{port} (timeout {timeout}s)..."
+            f"Waiting for model '{expected_model}' at {host}:{port} "
+            f"(timeout {timeout}s, poll every {poll_interval}s)..."
         )
         start = time.time()
         attempt = 0
+        last_progress_log = 0.0
+        # Log first 3 polls verbosely, then once per ~60s. A 30-minute
+        # wait at 15s polls would otherwise produce 120 "not ready yet"
+        # lines -- noise that obscures the surrounding standup output.
+        verbose_attempts = 3
+        progress_interval = 60.0
 
         while True:
             elapsed = time.time() - start
             if elapsed > timeout:
-                context.logger.log_warning(
-                    f"Model readiness wait timed out after {timeout}s -- "
-                    f"proceeding with smoketest assertions"
+                err = (
+                    f"Model '{expected_model}' did not become ready at "
+                    f"{host}:{port} within {timeout}s. For large models "
+                    f"(DeepSeek-R1, Llama-3.1-405B, etc.) increase the "
+                    f"wait via `harness.smoketest.modelReadyTimeout: 3600` "
+                    f"in your scenario, or check the model-server logs:\n"
+                    f"  kubectl logs -n {namespace} "
+                    f"-l llm-d.ai/role=decode -c vllm --tail=100"
                 )
-                return
+                context.logger.log_error(err)
+                return err
 
             attempt += 1
             result = test_model_serving(
@@ -1597,19 +1688,52 @@ class BaseSmoketest:
             )
 
             if cmd.dry_run:
-                return
+                return None
 
             if result is None:
                 context.logger.log_info(
-                    f"Model ready at {host}:{port} (ok) ({int(elapsed)}s elapsed)"
+                    f"Model '{expected_model}' ready at {host}:{port} "
+                    f"({int(elapsed)}s, attempt {attempt})"
                 )
-                return
+                return None
 
             remaining = int(timeout - elapsed)
-            context.logger.log_info(
-                f"Model not ready yet (attempt {attempt}, {remaining}s remaining)..."
-            )
+            if attempt <= verbose_attempts or (
+                elapsed - last_progress_log >= progress_interval
+            ):
+                context.logger.log_info(
+                    f"Model not ready yet (attempt {attempt}, "
+                    f"{int(elapsed)}s elapsed, {remaining}s remaining)..."
+                )
+                last_progress_log = elapsed
             time.sleep(poll_interval)
+
+    @staticmethod
+    def _resolve_wait_setting(
+        plan_config: dict | None,
+        key: str,
+        explicit: int | None,
+        default: int,
+    ) -> int:
+        """Pick a wait timeout / poll interval.
+
+        Priority: explicit kwarg > plan_config.harness.smoketest.<key> >
+        class default. Plan-config values that aren't a positive int are
+        ignored (with no log -- scenario authors typo'ing this is rare
+        enough that we'd rather not fire false-positive warnings).
+        """
+        if explicit is not None:
+            return explicit
+        if plan_config:
+            cfg = ((plan_config.get("harness") or {}).get("smoketest") or {}).get(key)
+            if cfg is not None:
+                try:
+                    cfg_int = int(cfg)
+                    if cfg_int > 0:
+                        return cfg_int
+                except (TypeError, ValueError):
+                    pass
+        return default
 
     def _test_openshift_route(
         self,
@@ -1679,6 +1803,30 @@ class BaseSmoketest:
                 f"Unable to fetch OpenShift route '{route_name}'"
             )
 
+    # Inference retry budget. Sequence with default values:
+    #   attempt 1 -> wait 15s -> attempt 2 -> wait 30s -> attempt 3
+    #   -> wait 60s -> attempt 4 -> wait 120s -> attempt 5 -> fallback
+    # Total wait budget: ~225s (~3.75 min) covering most warmup races.
+    # Tunable per-scenario via:
+    #   harness.smoketest.inferenceMaxRetries
+    #   harness.smoketest.inferenceRetryBaseInterval
+    #   harness.smoketest.inferenceRetryMaxInterval
+    _DEFAULT_INFERENCE_MAX_RETRIES = 5
+    _DEFAULT_INFERENCE_RETRY_BASE = 15
+    _DEFAULT_INFERENCE_RETRY_MAX = 120
+
+    @staticmethod
+    def _compute_backoff(attempt: int, base: int, cap: int) -> int:
+        """Exponential backoff: ``base * 2 ** (attempt - 1)``, capped.
+
+        Attempt is 1-indexed (so attempt 1 -> base, attempt 2 -> 2*base,
+        etc). The cap prevents the wait from running unbounded if a
+        future scenario sets a high max_retries.
+        """
+        if attempt < 1:
+            return base
+        return min(cap, base * (2 ** (attempt - 1)))
+
     def _try_completions(
         self,
         cmd: CommandExecutor,
@@ -1687,8 +1835,9 @@ class BaseSmoketest:
         base_url: str,
         model_name: str,
         plan_config: dict | None,
-        max_retries: int = 3,
-        retry_interval: int = 15,
+        max_retries: int | None = None,
+        retry_interval: int | None = None,
+        retry_max_interval: int | None = None,
     ) -> dict:
         url = f"{base_url}/v1/completions"
         payload = {
@@ -1697,6 +1846,27 @@ class BaseSmoketest:
             "max_tokens": 5,
             "temperature": 0,
         }
+
+        # Resolve retry budget from plan config (scenarios can tune)
+        # falling back to the class defaults.
+        max_retries = self._resolve_wait_setting(
+            plan_config,
+            "inferenceMaxRetries",
+            max_retries,
+            self._DEFAULT_INFERENCE_MAX_RETRIES,
+        )
+        retry_interval = self._resolve_wait_setting(
+            plan_config,
+            "inferenceRetryBaseInterval",
+            retry_interval,
+            self._DEFAULT_INFERENCE_RETRY_BASE,
+        )
+        retry_max_interval = self._resolve_wait_setting(
+            plan_config,
+            "inferenceRetryMaxInterval",
+            retry_max_interval,
+            self._DEFAULT_INFERENCE_RETRY_MAX,
+        )
 
         for attempt in range(1, max_retries + 1):
             stdout, err = self._curl_post(cmd, namespace, url, payload, plan_config)
@@ -1712,21 +1882,56 @@ class BaseSmoketest:
                 if _is_retryable(err) and attempt < max_retries:
                     context.logger.log_info(
                         f"Attempt {attempt}/{max_retries}: {err[:80]}, "
-                        f"retrying in {retry_interval}s..."
+                        f"retrying in {self._compute_backoff(attempt, retry_interval, retry_max_interval)}s..."
                     )
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": err}
 
             try:
                 resp = json.loads(stdout)
             except json.JSONDecodeError:
-                if _is_retryable(stdout) and attempt < max_retries:
-                    time.sleep(retry_interval)
+                # JSON decode failed -- empty body, partial body, or
+                # garbage. All three are dominated by transient
+                # warmup races (model server still loading after
+                # /v1/models began responding, gateway flapping
+                # mid-request, sim's request handler not yet bound).
+                # We have no negative signal -- the HTTP status was
+                # already vetted as 2xx by _curl_post -- so retry
+                # unconditionally up to max_retries before falling
+                # back to /v1/chat/completions. Don't gate on
+                # _is_retryable here: that function looks for known
+                # error strings (502/503/504/...) but for "no body"
+                # there's nothing to match, and the historical
+                # `_is_retryable("") -> False` made every transient
+                # warmup race a hard smoketest failure.
+                body_preview = stdout[:200].strip() or "(empty body)"
+                if attempt < max_retries:
+                    context.logger.log_info(
+                        f"Attempt {attempt}/{max_retries}: non-JSON body "
+                        f"({body_preview[:60]}), retrying in {retry_interval}s..."
+                    )
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
+                # Out of retries -- fall back to /v1/chat/completions.
+                # Modern chat-only model servers and the llm-d
+                # simulator both produce empty /v1/completions
+                # responses; the chat endpoint usually works.
+                # Chat-completions has no further fallback target so
+                # its should_fallback is a no-op (kept for symmetric
+                # error shape).
                 return {
                     "success": False,
-                    "error": f"Non-JSON response from {url}: {stdout[:200]}",
+                    "error": f"Non-JSON response from {url}: {body_preview}",
+                    "should_fallback": True,
                 }
 
             if _is_non_transient_error(resp):
@@ -1744,13 +1949,21 @@ class BaseSmoketest:
                 if isinstance(error_msg, dict):
                     error_msg = error_msg.get("message", str(error_msg))
                 if attempt < max_retries:
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": str(error_msg)}
 
             if "choices" not in resp or not resp["choices"]:
                 if attempt < max_retries:
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {
                     "success": False,
@@ -1760,7 +1973,11 @@ class BaseSmoketest:
             first = resp["choices"][0]
             if not first.get("text") and not first.get("message"):
                 if attempt < max_retries:
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": f"No generated text from {url}"}
 
@@ -1777,8 +1994,9 @@ class BaseSmoketest:
         base_url: str,
         model_name: str,
         plan_config: dict | None,
-        max_retries: int = 3,
-        retry_interval: int = 15,
+        max_retries: int | None = None,
+        retry_interval: int | None = None,
+        retry_max_interval: int | None = None,
     ) -> dict:
         url = f"{base_url}/v1/chat/completions"
         payload = {
@@ -1790,6 +2008,27 @@ class BaseSmoketest:
             "temperature": 0,
         }
 
+        # Same retry budget as /v1/completions -- the chat fallback also
+        # benefits from giving the server time to warm up.
+        max_retries = self._resolve_wait_setting(
+            plan_config,
+            "inferenceMaxRetries",
+            max_retries,
+            self._DEFAULT_INFERENCE_MAX_RETRIES,
+        )
+        retry_interval = self._resolve_wait_setting(
+            plan_config,
+            "inferenceRetryBaseInterval",
+            retry_interval,
+            self._DEFAULT_INFERENCE_RETRY_BASE,
+        )
+        retry_max_interval = self._resolve_wait_setting(
+            plan_config,
+            "inferenceRetryMaxInterval",
+            retry_max_interval,
+            self._DEFAULT_INFERENCE_RETRY_MAX,
+        )
+
         for attempt in range(1, max_retries + 1):
             stdout, err = self._curl_post(cmd, namespace, url, payload, plan_config)
 
@@ -1797,21 +2036,56 @@ class BaseSmoketest:
                 if _is_retryable(err) and attempt < max_retries:
                     context.logger.log_info(
                         f"Chat attempt {attempt}/{max_retries}: {err[:80]}, "
-                        f"retrying in {retry_interval}s..."
+                        f"retrying in {self._compute_backoff(attempt, retry_interval, retry_max_interval)}s..."
                     )
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": err}
 
             try:
                 resp = json.loads(stdout)
             except json.JSONDecodeError:
-                if _is_retryable(stdout) and attempt < max_retries:
-                    time.sleep(retry_interval)
+                # JSON decode failed -- empty body, partial body, or
+                # garbage. All three are dominated by transient
+                # warmup races (model server still loading after
+                # /v1/models began responding, gateway flapping
+                # mid-request, sim's request handler not yet bound).
+                # We have no negative signal -- the HTTP status was
+                # already vetted as 2xx by _curl_post -- so retry
+                # unconditionally up to max_retries before falling
+                # back to /v1/chat/completions. Don't gate on
+                # _is_retryable here: that function looks for known
+                # error strings (502/503/504/...) but for "no body"
+                # there's nothing to match, and the historical
+                # `_is_retryable("") -> False` made every transient
+                # warmup race a hard smoketest failure.
+                body_preview = stdout[:200].strip() or "(empty body)"
+                if attempt < max_retries:
+                    context.logger.log_info(
+                        f"Attempt {attempt}/{max_retries}: non-JSON body "
+                        f"({body_preview[:60]}), retrying in {retry_interval}s..."
+                    )
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
+                # Out of retries -- fall back to /v1/chat/completions.
+                # Modern chat-only model servers and the llm-d
+                # simulator both produce empty /v1/completions
+                # responses; the chat endpoint usually works.
+                # Chat-completions has no further fallback target so
+                # its should_fallback is a no-op (kept for symmetric
+                # error shape).
                 return {
                     "success": False,
-                    "error": f"Non-JSON response from {url}: {stdout[:200]}",
+                    "error": f"Non-JSON response from {url}: {body_preview}",
+                    "should_fallback": True,
                 }
 
             if "error" in resp:
@@ -1819,13 +2093,21 @@ class BaseSmoketest:
                 if isinstance(error_msg, dict):
                     error_msg = error_msg.get("message", str(error_msg))
                 if _is_retryable(str(error_msg)) and attempt < max_retries:
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": str(error_msg)}
 
             if "choices" not in resp or not resp["choices"]:
                 if attempt < max_retries:
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": f"Missing choices from {url}"}
 
@@ -1833,7 +2115,11 @@ class BaseSmoketest:
             text = message.get("content", "").strip()
             if not text:
                 if attempt < max_retries:
-                    time.sleep(retry_interval)
+                    time.sleep(
+                        self._compute_backoff(
+                            attempt, retry_interval, retry_max_interval
+                        )
+                    )
                     continue
                 return {"success": False, "error": f"No content in response from {url}"}
 
@@ -1856,9 +2142,14 @@ class BaseSmoketest:
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
 
+        # `-w '\n%{http_code}'` appends a trailing line with the HTTP
+        # status so an empty body is still diagnosable (empty + 404 vs
+        # empty + 502 vs empty + 200 look identical to `-s` alone).
+        # We split the status off in Python before returning the body.
         curl_cmd = (
             f"'echo {payload_b64} | base64 -d | "
             f"curl -sk --max-time {timeout_seconds} "
+            f'-w "\\n%{{http_code}}" '
             f"-X POST {url} "
             f'-H "Content-Type: application/json" '
             f"-d @- 2>&1'"
@@ -1890,7 +2181,20 @@ class BaseSmoketest:
             detail = result.stderr[:300] or result.stdout[:300]
             return "", f"Curl to {url} failed: {detail}"
 
-        return result.stdout.strip(), None
+        # Split the trailing HTTP status off from the body. Curl writes
+        # the body followed by "\n<status>". A non-2xx status with an
+        # empty body becomes a meaningful error string instead of
+        # disappearing into "Non-JSON response: (empty body)".
+        stdout = result.stdout
+        body, _, status_part = stdout.rpartition("\n")
+        status = status_part.strip()
+        body = body.strip()
+        if status and not status.startswith("2"):
+            # Body of error responses (when the server bothered to send
+            # one) is more useful than the status alone, so include both.
+            body_preview = body[:200] or "(empty body)"
+            return body, (f"Curl POST {url} returned HTTP {status}: {body_preview}")
+        return body, None
 
     def _print_demo_command(
         self,

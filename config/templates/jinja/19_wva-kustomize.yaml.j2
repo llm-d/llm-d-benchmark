@@ -1,0 +1,62 @@
+{# ============================================================================
+   19_wva-kustomize.yaml.j2
+
+   Kustomization wrapper that installs the Workload Variant Autoscaler (WVA)
+   via the llm-d guide's well-lit-path overlay
+   (`guides/workload-autoscaling/wva-config/platform/ocp`). The well-lit-path
+   in turn references the WVA repo's `config/overlays/namespace-scoped/openshift`
+   upstream and layers a few additive patches on top (ServiceMonitor labels,
+   metrics-auth ClusterRoleBinding, EPP token Secret).
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+{% set _wva_ns = wva.namespace | default(namespace.name, true) %}
+{# ClusterRoleBindings produced by the upstream overlay. Per-tenant uniqueness
+   is added by suffixing metadata.name with the WVA namespace; roleRef.name
+   stays at the upstream default because the ClusterRole is shared. #}
+{% set _cluster_role_bindings = [
+  'wva-epp-metrics-reader-role-binding',
+  'wva-manager-cluster-monitoring-view',
+  'wva-manager-rolebinding',
+  'wva-metrics-auth-rolebinding',
+  'wva-metrics-reader-rolebinding',
+  'wva-prometheus-cluster-monitoring-view',
+] %}
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: {{ _wva_ns }}
+
+resources:
+- github.com/llm-d/llm-d/guides/workload-autoscaling/wva-config/platform/ocp?ref={{ wva.repoRef | default('main') }}
+
+{% if wva.image is defined and wva.image.repository is defined %}
+images:
+- name: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
+  newName: {{ wva.image.repository }}
+  newTag: {{ wva.image.tag | default('latest') }}
+{% endif %}
+
+patches:
+- target:
+    kind: Deployment
+    name: wva-controller-manager
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: {{ wva.replicaCount | default(1) }}
+
+# Suffix each ClusterRoleBinding's metadata.name with the WVA namespace so
+# concurrent WVA installs in different namespaces don't fight over these
+# cluster-scoped binding names
+{% for _crb in _cluster_role_bindings %}
+- target:
+    kind: ClusterRoleBinding
+    name: {{ _crb }}
+  patch: |-
+    - op: replace
+      path: /metadata/name
+      value: {{ _crb }}-{{ _wva_ns }}
+{% endfor %}
+{% endif %}

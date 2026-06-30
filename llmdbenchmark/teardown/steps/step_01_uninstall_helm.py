@@ -1,5 +1,6 @@
 """Teardown Step 01 -- Uninstall Helm releases, OpenShift routes, and download jobs."""
 
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -7,6 +8,7 @@ import yaml
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
 from llmdbenchmark.utilities.kube_helpers import (
     force_remove_finalizers_by_selector,
     wait_for_pods_deleted,
@@ -29,8 +31,10 @@ class UninstallHelmStep(Step):
         # We still run for WVA-enabled stacks even when neither
         # modelservice nor fma is in deployed_methods, so the VA+HPA
         # resources get cleaned up.
-        if ("modelservice" in context.deployed_methods
-                or "fma" in context.deployed_methods):
+        if (
+            "modelservice" in context.deployed_methods
+            or "fma" in context.deployed_methods
+        ):
             return False
         return not self._any_stack_has_wva(context)
 
@@ -113,9 +117,11 @@ class UninstallHelmStep(Step):
             emoji="🗑️",
         )
         cmd.kube(
-            "delete", "replicaset",
+            "delete",
+            "replicaset",
             "--selector=stood-up-via=fma",
-            "--namespace", namespace,
+            "--namespace",
+            namespace,
             "--ignore-not-found=true",
             check=False,
         )
@@ -128,8 +134,13 @@ class UninstallHelmStep(Step):
         ]
         for kind in fma_cr_kinds:
             result = cmd.kube(
-                "get", kind, "--namespace", namespace,
-                "-o", "name", "--ignore-not-found",
+                "get",
+                kind,
+                "--namespace",
+                namespace,
+                "-o",
+                "name",
+                "--ignore-not-found",
                 check=False,
             )
             if not result.success or not result.stdout.strip():
@@ -140,9 +151,12 @@ class UninstallHelmStep(Step):
                     emoji="🗑️",
                 )
                 cmd.kube(
-                    "delete", "--namespace", namespace,
+                    "delete",
+                    "--namespace",
+                    namespace,
                     "--ignore-not-found=true",
-                    cr, check=False,
+                    cr,
+                    check=False,
                 )
 
         # Wait for all FMA pods to terminate while the controller is still running.
@@ -168,12 +182,20 @@ class UninstallHelmStep(Step):
         return labels
 
     def _uninstall_releases(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespace: str, release: str, model_labels: list[str], errors: list
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        release: str,
+        model_labels: list[str],
+        errors: list,
     ):
         """Find and uninstall Helm releases matching the release name or model labels."""
         result = cmd.helm(
-            "list", "--namespace", namespace, "--no-headers",
+            "list",
+            "--namespace",
+            namespace,
+            "--no-headers",
         )
         if not result.success:
             return
@@ -185,16 +207,17 @@ class UninstallHelmStep(Step):
             release_name = parts[0]
             if self._release_matches(release_name, release, model_labels):
                 context.logger.log_info(
-                    f"Uninstalling Helm release \"{release_name}\" "
-                    f"from {namespace}"
+                    f'Uninstalling Helm release "{release_name}" from {namespace}'
                 )
                 uninstall = cmd.helm(
-                    "uninstall", release_name, "--namespace", namespace,
+                    "uninstall",
+                    release_name,
+                    "--namespace",
+                    namespace,
                 )
                 if not uninstall.success:
                     errors.append(
-                        f"Failed to uninstall {release_name}: "
-                        f"{uninstall.stderr}"
+                        f"Failed to uninstall {release_name}: {uninstall.stderr}"
                     )
 
     @staticmethod
@@ -207,8 +230,11 @@ class UninstallHelmStep(Step):
         return any(label in release_name for label in model_labels)
 
     def _delete_openshift_routes(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespace: str, release: str
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        release: str,
     ):
         """Delete OpenShift routes for the inference gateway."""
         if not context.is_openshift:
@@ -219,18 +245,18 @@ class UninstallHelmStep(Step):
             f"{release}-inference-gateway",
         ]:
             context.logger.log_info(
-                f"Deleting OpenShift route \"{route_name}\" "
-                f"from {namespace}"
+                f'Deleting OpenShift route "{route_name}" from {namespace}'
             )
             result = cmd.kube(
-                "delete", "--namespace", namespace,
+                "delete",
+                "--namespace",
+                namespace,
                 "--ignore-not-found=true",
-                "route", route_name,
+                "route",
+                route_name,
             )
             if result.success:
-                context.logger.log_info(
-                    f"  Deleted route/{route_name}", emoji="🗑️"
-                )
+                context.logger.log_info(f"  Deleted route/{route_name}", emoji="🗑️")
 
     def _teardown_wva(
         self, cmd: CommandExecutor, context: ExecutionContext, errors: list
@@ -267,8 +293,8 @@ class UninstallHelmStep(Step):
             )
             return
 
-        wva_stacks: list[tuple[str, str]] = []  # (wva_namespace, model_id_label)
-        seen_ns: set[str] = set()
+        wva_stacks: list[tuple[str, str, bool, Path]] = []
+        seen_ns: dict[str, Path] = {}  # wva_ns -> first stack_path with that ns
 
         for stack_path in context.rendered_stacks or []:
             cfg_file = stack_path / "config.yaml"
@@ -282,28 +308,34 @@ class UninstallHelmStep(Step):
             wva_cfg = cfg.get("wva", {}) or {}
             if not wva_cfg.get("enabled", False):
                 continue
-            wva_ns = (
-                wva_cfg.get("namespace")
-                or cfg.get("namespace", {}).get("name", "")
+            wva_ns = wva_cfg.get("namespace") or cfg.get("namespace", {}).get(
+                "name", ""
             )
             model_id_label = cfg.get("model_id_label", "")
+            fma_enabled = bool((cfg.get("fma", {}) or {}).get("enabled", False))
             if wva_ns and model_id_label:
-                wva_stacks.append((wva_ns, model_id_label))
-                seen_ns.add(wva_ns)
+                wva_stacks.append((wva_ns, model_id_label, fma_enabled, stack_path))
+                if wva_ns not in seen_ns:
+                    seen_ns[wva_ns] = stack_path
 
         if not wva_stacks:
             return
 
-        # 1. Per-stack VariantAutoscaling + HPA: always delete.
-        for wva_ns, model_id_label in wva_stacks:
-            resource_name = f"{model_id_label}-decode"
+        # 1. Per-stack VariantAutoscaling + HPA: always delete. Suffix is
+        # `-fma` under FMA, `-decode` otherwise -- matches templates 27/28.
+        for wva_ns, model_id_label, fma_enabled, _stack_path in wva_stacks:
+            variant_suffix = "fma" if fma_enabled else "decode"
+            resource_name = f"{model_id_label}-{variant_suffix}"
             for kind in ("hpa", "variantautoscaling.llmd.ai"):
                 context.logger.log_info(
                     f"Deleting {kind}/{resource_name} from ns/{wva_ns}"
                 )
                 result = cmd.kube(
-                    "delete", kind, resource_name,
-                    "--namespace", wva_ns,
+                    "delete",
+                    kind,
+                    resource_name,
+                    "--namespace",
+                    wva_ns,
                     "--ignore-not-found=true",
                     check=False,
                 )
@@ -342,40 +374,52 @@ class UninstallHelmStep(Step):
         else:
             mode_msg = "Full-scenario teardown: uninstalling WVA controller(s)."
         context.logger.log_info(
-            f"{mode_msg} prometheus-adapter and shared cluster RBAC are "
-            "kept intact."
+            f"{mode_msg} prometheus-adapter and shared cluster RBAC are kept intact."
         )
         for wva_ns in sorted(seen_ns):
+            stack_path = seen_ns[wva_ns]
+            kustomize_yaml = _find_yaml(stack_path, "19_wva-kustomize")
+            if not kustomize_yaml or not _has_yaml_content(kustomize_yaml):
+                context.logger.log_info(
+                    f"WVA kustomization not found for ns/{wva_ns} "
+                    "-- skipping controller uninstall."
+                )
+                continue
             context.logger.log_info(
-                f"Uninstalling helm release "
-                f"workload-variant-autoscaler from ns/{wva_ns}"
+                f"Uninstalling WVA controller via kustomize from ns/{wva_ns}"
             )
-            uninstall = cmd.helm(
-                "uninstall", "workload-variant-autoscaler",
-                "--namespace", wva_ns,
+            tmp_dir = Path(tempfile.mkdtemp())
+            (tmp_dir / "kustomization.yaml").write_text(
+                kustomize_yaml.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            uninstall = cmd.kube(
+                "delete",
+                "-k",
+                str(tmp_dir),
                 "--ignore-not-found",
                 check=False,
             )
-            if not uninstall.success and "not found" not in (uninstall.stderr or "").lower():
+            if (
+                not uninstall.success
+                and "not found" not in (uninstall.stderr or "").lower()
+            ):
                 errors.append(
                     f"Failed to uninstall WVA controller in {wva_ns}: "
                     f"{uninstall.stderr}"
                 )
 
     def _delete_download_job(
-        self, cmd: CommandExecutor, context: ExecutionContext,
-        namespace: str
+        self, cmd: CommandExecutor, context: ExecutionContext, namespace: str
     ):
         """Delete the model download job."""
-        context.logger.log_info(
-            f"Deleting download job in {namespace}"
-        )
+        context.logger.log_info(f"Deleting download job in {namespace}")
         result = cmd.kube(
-            "delete", "--namespace", namespace,
+            "delete",
+            "--namespace",
+            namespace,
             "--ignore-not-found=true",
-            "job", "download-model",
+            "job",
+            "download-model",
         )
         if result.success:
-            context.logger.log_info(
-                "  Deleted job/download-model", emoji="🗑️"
-            )
+            context.logger.log_info("  Deleted job/download-model", emoji="🗑️")

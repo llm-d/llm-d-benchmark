@@ -47,7 +47,7 @@ design:
   setup:
     factors:
       - name: pluginsConfigFile
-        key: pluginsCustomConfig.configFile
+        key: router.epp.pluginsConfigFile
         levels: [default, prefix-cache-estimate-config, prefix-cache-tracking-config]
         description: Routing plugin configuration for prefix-cache-aware scheduling
     constants:
@@ -107,12 +107,14 @@ setup:
     model.maxModelLen: 16000
     model.blockSize: 64
   treatments:
+    # router.epp.pluginsConfigFile flows through 12_router-values.yaml.j2
+    # to the llm-d-router chart's `router.epp.pluginsConfigFile` value.
     - name: routing-default
-      pluginsCustomConfig.configFile: default
+      router.epp.pluginsConfigFile: default-plugins.yaml
     - name: routing-estimate
-      pluginsCustomConfig.configFile: prefix-cache-estimate-config
+      router.epp.pluginsConfigFile: prefix-cache-estimate-config.yaml
     - name: routing-tracking
-      pluginsCustomConfig.configFile: prefix-cache-tracking-config
+      router.epp.pluginsConfigFile: prefix-cache-tracking-config.yaml
 
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #

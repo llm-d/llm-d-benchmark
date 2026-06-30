@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.endpoint import test_model_serving, cleanup_ephemeral_pods
 
 
@@ -21,7 +21,7 @@ class VerifyModelStep(Step):
 
     def should_skip(self, context: ExecutionContext) -> bool:
         """Skip model verification in skip-run mode or fma."""
-        return context.harness_skip_run or "fma" in context.deployed_methods
+        return context.harness_skip_run or is_fma_only_mode(context)
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -41,7 +41,9 @@ class VerifyModelStep(Step):
         # Determine model name
         plan_config = self._load_stack_config(stack_path)
         model_name = self._resolve(
-            plan_config, "model.name", context_value=context.model_name,
+            plan_config,
+            "model.name",
+            context_value=context.model_name,
         )
         if not model_name:
             return StepResult(
@@ -63,9 +65,7 @@ class VerifyModelStep(Step):
                 step_name=self.name,
                 success=False,
                 message="No endpoint URL available",
-                errors=[
-                    "Endpoint detection (step 02) must run first."
-                ],
+                errors=["Endpoint detection (step 02) must run first."],
                 stack_name=stack_name,
             )
 
@@ -77,9 +77,7 @@ class VerifyModelStep(Step):
         host, port, url_path_prefix = self._parse_endpoint(endpoint_url)
         namespace = context.harness_namespace or context.namespace or ""
 
-        context.logger.log_info(
-            f"Verifying model '{model_name}' at {endpoint_url}..."
-        )
+        context.logger.log_info(f"Verifying model '{model_name}' at {endpoint_url}...")
 
         error = test_model_serving(
             cmd,
@@ -88,8 +86,6 @@ class VerifyModelStep(Step):
             port,
             model_name,
             plan_config,
-            max_retries=3,
-            retry_interval=10,
             service_account=context.harness_service_account,
             url_path_prefix=url_path_prefix,
         )
@@ -108,9 +104,7 @@ class VerifyModelStep(Step):
                 stack_name=stack_name,
             )
 
-        context.logger.log_info(
-            f"Model '{model_name}' verified at {endpoint_url}"
-        )
+        context.logger.log_info(f"Model '{model_name}' verified at {endpoint_url}")
         return StepResult(
             step_number=self.number,
             step_name=self.name,

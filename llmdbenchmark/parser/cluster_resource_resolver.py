@@ -10,6 +10,45 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+from kubernetes import client as k8s_client
+
+
+def effective_accelerator_count(method_config: dict) -> tuple[int, str]:
+    """Resolve the per-pod accelerator count for a method section.
+
+    Mirrors the fallback chain in ``config/templates/jinja/13_ms-values.yaml.j2``
+    line 252:
+
+        decode.accelerator.count   (explicit)
+          ↓ (if unset)
+        decode.parallelism.tensor  (canonical vLLM pattern -- TP degree
+                                    equals per-pod GPU count)
+
+    Returns ``(count, source)`` so callers can log which field was consulted.
+    Parsing failures return ``(0, "parse-error")`` so callers treat the method
+    as CPU-only -- the safe choice when the config is unintelligible.
+
+    Shared by the resolver (skip ``"auto"`` substitution for CPU-only
+    sections) and ``step_03_workload_monitoring`` (skip node-selector
+    validation for CPU-only sections). Keeping it in one place prevents
+    those two skip paths from drifting.
+    """
+    accel = method_config.get("accelerator")
+    if isinstance(accel, dict) and "count" in accel:
+        try:
+            return int(accel["count"]), "accelerator.count (explicit)"
+        except (ValueError, TypeError):
+            return 0, "parse-error"
+
+    parallelism = method_config.get("parallelism")
+    if isinstance(parallelism, dict) and "tensor" in parallelism:
+        try:
+            return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
+        except (ValueError, TypeError):
+            return 0, "parse-error"
+
+    return 0, "unset"
+
 
 @dataclass
 class NodeResources:
@@ -25,6 +64,10 @@ class NodeResources:
     # Maps label_key -> sorted list of label_values.
     # e.g. {"nvidia.com/gpu.product": ["NVIDIA-H100-80GB-HBM3"]}
     gpu_labels: dict[str, list[str]] = field(default_factory=dict)
+
+    # DRA driver names from ResourceSlices, e.g. ["gpu.intel.com"]. These
+    # accelerators expose no node capacity resource or SKU label.
+    dra_drivers: list[str] = field(default_factory=list)
 
 
 class ClusterResourceResolver:
@@ -45,11 +88,49 @@ class ClusterResourceResolver:
         "gpu.intel.com/xe",
     ]
 
-    # Known GPU label keys (checked in node metadata.labels)
+    # Attribute names that mark a node label as a GPU SKU identifier (as
+    # opposed to a count, memory size, or feature flag). The matcher pulls
+    # the part after the LAST ``/`` or ``.``, so both naming conventions
+    # converge: ``nvidia.com/gpu.product`` → ``product`` and
+    # ``gpu.intel.com/family`` → ``family`` both hit the set.
+    GPU_SKU_LABEL_ATTRIBUTES = frozenset(
+        {
+            "product",  # nvidia.com/gpu.product, gpu.intel.com/product
+            "product-name",  # kubernetes.amd.com/gpu.product-name
+            "family",  # nvidia.com/gpu.family, gpu.intel.com/family
+            "class",  # gpu.nvidia.com/class
+        }
+    )
+
+    # Priority order for GPU label attribute selection when multiple labels
+    # are available. Labels are matched by their final attribute name (after
+    # the last `/` or `.`). Cloud provider labels (no attribute suffix) are
+    # treated as highest priority. Earlier items are preferred.
+    GPU_LABEL_PRIORITY = [
+        None,  # Cloud provider labels (cloud.google.com/gke-accelerator)
+        "product",  # Most specific SKU identifier
+        "product-name",  # AMD's variant of product
+        "family",  # GPU family (less specific than product)
+        "class",  # GPU class (least specific)
+    ]
+
+    # Cloud-managed accelerator labels that don't follow the vendor-prefix
+    # convention (the node operator sets them on accelerator-enabled nodes).
+    CLOUD_PROVIDER_GPU_LABEL_KEYS = ("cloud.google.com/gke-accelerator",)
+
+    # Explicit allow-list for labels that DON'T share a namespace with their
+    # vendor's accelerator resource and therefore can't be matched by the
+    # generic heuristic. ``gpu.nvidia.com/class`` is the canonical example:
+    # the resource is ``nvidia.com/gpu`` (prefix ``nvidia.com/``) but the
+    # label lives under ``gpu.nvidia.com/`` -- different prefix entirely.
+    #
+    # Conventional ``{vendor}/gpu.{attribute}`` labels (NVIDIA's standard
+    # ``nvidia.com/gpu.product``, AMD's ``amd.com/gpu.product-name``, Intel's
+    # ``gpu.intel.com/family``, etc.) DO NOT need to be added here -- the
+    # heuristic in ``_looks_like_gpu_sku_label`` matches them via the vendor
+    # prefix derived from ``accelerator_resources``.
     KNOWN_GPU_LABEL_KEYS = [
-        "nvidia.com/gpu.product",
         "gpu.nvidia.com/class",
-        "cloud.google.com/gke-accelerator",
     ]
 
     # Known network resource keys (checked in node status.capacity)
@@ -183,8 +264,6 @@ class ClusterResourceResolver:
             return resources
 
         try:
-            from kubernetes import client as k8s_client
-
             v1 = k8s_client.CoreV1Api(self._api_client)
             nodes = v1.list_node()
 
@@ -192,6 +271,8 @@ class ClusterResourceResolver:
             net_set: set[str] = set()
             gpu_labels: dict[str, set[str]] = {}
 
+            # First pass: collect accelerator/network resources so we know
+            # which vendor prefixes are in play before we filter labels.
             for node in nodes.items:
                 capacity = node.status.capacity or {}
                 for key, count in capacity.items():
@@ -202,15 +283,30 @@ class ClusterResourceResolver:
                         if str(count) not in ("0", ""):
                             net_set.add(key)
 
+            accel_vendors = self._vendor_prefixes(accel_set)
+
+            # Second pass: scan labels with vendor context. The heuristic
+            # (vendor prefix + SKU suffix) catches Intel, Habana, and future
+            # vendors out of the box; the explicit allow-list catches the
+            # few cross-namespace cases.
+            for node in nodes.items:
                 labels = node.metadata.labels or {}
-                for label_key in self.KNOWN_GPU_LABEL_KEYS:
-                    if label_key in labels and labels[label_key]:
-                        gpu_labels.setdefault(label_key, set()).add(labels[label_key])
+                for label_key, label_value in labels.items():
+                    if not label_value:
+                        continue
+                    if self._looks_like_gpu_sku_label(label_key, accel_vendors):
+                        gpu_labels.setdefault(label_key, set()).add(label_value)
 
             resources.accelerator_resources = sorted(accel_set)
             resources.network_resources = sorted(net_set)
             resources.gpu_labels = {k: sorted(v) for k, v in gpu_labels.items()}
+            resources.dra_drivers = self._scan_dra_drivers()
 
+            if resources.dra_drivers:
+                self.logger.log_info(
+                    f"Discovered DRA accelerator drivers: "
+                    f"{', '.join(resources.dra_drivers)}"
+                )
             if resources.accelerator_resources:
                 self.logger.log_info(
                     f"Discovered accelerator resources: "
@@ -236,6 +332,100 @@ class ClusterResourceResolver:
 
         self._node_resources = resources
         return resources
+
+    def _scan_dra_drivers(self) -> list[str]:
+        """Driver names from ResourceSlices (resource.k8s.io). Empty if none/unsupported."""
+        drivers: set[str] = set()
+        for version in ("v1", "v1beta2", "v1beta1"):
+            try:
+                api = k8s_client.CustomObjectsApi(self._api_client)
+                slices = api.list_cluster_custom_object(
+                    group="resource.k8s.io",
+                    version=version,
+                    plural="resourceslices",
+                )
+            except Exception:
+                continue
+            for item in slices.get("items", []):
+                driver = (item.get("spec") or {}).get("driver")
+                if driver:
+                    drivers.add(driver)
+            break
+        return sorted(drivers)
+
+    @staticmethod
+    def _vendor_prefixes(accelerator_resources: set[str] | list[str]) -> set[str]:
+        """Derive vendor label prefixes from discovered accelerator resource keys.
+
+        ``"nvidia.com/gpu"`` → ``"nvidia.com/"``
+        ``"gpu.intel.com/i915"`` → ``"gpu.intel.com/"``
+        ``"amd.com/gpu"`` → ``"amd.com/"``
+        ``"habana.ai/gaudi"`` → ``"habana.ai/"``
+
+        Used to constrain the generic SKU-suffix label search to vendors
+        actually present on the cluster, preventing false-positive matches
+        on unrelated labels that happen to end in ``.product`` etc.
+        """
+        return {r.split("/", 1)[0] + "/" for r in accelerator_resources if "/" in r}
+
+    @classmethod
+    def _looks_like_gpu_sku_label(
+        cls, label_key: str, accelerator_vendors: set[str]
+    ) -> bool:
+        """True when ``label_key`` is most likely a GPU SKU identifier.
+
+        Decision order:
+          1. Explicit allow-list (cross-namespace conventions we can't derive,
+             e.g. ``gpu.nvidia.com/class``).
+          2. Cloud-managed accelerator labels (don't follow vendor prefix).
+          3. Generic: starts with a vendor prefix discovered on the cluster
+             AND the final attribute name is one we know identifies a SKU.
+
+        Final attribute is extracted by splitting on the LAST ``/`` then on
+        the LAST ``.``, so both ``nvidia.com/gpu.product`` → ``product`` and
+        ``gpu.intel.com/family`` → ``family`` map to the same set.
+
+        The vendor gate prevents matching unrelated labels (e.g. NFD feature
+        labels) when no GPU capacity is present on the cluster.
+        """
+        if label_key in cls.KNOWN_GPU_LABEL_KEYS:
+            return True
+        if label_key in cls.CLOUD_PROVIDER_GPU_LABEL_KEYS:
+            return True
+        if not any(label_key.startswith(v) for v in accelerator_vendors):
+            return False
+        attribute = label_key.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
+        return attribute in cls.GPU_SKU_LABEL_ATTRIBUTES
+
+    @classmethod
+    def _select_best_gpu_label_key(cls, gpu_labels: dict[str, list[str]]) -> str:
+        """Select the most appropriate GPU label key from available options.
+
+        Uses GPU_LABEL_PRIORITY to prefer more specific labels (e.g., product)
+        over less specific ones (e.g., family, class). Cloud provider labels
+        (no attribute suffix) are highest priority.
+
+        Returns the first key in priority order, or the first key in sorted
+        order if none match the priority list (should not happen in practice).
+        """
+        if not gpu_labels:
+            raise ValueError("gpu_labels is empty")
+
+        # Try each priority level in order
+        for priority_attr in cls.GPU_LABEL_PRIORITY:
+            for label_key in gpu_labels:
+                if priority_attr is None:
+                    # Cloud provider labels have no attribute suffix
+                    if label_key in cls.CLOUD_PROVIDER_GPU_LABEL_KEYS:
+                        return label_key
+                else:
+                    # Extract attribute from label key
+                    attr = label_key.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
+                    if attr == priority_attr:
+                        return label_key
+
+        # Fallback: return first key in sorted order (for determinism)
+        return sorted(gpu_labels.keys())[0]
 
     def _resolve_accelerator_resource(
         self,
@@ -326,7 +516,7 @@ class ClusterResourceResolver:
         resources = self._node_resources or NodeResources()
 
         if resources.gpu_labels:
-            label_key = next(iter(resources.gpu_labels))
+            label_key = self._select_best_gpu_label_key(resources.gpu_labels)
             label_value = resources.gpu_labels[label_key][0]
 
             affinity["nodeSelector"] = {label_key: label_value}
@@ -349,6 +539,12 @@ class ClusterResourceResolver:
 
         When ``labelValue`` is ``"auto"``, detect the GPU product label from
         the cluster and set both ``labelKey`` and ``labelValue``.
+
+        Sections that are disabled or don't actually request accelerators
+        (CPU-only / sim scenarios such as ``cicd/kind``) are skipped silently:
+        the inherited default ``labelValue: "auto"`` is meaningless to them
+        and a failure to discover would be a false positive. This matches
+        the skip logic in ``step_03_workload_monitoring._validate_node_selectors``.
         """
         resources = self._node_resources or NodeResources()
 
@@ -364,8 +560,25 @@ class ClusterResourceResolver:
             if accel_type.get("labelValue") != "auto":
                 continue
 
+            if section_dict.get("enabled") is False:
+                self.logger.log_debug(
+                    f"Skipping {section}.acceleratorType resolution: "
+                    f"{section}.enabled is false"
+                )
+                continue
+
+            accel_count, count_source = effective_accelerator_count(section_dict)
+            if accel_count == 0:
+                self.logger.log_info(
+                    f"Skipping {section}.acceleratorType resolution: "
+                    f"effective accelerator count is 0 (source: {count_source})"
+                )
+                # Leave the literal "auto" in place -- the validator already
+                # skips CPU-only sections, so it won't be looked up either.
+                continue
+
             if resources.gpu_labels:
-                label_key = next(iter(resources.gpu_labels))
+                label_key = self._select_best_gpu_label_key(resources.gpu_labels)
                 label_value = resources.gpu_labels[label_key][0]
 
                 accel_type["labelKey"] = label_key
@@ -374,6 +587,40 @@ class ClusterResourceResolver:
                     f"Resolved {section}.acceleratorType: "
                     f"labelKey={label_key}, labelValue={label_value}"
                 )
+            elif resources.accelerator_resources:
+                # Cluster has GPU resources (e.g. amd.com/gpu) but no SKU
+                # label we recognise. Drop the acceleratorType constraint so
+                # 13_ms-values.yaml.j2's `if d_accel_type.labelKey is defined`
+                # gate falls through and no nodeSelector is rendered -- the
+                # scheduler will place pods using the GPU resource request
+                # alone. Scenarios that need SKU isolation can pin labelKey
+                # and labelValue explicitly.
+                resource_list = ", ".join(resources.accelerator_resources)
+                self.logger.log_warning(
+                    f"Cluster has GPU resources ({resource_list}) but none of the "
+                    f"recognised GPU SKU labels ({', '.join(self.KNOWN_GPU_LABEL_KEYS)}) "
+                    f"are present. Dropping {section}.acceleratorType constraint -- "
+                    "pods will schedule via resource request only. To require a "
+                    f"specific SKU, set {section}.acceleratorType.labelKey and "
+                    "labelValue explicitly in your scenario."
+                )
+                accel_type.pop("labelKey", None)
+                accel_type.pop("labelValue", None)
+                accel_type.pop("labelValues", None)
+            elif resources.dra_drivers:
+                # GPUs managed via DRA (e.g. gpu.intel.com): no node capacity
+                # resource or SKU label exists, pods schedule via ResourceClaim.
+                # Drop the acceleratorType constraint, same as the resource case.
+                self.logger.log_warning(
+                    f"Cluster uses DRA accelerator drivers "
+                    f"({', '.join(resources.dra_drivers)}) with no GPU SKU label. "
+                    f"Dropping {section}.acceleratorType constraint -- pods schedule "
+                    "via ResourceClaim. To require a specific SKU, set "
+                    f"{section}.acceleratorType.labelKey and labelValue explicitly."
+                )
+                accel_type.pop("labelKey", None)
+                accel_type.pop("labelValue", None)
+                accel_type.pop("labelValues", None)
             else:
                 unresolved.append(f"{section}.acceleratorType.labelValue")
 

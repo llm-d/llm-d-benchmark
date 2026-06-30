@@ -134,9 +134,12 @@ def force_remove_finalizers_by_selector(
             emoji="🗑️",
         )
         cmd.kube(
-            "delete", pod,
-            "--namespace", namespace,
-            "--grace-period=0", "--force",
+            "delete",
+            pod,
+            "--namespace",
+            namespace,
+            "--grace-period=0",
+            "--force",
             "--ignore-not-found=true",
             check=False,
         )
@@ -352,11 +355,14 @@ def collect_pod_results(
     local_path = local_results_dir / pod_suffix
     local_path.mkdir(parents=True, exist_ok=True)
 
+    # oc cp does not support --retries; kubectl cp does (v1.23+). Skip flag for oc.
+    cp_args = ["cp"]
+    if not cmd.openshift:
+        cp_args.append("--retries=5")
+    cp_args.extend([remote_path, str(local_path)])
+
     cp_result = cmd.kube(
-        "cp",
-        "--retries=5",
-        remote_path,
-        str(local_path),
+        *cp_args,
         namespace=namespace,
         check=False,
     )

@@ -58,6 +58,17 @@ spec:
 {% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
+    # HuggingFace harness binaries split between the two env-var
+    # names: guidellm and a number of vLLM utilities read HF_TOKEN,
+    # while huggingface_hub-based libraries also accept
+    # HUGGING_FACE_HUB_TOKEN.  Setting both from the same secretKeyRef
+    # eliminates the question -- any harness that reads either name
+    # gets the token.
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
     - name: HUGGING_FACE_HUB_TOKEN
       valueFrom:
         secretKeyRef:
@@ -92,7 +103,7 @@ spec:
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
       value: "{{ monitoring.metricsPath }}"
     - name: LLMDBENCH_EPP_METRICS_SECRET
-      value: "{{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}"
+      value: "{{ router.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}"
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED
       value: "{{ standalone.enabled | lower }}"
@@ -113,6 +124,8 @@ spec:
       value: "{{ fma.launcherConfigurator.port }}"
     - name: LLMDBENCH_FMA_ITERATIONS
       value: "{{ fma.iterations }}"
+    - name: LLMDBENCH_FMA_MAX_INSTANCES
+      value: "{{ fma.launcher.maxInstances }}"
 {% endif %}
 {% if harness.extraEnvVars is defined and harness.extraEnvVars %}
 {% for env_entry in harness.extraEnvVars %}

@@ -121,6 +121,9 @@ def write_benchmark_scenario(file: io.TextIOWrapper, scenario: Scenario):
     file.write(f"  Harness              : {scenario.load.name}\n")
     file.write(f"  Load Format          : {scenario.metadata['load_format']}\n")
     file.write(f"  Sleep Mode On        : {scenario.metadata['sleep_mode']}\n")
+    file.write(
+        f"  Max Instances        : {scenario.metadata.get('max_instances', 'N/A')}\n"
+    )
     file.write(f"  Model                : {scenario.model.name}\n")
     for engine in scenario.platform.engine:
         file.write("  Engine\n")
@@ -293,60 +296,102 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
 
     file.write("\n\n")
     file.write("Actuation Conditions:\n")
-    file.write(
-        "  T_luke_warm: when new launcher created by Dual Pod Controller + new vLLM\n"
-    )
-    file.write("  T_warm: when existing launcher creates new vLLM\n")
-    file.write("  T_hot: when waking up sleeping vLLM\n\n")
+    file.write("  T_cold_launcher: DPC creates new launcher + new vLLM instance\n")
+    file.write("  T_warm: existing launcher creates new vLLM instance\n")
+    file.write("  T_hot: waking sleeping vLLM instance\n\n")
     file.write("T_actuation: Time for the Requester Pod to be ready\n")
-    file.write("TTRD: Time for the Requester Pod to have dual label set\n")
+    file.write("T_hot: Hot-start timing\n")
+    file.write("T_warm: Warm-start timing\n")
+    file.write("T_cold_launcher: Cold-start-with-launcher timing\n")
+    file.write(
+        "Source: DPC = tighter timing from DPC logs, Kube = upper bound from Kube timestamps\n"
+    )
     file.write("T_first_token: Time for vLLM server to return first token\n")
-    file.write("TTRD + T_first_token == T_e2e\n")
     file.write("Each iteration scales ReplicaSet from 0 to 1 and then from 1 to 0\n")
-    file.write("Hit_rate (count(hot starts) / total iterations)\n")
 
     hot_starts = 0
+    warm_starts = 0
+    cold_starts = 0
     total_iterations = len(iterations)
     pandas_datas = []
     for iteration in iterations:
         for launcher_info in iteration["launcher_infos"]:
             ct = float(launcher_info["requester_info"]["creation_timestamp"]["value"])
             rt = float(launcher_info["requester_info"]["ready_timestamp"]["value"])
-            dt = float(launcher_info["requester_info"]["dual_label_timestamp"]["value"])
             ttrr = rt - ct if rt > 0.0 else 0.0
-            ttrd = dt - ct if dt > 0.0 else 0.0
             ttft = float(launcher_info["ttft"]["value"])
             actuation_condition = launcher_info["actuation_condition"]
             if actuation_condition == "T_hot":
                 hot_starts += 1
+            elif actuation_condition == "T_warm":
+                warm_starts += 1
+            elif actuation_condition == "T_cold_launcher":
+                cold_starts += 1
+
+            t_hot = launcher_info.get("t_wake")
+            t_hot_val = (
+                float(t_hot["value"])
+                if isinstance(t_hot, dict) and "value" in t_hot
+                else None
+            )
+            t_warm = launcher_info.get("t_instance_create")
+            t_warm_val = (
+                float(t_warm["value"])
+                if isinstance(t_warm, dict) and "value" in t_warm
+                else None
+            )
+            t_cold = launcher_info.get("t_cold_launcher")
+            t_cold_val = (
+                float(t_cold["value"])
+                if isinstance(t_cold, dict) and "value" in t_cold
+                else None
+            )
+            node = launcher_info.get("launcher_node", "")
+            source = (
+                "DPC" if launcher_info.get("dpc_timing_available", False) else "Kube"
+            )
 
             pandas_datas.append(
                 {
                     "Iteration": iteration["iteration"]["value"],
                     "vLLM Name": launcher_info["name"],
+                    "Node": node,
                     "Actuation Condition": actuation_condition,
-                    "T_actuation(secs)": ttrr,
-                    "TTRD(secs)": ttrd,
-                    "T_first_token(secs)": ttft,
-                    "T_e2e": ttrd + ttft,
+                    "T_actuation(s)": ttrr,
+                    "T_hot(s)": t_hot_val,
+                    "T_warm(s)": t_warm_val,
+                    "T_cold(s)": t_cold_val,
+                    "T_first_token(s)": ttft,
+                    "Source": source,
                 }
             )
 
-    hit_rate = hot_starts / total_iterations if total_iterations > 0 else 0.0
+    hot_hit_rate = hot_starts / total_iterations if total_iterations > 0 else 0.0
+    warm_hit_rate = warm_starts / total_iterations if total_iterations > 0 else 0.0
+    cold_hit_rate = cold_starts / total_iterations if total_iterations > 0 else 0.0
 
     df = pd.DataFrame(pandas_datas)
 
     file.write("\n")
 
     # Float formatting
-    float_columns = ["T_actuation(secs)", "TTRD(secs)", "T_first_token(secs)", "T_e2e"]
+    float_columns = [
+        "T_actuation(s)",
+        "T_hot(s)",
+        "T_warm(s)",
+        "T_cold(s)",
+        "T_first_token(s)",
+    ]
 
-    # Compute column widths dynamically
+    # Compute column widths dynamically.
+    # FMA per-path columns (T_hot, T_warm, T_cold) contain None for
+    # inapplicable paths, so we handle NaN when computing widths.
     col_widths = {}
     for col in df.columns:
         if col in float_columns:
-            # max width between header and max formatted float
-            max_float_width = max(df[col].apply(lambda x: len(f"{x:.4f}")))
+            max_float_width = max(
+                df[col].apply(lambda x: len(f"{x:.4f}") if pd.notna(x) else 2)
+            )
             col_widths[col] = max(len(col), max_float_width)
         else:
             col_widths[col] = max(len(col), df[col].astype(str).apply(len).max())
@@ -365,20 +410,25 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
     )
     file.write(f"{' ' * left_padding}{separator}\n")
 
-    # Rows
+    # Rows -- per-path timing columns show "--" when not applicable
     for _, r in df.iterrows():
         row = []
         for col in df.columns:
             val = r[col]
             if col in float_columns:
-                row.append(f"{val:>{col_widths[col]}.4f}")  # right-align numbers
+                if pd.notna(val):
+                    row.append(f"{val:>{col_widths[col]}.4f}")  # right-align numbers
+                else:
+                    row.append(f"{'--':>{col_widths[col]}}")  # N/A for this path
             elif isinstance(val, int):
                 row.append(f"{val:>{col_widths[col]}}")
             else:
-                row.append(f"{val:<{col_widths[col]}}")  # left-align strings
+                row.append(f"{val:<{col_widths[col]}}")
         file.write(f"{' ' * left_padding}{(' ' * space_between_cols).join(row)}\n")
 
-    file.write(f"\nHit_rate: {hit_rate:8.2f}\n")
+    file.write(f"\n  Hot_hit_rate:            {hot_hit_rate:.2f}\n")
+    file.write(f"  Warm_hit_rate:           {warm_hit_rate:.2f}\n")
+    file.write(f"  Cold_launcher_hit_rate:  {cold_hit_rate:.2f}\n")
 
     file.write("\n")
 

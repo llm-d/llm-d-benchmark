@@ -38,7 +38,9 @@ class RunCleanupPreviousStep(Step):
 
         plan_config = self._load_plan_config(context)
         pod_label = self._resolve(
-            plan_config, "harness.podLabel", default="llmdbench-harness-launcher",
+            plan_config,
+            "harness.podLabel",
+            default="llmdbench-harness-launcher",
         )
 
         context.logger.log_info(
@@ -46,9 +48,12 @@ class RunCleanupPreviousStep(Step):
         )
 
         result = cmd.kube(
-            "delete", "pod",
-            "-l", f"app={pod_label},function=load_generator",
-            "--namespace", harness_ns,
+            "delete",
+            "pod",
+            "-l",
+            f"app={pod_label},function=load_generator",
+            "--namespace",
+            harness_ns,
             "--ignore-not-found",
             check=False,
         )

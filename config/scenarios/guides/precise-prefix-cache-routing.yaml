@@ -10,7 +10,59 @@
 # ============================================================================
 
 scenario:
-  - name: "precise-prefix-cache-aware"
+  - name: "precise-prefix-cache-routing"
+
+    # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
+    # -------------------------------------------------------------------------
+    # When kustomize.enabled is true (or `-t kustomize` is passed) this
+    # scenario is deployed by applying the UPSTREAM llm-d guide directly
+    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
+    # defined ENTIRELY by the guide's own manifests:
+    #
+    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
+    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
+    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
+    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
+    #     (only run/workload treatments still apply).
+    #
+    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
+    # below:
+    #   patches / overlayPath           -> modelserver (the workload pods)
+    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
+    #   guideVariableOverrides          -> override the guide README's ${VAR}
+    # See docs/kustomize.md for the full reference and worked examples.
+    #
+    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
+    # (the deploy is keyed on guideName with no per-stack uniquification --
+    # stacks would collide). Use the modelservice method for multi-model.
+    #
+    # When kustomize.enabled is false (the DEFAULT) this whole block is
+    # inert and the scenario deploys via modelservice/standalone as
+    # configured further below.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      guideName: "precise-prefix-cache-routing"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+      # Inline kustomize strategic merge patches applied on top of the
+      # guide's modelserver base.  For gated models, add an HF_TOKEN
+      # env var patch (the secret is auto-created from HF_TOKEN env):
+      # Default is empty -- upstream guide already injects HF_TOKEN from
+      # the `llm-d-hf-token` Secret (auto-created by standup). Add entries
+      # here only for non-token overrides (e.g. bump replicas, pin a
+      # priorityClassName) -- see optimized-baseline.yaml for an example.
+      patches: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -34,68 +86,11 @@ scenario:
     # =========================================================================
     modelservice:
       enabled: true
-
     standalone:
       enabled: false
 
-    kustomize:
-      enabled: false
-
-#    namespace:
-#      name: llm-d-precise-prefix-cache-aware
-
-    # =======================================================================================
-    # KUSTOMIZE -- Install directly from main llm-d repo "guides/<scenario name>" directory
-    # =======================================================================================
-
-      guideName: "precise-prefix-cache-aware"
-      repoPath: ""
-      repoRef: "main"
-      gaieVersion: ""
-      acceleratorBackend: "gpu/vllm"
-      monitoring: false
-      overlayPath: ""
-      extraHelmValues: []
-      extraHelmSets: {}
-
-      # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      #
-      #   - patch: |
-      #       apiVersion: apps/v1
-      #       kind: Deployment
-      #       metadata:
-      #         name: decode
-      #       spec:
-      #         template:
-      #           spec:
-      #             containers:
-      #               - name: modelserver
-      #                 env:
-      #                   - name: HF_TOKEN
-      #                     valueFrom:
-      #                       secretKeyRef:
-      #                         name: llm-d-hf-token
-      #                         key: HF_TOKEN
-      patches:
-        - patch: |
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: decode
-            spec:
-              replicas: 2
-              template:
-                spec:
-                  volumes:
-                    - name: triton-cache
-                      emptyDir: {}
-                  containers:
-                    - name: modelserver
-                      volumeMounts:
-                        - mountPath: /.triton
-                          name: triton-cache
+    gateway:
+      className: epponly
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
@@ -118,87 +113,134 @@ scenario:
     # UDS tokenizer container, sockets, and volumes -- the legacy
     # post-renderer hack is no longer needed.
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "precise-prefix-cache-config.yaml"
-      sidecar:
-        enabled: true
-      flags:
-        v: 4  # log verbosity
-      pluginsCustomConfig:
-        precise-prefix-cache-config.yaml: |
-          apiVersion: llm-d.ai/v1alpha1
-          kind: EndpointPickerConfig
-          plugins:
-            - type: tokenizer
-              parameters:
-                modelName: Qwen/Qwen3-32B
-                udsTokenizerConfig:
-                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
-            - type: endpoint-notification-source
-            - type: metrics-data-source
-            - type: core-metrics-extractor
-            - type: single-profile-handler
-            - type: decode-filter
-            - type: precise-prefix-cache-scorer
-              parameters:
-                tokenProcessorConfig:
-                  blockSize: 64           # must match vLLM --block-size
-                speculativeIndexing: true
-                indexerConfig:
-                  tokenizersPoolConfig:
-                    modelName: ${model.name}
-                    workersCount: 24
-                    uds:
-                      socketFile: /tmp/tokenizer/tokenizer-uds.socket
-                  kvBlockIndexConfig:
-                    enableMetrics: true
-                kvEventsConfig:
-                  topicFilter: "kv@"
-                  concurrency: 8
-                  discoverPods: true
-                  podDiscoveryConfig:
-                    socketPort: 5556
-            - type: kv-cache-utilization-scorer
-            - type: queue-scorer
-            - type: no-hit-lru-scorer
-            - type: max-score-picker
-          dataLayer:
-            sources:
-              - pluginRef: metrics-data-source
-                extractors:
-                  - pluginRef: core-metrics-extractor
-              - pluginRef: endpoint-notification-source
-                extractors:
-                  - pluginRef: precise-prefix-cache-scorer
-          schedulingProfiles:
-            - name: default
-              plugins:
-                - pluginRef: decode-filter
-                - pluginRef: kv-cache-utilization-scorer
-                  weight: 2.0
-                - pluginRef: queue-scorer
-                  weight: 2.0
-                - pluginRef: precise-prefix-cache-scorer
-                  weight: 3.0
-                - pluginRef: no-hit-lru-scorer
-                  weight: 2.0
-                - pluginRef: max-score-picker
-
-      # InferencePool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
+    router:
+      extraServicePorts:
+        - name: http
+          port: 80
+          protocol: TCP
+          targetPort: 8081
+      epp:
+        replicas: 2
+        flags:
+          # The chart auto-adds `--ha-enable-leader-election` when replicas > 1,
+          # which makes only the leader's readiness probe pass — collapsing to
+          # active-passive. Embedding `=false` into the key forces the single-arg
+          # form (pflag won't parse `--key value` as a bool); pflag honors
+          # last-occurrence wins. No-op when replicas=1.
+          ha-enable-leader-election: false
+          v: 4  # log verbosity
+        env:
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: llm-d-hf-token
+                key: HF_TOKEN
+        pluginsConfigFile: "precise-prefix-cache-routing-plugins.yaml"
+        pluginsCustomConfig:
+          precise-prefix-cache-routing-plugins.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            plugins:
+              - type: token-producer
+                parameters:
+                  modelName: ${model.name}
+                  vllm:
+                    # Standalone render Service (../render/), not a loopback sidecar.
+                    # `precise-prefix-cache-routing-` namePrefix + Service name `render`.
+                    url: "http://precise-prefix-cache-routing-render:8000"
+              - type: endpoint-notification-source
+              - type: precise-prefix-cache-producer # `precise-prefix-cache-scorer` is deprecated
+                parameters:
+                  tokenProcessorConfig:
+                    blockSize: 64
+                  speculativeIndexing: true
+                  indexerConfig:
+                    kvBlockIndexConfig:
+                      enableMetrics: true
+                  kvEventsConfig:
+                    topicFilter: "kv@"
+                    concurrency: 8
+                    discoverPods: true
+                    podDiscoveryConfig:
+                      socketPort: 5556
+              - type: prefix-cache-scorer
+                parameters:
+                  prefixMatchInfoProducerName: precise-prefix-cache-producer
+              - type: kv-cache-utilization-scorer
+              - type: queue-scorer
+              - type: no-hit-lru-scorer
+                parameters:
+                  prefixMatchInfoProducerName: precise-prefix-cache-producer
+            dataLayer: # metrics-data-source + core-metrics-extractor injected by default
+              sources:
+                - pluginRef: endpoint-notification-source
+                  extractors:
+                    - pluginRef: precise-prefix-cache-producer
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: kv-cache-utilization-scorer
+                    weight: 2.0
+                  - pluginRef: queue-scorer
+                    weight: 2.0
+                  - pluginRef: prefix-cache-scorer
+                    weight: 3.0
+                  - pluginRef: no-hit-lru-scorer
+                    weight: 2.0
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
+      proxy:
+        # CLI args for the Envoy sidecar. Override the chart's defaults of
+        # `--log-level trace` (very expensive under load) and no `--concurrency`
+        # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+        # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+        # equivalent below; trace-level logging would burn a meaningful share of
+        # the sidecar's CPU at high QPS.
+        args:
+          - "--service-node"
+          - "envoy-sidecar"
+          - "--log-level"
+          - "warn"
+          - "--concurrency"
+          - "8"
+          - "--drain-strategy"
+          - "immediate"
+          - "--drain-time-s"
+          - "60"
+          - "-c"
+          - "/etc/envoy/envoy.yaml"
+        # Resource requests and limits for the Envoy sidecar.
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
+      inferencePool:
+        failureMode: "FailOpen"
+        providerConfig:
+          destinationRule:
+            trafficPolicy:
+              connectionPool:
+                http:
+                  http1MaxPendingRequests: 256000
+                  maxRequestsPerConnection: 256000
+                  http2MaxRequests: 256000
+                  idleTimeout: "900s"
+                tcp:
+                  maxConnections: 256000
+                  maxConnectionDuration: "1800s"
+                  connectTimeout: "900s"
+      modelServers:
+        type: vllm
+        targetPorts:
+          - number: 8000
+        matchLabels:
+          llm-d.ai/guide: "precise-prefix-cache-routing"
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection

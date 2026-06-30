@@ -5,6 +5,7 @@ from llmdbenchmark.executor.step import Step
 from llmdbenchmark.run.steps.step_00_preflight import RunPreflightStep
 from llmdbenchmark.run.steps.step_01_cleanup_previous import RunCleanupPreviousStep
 from llmdbenchmark.run.steps.step_02_harness_namespace import HarnessNamespaceStep
+from llmdbenchmark.run.steps.step_02a_fma_warmup import FMAWarmupStep
 from llmdbenchmark.run.steps.step_03_detect_endpoint import DetectEndpointStep
 from llmdbenchmark.run.steps.step_04_verify_model import VerifyModelStep
 from llmdbenchmark.run.steps.step_05_render_profiles import RenderProfilesStep
@@ -13,6 +14,9 @@ from llmdbenchmark.run.steps.step_06_create_profile_configmap import (
 )
 from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
 from llmdbenchmark.run.steps.step_08_wait_completion import WaitCompletionStep
+from llmdbenchmark.run.steps.step_09a_capture_cluster_state import (
+    CaptureClusterStateStep,
+)
 from llmdbenchmark.run.steps.step_09_collect_results import CollectResultsStep
 from llmdbenchmark.run.steps.step_10_upload_results import UploadResultsStep
 from llmdbenchmark.run.steps.step_11_cleanup_post import RunCleanupPostStep
@@ -27,6 +31,7 @@ def get_run_steps() -> list[Step]:
         RunPreflightStep(),
         RunCleanupPreviousStep(),
         HarnessNamespaceStep(),
+        FMAWarmupStep(),
         DetectEndpointStep(),
         VerifyModelStep(),
         RenderProfilesStep(),
@@ -34,6 +39,7 @@ def get_run_steps() -> list[Step]:
         DeployHarnessStep(),
         WaitCompletionStep(),
         CollectResultsStep(),
+        CaptureClusterStateStep(),
         AnalyzeResultsStep(),
         UploadResultsStep(),
         RunCleanupPostStep(),

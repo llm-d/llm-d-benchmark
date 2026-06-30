@@ -14,8 +14,8 @@ from llmdbenchmark.smoketests.validators.pd_disaggregation import (
 from llmdbenchmark.smoketests.validators.precise_prefix_cache_aware import (
     PrecisePrefixCacheAwareValidator,
 )
-from llmdbenchmark.smoketests.validators.inference_scheduling import (
-    InferenceSchedulingValidator,
+from llmdbenchmark.smoketests.validators.optimized_baseline import (
+    OptimizedBaselineValidator,
 )
 from llmdbenchmark.smoketests.validators.tiered_prefix_cache import (
     TieredPrefixCacheValidator,
@@ -38,11 +38,11 @@ VALIDATORS: dict[str, type] = {
     # Guides (well-lit paths)
     "pd-disaggregation": PdDisaggregationValidator,
     "precise-prefix-cache-aware": PrecisePrefixCacheAwareValidator,
-    "inference-scheduling": InferenceSchedulingValidator,
+    "optimized-baseline": OptimizedBaselineValidator,
     # inference-scheduling-wva reuses the inference-scheduling validator;
     # the WvaSmoketestMixin auto-activates its extra checks when the
     # stack's config has wva.enabled: true.
-    "inference-scheduling-wva": InferenceSchedulingValidator,
+    "workload-autoscaling": OptimizedBaselineValidator,
     "tiered-prefix-cache": TieredPrefixCacheValidator,
     "wide-ep-lws": WideEpLwsValidator,
     "simulated-accelerators": SimulatedAcceleratorsValidator,

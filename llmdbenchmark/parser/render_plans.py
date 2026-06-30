@@ -52,6 +52,7 @@ class RenderPlans:
         cli_gateway_class: str | None = None,
         setup_overrides: dict | None = None,
         cli_stack_filter: list[str] | None = None,
+        cli_non_admin: bool = False,
     ):
         self.template_dir = Path(template_dir)
         self.defaults_file = Path(defaults_file)
@@ -80,6 +81,17 @@ class RenderPlans:
         # _resolve_model fires once per RenderPlans instance, not N times
         # in a multi-stack scenario.
         self._cli_model_multi_stack_warned: bool = False
+
+        # ``--non-admin`` propagates into the Jinja render context as
+        # ``nonAdmin`` so templates can gate cluster-scoped resources
+        # (ClusterRole, ClusterRoleBinding, etc.) the namespaced user
+        # can't create. Currently consumed by
+        # ``05_namespace_sa_rbac_secret.yaml.j2`` to skip the
+        # ``inference-perf-service-viewer`` pair -- those are only
+        # required by the ``nop`` harness's cluster-wide service
+        # discovery, so dropping them is safe for the mainstream
+        # harnesses (inference-perf, guidellm, vllm-benchmark).
+        self.cli_non_admin: bool = bool(cli_non_admin)
 
         self.logger = logger or get_logger(
             config.log_dir, verbose=config.verbose, log_name=__name__
@@ -113,8 +125,18 @@ class RenderPlans:
         env.filters["b64encode"] = self._b64encode_filter
         env.filters["model_id_label"] = self._model_id_label_filter
 
+        # `raise` global lets templates abort rendering with a clear
+        # error when an input is invalid for the current code path
+        # (e.g. an option that only applies to some gateway classes).
+        env.globals["raise"] = self._raise_helper
+
         self._jinja_env = env
         return env
+
+    @staticmethod
+    def _raise_helper(message: str) -> str:
+        """Abort template rendering with the given error message."""
+        raise ValueError(message)
 
     @staticmethod
     def _indent_filter(text: str, width: int = 4, first: bool = False) -> str:
@@ -136,7 +158,20 @@ class RenderPlans:
     def _toyaml_filter(
         value: Any, indent: int = 0, default_flow_style: bool = False
     ) -> str:
-        """Convert Python object to YAML string."""
+        """Convert Python object to YAML string.
+
+        Multi-line string values (e.g. embedded ConfigMap content like
+        ``router.epp.pluginsCustomConfig.<filename>``) render as YAML
+        literal blocks (``|``) instead of double-quoted scalars with
+        ``\\n`` escapes. The two are semantically equivalent, but the
+        pre-router-migration ``12_router-values.yaml.j2`` template
+        hand-emitted ``: |`` for ``pluginsCustomConfig`` so the rendered
+        artifact stayed readable. Now that the template is a generic
+        pass-through, the literal-block style has to live in the
+        ``toyaml`` filter or every multi-line value regresses to escaped
+        single-line form. Single-line strings still use the default
+        bare/quoted heuristic.
+        """
         if value is None:
             return ""
         if isinstance(value, str):
@@ -144,8 +179,20 @@ class RenderPlans:
         if isinstance(value, (dict, list)) and len(value) == 0:
             return ""
 
+        class _LiteralBlockDumper(yaml.SafeDumper):
+            pass
+
+        def _str_representer(dumper, data):
+            style = "|" if "\n" in data else None
+            return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+        _LiteralBlockDumper.add_representer(str, _str_representer)
+
         result = yaml.dump(
-            value, default_flow_style=default_flow_style, allow_unicode=True
+            value,
+            Dumper=_LiteralBlockDumper,
+            default_flow_style=default_flow_style,
+            allow_unicode=True,
         ).rstrip()
 
         if indent > 0:
@@ -485,13 +532,13 @@ class RenderPlans:
             )
         else:
             podmonitor_config["enabled"] = False
-            ie = result.setdefault("inferenceExtension", {})
-            ie_mon = ie.setdefault("monitoring", {})
-            ie_prom = ie_mon.setdefault("prometheus", {})
-            ie_prom["enabled"] = False
+            router = result.setdefault("router", {})
+            router_mon = router.setdefault("monitoring", {})
+            router_prom = router_mon.setdefault("prometheus", {})
+            router_prom["enabled"] = False
             self.logger.log_info(
                 "Monitoring disabled from CLI (--no-monitoring): "
-                "PodMonitor and GAIE ServiceMonitor will not be created"
+                "PodMonitor and router ServiceMonitor will not be created"
             )
 
         return result
@@ -534,12 +581,6 @@ class RenderPlans:
                 "Cannot enable both standalone and fma -- choose one. Using standalone."
             )
             methods = ["standalone"]
-        if "modelservice" in methods and "fma" in methods:
-            self.logger.log_warning(
-                "Cannot enable both modelservice and fma -- "
-                "choose one. Using modelservice."
-            )
-            methods = ["modelservice"]
         if "kustomize" in methods and any(
             m in methods for m in ("standalone", "modelservice", "fma")
         ):
@@ -560,24 +601,23 @@ class RenderPlans:
             fma_config["enabled"] = False
             kustomize_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
-        elif "modelservice" in methods:
-            standalone_config["enabled"] = False
-            modelservice_config["enabled"] = True
-            fma_config["enabled"] = False
-            kustomize_config["enabled"] = False
-            self.logger.log_info("Deploy method from CLI: modelservice")
-        elif "fma" in methods:
-            standalone_config["enabled"] = False
-            modelservice_config["enabled"] = False
-            fma_config["enabled"] = True
-            kustomize_config["enabled"] = False
-            self.logger.log_info("Deploy method from CLI: fma")
         elif "kustomize" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = False
             fma_config["enabled"] = False
             kustomize_config["enabled"] = True
             self.logger.log_info("Deploy method from CLI: kustomize")
+        elif "modelservice" in methods or "fma" in methods:
+            # Either or both. FMA layers on top of modelservice (or runs
+            # alone in legacy FMA-only scenarios); the two flags are
+            # independent toggles, mirroring how the CLI's runtime
+            # _resolve_deploy_methods returns both when both are enabled.
+            standalone_config["enabled"] = False
+            kustomize_config["enabled"] = False
+            modelservice_config["enabled"] = "modelservice" in methods
+            fma_config["enabled"] = "fma" in methods
+            chosen = [m for m in ("modelservice", "fma") if m in methods]
+            self.logger.log_info(f"Deploy method(s) from CLI: {', '.join(chosen)}")
 
         return result
 
@@ -775,12 +815,12 @@ class RenderPlans:
     _STACK_SCOPED_DEFAULTS: tuple[tuple[tuple[str, ...], str], ...] = (
         # config path, default value that triggers the rewrite
         (("downloadJob", "name"), "download-model"),
-        # EPP metrics-reader Secret - the gaie chart uses this to give its
-        # SA access to the user-workload-monitoring Prometheus. Two gaie
-        # Helm releases sharing this Secret name in one namespace fail
-        # with "owned by another helm release".
+        # EPP metrics-reader Secret - the router chart uses this to give
+        # its SA access to the user-workload-monitoring Prometheus. Two
+        # router Helm releases sharing this Secret name in one namespace
+        # fail with "owned by another helm release".
         (
-            ("inferenceExtension", "monitoring", "secretName"),
+            ("router", "monitoring", "secretName"),
             "inference-gateway-sa-metrics-reader-secret",
         ),
     )
@@ -835,18 +875,209 @@ class RenderPlans:
             cur = cur[part]
         cur[path[-1]] = value
 
+    def _normalize_router_block(self, values: dict) -> dict:
+        """Lay benchmark-specific runtime details into the router block.
+
+        The scenario layer uses the llm-d-router chart's `router.*` keys
+        directly -- the 12_router-values.yaml.j2 template renders them
+        as a YAML pass-through. This method lifts in the few details a
+        scenario can't supply on its own:
+
+        - Inject ``HF_TOKEN`` into ``router.epp.env`` when
+          ``huggingface.enabled``, preserving any user-provided env
+          entries already on the list.
+        - Resolve the EPP image from ``images.routerEndpointPicker`` and
+          write it to ``router.epp.image``. A scenario that sets
+          ``router.epp.image`` explicitly wins (and partial overrides
+          merge with the catalog so the chart still renders a complete
+          ``registry/repository:tag``).
+        - Expand the benchmark-only ``router.epp.zmqPort`` into the
+          chart-native ``router.epp.extraContainerPorts`` and
+          ``router.extraServicePorts`` arrays so the kv-events
+          publisher is reachable. The knob is then popped from
+          ``router.epp`` since the chart doesn't read it directly.
+        - Materialize ``router.epp.verbosity`` into ``router.epp.flags.v``
+          when ``flags`` is unset (or bump to ``4`` when monitoring
+          metrics scraping is on). The benchmark-only ``verbosity`` knob
+          is then popped.
+        - Add an HTTP service port on 80 -> 8081 when
+          ``gateway.className: epponly`` so benchmark clients can hit
+          the standalone-chart Envoy sidecar directly.
+        - Fill ``router.tokenizer.modelName`` from ``model.name`` when
+          ``router.tokenizer.enabled: true`` and ``modelName`` is unset.
+        - Default ``router.modelServers.matchLabels`` and
+          ``targetPorts`` to the benchmark conventions when the scenario
+          hasn't overridden them.
+        - Lift ``router.inferencePool.providerConfig`` to the root-level
+          ``provider.{gatewayClassName}`` block expected by the
+          gateway chart (gke / istio only).
+
+        All transformations preserve fields the user set explicitly:
+        if a scenario or treatment provides a value, it survives.
+        """
+        router = values.setdefault("router", {})
+        epp = router.setdefault("epp", {})
+
+        # --- 1. Inject HF_TOKEN env on top of any user-supplied entries.
+        hf = values.get("huggingface", {})
+        if hf.get("enabled"):
+            env = epp.get("env") or []
+            if not any(
+                isinstance(e, dict) and e.get("name") == "HF_TOKEN" for e in env
+            ):
+                env = list(env) + [
+                    {
+                        "name": "HF_TOKEN",
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": hf.get("secretName", "llm-d-hf-token"),
+                                "key": hf.get("tokenKey", "HF_TOKEN"),
+                            }
+                        },
+                    }
+                ]
+                epp["env"] = env
+
+        # --- 2. Resolve EPP image. The chart's _deployment.yaml renders
+        # `{{ .image.registry }}/{{ .image.repository }}:{{ .image.tag }}`,
+        # so a partial override (e.g. tag-only) on `router.epp.image`
+        # must merge with the catalog's full image spec or the chart
+        # will render `/:custom-tag`. We always compute the catalog
+        # base first; the user's `router.epp.image` overrides on top.
+        images = values.get("images") or {}
+        chart_native = images.get("routerEndpointPicker") or {}
+        repo_full = chart_native.get("repository", "")
+        if repo_full:
+            last_slash = repo_full.rfind("/")
+            if last_slash > 0:
+                registry = repo_full[:last_slash]
+                repository = repo_full[last_slash + 1 :]
+            else:
+                registry = ""
+                repository = repo_full
+            catalog_image = {
+                "registry": registry,
+                "repository": repository,
+                "tag": chart_native.get("tag", "main"),
+                "pullPolicy": chart_native.get("pullPolicy", "IfNotPresent"),
+            }
+            user_image = epp.get("image") if isinstance(epp.get("image"), dict) else {}
+            merged_image = dict(catalog_image)
+            merged_image.update(user_image or {})
+            epp["image"] = merged_image
+
+        # --- 3. Expand zmqPort into the chart-native port arrays.
+        zmq_port = epp.pop("zmqPort", None)
+        if zmq_port:
+            container_ports = list(epp.get("extraContainerPorts") or [])
+            if not any(
+                isinstance(p, dict) and p.get("name") == "zmq" for p in container_ports
+            ):
+                container_ports.insert(
+                    0,
+                    {"name": "zmq", "containerPort": zmq_port, "protocol": "TCP"},
+                )
+                epp["extraContainerPorts"] = container_ports
+            service_ports = list(router.get("extraServicePorts") or [])
+            if not any(
+                isinstance(p, dict) and p.get("name") == "zmq" for p in service_ports
+            ):
+                service_ports.insert(
+                    0,
+                    {
+                        "name": "zmq",
+                        "port": zmq_port,
+                        "targetPort": zmq_port,
+                        "protocol": "TCP",
+                    },
+                )
+                router["extraServicePorts"] = service_ports
+
+        # --- 4. Materialize verbosity into flags.v when flags is unset.
+        verbosity = epp.pop("verbosity", None)
+        if not epp.get("flags"):
+            if (values.get("monitoring") or {}).get("metricsScrapeEnabled"):
+                epp["flags"] = {"v": "4"}
+            elif verbosity is not None:
+                epp["flags"] = {"v": str(verbosity)}
+
+        # --- 5. epponly: add HTTP service port for the in-pod Envoy sidecar.
+        gw_class = (values.get("gateway") or {}).get("className", "")
+        if gw_class == "epponly":
+            service_ports = list(router.get("extraServicePorts") or [])
+            if not any(
+                isinstance(p, dict) and p.get("name") == "http" for p in service_ports
+            ):
+                service_ports.append(
+                    {
+                        "name": "http",
+                        "port": 80,
+                        "protocol": "TCP",
+                        "targetPort": 8081,
+                    }
+                )
+                router["extraServicePorts"] = service_ports
+
+        # --- 6. Tokenizer modelName fallback to model.name.
+        tokenizer = router.get("tokenizer") or {}
+        if tokenizer.get("enabled") and not tokenizer.get("modelName"):
+            model_name = (values.get("model") or {}).get("name")
+            if model_name:
+                tokenizer["modelName"] = model_name
+                router["tokenizer"] = tokenizer
+
+        # --- 7. modelServers benchmark defaults (matchLabels + targetPorts).
+        model_servers = router.setdefault("modelServers", {})
+        if not model_servers.get("matchLabels"):
+            labels_block = values.get("labels") or {}
+            inference_serving = labels_block.get("inferenceServing", "")
+            model_id_label = values.get("model_id_label", "")
+            if inference_serving or model_id_label:
+                match_labels = {}
+                if inference_serving:
+                    match_labels["llm-d.ai/inferenceServing"] = str(inference_serving)
+                if model_id_label:
+                    match_labels["llm-d.ai/model"] = str(model_id_label)
+                model_servers["matchLabels"] = match_labels
+        if not model_servers.get("targetPorts"):
+            decode_port = ((values.get("decode") or {}).get("vllm") or {}).get(
+                "servicePort"
+            )
+            if decode_port:
+                model_servers["targetPorts"] = [{"number": decode_port}]
+
+        # --- 8. Lift providerConfig to root-level provider.<gw_class>
+        # for the gateway chart (gke / istio). The standalone chart's
+        # epponly mode doesn't need this.
+        inference_pool = router.get("inferencePool") or {}
+        provider_config = inference_pool.pop("providerConfig", None)
+        if gw_class in ("gke", "istio"):
+            provider_block = values.setdefault("provider", {})
+            provider_block.setdefault("name", gw_class)
+            if provider_config:
+                # Merge under provider.<gw_class>. The user's explicit
+                # root-level ``provider.<gw>`` (if any) is the more
+                # specific intent, so it wins over the lifted
+                # ``providerConfig`` -- we put providerConfig as the
+                # base and overlay the existing root-level block on top.
+                existing = provider_block.get(gw_class) or {}
+                provider_block[gw_class] = self.deep_merge(provider_config, existing)
+
+        return values
+
     def _resolve_inference_pool_host(self, values: dict) -> dict:
         """Auto-populate destinationRule.host from model_id_label when not set.
 
         The Kubernetes service name for the router EPP is always
         ``{model_id_label}-router-epp``.  If a scenario's
-        ``inferenceExtension.inferencePoolProviderConfig.destinationRule``
-        exists but has no ``host``, fill it in automatically so that
-        scenario authors don't need to compute the hashed label by hand.
+        ``router.inferencePool.providerConfig.destinationRule`` exists but
+        has no ``host``, fill it in automatically so that scenario authors
+        don't need to compute the hashed label by hand.
         """
         dest_rule = (
-            values.get("inferenceExtension", {})
-            .get("inferencePoolProviderConfig", {})
+            values.get("router", {})
+            .get("inferencePool", {})
+            .get("providerConfig", {})
             .get("destinationRule")
         )
         if dest_rule is not None and not dest_rule.get("host"):
@@ -926,8 +1157,18 @@ class RenderPlans:
         value (``REPLACE_TOKEN`` or empty), this method checks the
         following environment variables in order:
 
-        1. ``HF_TOKEN``
-        2. ``HUGGING_FACE_HUB_TOKEN``
+        1. ``HF_TOKEN``                -- plain HuggingFace convention
+        2. ``LLMDBENCH_HF_TOKEN``      -- project-prefixed (used in CI
+                                          and ``llmdbenchmark``-namespaced
+                                          environments)
+        3. ``HUGGING_FACE_HUB_TOKEN``  -- alternate HuggingFace convention
+
+        This chain matches every other HF-token consumer in the
+        codebase -- ``_ensure_hf_token_secret`` (the kustomize-mode
+        Secret enforcer), ``step_03_detect_endpoint``'s discovery
+        path, and the harness pod env block -- so a token set under
+        any of the three names is consistently picked up regardless
+        of which code path the user hits first.
 
         If a token is found, it is injected into the values dict along
         with its base64-encoded form so that rendered K8s Secret YAMLs
@@ -948,9 +1189,14 @@ class RenderPlans:
             result["huggingface"] = hf_config
             return result
 
-        # Check environment variables (order matches HuggingFace SDK convention)
-        env_token = os.environ.get("HF_TOKEN") or os.environ.get(
-            "HUGGING_FACE_HUB_TOKEN"
+        # Check environment variables.  Order matches what
+        # ``_ensure_hf_token_secret`` and ``step_03_detect_endpoint``
+        # already use, so the harness pod's env block ends up wired up
+        # whenever the Secret would have been created.
+        env_token = (
+            os.environ.get("HF_TOKEN")
+            or os.environ.get("LLMDBENCH_HF_TOKEN")
+            or os.environ.get("HUGGING_FACE_HUB_TOKEN")
         )
         if not env_token:
             # No token available -- disable HF secret/auth rendering.
@@ -1204,11 +1450,14 @@ class RenderPlans:
             merged_values, total_stacks=total_stacks
         )
         merged_values = self._resolve_inference_pool_host(merged_values)
+        merged_values = self._normalize_router_block(merged_values)
         merged_values = self._substitute_config_variables(merged_values)
 
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
+        merged_values["nonAdmin"] = self.cli_non_admin
+        merged_values["scenarioName"] = self.scenarios_file.stem
 
         epponly_errors = self._validate_epponly_constraints(
             merged_values,

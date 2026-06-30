@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.endpoint import (
     find_standalone_endpoint,
     find_fma_endpoint,
@@ -67,9 +67,10 @@ class DetectEndpointStep(Step):
         is_standalone = "standalone" in context.deployed_methods or self._resolve(
             plan_config, "standalone.enabled", default=False
         )
-        is_fma = "fma" in context.deployed_methods or self._resolve(
-            plan_config, "fma.enabled", default=False
-        )
+        # FMA endpoint logic only fires in FMA-only mode. When FMA layers on
+        # top of modelservice (workload-autoscaling), routing goes through the
+        # gateway and the modelservice/EPP path resolves the endpoint instead.
+        is_fma = is_fma_only_mode(context)
         inference_port = self._resolve(
             plan_config,
             "vllmCommon.inferencePort",

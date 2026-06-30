@@ -155,27 +155,28 @@ def find_standalone_endpoint(
 
 
 def find_fma_endpoint(cmd: CommandExecutor, namespace: str) -> str | None:
-    """Find FMA replicaset name.
+    """Find FMA requester deployment name.
 
-    Queries for replicaset labelled ``stood-up-from=llm-d-benchmark``.
+    Queries for deployments labelled ``stood-up-from=llm-d-benchmark``.
 
     Returns:
         name -- None if not found.
     """
 
-    result = cmd.kube(
-        "get",
-        "replicaset",
-        "-l",
-        "stood-up-from=llm-d-benchmark",
-        "--namespace",
-        namespace,
-        "-o",
-        "jsonpath={.items[*].metadata.name}",
-        check=False,
-    )
-    if result.success and result.stdout.strip():
-        return f"{result.stdout.strip()}.{namespace}.cluster.local"
+    for resource in ("deployment", "replicaset"):
+        result = cmd.kube(
+            "get",
+            resource,
+            "-l",
+            "stood-up-from=llm-d-benchmark",
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.items[*].metadata.name}",
+            check=False,
+        )
+        if result.success and result.stdout.strip():
+            return f"{result.stdout.strip()}.{namespace}.cluster.local"
 
     return None
 
@@ -592,6 +593,13 @@ _RETRYABLE_INDICATORS = (
     "still loading",
     "503",
     "502",
+    # FMA cold-start race: bound launcher pod is k8s-Ready
+    # but vLLM's serving port isn't accepting yet,
+    # and EPP InferencePool is empty until ISC labels propagate.
+    "Connection refused",
+    "upstream connect error",
+    "remote connection failure",
+    "no pods available in datastore",
 )
 
 

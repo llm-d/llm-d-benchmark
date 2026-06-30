@@ -15,17 +15,94 @@ scenario:
   - name: "wide-ep-lws"
 
     # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
+    # -------------------------------------------------------------------------
+    # When kustomize.enabled is true (or `-t kustomize` is passed) this
+    # scenario is deployed by applying the UPSTREAM llm-d guide directly
+    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
+    # defined ENTIRELY by the guide's own manifests:
+    #
+    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
+    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
+    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
+    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
+    #     (only run/workload treatments still apply).
+    #
+    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
+    # below:
+    #   patches / overlayPath           -> modelserver (the workload pods)
+    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
+    #   guideVariableOverrides          -> override the guide README's ${VAR}
+    # See docs/kustomize.md for the full reference and worked examples.
+    #
+    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
+    # (the deploy is keyed on guideName with no per-stack uniquification --
+    # stacks would collide). Use the modelservice method for multi-model.
+    #
+    # When kustomize.enabled is false (the DEFAULT) this whole block is
+    # inert and the scenario deploys via modelservice/standalone as
+    # configured further below.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      guideName: "wide-ep-lws"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+      # Inline kustomize strategic merge patches applied on top of the
+      # guide's modelserver base. The wide-ep-lws guide ships its decode
+      # and prefill resources as `LeaderWorkerSet` (not Deployment) and
+      # already injects `HF_TOKEN` from the `llm-d-hf-token` Secret in
+      # both base templates -- the standup creates that Secret from the
+      # ambient HF_TOKEN env var so no override is needed here.
+      #
+      # If you DO need to patch this guide, target the LWS resource by
+      # its actual name (e.g. `wide-ep-lws-nvidia-gpu-vllm-deepseek-v4-decode`)
+      # and use the LWS apiVersion / spec shape:
+      #
+      #   apiVersion: leaderworkerset.x-k8s.io/v1
+      #   kind: LeaderWorkerSet
+      #   metadata:
+      #     name: wide-ep-lws-nvidia-gpu-vllm-deepseek-v4-decode
+      #   spec:
+      #     leaderWorkerTemplate:
+      #       workerTemplate:
+      #         spec:
+      #           containers:
+      #             - name: vllm
+      #               ...
+      patches: []
+
+    # =========================================================================
     # COMMON -- Applies to all deployment methods
     # =========================================================================
 
     # -------------------------------------------------------------------------
     # Model Configuration
+    #
+    #
+    #
+    #
+    #
+    #
     # -------------------------------------------------------------------------
     model:
       name: Qwen/Qwen3-30B-A3B
       shortName: qwen-qwen3-30b-a3b
       path: models/Qwen/Qwen3-30B-A3B
       huggingfaceId: Qwen/Qwen3-30B-A3B
+#      name: deepseek-ai/DeepSeek-R1-0528
+#      shortName: DeepSeek-R1-0528
+#      path: models/deepseek-ai/DeepSeek-R1-0528
+#      huggingfaceId: deepseek-ai/DeepSeek-R1-0528
       size: 1Ti
       maxModelLen: 4000
       blockSize: 64
@@ -33,7 +110,9 @@ scenario:
       cacheBase: /model-cache
 
     # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
     # =========================================================================
 
     # -------------------------------------------------------------------------
@@ -57,14 +136,8 @@ scenario:
     standalone:
       enabled: false
 
-    images:
-      vllm:
-        repository: ghcr.io/llm-d/llm-d-cuda
-        tag: v0.7.0
-
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
-    # =========================================================================
+    gateway:
+      className: epponly
 
     # -------------------------------------------------------------------------
     # Routing Configuration
@@ -89,23 +162,63 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
+    # Reference: https://github.com/llm-d/llm-d/blob/main/guides/wide-ep-lws/router/wide-ep-lws.values.yaml
+    # The plugins block uses the `llm-d.ai/v1alpha1` apiVersion shipped
+    # by the llm-d-router-{standalone,gateway}-dev charts.
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      replicas: 1
-      flags:
-        v: 2
-
-      failureMode: "FailOpen"
-
-      pluginsConfigFile: "default-plugins.yaml"
-      resources:
-        requests:
-          cpu: "4"
-          memory: 8Gi
-        limits:
-          memory: 16Gi
-
-      sidecar:
+    router:
+      extraServicePorts:
+        - name: http
+          port: 80
+          protocol: TCP
+          targetPort: 8081
+      epp:
+        replicas: 1
+        flags:
+          v: 2
+      pluginsConfigFile: "wide-ep-lws-config.yaml"
+      pluginsCustomConfig:
+        wide-ep-lws-config.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: disagg-headers-handler
+          - type: always-disagg-pd-decider
+          - type: disagg-profile-handler
+            parameters:
+              deciderPluginName: always-disagg-pd-decider
+          - type: prefill-filter
+          - type: decode-filter
+          - type: prefix-cache-scorer
+          - type: queue-scorer
+          - type: active-request-scorer
+          schedulingProfiles:
+          - name: prefill
+            plugins:
+            - pluginRef: prefill-filter
+            - pluginRef: prefix-cache-scorer
+              weight: 3
+            - pluginRef: queue-scorer
+              weight: 2
+            - pluginRef: active-request-scorer
+              weight: 2
+          - name: decode
+            plugins:
+            - pluginRef: decode-filter
+            - pluginRef: active-request-scorer
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
+      proxy:
+        # CLI args for the Envoy sidecar. Override the chart's defaults of
+        # `--log-level trace` (very expensive under load) and no `--concurrency`
+        # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+        # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+        # equivalent below; trace-level logging would burn a meaningful share of
+        # the sidecar's CPU at high QPS.
         args:
           - "--service-node"
           - "envoy-sidecar"
@@ -126,22 +239,41 @@ scenario:
             memory: 8Gi
           limits:
             memory: 16Gi
-
-      # Inference Pool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-router-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
+      inferencePool:
+        failureMode: "FailOpen"
+        providerConfig:
+          destinationRule:
+            trafficPolicy:
+              connectionPool:
+                http:
+                  http1MaxPendingRequests: 256000
+                  maxRequestsPerConnection: 256000
+                  http2MaxRequests: 256000
+                  idleTimeout: "900s"
+                tcp:
+                  maxConnections: 256000
+                  maxConnectionDuration: "1800s"
+                  connectTimeout: "900s"
+      modelServers:
+        protocol: http
+        # targetPorts must list all 8 DP rank ports so the EPP routes requests
+        # to all ranks. Without this, only rank 0 receives traffic.
+        targetPorts:
+          - number: 8000
+          - number: 8001
+          - number: 8002
+          - number: 8003
+          - number: 8004
+          - number: 8005
+          - number: 8006
+          - number: 8007
+        matchLabels:
+          llm-d.ai/guide: "wide-ep-lws"
+      tracing:
+        otelExporterEndpoint: "http://localhost:4317"
+        sampling:
+          sampler: "parentbased_traceidratio"
+          samplerArg: "0.1"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
@@ -168,33 +300,39 @@ scenario:
     # Prefill Configuration
     # -------------------------------------------------------------------------
     prefill:
+      enabled: true
       replicas: 1
+#      replicas: 8
       vllm:
         customCommand: |
-          exec vllm serve /model-cache/$MODEL_PATH \
-            --served-model-name $MODEL_NAME \
-            --port $VLLM_INFERENCE_PORT \
-            --trust-remote-code \
-            --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
-            --disable-access-log-for-endpoints=/health,/metrics \
-            --data-parallel-hybrid-lb \
-            --enable-expert-parallel \
-            --tensor-parallel-size $TP_SIZE \
-            --max-num-seq $VLLM_MAX_NUM_SEQ \
-            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
-            --data-parallel-size $((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
-            --data-parallel-size-local $DP_SIZE_LOCAL \
-            --data-parallel-address ${LWS_LEADER_ADDRESS} \
-            --data-parallel-rpc-port 5555 \
-            --data-parallel-start-rank $START_RANK \
-            --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both","kv_load_failure_policy":"fail"}' \
-            --enable-dbo \
-            --dbo-prefill-token-threshold 32 \
-            --enable-eplb \
-            --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
-            --moe-backend deep_gemm \
-            --all2all-backend deepep_high_throughput \
-            --disable-uvicorn-access-log
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          . /shared-config/llmdbench_env.sh
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_INFERENCE_PORT \
+          --trust-remote-code \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --disable-access-log-for-endpoints=/health,/metrics \
+          --data-parallel-hybrid-lb \
+          --enable-expert-parallel \
+          --tensor-parallel-size $TP_SIZE \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --data-parallel-size $((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
+          --data-parallel-size-local $DP_SIZE_LOCAL \
+          --data-parallel-address ${LWS_LEADER_ADDRESS} \
+          --data-parallel-rpc-port 5555 \
+          --data-parallel-start-rank $START_RANK \
+          --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both","kv_load_failure_policy":"fail"}' \
+          --enable-dbo \
+          --dbo-prefill-token-threshold 32 \
+          --enable-eplb \
+          --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
+          --moe-backend deep_gemm \
+          --all2all-backend deepep_high_throughput \
+          --disable-uvicorn-access-log
 
       initContainers:
         - name: preprocess
@@ -242,8 +380,6 @@ scenario:
       # Extra Environment Variables
       # -----------------------------------------------------------------------
       extraEnvVars:
-        - name: TRITON_LIBCUDA_PATH
-          value: "/usr/lib64"
         - name: VLLM_SKIP_P2P_CHECK
           value: "1"
         - name: VLLM_RANDOMIZE_DP_DUMMY_INPUTS
@@ -281,6 +417,11 @@ scenario:
         imagePullPolicy: Always
 
       # -----------------------------------------------------------------------
+      # Additional Volume Mounts
+      # -----------------------------------------------------------------------
+      additionalVolumeMounts: []
+
+      # -----------------------------------------------------------------------
       # Additional Volumes
       # -----------------------------------------------------------------------
       additionalVolumes: []
@@ -292,32 +433,36 @@ scenario:
       replicas: 1
       vllm:
         customCommand: |
-          exec vllm serve /model-cache/$MODEL_PATH \
-            --served-model-name $MODEL_NAME \
-            --port $VLLM_METRICS_PORT \
-            --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
-            --trust-remote-code \
-            --api-server-count 1 \
-            --disable-access-log-for-endpoints=/health,/metrics \
-            --data-parallel-hybrid-lb \
-            --enable-expert-parallel \
-            --tensor-parallel-size $TP_SIZE \
-            --max-num-seq $VLLM_MAX_NUM_SEQ \
-            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
-            --data-parallel-size $((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
-            --data-parallel-size-local $DP_SIZE_LOCAL \
-            --data-parallel-address ${LWS_LEADER_ADDRESS} \
-            --data-parallel-rpc-port 5555 \
-            --data-parallel-start-rank $START_RANK \
-            --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both","kv_load_failure_policy":"fail"}' \
-            --enable-dbo \
-            --dbo-decode-token-threshold 32 \
-            --enable-eplb \
-            --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
-            --all2all-backend deepep_low_latency \
-            --moe-backend deep_gemm \
-            --kv-cache-memory-bytes=${KV_CACHE_MEMORY_BYTES:-} \
-            --disable-uvicorn-access-log \
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          . /shared-config/llmdbench_env.sh
+          vllm serve /model-cache/$MODEL_PATH \
+          -host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --trust-remote-code \
+          --api-server-count 1 \
+          --disable-access-log-for-endpoints=/health,/metrics \
+          --data-parallel-hybrid-lb \
+          --enable-expert-parallel \
+          --tensor-parallel-size $TP_SIZE \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --data-parallel-size $((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
+          --data-parallel-size-local $DP_SIZE_LOCAL \
+          --data-parallel-address ${LWS_LEADER_ADDRESS} \
+          --data-parallel-rpc-port 5555 \
+          --data-parallel-start-rank $START_RANK \
+          --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both","kv_load_failure_policy":"fail"}' \
+          --enable-dbo \
+          --dbo-decode-token-threshold 32 \
+          --enable-eplb \
+          --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
+          --all2all-backend deepep_low_latency \
+          --moe-backend deep_gemm \
+          --kv-cache-memory-bytes=${KV_CACHE_MEMORY_BYTES:-} \
+          --disable-uvicorn-access-log \
 
       initContainers:
         - name: preprocess
@@ -373,8 +518,6 @@ scenario:
       # Same as prefill (both use LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
       # -----------------------------------------------------------------------
       extraEnvVars:
-        - name: TRITON_LIBCUDA_PATH
-          value: "/usr/lib64"
         - name: VLLM_SKIP_P2P_CHECK
           value: "1"
         - name: VLLM_RANDOMIZE_DP_DUMMY_INPUTS
@@ -435,7 +578,6 @@ scenario:
 
     vllmCommon:
 #      priorityClassName: nightly-gpu-critical
-
 #####      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
       networkResource: "auto"   # auto-detect from cluster nodes
       networkNr: "1"            # number of network devices
@@ -456,6 +598,13 @@ scenario:
         - name: dshm
           mountPath: /dev/shm
 
+    # -------------------------------------------------------------------------
+    # Timeout Configuration
+    # -------------------------------------------------------------------------
+    timeouts:
+      controlWait: 900000
+      harnessWait: 900000
+
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
@@ -468,3 +617,7 @@ scenario:
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
+
+      smoketest:
+        modelReadyTimeout: 3600     # 1 hour
+        modelReadyPollInterval: 30  # poll every 30s

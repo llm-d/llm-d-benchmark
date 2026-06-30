@@ -52,36 +52,26 @@ scenario:
       guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
 
       # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      patches:
-         - patch: |
-             apiVersion: apps/v1
-             kind: Deployment
-             metadata:
-               name: decode
-             spec:
-               template:
-                 spec:
-                   containers:
-                     - name: modelserver
-                       env:
-                         - name: HF_TOKEN
-                           valueFrom:
-                             secretKeyRef:
-                               name: llm-d-hf-token
-                               key: HF_TOKEN
-      #patches:
-      #  - patch: |
-      #      apiVersion: apps/v1
-      #      kind: Deployment
-      #      metadata:
-      #        name: decode
-      #      spec:
-      #        replicas: 2
-      #        template:
-      #          spec:
-      #            priorityClassName: nightly-gpu-critical
+      # guide's modelserver base. Default is empty -- the upstream guide
+      # already injects HF_TOKEN from the `llm-d-hf-token` Secret (which
+      # the benchmark's standup auto-creates from the HF_TOKEN env var),
+      # so no patch is needed for gated-model access.
+      #
+      # Use this list to override anything else upstream sets -- e.g.
+      # bump replicas or pin a priorityClassName:
+      #
+      #   patches:
+      #     - patch: |
+      #         apiVersion: apps/v1
+      #         kind: Deployment
+      #         metadata:
+      #           name: decode
+      #         spec:
+      #           replicas: 2
+      #           template:
+      #             spec:
+      #               priorityClassName: nightly-gpu-critical
+      patches: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -130,32 +120,8 @@ scenario:
     standalone:
       enabled: false
 
-    # =========================================================================
-    # GATEWAY -- toggle the router topology
-    # -------------------------------------------------------------------------
-    # `epponly` is the llm-d "Standalone Mode" router topology
-    # (see https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md):
-    # no Kubernetes Gateway is installed, the router Helm chart is swapped
-    # from `llm-d-router-gateway-dev` to `llm-d-router-standalone-dev`,
-    # and the EPP pod runs an Envoy sidecar that serves HTTP directly on
-    # the `{model_id_label}-router-epp`
-    # Service (port 80 -> 8081). HTTPRoute and `llm-d-infra` are not
-    # rendered, no gateway-provider control plane is installed.
-    #
-    # Flip this to any of the gateway-backed options to switch topology
-    # without changing anything else in the scenario:
-    #   epponly                     -- no Gateway (default here)
-    #   istio                       -- istio-base + istiod + Gateway + HTTPRoute
-    #   agentgateway                -- agentgateway controller + Gateway + HTTPRoute
-    #   gke                         -- GKE-managed Gateway + HTTPRoute
-    #   data-science-gateway-class  -- OpenDataHub managed Gateway + HTTPRoute
-    #
-    # This setting is ignored when `kustomize.enabled: true` (or when
-    # `-t kustomize` is passed) -- in that mode the upstream llm-d guide
-    # manifests are applied verbatim and define their own router topology.
-    # =========================================================================
     gateway:
-      className: istio
+      className: epponly
 
     # NOTE: the `kustomize` deploy method is configured at the TOP of this
     # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
@@ -171,8 +137,94 @@ scenario:
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "default-plugins.yaml"
+    router:
+      extraServicePorts:
+        - name: http
+          port: 80
+          protocol: TCP
+          targetPort: 8081
+      epp:
+        replicas: 1
+        flags:
+          v: 2
+        pluginsConfigFile: "optimized-baseline-plugins.yaml"
+        pluginsCustomConfig:
+          optimized-baseline-plugins.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            plugins:
+            - type: queue-scorer
+            - type: kv-cache-utilization-scorer
+            - type: prefix-cache-scorer
+            - type: no-hit-lru-scorer
+            schedulingProfiles:
+            - name: default
+              plugins:
+              - pluginRef: queue-scorer
+                weight: 2
+              - pluginRef: kv-cache-utilization-scorer
+                weight: 2
+              - pluginRef: prefix-cache-scorer
+                weight: 3
+              - pluginRef: no-hit-lru-scorer
+                weight: 2
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
+      proxy:
+        # CLI args for the Envoy sidecar. Override the chart's defaults of
+        # `--log-level trace` (very expensive under load) and no `--concurrency`
+        # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+        # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+        # equivalent below; trace-level logging would burn a meaningful share of
+        # the sidecar's CPU at high QPS.
+        args:
+          - "--service-node"
+          - "envoy-sidecar"
+          - "--log-level"
+          - "warn"
+          - "--concurrency"
+          - "8"
+          - "--drain-strategy"
+          - "immediate"
+          - "--drain-time-s"
+          - "60"
+          - "-c"
+          - "/etc/envoy/envoy.yaml"
+        # Resource requests and limits for the Envoy sidecar.
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            memory: 16Gi
+      inferencePool:
+        failureMode: "FailOpen"
+        providerConfig:
+          destinationRule:
+            trafficPolicy:
+              connectionPool:
+                http:
+                  http1MaxPendingRequests: 256000
+                  maxRequestsPerConnection: 256000
+                  http2MaxRequests: 256000
+                  idleTimeout: "900s"
+                tcp:
+                  maxConnections: 256000
+                  maxConnectionDuration: "1800s"
+                  connectTimeout: "900s"
+      modelServers:
+        protocol: http
+        matchLabels:
+          llm-d.ai/guide: "optimized-baseline"
+      tracing:
+        otelExporterEndpoint: "http://localhost:4317"
+        sampling:
+          sampler: "parentbased_traceidratio"
+          samplerArg: "0.1"
 
     # -------------------------------------------------------------------------
     # Prefill Configuration

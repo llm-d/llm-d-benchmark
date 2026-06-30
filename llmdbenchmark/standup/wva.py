@@ -25,9 +25,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 
 
-def extract_prometheus_ca_cert(
-    cmd: CommandExecutor, logger
-) -> str | None:
+def extract_prometheus_ca_cert(cmd: CommandExecutor, logger) -> str | None:
     """Extract the Prometheus CA cert from the OpenShift monitoring stack.
 
     Tries (in order):
@@ -102,7 +100,7 @@ def _ensure_trailing_newline(cert: str) -> str:
     return cert + "\n" if cert else ""
 
 
-def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-locals
+def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-locals,unused-argument
     cmd: CommandExecutor,
     context: ExecutionContext,
     plan_config: dict,
@@ -111,71 +109,55 @@ def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-lo
     prom_ca_cert: str | None,
     errors: list,
 ) -> None:
-    """Install the WVA controller helm release into *wva_namespace*.
+    """Install the WVA controller via kustomize-built upstream manifests.
 
-    Loads the rendered ``19_wva-values.yaml`` from *stack_path*, patches
-    the runtime-computed ``caCert`` into it, and runs
-    ``helm upgrade --install workload-variant-autoscaler``. Idempotent
-    across calls (subsequent calls for the same namespace are a helm
-    upgrade).
+    Reads ``19_wva-kustomize.yaml`` (a Kustomization wrapper) from
+    *stack_path* and applies it with ``kubectl apply -k``. The wrapper's
+    ``resources:`` field references the upstream
+    ``config/overlays/namespace-scoped/openshift`` overlay over a remote
+    git URL, so kustomize fetches the upstream tree at apply time -- no
+    local clone needed. The wrapper layers our namespace + image
+    overrides on top.
     """
-    wva_values_yaml = _find_yaml(stack_path, "19_wva-values")
-    if not wva_values_yaml:
+    kustomize_yaml = _find_yaml(stack_path, "19_wva-kustomize")
+    if not kustomize_yaml:
         errors.append(
-            "WVA values template (19_wva-values) not found -- cannot install WVA"
+            "WVA kustomization template (19_wva-kustomize) not found "
+            "-- cannot install WVA"
         )
         return
 
-    wva_config = yaml.safe_load(wva_values_yaml.read_text(encoding="utf-8"))
-    if not wva_config:
-        errors.append("WVA values template rendered empty -- is wva.enabled set?")
+    if not _has_yaml_content(kustomize_yaml):
+        # Template guarded by `wva.enabled` -- empty content means the
+        # flag is off for this stack; nothing to install.
         return
 
-    if prom_ca_cert and "wva" in wva_config and "prometheus" in wva_config["wva"]:
-        wva_config["wva"]["prometheus"]["caCert"] = prom_ca_cert
-
+    # `kubectl apply -k <dir>` requires the kustomization file to be
+    # named exactly `kustomization.yaml`. Our rendered file uses the
+    # numeric prefix convention (`19_wva-kustomize.yaml`); stage a copy
+    # under the canonical name in a temp dir so kustomize finds it.
     tmp_dir = Path(tempfile.mkdtemp())
-    wva_values_path = tmp_dir / "wva_config.yaml"
-    wva_values_path.write_text(
-        yaml.dump(wva_config, sort_keys=False), encoding="utf-8"
+    (tmp_dir / "kustomization.yaml").write_text(
+        kustomize_yaml.read_text(encoding="utf-8"), encoding="utf-8"
     )
-
-    wva_chart = plan_config.get("helmRepositories", {}).get("wva", {})
-    chart_url = wva_chart.get("url", "")
-    chart_version = plan_config.get("chartVersions", {}).get("wva", "")
-
-    if not (chart_url and chart_version):
-        errors.append(
-            "WVA chart URL or version not configured -- "
-            "check helmRepositories.wva and chartVersions.wva"
-        )
-        return
 
     context.logger.log_info(
-        f"📦 Installing WVA controller v{chart_version} into ns/{wva_namespace}"
+        f"📦 Installing WVA controller via kustomize into ns/{wva_namespace}"
     )
-    result = cmd.helm(
-        "upgrade",
-        "--install",
-        "workload-variant-autoscaler",
-        chart_url,
-        "--version",
-        chart_version,
-        "--namespace",
-        wva_namespace,
-        "--create-namespace",
-        "-f",
-        str(wva_values_path),
+    result = cmd.kube(
+        "apply",
+        "-k",
+        str(tmp_dir),
+        check=False,
     )
     if not result.success:
         errors.append(f"Failed to install WVA: {result.stderr}")
         return
 
     # Wait for the controller pod(s) to actually become Ready before
-    # returning, with live ⏳ progress output (same helper used by
-    # step_08 for gateway and step_09 for decode/prefill). Without this,
-    # step_03 returns success while the controller is still scheduling
-    # / pulling images, and downstream steps race against pod startup.
+    # returning, with live ⏳ progress output. Without this, step_03
+    # returns success while the controller is still scheduling / pulling
+    # images, and downstream steps race against pod startup.
     wait = cmd.wait_for_pods(
         label="control-plane=controller-manager",
         namespace=wva_namespace,
@@ -256,6 +238,7 @@ def install_prometheus_adapter(  # pylint: disable=too-many-arguments
     # non-existent rule problem. Rule correctness is verified later in
     # the smoketest (post-VA-apply) where a discovery miss is unambiguous.
     existing_release, existing_ns = _find_existing_prometheus_adapter_release(cmd)
+    apisvc_target = _find_existing_external_metrics_apiservice(cmd)
     if existing_release:
         context.logger.log_info(
             f"ℹ️  prometheus-adapter is already installed cluster-wide "
@@ -263,12 +246,24 @@ def install_prometheus_adapter(  # pylint: disable=too-many-arguments
             "Reusing it — rule correctness will be validated by the "
             "smoketest after the VariantAutoscaling is applied."
         )
+    elif apisvc_target:
+        context.logger.log_info(
+            f"ℹ️  v1beta1.external.metrics.k8s.io is already registered to "
+            f"{apisvc_target}. Skipping prometheus-adapter helm install — "
+            "the existing adapter serves the wva_desired_replicas metric."
+        )
     else:
         repo_url = _require_config(
-            plan_config, "helmRepositories", "prometheusAdapter", "url",
+            plan_config,
+            "helmRepositories",
+            "prometheusAdapter",
+            "url",
         )
         chart_name = _require_config(
-            plan_config, "helmRepositories", "prometheusAdapter", "name",
+            plan_config,
+            "helmRepositories",
+            "prometheusAdapter",
+            "name",
         )
         repo_alias = "prometheus-community"
 
@@ -419,6 +414,31 @@ def _find_existing_prometheus_adapter_release(
     release_name = release_name or None
     release_ns = release_ns or None
     return release_name, release_ns
+
+
+def _find_existing_external_metrics_apiservice(
+    cmd: CommandExecutor,
+) -> str | None:
+    """Return ``namespace/service`` if the external-metrics APIService is
+    registered and available, else None.
+    """
+    result = cmd.kube(
+        "get",
+        "apiservice",
+        "v1beta1.external.metrics.k8s.io",
+        "-o",
+        "jsonpath="
+        "'{.spec.service.namespace}/{.spec.service.name}|"
+        '{.status.conditions[?(@.type=="Available")].status}\'',
+        check=False,
+    )
+    if not result.success or not result.stdout.strip():
+        return None
+    payload = result.stdout.strip().strip("'")
+    target, _, available = payload.partition("|")
+    if available != "True" or "/" not in target:
+        return None
+    return target
 
 
 def _find_yaml(stack_path: Path, stem_prefix: str) -> Path | None:
