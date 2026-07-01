@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 DUAL_LABEL = "dual-pods.llm-d.ai/dual"
 FMA_TIMEOUT = 10.0 * 60.0  # time (seconds) to wait
 
+# Name of the requester container whose start time is the actuation baseline
+# used by the dual-pods controller. Mirrors FMA pkg/api InferenceServerContainerName.
+INFERENCE_SERVER_CONTAINER_NAME = "inference-server"
+
 
 @dataclass
 class FMARequesterInfo:
@@ -47,6 +51,7 @@ class FMARequesterInfo:
     creation_timestamp: float = 0.0
     ready_timestamp: float = 0.0
     dual_label_timestamp: float = 0.0
+    container_start_timestamp: float = 0.0
     pod: Any | None = None
 
     def dump(self) -> dict[str, Any]:
@@ -84,7 +89,19 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
     t_wake: float | None = None
     t_instance_create: float | None = None
     t_cold_launcher: float | None = None
-    dpc_timing_available: bool = False
+    # Which baseline produced this iteration's actuation timing, one of:
+    #   "dpc"                 -- DPC "HTTP call done" log (highest fidelity)
+    #   "kube_container_start"-- Kube fallback, requester inference-server
+    #                            container state.running.started_at (matches the
+    #                            dual-pods controller's actuation baseline)
+    #   "kube_pod_create"     -- Kube fallback, container-start unavailable,
+    #                            reverted to requester pod creation_timestamp
+    timing_source: str = "kube_pod_create"
+
+    @property
+    def dpc_timing_available(self) -> bool:
+        """Derived convenience: True only when timing came from the DPC log."""
+        return self.timing_source == "dpc"
 
     def dump(self) -> dict[str, Any]:
         """Convert FMALauncherInfo to dict.
@@ -102,6 +119,10 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
                 if hasattr(value, "dump") and callable(value.dump)
                 else value
             )
+
+        # dpc_timing_available is a derived property (not a dataclass field), so
+        # include it explicitly for backward-compatible downstream readers.
+        dump_dict["dpc_timing_available"] = self.dpc_timing_available
 
         return dump_dict
 
@@ -325,6 +346,96 @@ def get_dual_label_timestamp(pod: Any) -> float:
     return 0.0
 
 
+def get_container_start_timestamp(pod: Any) -> float:
+    """Return the requester inference-server container start time as an epoch.
+
+    Mirrors the dual-pods controller's actuation baseline, which reads
+    ``getContainerStatus(requestingPod, "inference-server").State.Running.StartedAt``.
+
+    Returns the ``state.running.started_at`` epoch (float) for the container
+    named ``inference-server``, or 0.0 when the container is missing, not
+    running, or its start time is unavailable.
+    """
+    container_statuses = pod.status.container_statuses
+    if not container_statuses:
+        return 0.0
+    for cs in container_statuses:
+        if cs.name != INFERENCE_SERVER_CONTAINER_NAME:
+            continue
+        state = getattr(cs, "state", None)
+        running = getattr(state, "running", None) if state is not None else None
+        started_at = getattr(running, "started_at", None) if running else None
+        if started_at is None:
+            return 0.0
+        return started_at.astimezone(timezone.utc).timestamp()
+    return 0.0
+
+
+def select_kube_fallback_baseline(
+    requester_info: "FMARequesterInfo",
+) -> tuple[float, str]:
+    """Choose the Kube-timestamp fallback baseline for an actuation.
+
+    This is the fallback used only when DPC-log HTTP timing is unavailable. The
+    three ``timing_source`` values measure three DIFFERENT intervals -- they are
+    not one interval at three fidelities -- because each subtracts from a
+    different start point (all end at the requester's readiness):
+
+    - ``dpc`` (set elsewhere, by DPC-log refinement): duration measured inside
+      the DPC log as ``relay_readiness - httpCallStartTime`` of the wake /
+      instance-create call. Its baseline is the HTTP call start, which occurs
+      *after* the container is already up, so it is the tightest interval
+      (excludes scheduling + container startup).
+    - ``kube_container_start`` (this function, preferred): duration measured as
+      ``requester ready - container state.running.startedAt``. This baseline
+      matches the baseline the dual-pods controller uses for its own actuation
+      metric -- but NOT the ``dpc`` log baseline above; it starts earlier (at
+      container start) and so is a coarser upper bound than ``dpc``.
+    - ``kube_pod_create`` (this function, reverted): duration measured from the
+      requester pod ``creation_timestamp`` -- an even earlier start point, so
+      the coarsest and most degraded of the three. (This was the harness's
+      original baseline before it was aligned to container start.)
+
+    Because the sources measure different intervals, a ``dpc`` number and a
+    ``kube_*`` fallback number for the "same" actuation are not directly
+    comparable; per-iteration ``timing_source`` exists precisely so consumers
+    do not mix them blindly.
+
+    This function is pure (no logging): the tentative ``timing_source`` it
+    returns may be overridden later by DPC-log refinement, so any warning about
+    a ``kube_pod_create`` reversion is deferred until the final source is known
+    (see :func:`warn_on_pod_create_baseline`).
+
+    Returns a ``(baseline_epoch, timing_source)`` tuple where ``timing_source``
+    is ``"kube_container_start"`` or ``"kube_pod_create"``.
+    """
+    if requester_info.container_start_timestamp > 0.0:
+        return requester_info.container_start_timestamp, "kube_container_start"
+
+    return requester_info.creation_timestamp, "kube_pod_create"
+
+
+def warn_on_pod_create_baseline(
+    requester_name: str,
+    logger_: logging.Logger = logger,
+) -> None:
+    """Warn that an actuation's FINAL baseline reverted to pod creation time.
+
+    Emitted only for iterations whose final ``timing_source`` is
+    ``"kube_pod_create"`` (i.e. neither a container-start Kube fallback nor a
+    DPC-log override), so a genuine reversion is never silent while a reversion
+    that DPC refinement later moots produces no spurious warning.
+    """
+    logger_.warning(
+        "Requester '%s': inference-server container start time unavailable; "
+        "reverted Kube-fallback baseline to pod creation_timestamp "
+        "(timing_source=kube_pod_create). This iteration's actuation number is "
+        "measured from an earlier baseline than the dual-pods controller's own "
+        "actuation metric and may be overstated.",
+        requester_name,
+    )
+
+
 def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches,too-many-statements
     v1: client.CoreV1Api,
     namespace: str,
@@ -358,6 +469,7 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
         ).timestamp()
         requester_info.ready_timestamp = get_ready_timestamp(p)
         requester_info.dual_label_timestamp = get_dual_label_timestamp(p)
+        requester_info.container_start_timestamp = get_container_start_timestamp(p)
         requester_info.pod = p
         all_requester_pods[p.metadata.name] = requester_info
 
@@ -409,6 +521,9 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
                         ).timestamp()
                     )
                     requester_info.ready_timestamp = get_ready_timestamp(pod)
+                    requester_info.container_start_timestamp = (
+                        get_container_start_timestamp(pod)
+                    )
                     # only calculate if it wasn't already calculated
                     if requester_info.dual_label_timestamp == 0.0:
                         requester_info.dual_label_timestamp = get_dual_label_timestamp(
@@ -860,21 +975,31 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                                     FMAActuationCondition.T_COLD_LAUNCHER
                                 )
 
-                        # Compute per-path timing (upper bound via Kube timestamps)
+                        # Compute per-path timing (upper bound via Kube timestamps).
+                        # Anchor hot/warm actuation on the requester
+                        # inference-server container start (matches the dual-pods
+                        # controller's actuation baseline); revert to pod
+                        # creation_timestamp only when the container start is
+                        # unavailable, and record which
+                        # baseline was used via timing_source.
                         ready_ts = launcher_info.requester_info.ready_timestamp
-                        creation_ts = launcher_info.requester_info.creation_timestamp
+                        actuation_baseline, launcher_info.timing_source = (
+                            select_kube_fallback_baseline(launcher_info.requester_info)
+                        )
                         if (
                             launcher_info.actuation_condition
                             == FMAActuationCondition.T_HOT
                             and ready_ts > 0.0
                         ):
-                            launcher_info.t_wake = ready_ts - creation_ts
+                            launcher_info.t_wake = ready_ts - actuation_baseline
                         elif (
                             launcher_info.actuation_condition
                             == FMAActuationCondition.T_WARM
                             and ready_ts > 0.0
                         ):
-                            launcher_info.t_instance_create = ready_ts - creation_ts
+                            launcher_info.t_instance_create = (
+                                ready_ts - actuation_baseline
+                            )
                         elif (
                             launcher_info.actuation_condition
                             == FMAActuationCondition.T_COLD_LAUNCHER
@@ -956,7 +1081,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                                 refined,
                             )
                             launcher_info.t_wake = refined
-                            launcher_info.dpc_timing_available = True
+                            launcher_info.timing_source = "dpc"
                     elif (
                         launcher_info.actuation_condition
                         == FMAActuationCondition.T_WARM
@@ -970,7 +1095,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                                 refined,
                             )
                             launcher_info.t_instance_create = refined
-                            launcher_info.dpc_timing_available = True
+                            launcher_info.timing_source = "dpc"
                     elif (
                         launcher_info.actuation_condition
                         == FMAActuationCondition.T_COLD_LAUNCHER
@@ -984,8 +1109,16 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                                 refined,
                             )
                             launcher_info.t_cold_launcher = refined
-                            launcher_info.dpc_timing_available = True
+                            launcher_info.timing_source = "dpc"
         else:
             logger.info(
                 "No DPC timing records found; using Kube-timestamp upper bounds."
             )
+
+        # Now that DPC refinement has run, warn only for iterations whose FINAL
+        # timing_source is kube_pod_create -- so a reversion that DPC refinement
+        # overrode to "dpc" does not emit a spurious "may be overstated" warning.
+        for fma_iter in fma_metrics.iterations:
+            for launcher_info in fma_iter.launcher_infos:
+                if launcher_info.timing_source == "kube_pod_create":
+                    warn_on_pod_create_baseline(launcher_info.requester_info.name)

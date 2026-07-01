@@ -1,8 +1,16 @@
 """Parse DPC (dual-pods-controller) klog output to extract per-request timing.
 
-The DPC emits structured klog lines at V(2) with httpCallStartTime/k8sCallStartTime
-fields (added in llm-d-fast-model-actuation PR #522). This module extracts those
-timestamps and correlates them by requesterName to produce per-request timing records.
+The DPC emits two kinds of structured klog lines:
+1. "HTTP call done" lines at V(5) with a purpose="<token>" field identifying the
+   HTTP call type (purpose tokens: "wake", "create_instance", "relay_ready", etc.).
+   Each line includes httpCallStartTime field.
+2. "Created launcher-based server-providing pod" lines at V(2) for cold-launcher
+   starts, with k8sCallStartTime field.
+
+This module correlates these timestamps by requesterName to produce per-request
+timing records. Only specific purposes are tracked: "wake" (hot-start anchor),
+"create_instance" (warm-start anchor), "relay_ready" (readiness end time).
+Other purposes and relay_unready are ignored.
 """
 
 import glob
@@ -18,16 +26,12 @@ logger = logging.getLogger(__name__)
 # klog structured field patterns (key="value" pairs)
 _FIELD_RE = re.compile(r'(\w+)="([^"]*)"')
 
-# Log messages we care about
-_RELAY_READINESS_MSG = "Successfully relayed the readiness"
-_WAKE_MSG = "Woke inference server"
-_CREATE_INSTANCE_MSG = "Created vLLM instance"
+# Log messages we care about (DPC indicators)
+_HTTP_CALL_DONE_MSG = "HTTP call done"
 _CREATE_LAUNCHER_POD_MSG = "Created launcher-based server-providing pod"
 
 _DPC_INDICATOR_MSGS = (
-    _RELAY_READINESS_MSG,
-    _WAKE_MSG,
-    _CREATE_INSTANCE_MSG,
+    _HTTP_CALL_DONE_MSG,
     _CREATE_LAUNCHER_POD_MSG,
 )
 
@@ -109,21 +113,23 @@ def parse_dpc_log(lines: Iterable[str]) -> dict[str, DPCTimingRecord]:
             records[requester_name] = DPCTimingRecord(requester_name=requester_name)
         rec = records[requester_name]
 
-        if _RELAY_READINESS_MSG in line and fields.get("readiness") == "ready":
+        # Handle centralized "HTTP call done" line with purpose-based dispatch
+        if _HTTP_CALL_DONE_MSG in line:
+            purpose = fields.get("purpose", "")
             ts = _parse_rfc3339_nano(fields.get("httpCallStartTime", ""))
-            if ts is not None:
-                rec.relay_readiness_time = ts
 
-        elif _WAKE_MSG in line:
-            ts = _parse_rfc3339_nano(fields.get("httpCallStartTime", ""))
-            if ts is not None:
-                rec.wake_start_time = ts
+            if purpose == "wake":
+                if ts is not None:
+                    rec.wake_start_time = ts
+            elif purpose == "create_instance":
+                if ts is not None:
+                    rec.instance_create_start_time = ts
+            elif purpose == "relay_ready":
+                if ts is not None:
+                    rec.relay_readiness_time = ts
+            # else: ignore relay_unready, sleep, query_sleeping, etc.
 
-        elif _CREATE_INSTANCE_MSG in line:
-            ts = _parse_rfc3339_nano(fields.get("httpCallStartTime", ""))
-            if ts is not None:
-                rec.instance_create_start_time = ts
-
+        # Handle cold-launcher start
         elif _CREATE_LAUNCHER_POD_MSG in line:
             ts = _parse_rfc3339_nano(fields.get("k8sCallStartTime", ""))
             if ts is not None:
