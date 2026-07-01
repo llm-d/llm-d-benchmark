@@ -96,9 +96,14 @@ class TestParseDpcLogFile:
         (flag dumps, leader election, reconcile churn) before the first
         relay/wake/create message, so the indicator can sit well past that boundary.
         """
+        # Use benign "HTTP call done" with a non-anchor purpose (e.g., get_health)
+        # as filler. This is an indicator message (so file is still recognized as DPC)
+        # but doesn't create any timing record (benign noise).
         filler_line = (
-            "I0603 15:00:00.000000  1 inference-server.go:145] "
-            '"Reconciling server" serverUID="noise" requesterName="noise-pod"\n'
+            'I0603 15:00:00.000000  1 inference-server.go:2074] "HTTP call done" '
+            'purpose="get_health" method="GET" url="http://10.0.0.1:8005/health" '
+            'requesterName="health-check" httpCallStartTime="2026-06-03T15:00:00.000000000Z" '
+            'latencySecs="0.001" statusCode="200"\n'
         )
         # Prepend well over 256KB of benign filler, then the real sample block.
         filler = filler_line * (300 * 1024 // len(filler_line) + 1)
@@ -112,9 +117,11 @@ class TestParseDpcLogFile:
 
     def test_file_without_relay_but_with_wake_still_parsed(self, tmp_path):
         """DPC log where requester crashed before relay should still be found."""
+        # New format with full fields for a wake call, no relay follows (requester crashed)
         partial_log = (
             'I0603 15:29:01.000000  1 x.go:2074] "HTTP call done" purpose="wake" '
-            'requesterName="req-crashed" httpCallStartTime="2026-06-03T15:29:00.900Z"\n'
+            'method="POST" url="http://10.0.0.1:8005/wake_up" requesterName="req-crashed" '
+            'httpCallStartTime="2026-06-03T15:29:00.900Z" latencySecs="0.1" statusCode="200"\n'
         )
         (tmp_path / "dpctlr--manager.log").write_text(partial_log)
         records = parse_dpc_log_file(str(tmp_path))
