@@ -1,0 +1,341 @@
+# P/D DISAGGREGATION - Intel XPU (device-plugin) variant
+# ============================================================================
+# Adapted from config/scenarios/guides/pd-disaggregation.yaml for Intel GPU
+# (xe driver, classic device-plugin `gpu.intel.com/xe`). Mirrors the upstream
+# guide XPU overlay at:
+#   llm-d/guides/pd-disaggregation/modelserver/xpu/vllm
+#
+# Key differences vs the NVIDIA scenario:
+#   * accelerator.type=intel-xe, resource=gpu.intel.com/xe (not nvidia.com/gpu)
+#   * vLLM image = ghcr.io/llm-d/llm-d-xpu (XPU build, not CUDA vllm-openai)
+#   * model = Qwen/Qwen3-0.6B (small, fits a single Arc/B-series GPU)
+#   * prefill + decode customCommand have NO libcuda export and NO
+#     --gpu-memory-utilization; use --dtype float16 --enforce-eager.
+#   * KV transfer (NixlConnector) uses "kv_buffer_device":"cpu" and the NIXL
+#     side channel runs over TCP (vllmCommon.ucxTls=tcp) -- this is the
+#     XPU-supported transport (no GPUDirect/cuda_ipc on Intel GPUs).
+#   * NO DRA -- the upstream XPU overlay uses ResourceClaimTemplates
+#     (deviceClassName gpu.intel.com); this cluster uses the CLASSIC Intel GPU
+#     device plugin, so pods request `gpu.intel.com/xe` directly instead.
+#   * 1 prefill + 1 decode pod (TP=1 each) to fit a small multi-card budget;
+#     scale replicas up once more XPUs are free.
+# ============================================================================
+
+scenario:
+  - name: "pd-disaggregation-xpu"
+
+    # =========================================================================
+    # ACCELERATOR - Intel GPU via classic device plugin (gpu.intel.com/xe)
+    # =========================================================================
+    accelerator:
+      type: intel-xe
+      resource: "gpu.intel.com/xe"
+      count: 1
+      # The llm-d-modelservice chart injects accelerator-specific env for
+      # intel-xe (VLLM_WORKER_MULTIPROC_METHOD=spawn). The benchmark macro
+      # already adds VLLM_WORKER_MULTIPROC_METHOD to the container env, so the
+      # chart default would produce a duplicate env key (rejected by
+      # server-side apply). Override the chart's intel-xe env list to empty.
+      env:
+        intel-xe: []
+
+    # =========================================================================
+    # IMAGE - vLLM XPU build (overrides the CUDA default in defaults.yaml)
+    # =========================================================================
+    images:
+      vllm:
+        repository: ghcr.io/llm-d/llm-d-xpu
+        tag: v0.7.0
+        pullPolicy: IfNotPresent
+
+    # =========================================================================
+    # MODEL
+    # =========================================================================
+    model:
+      name: Qwen/Qwen3-0.6B
+      shortName: qwen-qwen3-06b
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 50Gi
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.9
+
+    # =========================================================================
+    # DEPLOYMENT METHOD - modelservice with standalone (epponly) router
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    kustomize:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    # =========================================================================
+    # ROUTING - NIXL v2 connector drives prefill->decode KV-cache transfer.
+    # The preprocess init container auto-populates the NIXL side-channel env
+    # (VLLM_NIXL_*) at pod runtime; we only pin UCX transport to TCP below
+    # (vllmCommon.ucxTls), which is the XPU-supported NIXL transport.
+    # =========================================================================
+    routing:
+      connector: nixlv2
+
+    # =========================================================================
+    # ROUTING / GAIE - P/D scheduling profiles (hardware-agnostic; identical
+    # to the NVIDIA scenario). Decode/prefill filters + scorers pick endpoints.
+    # =========================================================================
+    inferenceExtension:
+      pluginsConfigFile: "pd-config.yaml"
+      pluginsCustomConfig:
+        pd-config.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: disagg-headers-handler
+          - type: always-disagg-pd-decider
+          - type: disagg-profile-handler
+            parameters:
+              deciderPluginName: always-disagg-pd-decider
+          - type: prefill-filter
+          - type: decode-filter
+          - type: prefix-cache-scorer
+          - type: queue-scorer
+          - type: kv-cache-utilization-scorer
+          - type: active-request-scorer
+          - type: max-score-picker
+          schedulingProfiles:
+          - name: prefill
+            plugins:
+            - pluginRef: prefill-filter
+            - pluginRef: prefix-cache-scorer
+              weight: 3
+            - pluginRef: queue-scorer
+              weight: 2
+            - pluginRef: kv-cache-utilization-scorer
+              weight: 2
+            - pluginRef: max-score-picker
+          - name: decode
+            plugins:
+            - pluginRef: decode-filter
+            - pluginRef: active-request-scorer
+              weight: 2
+            - pluginRef: prefix-cache-scorer
+              weight: 3
+            - pluginRef: max-score-picker
+
+    # =========================================================================
+    # PREFILL
+    # =========================================================================
+    prefill:
+      enabled: true
+      replicas: 1
+
+      # Suppress the default NVIDIA nodeAffinity (see decode note below).
+      acceleratorType: {}
+
+      # Pod-level securityContext. supplementalGroups (gid 107 = render) gives
+      # /dev/dri access on the Intel node. Must live here (Pod field), not in
+      # extraContainerConfig.securityContext (container field). Do NOT set
+      # pod-level runAsUser/runAsGroup -- it would propagate to the routing
+      # sidecar (runAsNonRoot: true) and the kubelet would reject the pod.
+      podSecurityContext:
+        supplementalGroups:
+          - 107
+
+      vllm:
+        # XPU vLLM serve command. Mirrors the upstream xpu/vllm overlay
+        # (no libcuda export, no --gpu-memory-utilization, NIXL KV transfer
+        # with kv_buffer_device=cpu). --enforce-eager: the XPU
+        # torch.compile/inductor path crashes during warmup on this driver
+        # ("UR_RESULT_ERROR_DEVICE_LOST"); eager is the stable path.
+        customCommand: |
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_INFERENCE_PORT \
+          --dtype float16 \
+          --enforce-eager \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both", "kv_buffer_device":"cpu"}' \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+          gpu.intel.com/xe: 1
+        requests:
+          memory: 12Gi
+          cpu: "4"
+          gpu.intel.com/xe: 1
+
+      # vLLM's default HTTP keep-alive (5s) is shorter than the llm-d routing
+      # sidecar's idle timeout (~90s), causing TCP RSTs on connection reuse.
+      # Raise it above the sidecar timeout (upstream XPU overlay uses 120s).
+      extraEnvVars:
+        - name: VLLM_HTTP_TIMEOUT_KEEP_ALIVE
+          value: "120"
+
+      extraContainerConfig:
+        securityContext:
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: IfNotPresent
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+    # =========================================================================
+    # DECODE
+    # =========================================================================
+    decode:
+      replicas: 1
+
+      # Suppress the default NVIDIA nodeAffinity. defaults.yaml sets
+      # decode.acceleratorType.labelKey=nvidia.com/gpu.product (value
+      # NVIDIA-H100-80GB-HBM3), which the Intel node does not carry, making
+      # decode pods Unschedulable. Empty dict => template skips the
+      # acceleratorTypes nodeAffinity block entirely (Intel GPUs are selected
+      # purely via the gpu.intel.com/xe resource request).
+      acceleratorType: {}
+
+      # Pod-level securityContext. Group 107 = render, for /dev/dri. See the
+      # prefill note above for why runAsUser/runAsGroup are NOT set here.
+      podSecurityContext:
+        supplementalGroups:
+          - 107
+
+      vllm:
+        # XPU decode command. Binds to the metrics port so the llm-d routing
+        # sidecar can bridge it. Same XPU adaptations as prefill.
+        customCommand: |
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --dtype float16 \
+          --enforce-eager \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both", "kv_buffer_device":"cpu"}' \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+          gpu.intel.com/xe: 1
+        requests:
+          memory: 12Gi
+          cpu: "4"
+          gpu.intel.com/xe: 1
+
+      extraEnvVars: []
+
+      extraContainerConfig:
+        ports:
+          - containerPort: 8200
+            name: metrics
+            protocol: TCP
+        securityContext:
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: IfNotPresent
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+    # =========================================================================
+    # COMMON (vLLM volumes + NIXL transport)
+    # =========================================================================
+    vllmCommon:
+      # Pin the NIXL/UCX transport to TCP. Intel XPUs have no GPUDirect/
+      # cuda_ipc transport, so the default RDMA-oriented UCX_TLS would fail;
+      # TCP is the transport the upstream XPU overlay uses.
+      ucxTls: "tcp"
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # =========================================================================
+    # STORAGE
+    # kind's rancher.io/local-path provisioner only supports ReadWriteOnce
+    # (NodePath rejects ReadWriteMany), so override the RWX defaults to RWO.
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 50Gi
+        accessModes:
+          - ReadWriteOnce
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+
+    # =========================================================================
+    # TIMEOUTS
+    # =========================================================================
+    timeouts:
+      controlWait: 900000
+      harnessWait: 900000
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "~/data/pd-disaggregation-xpu"
+
+    harness:
+      name: vllm-benchmark
+      experimentProfile: random_concurrent.yaml
