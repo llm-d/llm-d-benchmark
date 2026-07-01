@@ -2543,6 +2543,10 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                     "units": Units.S,
                     "value": requester_info["dual_label_timestamp"],
                 }
+                ri["container_start_timestamp"] = {
+                    "units": Units.S,
+                    "value": requester_info.get("container_start_timestamp", 0.0),
+                }
                 info["requester_info"] = ri
 
                 info["actuation_condition"] = launcher_info["actuation_condition"]
@@ -2554,6 +2558,9 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                     "value": launcher_info.get("launcher_creation_timestamp", 0.0),
                 }
                 info["launcher_node"] = launcher_info.get("launcher_node", "")
+                info["timing_source"] = launcher_info.get(
+                    "timing_source", "kube_pod_create"
+                )
                 info["dpc_timing_available"] = launcher_info.get(
                     "dpc_timing_available", False
                 )

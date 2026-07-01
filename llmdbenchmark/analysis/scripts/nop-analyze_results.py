@@ -350,9 +350,24 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
                 else None
             )
             node = launcher_info.get("launcher_node", "")
-            source = (
-                "DPC" if launcher_info.get("dpc_timing_available", False) else "Kube"
-            )
+            # Three-way timing source so a degraded pod-create baseline is
+            # distinguishable from a container-start Kube fallback at a glance.
+            # Fall back to the legacy dpc_timing_available flag for older reports
+            # that predate the timing_source field.
+            source_map = {
+                "dpc": "DPC",
+                "kube_container_start": "Kube (container-start)",
+                "kube_pod_create": "Kube (pod-create)",
+            }
+            timing_source = launcher_info.get("timing_source")
+            if timing_source in source_map:
+                source = source_map[timing_source]
+            else:
+                source = (
+                    "DPC"
+                    if launcher_info.get("dpc_timing_available", False)
+                    else "Kube"
+                )
 
             pandas_datas.append(
                 {
