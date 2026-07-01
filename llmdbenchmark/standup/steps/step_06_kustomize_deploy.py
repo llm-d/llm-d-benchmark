@@ -118,7 +118,11 @@ class KustomizeDeployStep(Step):
             context.logger.log_info(
                 f"README variables: {', '.join(f'{k}={v}' for k, v in parsed.variables.items())}"
             )
-
+        overrodevars = kust_config.get("guideVariableOverrides", {})
+        if overrodevars:
+            context.logger.log_info(
+                f"OVERRODE variables: {', '.join(f'{k}={v}' for k, v in overrodevars.items())}"
+            )
         if not gaie_version:
             gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
 
