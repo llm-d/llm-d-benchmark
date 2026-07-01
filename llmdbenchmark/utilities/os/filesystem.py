@@ -30,8 +30,10 @@ def create_tmp_directory(
 ) -> Path:
     """Create a temporary directory and return its path."""
     try:
-        p = Path(base_dir) if base_dir is not None else None
-        return Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=p))
+        if base_dir is not None:
+            p = Path(base_dir)
+        d = Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=p))
+        return d
     except OSError as exc:
         raise OSError(f"Failed to create temporary directory: {exc}") from exc
 
@@ -189,8 +191,14 @@ def create_sub_dir_workload(
     if not sub_dir:
         prefix = get_user_id()
         suffix = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-        sub_workspace = p / f"{prefix}-{suffix}"
+        sub_workspace_target = p / f"{prefix}-{suffix}"
+        sub_workspace_link = p / "latest"
     else:
-        sub_workspace = p / sub_dir
-
-    return create_directory(sub_workspace)
+        sub_workspace_target = p / sub_dir
+        sub_workspace_link = None
+    sd = create_directory(sub_workspace_target)
+    if sub_workspace_link:
+        if sub_workspace_link.is_symlink():
+            sub_workspace_link.unlink()
+        sub_workspace_link.symlink_to(sub_workspace_target)
+    return sd

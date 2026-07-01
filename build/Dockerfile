@@ -1,5 +1,6 @@
 #FROM ghcr.io/llm-d/python:3.12.9-slim-bookworm
-FROM docker.io/library/python:3.12.9-slim-bookworm
+#FROM docker.io/library/python:3.14.6-slim-bookworm
+FROM docker.io/library/python:3.13.14-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
