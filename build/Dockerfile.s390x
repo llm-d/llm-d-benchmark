@@ -265,7 +265,7 @@ ENV CARGO_HOME=/root/.cargo
 ENV RUSTUP_HOME=/root/.rustup
 ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
 
-ARG VLLM_VERSION=v0.23.0
+ARG VLLM_VERSION=v0.24.0
 ARG OUTLINES_CORE_VERSION
 
     # Clone vllm just to read requirements/common.txt for the version pin
