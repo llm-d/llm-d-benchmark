@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 DUAL_LABEL = "dual-pods.llm-d.ai/dual"
 FMA_TIMEOUT = 10.0 * 60.0  # time (seconds) to wait
 
-# Name of the requester container whose start time is the #599 actuation
-# baseline. Mirrors FMA pkg/api InferenceServerContainerName.
+# Name of the requester container whose start time is the actuation baseline
+# used by the dual-pods controller. Mirrors FMA pkg/api InferenceServerContainerName.
 INFERENCE_SERVER_CONTAINER_NAME = "inference-server"
 
 
@@ -92,7 +92,8 @@ class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
     # Which baseline produced this iteration's actuation timing, one of:
     #   "dpc"                 -- DPC "HTTP call done" log (highest fidelity)
     #   "kube_container_start"-- Kube fallback, requester inference-server
-    #                            container state.running.started_at (matches #599)
+    #                            container state.running.started_at (matches the
+    #                            dual-pods controller's actuation baseline)
     #   "kube_pod_create"     -- Kube fallback, container-start unavailable,
     #                            reverted to requester pod creation_timestamp
     timing_source: str = "kube_pod_create"
@@ -348,7 +349,7 @@ def get_dual_label_timestamp(pod: Any) -> float:
 def get_container_start_timestamp(pod: Any) -> float:
     """Return the requester inference-server container start time as an epoch.
 
-    Mirrors the controller's #599 baseline, which reads
+    Mirrors the dual-pods controller's actuation baseline, which reads
     ``getContainerStatus(requestingPod, "inference-server").State.Running.StartedAt``.
 
     Returns the ``state.running.started_at`` epoch (float) for the container
@@ -375,9 +376,30 @@ def select_kube_fallback_baseline(
 ) -> tuple[float, str]:
     """Choose the Kube-timestamp fallback baseline for an actuation.
 
-    Prefers the requester ``inference-server`` container start time (matching
-    the controller's #599 baseline); otherwise reverts to the requester pod
-    ``creation_timestamp`` -- a degraded baseline.
+    This is the fallback used only when DPC-log HTTP timing is unavailable. The
+    three ``timing_source`` values measure three DIFFERENT intervals -- they are
+    not one interval at three fidelities -- because each subtracts from a
+    different start point (all end at the requester's readiness):
+
+    - ``dpc`` (set elsewhere, by DPC-log refinement): duration measured inside
+      the DPC log as ``relay_readiness - httpCallStartTime`` of the wake /
+      instance-create call. Its baseline is the HTTP call start, which occurs
+      *after* the container is already up, so it is the tightest interval
+      (excludes scheduling + container startup).
+    - ``kube_container_start`` (this function, preferred): duration measured as
+      ``requester ready - container state.running.startedAt``. This baseline
+      matches the baseline the dual-pods controller uses for its own actuation
+      metric -- but NOT the ``dpc`` log baseline above; it starts earlier (at
+      container start) and so is a coarser upper bound than ``dpc``.
+    - ``kube_pod_create`` (this function, reverted): duration measured from the
+      requester pod ``creation_timestamp`` -- an even earlier start point, so
+      the coarsest and most degraded of the three. (This was the harness's
+      original baseline before it was aligned to container start.)
+
+    Because the sources measure different intervals, a ``dpc`` number and a
+    ``kube_*`` fallback number for the "same" actuation are not directly
+    comparable; per-iteration ``timing_source`` exists precisely so consumers
+    do not mix them blindly.
 
     This function is pure (no logging): the tentative ``timing_source`` it
     returns may be overridden later by DPC-log refinement, so any warning about
@@ -408,8 +430,8 @@ def warn_on_pod_create_baseline(
         "Requester '%s': inference-server container start time unavailable; "
         "reverted Kube-fallback baseline to pod creation_timestamp "
         "(timing_source=kube_pod_create). This iteration's actuation number is "
-        "measured from an earlier baseline than the controller (#599) and may "
-        "be overstated.",
+        "measured from an earlier baseline than the dual-pods controller's own "
+        "actuation metric and may be overstated.",
         requester_name,
     )
 
@@ -955,9 +977,10 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
 
                         # Compute per-path timing (upper bound via Kube timestamps).
                         # Anchor hot/warm actuation on the requester
-                        # inference-server container start (matches controller
-                        # #599); revert to pod creation_timestamp only when the
-                        # container start is unavailable, and record which
+                        # inference-server container start (matches the dual-pods
+                        # controller's actuation baseline); revert to pod
+                        # creation_timestamp only when the container start is
+                        # unavailable, and record which
                         # baseline was used via timing_source.
                         ready_ts = launcher_info.requester_info.ready_timestamp
                         actuation_baseline, launcher_info.timing_source = (

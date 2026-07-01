@@ -1,9 +1,9 @@
 """Tests for FMA harness helpers: container-start baseline and timing_source.
 
-Covers #599: the Kube-timestamp fallback must anchor on the requester
-``inference-server`` container ``state.running.started_at`` (matching the
-controller), and any revert to pod ``creation_timestamp`` must be explicit
-(``timing_source == "kube_pod_create"``) and logged, never silent.
+The Kube-timestamp fallback must anchor on the requester ``inference-server``
+container ``state.running.started_at`` (matching the dual-pods controller's
+actuation baseline), and any revert to pod ``creation_timestamp`` must be
+explicit (``timing_source == "kube_pod_create"``) and logged, never silent.
 """
 
 import logging
@@ -34,7 +34,7 @@ def _fake_pod_with_container_start(started_at, name="inference-server"):
 
 
 class TestGetContainerStartTimestamp:
-    """get_container_start_timestamp mirrors the controller's #599 read."""
+    """get_container_start_timestamp mirrors the controller's actuation-baseline read."""
 
     def test_returns_epoch_for_running_inference_server(self):
         started = datetime(2026, 7, 1, 10, 39, 35, tzinfo=timezone.utc)
