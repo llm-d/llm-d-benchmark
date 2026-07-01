@@ -117,6 +117,7 @@ class AdminPrerequisitesStep(Step):
 
         self._install_gateway_api_crds(
             cmd,
+            context,
             plan_config,
             errors,
             existing_crds,
@@ -235,6 +236,7 @@ class AdminPrerequisitesStep(Step):
     def _install_gateway_api_crds(
         self,
         cmd: CommandExecutor,
+        context: ExecutionContext,
         plan_config: dict,
         errors: list,
         existing_crds: list[str],
@@ -243,6 +245,13 @@ class AdminPrerequisitesStep(Step):
         if plan_config.get("gateway", {}).get("externallyManaged", False):
             cmd.logger.log_info(
                 "✅ Gateway is externally managed — skipping Gateway API CRD install"
+            )
+            return
+
+        if context.is_openshift:
+            cmd.logger.log_info(
+                "✅ OpenShift detected — using platform-bundled Gateway API "
+                "(skipping CRD install)"
             )
             return
 
