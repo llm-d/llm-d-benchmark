@@ -8,15 +8,16 @@ from workload.harnesses.dpc_log_parser import (
 )
 
 
-# Representative klog lines from a DPC running with PR #522 at V(2)
+# Representative klog lines from a DPC running with centralized "HTTP call done" line at V(5)
+# The DPC now emits a single klog line per HTTP call with purpose="<token>" field.
 SAMPLE_LOG = """\
 I0603 15:29:00.100000  1 inference-server.go:145] "Reconciling server" serverUID="abc-123" requesterName="fma-req-1-1717424983-abcde"
-I0603 15:29:01.200000  1 inference-server.go:1131] "Woke inference server" endpoint="http://10.0.0.1:8005/wake_up" description="discovered-bound" requesterName="fma-req-1-1717424983-abcde" httpCallStartTime="2026-06-03T15:29:01.150000000Z"
-I0603 15:29:03.500000  1 inference-server.go:513] "Successfully relayed the readiness" requesterName="fma-req-1-1717424983-abcde" name="launcher-27hdz" readiness="ready" url="http://10.0.0.2:8888/v1/become-ready" httpCallStartTime="2026-06-03T15:29:03.480000000Z"
-I0603 15:30:10.000000  1 inference-server.go:464] "Created vLLM instance" instance_id="inst-456" status="running" requesterName="fma-req-2-1717424983-fghij" httpCallStartTime="2026-06-03T15:30:09.900000000Z"
-I0603 15:30:50.000000  1 inference-server.go:513] "Successfully relayed the readiness" requesterName="fma-req-2-1717424983-fghij" name="launcher-27hdz" readiness="ready" url="http://10.0.0.3:8888/v1/become-ready" httpCallStartTime="2026-06-03T15:30:49.950000000Z"
+I0603 15:29:01.200000  1 inference-server.go:2074] "HTTP call done" purpose="wake" method="POST" url="http://10.0.0.1:8005/wake_up" requesterName="fma-req-1-1717424983-abcde" httpCallStartTime="2026-06-03T15:29:01.150000000Z" latencySecs="0.51" statusCode="200"
+I0603 15:29:03.500000  1 inference-server.go:2074] "HTTP call done" purpose="relay_ready" method="POST" url="http://10.0.0.2:8888/v1/become-ready" requesterName="fma-req-1-1717424983-abcde" httpCallStartTime="2026-06-03T15:29:03.480000000Z" latencySecs="0.02" statusCode="200"
+I0603 15:30:10.000000  1 inference-server.go:2074] "HTTP call done" purpose="create_instance" method="POST" url="http://10.0.0.3:8888/v1/models" requesterName="fma-req-2-1717424983-fghij" httpCallStartTime="2026-06-03T15:30:09.900000000Z" latencySecs="0.10" statusCode="200"
+I0603 15:30:50.000000  1 inference-server.go:2074] "HTTP call done" purpose="relay_ready" method="POST" url="http://10.0.0.3:8888/v1/become-ready" requesterName="fma-req-2-1717424983-fghij" httpCallStartTime="2026-06-03T15:30:49.950000000Z" latencySecs="0.05" statusCode="200"
 I0603 15:31:00.000000  1 inference-server.go:667] "Created launcher-based server-providing pod" name="launcher-xq8lg" gpus="GPU-abc" requesterName="fma-req-3-1717424983-klmno" k8sCallStartTime="2026-06-03T15:30:59.800000000Z"
-I0603 15:32:05.000000  1 inference-server.go:513] "Successfully relayed the readiness" requesterName="fma-req-3-1717424983-klmno" name="launcher-xq8lg" readiness="ready" url="http://10.0.0.4:8888/v1/become-ready" httpCallStartTime="2026-06-03T15:32:04.900000000Z"
+I0603 15:32:05.000000  1 inference-server.go:2074] "HTTP call done" purpose="relay_ready" method="POST" url="http://10.0.0.4:8888/v1/become-ready" requesterName="fma-req-3-1717424983-klmno" httpCallStartTime="2026-06-03T15:32:04.900000000Z" latencySecs="0.10" statusCode="200"
 """
 
 
@@ -112,7 +113,7 @@ class TestParseDpcLogFile:
     def test_file_without_relay_but_with_wake_still_parsed(self, tmp_path):
         """DPC log where requester crashed before relay should still be found."""
         partial_log = (
-            'I0603 15:29:01.000000  1 x.go:1] "Woke inference server" '
+            'I0603 15:29:01.000000  1 x.go:2074] "HTTP call done" purpose="wake" '
             'requesterName="req-crashed" httpCallStartTime="2026-06-03T15:29:00.900Z"\n'
         )
         (tmp_path / "dpctlr--manager.log").write_text(partial_log)
@@ -128,13 +129,13 @@ class TestEdgeCases:
     def test_multiple_relay_readiness_uses_last(self):
         """If DPC retries readiness relay, use the last successful one."""
         lines = [
-            'I0603 15:29:01.000000  1 x.go:1] "Woke inference server" '
+            'I0603 15:29:01.000000  1 x.go:2074] "HTTP call done" purpose="wake" '
             'requesterName="req-retry" httpCallStartTime="2026-06-03T15:29:00.900Z"',
-            'I0603 15:29:03.000000  1 x.go:1] "Successfully relayed the readiness" '
-            'requesterName="req-retry" readiness="ready" '
+            'I0603 15:29:03.000000  1 x.go:2074] "HTTP call done" purpose="relay_ready" '
+            'requesterName="req-retry" '
             'httpCallStartTime="2026-06-03T15:29:02.500Z"',
-            'I0603 15:29:05.000000  1 x.go:1] "Successfully relayed the readiness" '
-            'requesterName="req-retry" readiness="ready" '
+            'I0603 15:29:05.000000  1 x.go:2074] "HTTP call done" purpose="relay_ready" '
+            'requesterName="req-retry" '
             'httpCallStartTime="2026-06-03T15:29:04.800Z"',
         ]
         records = parse_dpc_log(lines)
@@ -144,12 +145,12 @@ class TestEdgeCases:
         assert 3.8 < t_hot < 4.0  # 04.8 - 00.9 = 3.9s
 
     def test_unready_relay_ignored(self):
-        """readiness='unready' lines should not set relay_readiness_time."""
+        """purpose='relay_unready' lines should not set relay_readiness_time."""
         lines = [
-            'I0603 15:29:01.000000  1 x.go:1] "Woke inference server" '
+            'I0603 15:29:01.000000  1 x.go:2074] "HTTP call done" purpose="wake" '
             'requesterName="req-unready" httpCallStartTime="2026-06-03T15:29:00.900Z"',
-            'I0603 15:29:03.000000  1 x.go:1] "Successfully relayed the readiness" '
-            'requesterName="req-unready" readiness="unready" '
+            'I0603 15:29:03.000000  1 x.go:2074] "HTTP call done" purpose="relay_unready" '
+            'requesterName="req-unready" '
             'httpCallStartTime="2026-06-03T15:29:02.500Z"',
         ]
         records = parse_dpc_log(lines)
@@ -160,10 +161,10 @@ class TestEdgeCases:
     def test_malformed_timestamp_skipped(self):
         """Malformed httpCallStartTime should not crash, just skip."""
         lines = [
-            'I0603 15:29:01.000000  1 x.go:1] "Woke inference server" '
+            'I0603 15:29:01.000000  1 x.go:2074] "HTTP call done" purpose="wake" '
             'requesterName="req-bad" httpCallStartTime="not-a-timestamp"',
-            'I0603 15:29:03.000000  1 x.go:1] "Successfully relayed the readiness" '
-            'requesterName="req-bad" readiness="ready" '
+            'I0603 15:29:03.000000  1 x.go:2074] "HTTP call done" purpose="relay_ready" '
+            'requesterName="req-bad" '
             'httpCallStartTime="2026-06-03T15:29:02.500Z"',
         ]
         records = parse_dpc_log(lines)
@@ -174,15 +175,15 @@ class TestEdgeCases:
     def test_multiple_requesters_independent(self):
         """Different requesters get independent records."""
         lines = [
-            'I0603 15:29:01.000000  1 x.go:1] "Woke inference server" '
+            'I0603 15:29:01.000000  1 x.go:2074] "HTTP call done" purpose="wake" '
             'requesterName="req-a" httpCallStartTime="2026-06-03T15:29:00.000Z"',
-            'I0603 15:30:01.000000  1 x.go:1] "Created vLLM instance" '
+            'I0603 15:30:01.000000  1 x.go:2074] "HTTP call done" purpose="create_instance" '
             'requesterName="req-b" httpCallStartTime="2026-06-03T15:30:00.000Z"',
-            'I0603 15:29:05.000000  1 x.go:1] "Successfully relayed the readiness" '
-            'requesterName="req-a" readiness="ready" '
+            'I0603 15:29:05.000000  1 x.go:2074] "HTTP call done" purpose="relay_ready" '
+            'requesterName="req-a" '
             'httpCallStartTime="2026-06-03T15:29:04.000Z"',
-            'I0603 15:31:05.000000  1 x.go:1] "Successfully relayed the readiness" '
-            'requesterName="req-b" readiness="ready" '
+            'I0603 15:31:05.000000  1 x.go:2074] "HTTP call done" purpose="relay_ready" '
+            'requesterName="req-b" '
             'httpCallStartTime="2026-06-03T15:31:04.000Z"',
         ]
         records = parse_dpc_log(lines)
