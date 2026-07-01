@@ -96,14 +96,13 @@ class TestParseDpcLogFile:
         (flag dumps, leader election, reconcile churn) before the first
         relay/wake/create message, so the indicator can sit well past that boundary.
         """
-        # Use benign "HTTP call done" with a non-anchor purpose (e.g., get_health)
-        # as filler. This is an indicator message (so file is still recognized as DPC)
-        # but doesn't create any timing record (benign noise).
+        # Filler must be a NON-indicator line (contains neither "HTTP call done"
+        # nor "Created launcher-based server-providing pod"), so the FIRST indicator
+        # is the real anchor from SAMPLE_LOG, sitting past the 256KB boundary. This
+        # keeps the regression bite: if _is_dpc_log_file ever sniffs only the first
+        # 256KB again, it would fail to recognize this file as a DPC log.
         filler_line = (
-            'I0603 15:00:00.000000  1 inference-server.go:2074] "HTTP call done" '
-            'purpose="get_health" method="GET" url="http://10.0.0.1:8005/health" '
-            'requesterName="health-check" httpCallStartTime="2026-06-03T15:00:00.000000000Z" '
-            'latencySecs="0.001" statusCode="200"\n'
+            'I0603 15:00:00.000000  1 flags.go:100] "Flag" name="foo" value="bar"\n'
         )
         # Prepend well over 256KB of benign filler, then the real sample block.
         filler = filler_line * (300 * 1024 // len(filler_line) + 1)
