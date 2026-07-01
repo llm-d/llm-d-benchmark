@@ -1,0 +1,21 @@
+# Intel XPU variant of the optimized-baseline specification.
+# [REQUIRED]
+{% set base_dir = base_dir | default('../') -%}
+base_dir: {{ base_dir }}
+
+# [REQUIRED]
+values_file:
+  path: {{ base_dir }}/config/templates/values/defaults.yaml
+  # Shared Intel XPU machine layer (accelerator + vLLM XPU image), deep-merged
+  # on top of defaults before the scenario. Keeps those bits out of the guide
+  # scenario so every XPU guide reuses one overlay instead of duplicating them.
+  overlays:
+    - {{ base_dir }}/config/templates/values/overlays/xpu.yaml
+
+# [REQUIRED]
+template_dir:
+  path: {{ base_dir }}/config/templates/jinja
+
+# [OPTIONAL]
+scenario_file:
+  path: {{ base_dir }}/config/scenarios/guides/optimized-baseline-xpu.yaml
