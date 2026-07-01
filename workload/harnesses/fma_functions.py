@@ -372,14 +372,17 @@ def get_container_start_timestamp(pod: Any) -> float:
 
 def select_kube_fallback_baseline(
     requester_info: "FMARequesterInfo",
-    logger_: logging.Logger = logger,
 ) -> tuple[float, str]:
     """Choose the Kube-timestamp fallback baseline for an actuation.
 
     Prefers the requester ``inference-server`` container start time (matching
-    the controller's #599 baseline). When that is unavailable, reverts to the
-    requester pod ``creation_timestamp`` -- a degraded baseline -- and emits a
-    warning naming the requester so the reversion is never silent.
+    the controller's #599 baseline); otherwise reverts to the requester pod
+    ``creation_timestamp`` -- a degraded baseline.
+
+    This function is pure (no logging): the tentative ``timing_source`` it
+    returns may be overridden later by DPC-log refinement, so any warning about
+    a ``kube_pod_create`` reversion is deferred until the final source is known
+    (see :func:`warn_on_pod_create_baseline`).
 
     Returns a ``(baseline_epoch, timing_source)`` tuple where ``timing_source``
     is ``"kube_container_start"`` or ``"kube_pod_create"``.
@@ -387,15 +390,28 @@ def select_kube_fallback_baseline(
     if requester_info.container_start_timestamp > 0.0:
         return requester_info.container_start_timestamp, "kube_container_start"
 
+    return requester_info.creation_timestamp, "kube_pod_create"
+
+
+def warn_on_pod_create_baseline(
+    requester_name: str,
+    logger_: logging.Logger = logger,
+) -> None:
+    """Warn that an actuation's FINAL baseline reverted to pod creation time.
+
+    Emitted only for iterations whose final ``timing_source`` is
+    ``"kube_pod_create"`` (i.e. neither a container-start Kube fallback nor a
+    DPC-log override), so a genuine reversion is never silent while a reversion
+    that DPC refinement later moots produces no spurious warning.
+    """
     logger_.warning(
         "Requester '%s': inference-server container start time unavailable; "
-        "reverting Kube-fallback baseline to pod creation_timestamp "
+        "reverted Kube-fallback baseline to pod creation_timestamp "
         "(timing_source=kube_pod_create). This iteration's actuation number is "
         "measured from an earlier baseline than the controller (#599) and may "
         "be overstated.",
-        requester_info.name,
+        requester_name,
     )
-    return requester_info.creation_timestamp, "kube_pod_create"
 
 
 def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches,too-many-statements
@@ -1075,3 +1091,11 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
             logger.info(
                 "No DPC timing records found; using Kube-timestamp upper bounds."
             )
+
+        # Now that DPC refinement has run, warn only for iterations whose FINAL
+        # timing_source is kube_pod_create -- so a reversion that DPC refinement
+        # overrode to "dpc" does not emit a spurious "may be overstated" warning.
+        for fma_iter in fma_metrics.iterations:
+            for launcher_info in fma_iter.launcher_infos:
+                if launcher_info.timing_source == "kube_pod_create":
+                    warn_on_pod_create_baseline(launcher_info.requester_info.name)

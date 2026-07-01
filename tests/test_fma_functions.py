@@ -80,22 +80,80 @@ class TestSelectKubeFallbackBaseline:
         assert baseline == 1002.0
         assert source == "kube_container_start"
 
-    def test_reverts_to_pod_create_and_warns(self, caplog):
+    def test_reverts_to_pod_create_selection(self, caplog):
         ri = f.FMARequesterInfo(
             name="fma-req-degraded",
             creation_timestamp=1000.0,
             ready_timestamp=1005.0,
             container_start_timestamp=0.0,
         )
+        # Selection is pure: it picks the pod-create baseline but does NOT warn,
+        # because DPC refinement may still override the source to "dpc" later.
         with caplog.at_level(logging.WARNING):
             baseline, source = f.select_kube_fallback_baseline(ri)
         assert baseline == 1000.0
         assert source == "kube_pod_create"
-        # Reversion must never be silent, and must name the requester.
+        assert not any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+class TestWarnOnPodCreateBaseline:
+    """The deferred warning names the requester and is emitted at WARNING level."""
+
+    def test_warns_and_names_requester(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            f.warn_on_pod_create_baseline("fma-req-degraded")
         assert any(
             rec.levelno == logging.WARNING and "fma-req-degraded" in rec.getMessage()
             for rec in caplog.records
         )
+
+
+def _emit_deferred_pod_create_warnings(launcher_infos):
+    """Mirror the production deferred-warning pass over final timing_source."""
+    for li in launcher_infos:
+        if li.timing_source == "kube_pod_create":
+            f.warn_on_pod_create_baseline(li.requester_info.name)
+
+
+class TestDeferredWarningRespectsFinalSource:
+    """Warning fires only for FINAL kube_pod_create, not DPC-overridden ones."""
+
+    def test_dpc_override_suppresses_warning(self, caplog):
+        # Requester started with container_start unavailable (tentative
+        # kube_pod_create) but DPC refinement overrode timing_source to "dpc".
+        refined = f.FMALauncherInfo(
+            requester_info=f.FMARequesterInfo(
+                name="fma-req-refined", creation_timestamp=1000.0
+            ),
+            timing_source="dpc",
+        )
+        with caplog.at_level(logging.WARNING):
+            _emit_deferred_pod_create_warnings([refined])
+        # No spurious "may be overstated" warning for a DPC-timed requester.
+        assert not any("fma-req-refined" in rec.getMessage() for rec in caplog.records)
+
+    def test_genuine_pod_create_still_warns(self, caplog):
+        degraded = f.FMALauncherInfo(
+            requester_info=f.FMARequesterInfo(
+                name="fma-req-degraded", creation_timestamp=1000.0
+            ),
+            timing_source="kube_pod_create",
+        )
+        with caplog.at_level(logging.WARNING):
+            _emit_deferred_pod_create_warnings([degraded])
+        assert any(
+            rec.levelno == logging.WARNING and "fma-req-degraded" in rec.getMessage()
+            for rec in caplog.records
+        )
+
+    def test_container_start_source_does_not_warn(self, caplog):
+        cs = f.FMALauncherInfo(
+            requester_info=f.FMARequesterInfo(name="fma-req-cs"),
+            timing_source="kube_container_start",
+        )
+        with caplog.at_level(logging.WARNING):
+            _emit_deferred_pod_create_warnings([cs])
+        assert not any("fma-req-cs" in rec.getMessage() for rec in caplog.records)
 
 
 class TestTimingSourceField:
