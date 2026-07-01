@@ -23,6 +23,8 @@ class GuideVariableResolver:
         variable_overrides: dict[str, str] | None = None,
         readme_variables: dict[str, str] | None = None,
         router_chart_version: str = "v0",
+        router_standalone_chart: str = "oci://ghcr.io/llm-d/charts/llm-d-router-standalone",
+        router_gateway_chart: str = "oci://ghcr.io/llm-d/charts/llm-d-router-gateway",
     ):
         self._repo_path = Path(repo_path).resolve()
         self._accelerator_backend = accelerator_backend
@@ -30,12 +32,6 @@ class GuideVariableResolver:
         self._variables: dict[str, str] = {}
         if readme_variables:
             self._variables.update(readme_variables)
-        # Override (or fill) the guide README's ${VAR} values; cannot add
-        # variables the README does not reference, nor override the forced
-        # GUIDE_NAME / NAMESPACE / GAIE_VERSION / ROUTER_CHART_VERSION /
-        # REPO_ROOT below.
-        if variable_overrides:
-            self._variables.update(variable_overrides)
         # ROUTER_CHART_VERSION accompanies the migration off the
         # GAIE-published `inferencepool` / `standalone` charts onto the
         # llm-d-router-{gateway,standalone}-dev charts. Older guide READMEs
@@ -51,9 +47,17 @@ class GuideVariableResolver:
                 "NAMESPACE": namespace,
                 "GAIE_VERSION": gaie_version,
                 "ROUTER_CHART_VERSION": router_chart_version,
+                "ROUTER_STANDALONE_CHART": router_standalone_chart,
+                "ROUTER_GATEWAY_CHART": router_gateway_chart,
                 "REPO_ROOT": str(self._repo_path),
             }
         )
+        # Override (or fill) the guide README's ${VAR} values; cannot add
+        # variables the README does not reference, nor override the forced
+        # GUIDE_NAME / NAMESPACE / GAIE_VERSION / ROUTER_CHART_VERSION /
+        # REPO_ROOT below.
+        if variable_overrides:
+            self._variables.update(variable_overrides)
 
     def resolve(self, command: str) -> str:
         """Return *command* with all placeholders resolved and paths absolutised."""
