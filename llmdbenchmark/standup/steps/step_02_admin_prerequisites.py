@@ -206,12 +206,22 @@ class AdminPrerequisitesStep(Step):
             return result.stdout.strip().split()
         return []
 
+    _GATEWAY_REPO_KEYS = frozenset({"istio", "agentgateway"})
+
     def _add_helm_repos(self, cmd: CommandExecutor, plan_config: dict, errors: list):
         """Add configured Helm repositories."""
         helm_repos = plan_config.get("helmRepositories", {})
+        gateway_class = plan_config.get("gateway", {}).get("className", "")
         added_classic_repo = False
 
         for repo_key, repo_info in helm_repos.items():
+            if repo_key in self._GATEWAY_REPO_KEYS and repo_key != gateway_class:
+                cmd.logger.log_info(
+                    f"Skipping {repo_key} helm repo "
+                    f"(active gateway: {gateway_class})"
+                )
+                continue
+
             repo_name = repo_info.get("name", repo_key)
             repo_url = repo_info.get("url", "").strip()
             if not repo_url:
