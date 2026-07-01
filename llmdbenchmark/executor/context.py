@@ -87,6 +87,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_profile: str | None = None
     experiment_treatments_file: str | None = None
     profile_overrides: str | None = None
+    # inference-perf load-stage knobs (override profile/config defaults)
+    num_requests: int | None = None
+    concurrency: int | None = None
+    seed: int | None = None
     harness_output: str = "local"
     harness_parallelism: int = 1
     harness_wait_timeout: int = 3600

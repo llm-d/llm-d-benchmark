@@ -20,6 +20,7 @@ class TokenDef:
         str | None
     )  # dotted path into plan config.yaml, or None for runtime-only
     description: str
+    default: str | None = None  # fallback when no config/runtime value resolves
 
 
 # Registry of REPLACE_ENV_* tokens used in .yaml.in profile templates.
@@ -47,6 +48,21 @@ PROFILE_TOKENS: dict[str, TokenDef] = {
         config_path="experiment.datasetFile",
         description="Dataset filename (basename of the dataset path/URL)",
     ),
+    "LLMDBENCH_RUN_NUM_REQUESTS": TokenDef(
+        config_path="experiment.numRequests",
+        description="Total requests for the load stage",
+        default="192",
+    ),
+    "LLMDBENCH_RUN_CONCURRENCY": TokenDef(
+        config_path="experiment.concurrency",
+        description="Concurrency level (also used as num_conversations)",
+        default="32",
+    ),
+    "LLMDBENCH_RUN_SEED": TokenDef(
+        config_path="experiment.seed",
+        description="Random seed for conversation_replay data generation",
+        default="42",
+    ),
 }
 
 
@@ -69,17 +85,20 @@ def build_env_map(
 ) -> dict[str, str]:
     """Build the REPLACE_ENV_* substitution map.
 
-    Resolves token values from plan_config via the registry, then
-    merges runtime_values on top. Empty values are dropped.
+    Resolves token values from plan_config via the registry, falling back
+    to each token's registered default, then merges runtime_values on top.
+    Empty values are dropped.
     """
     env_map: dict[str, str] = {}
 
-    if plan_config:
-        for token_key, token_def in PROFILE_TOKENS.items():
-            if token_def.config_path is not None:
-                value = _resolve_config_path(plan_config, token_def.config_path)
-                if value:
-                    env_map[token_key] = value
+    for token_key, token_def in PROFILE_TOKENS.items():
+        value = ""
+        if plan_config and token_def.config_path is not None:
+            value = _resolve_config_path(plan_config, token_def.config_path)
+        if not value and token_def.default is not None:
+            value = token_def.default
+        if value:
+            env_map[token_key] = value
 
     # Runtime overrides take precedence
     if runtime_values:

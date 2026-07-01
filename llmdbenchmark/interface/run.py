@@ -87,6 +87,27 @@ def add_subcommands(
         help="Comma-separated list of workload profile parameter overrides (param=value,...).",
     )
     run_parser.add_argument(
+        "--num-requests",
+        type=int,
+        default=env_int("LLMDBENCH_NUM_REQUESTS"),
+        help="inference-perf load-stage total requests "
+        "(REPLACE_ENV_LLMDBENCH_RUN_NUM_REQUESTS). Overrides the profile/config default.",
+    )
+    run_parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=env_int("LLMDBENCH_CONCURRENCY"),
+        help="inference-perf concurrency level, also used as num_conversations "
+        "(REPLACE_ENV_LLMDBENCH_RUN_CONCURRENCY). Overrides the profile/config default.",
+    )
+    run_parser.add_argument(
+        "--seed",
+        type=int,
+        default=env_int("LLMDBENCH_SEED"),
+        help="Random seed for conversation_replay data generation "
+        "(REPLACE_ENV_LLMDBENCH_RUN_SEED). Overrides the profile/config default.",
+    )
+    run_parser.add_argument(
         "-r",
         "--output",
         default=env("LLMDBENCH_OUTPUT"),

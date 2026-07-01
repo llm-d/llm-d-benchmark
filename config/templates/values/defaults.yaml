@@ -1506,6 +1506,10 @@ experiment:
   workspaceDir: /workspace
   datasetUrl: ""
   datasetDir: ""
+  # inference-perf load-stage knobs (REPLACE_ENV_LLMDBENCH_RUN_* tokens)
+  numRequests: 192
+  concurrency: 32
+  seed: 42
 
 # ============================================================================
 # CONTROL TIMEOUTS
