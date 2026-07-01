@@ -7,7 +7,10 @@
 #
 # Key differences vs the NVIDIA scenario:
 #   * accelerator.type=intel-xe, resource=gpu.intel.com/xe (not nvidia.com/gpu)
-#   * vLLM image = ghcr.io/llm-d/llm-d-xpu (XPU build, not CUDA vllm-openai)
+#     and vLLM image = ghcr.io/llm-d/llm-d-xpu -- both supplied by the shared
+#     Intel XPU values overlay (config/templates/values/overlays/xpu.yaml),
+#     wired in via the spec's values_file.overlays. They are NOT duplicated
+#     here so every XPU guide can share one accelerator/image layer.
 #   * decode.vllm.customCommand has NO libcuda export and NO
 #     --gpu-memory-utilization; uses --dtype float16 --disable-sliding-window
 #     as in the upstream XPU overlay.
@@ -17,30 +20,6 @@
 
 scenario:
   - name: "optimized-baseline-xpu"
-
-    # =========================================================================
-    # ACCELERATOR - Intel GPU via classic device plugin (gpu.intel.com/xe)
-    # =========================================================================
-    accelerator:
-      type: intel-xe
-      resource: "gpu.intel.com/xe"
-      count: 1
-      # The llm-d-modelservice chart injects accelerator-specific env for
-      # intel-xe (VLLM_WORKER_MULTIPROC_METHOD=spawn). The benchmark macro
-      # already adds VLLM_WORKER_MULTIPROC_METHOD to the container env, so the
-      # chart default would produce a duplicate env key (rejected by
-      # server-side apply). Override the chart's intel-xe env list to empty.
-      env:
-        intel-xe: []
-
-    # =========================================================================
-    # IMAGE - vLLM XPU build (overrides the CUDA default in defaults.yaml)
-    # =========================================================================
-    images:
-      vllm:
-        repository: ghcr.io/llm-d/llm-d-xpu
-        tag: v0.7.0
-        pullPolicy: IfNotPresent
 
     # =========================================================================
     # MODEL
@@ -89,13 +68,10 @@ scenario:
     decode:
       replicas: 2
 
-      # Suppress the default NVIDIA nodeAffinity. defaults.yaml sets
-      # decode.acceleratorType.labelKey=nvidia.com/gpu.product (value
-      # NVIDIA-H100-80GB-HBM3), which the Intel node does not carry, making
-      # decode pods Unschedulable. Empty dict => template skips the
-      # acceleratorTypes nodeAffinity block entirely (Intel GPUs are selected
-      # purely via the gpu.intel.com/xe resource request).
-      acceleratorType: {}
+      # NOTE: node affinity for Intel GPUs (decode.acceleratorType ->
+      # intel.feature.node.kubernetes.io/gpu) is provided by the shared XPU
+      # overlay (config/templates/values/overlays/xpu.yaml), not here, so it
+      # can be reused by every XPU guide.
 
       # Pod-level securityContext. supplementalGroups is a Pod field (not a
       # container field), so it must live here rather than in

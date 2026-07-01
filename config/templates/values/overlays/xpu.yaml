@@ -1,0 +1,64 @@
+# ============================================================================
+# Intel XPU values overlay
+# ============================================================================
+# Reusable, machine-related overrides for running any guide on Intel GPUs
+# (xe driver, classic device-plugin `gpu.intel.com/xe`).
+#
+# This file is deep-merged ON TOP OF config/templates/values/defaults.yaml
+# BEFORE the guide scenario is applied (defaults -> overlay -> scenario).
+# It therefore only carries the accelerator/image bits that the guide
+# scenarios do NOT hardcode, so a single overlay can be shared by every XPU
+# guide instead of duplicating them in each scenario. Anything a guide
+# scenario sets explicitly (customCommand, resources, model, ...) still wins
+# over this overlay.
+#
+# Wire it into a spec via:
+#   values_file:
+#     path: {{ base_dir }}/config/templates/values/defaults.yaml
+#     overlays:
+#       - {{ base_dir }}/config/templates/values/overlays/xpu.yaml
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# ACCELERATOR - Intel GPU via classic device plugin (gpu.intel.com/xe)
+# ----------------------------------------------------------------------------
+accelerator:
+  type: intel-xe
+  resource: "gpu.intel.com/xe"
+  count: 1
+  # The llm-d-modelservice chart injects accelerator-specific env for
+  # intel-xe (VLLM_WORKER_MULTIPROC_METHOD=spawn). The benchmark macro already
+  # adds VLLM_WORKER_MULTIPROC_METHOD to the container env, so the chart default
+  # would produce a duplicate env key (rejected by server-side apply). Override
+  # the chart's intel-xe env list to empty.
+  env:
+    intel-xe: []
+
+# ----------------------------------------------------------------------------
+# NODE AFFINITY - select Intel GPU nodes
+# ----------------------------------------------------------------------------
+# defaults.yaml sets {decode,prefill}.acceleratorType to the NVIDIA GPU-product
+# label (nvidia.com/gpu.product = NVIDIA-H100-80GB-HBM3). The modelservice
+# template renders that into a REQUIRED nodeAffinity whenever `labelKey` is
+# defined, so on an Intel node (which lacks that label) the decode/prefill pods
+# stay Unschedulable. An empty dict in a scenario cannot clear it (deep-merge
+# keeps the populated default), so we override it here with the generic Intel
+# GPU node label emitted by NFD.
+decode:
+  acceleratorType:
+    labelKey: intel.feature.node.kubernetes.io/gpu
+    labelValue: "true"
+prefill:
+  acceleratorType:
+    labelKey: intel.feature.node.kubernetes.io/gpu
+    labelValue: "true"
+
+# ----------------------------------------------------------------------------
+# IMAGE - vLLM XPU build (overrides the CUDA default in defaults.yaml)
+# ----------------------------------------------------------------------------
+images:
+  vllm:
+    repository: ghcr.io/llm-d/llm-d-xpu
+    tag: v0.7.0
+    pullPolicy: IfNotPresent
+    sourceRepo: https://github.com/llm-d/llm-d

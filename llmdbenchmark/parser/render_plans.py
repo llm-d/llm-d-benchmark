@@ -41,6 +41,7 @@ class RenderPlans:
         defaults_file: Path,
         scenarios_file: Path,
         output_dir: Path,
+        values_overlays: list[Path] | None = None,
         logger=None,
         version_resolver=None,
         cluster_resource_resolver=None,
@@ -57,6 +58,11 @@ class RenderPlans:
         self.defaults_file = Path(defaults_file)
         self.scenarios_file = Path(scenarios_file)
         self.output_dir = Path(output_dir)
+        # Optional values overlays deep-merged on top of `defaults_file`
+        # before the scenario is applied. Used to layer hardware-specific
+        # base values (e.g. an Intel XPU overlay) without duplicating the
+        # entire defaults file. Each later overlay wins over earlier ones.
+        self.values_overlays: list[Path] = [Path(p) for p in (values_overlays or [])]
         self.version_resolver = version_resolver
         self.cluster_resource_resolver = cluster_resource_resolver
         self.cli_namespace = cli_namespace
@@ -1314,6 +1320,8 @@ class RenderPlans:
 
         try:
             defaults = self._load_yaml(self.defaults_file)
+            for overlay in self.values_overlays:
+                defaults = self.deep_merge(defaults, self._load_yaml(overlay))
         except Exception as e:
             msg = f"Failed to load defaults file: {e}"
             self.logger.log_error(msg)
