@@ -80,7 +80,7 @@ tool_version_for() {
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v3.19.0" ;;
         helm-diff) echo "v3.13.0" ;;
-        oc)        echo "4.18.0"  ;;
+        oc)        echo "openshift-clients-v4.18.0-202502040032" ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.7"  ;;
         skopeo)    echo "1.20.1"  ;;

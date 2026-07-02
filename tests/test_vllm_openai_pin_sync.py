@@ -8,6 +8,7 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULTS_PATH = PROJECT_ROOT / "config" / "templates" / "values" / "defaults.yaml"
+INSTALL_SH_PATH = PROJECT_ROOT / "install.sh"
 UPSTREAM_VERSIONS_PATH = PROJECT_ROOT / "docs" / "upstream-versions.md"
 
 
@@ -33,3 +34,13 @@ def test_vllm_and_vllm_openai_pins_stay_in_sync():
 
     assert defaults["images"]["udsTokenizer"]["tag"] == uds_tokenizer_pin
     assert _doc_pin_for("udsTokenizer") == uds_tokenizer_pin
+
+
+def test_oc_pin_stays_in_sync():
+    match = re.search(
+        r'^\s*oc\)\s+echo\s+"([^"]+)"\s+;;',
+        INSTALL_SH_PATH.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert match is not None
+    assert _doc_pin_for("oc") == match.group(1)
