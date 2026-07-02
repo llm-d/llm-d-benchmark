@@ -351,6 +351,15 @@ scenario:
     decode:
       enabled: false                   # FMA launcher pods serve traffic, not decode
       replicas: 0
+      # The FMA requester's nodeAffinity borrows decode.acceleratorType.labelValue
+      # (24_fma-deployment.yaml.j2), and WVA's saturation engine reads it back off
+      # the requester. The cluster resolver skips auto-detection for disabled
+      # sections, so pin the product explicitly here (pokprod = H100) — otherwise
+      # the requester's affinity stays "auto" and it never schedules. Non-"auto"
+      # values are left untouched by the resolver.
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
 
     # =========================================================================
     # FMA LAUNCHER POD MONITORING (REQUIRED for WVA)
