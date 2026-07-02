@@ -35,7 +35,25 @@ class GuideCommand:
         return self.raw
 
 
-_EXPORT_RE = re.compile(r"""^export\s+(\w+)=["']?([^"'\s#$()]+)["']?""")
+# Match a bash `export VAR=…` line, capturing the value with proper bash
+# quoting semantics:
+#   * "double-quoted"  — captured verbatim (may contain spaces, ${VAR}, $(cmd), …)
+#   * 'single-quoted'  — captured verbatim
+#   * unquoted         — captured up to the first whitespace or `#` comment
+#                        (may be empty, e.g. `export VAR=`)
+# A trailing `# comment` after the value (with intervening whitespace) is stripped.
+_EXPORT_RE = re.compile(
+    r"""
+    ^\s*export\s+(?P<name>\w+)=
+    (?:
+        "(?P<dq>[^"]*)"
+      | '(?P<sq>[^']*)'
+      | (?P<uq>[^\s\#]*)
+    )
+    \s*(?:\#.*)?$
+    """,
+    re.VERBOSE,
+)
 
 
 @dataclass
@@ -320,7 +338,19 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
             for cmd_text in joined:
                 export_match = _EXPORT_RE.match(cmd_text.strip())
                 if export_match:
-                    parsed.variables[export_match.group(1)] = export_match.group(2)
+                    # Pick the first non-None value group (double-quoted,
+                    # single-quoted, or unquoted). At least one always
+                    # matches when the outer regex matched.
+                    value = next(
+                        v
+                        for v in (
+                            export_match.group("dq"),
+                            export_match.group("sq"),
+                            export_match.group("uq"),
+                        )
+                        if v is not None
+                    )
+                    parsed.variables[export_match.group("name")] = value
             pm = _section_to_phase_mode(section)
             if pm is not None:
                 phase, default_mode = pm

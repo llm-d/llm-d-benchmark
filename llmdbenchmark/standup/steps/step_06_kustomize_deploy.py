@@ -159,8 +159,9 @@ class KustomizeDeployStep(Step):
                         f"Namespace {namespace} already exists, skipping create"
                     )
                     continue
-            context.logger.log_info(f"[prerequisites] {resolved[:120]}")
-            result = self._run_resolved(cmd, resolved, check=False)
+            result = self._run_resolved(
+                cmd, resolved, check=False, context=context, phase="prerequisites"
+            )
             if not result.success:
                 errors.append(f"Prerequisite failed: {result.stderr}")
 
@@ -200,8 +201,9 @@ class KustomizeDeployStep(Step):
                 extra_helm_values,
                 extra_helm_sets,
             )
-            context.logger.log_info(f"[router] {resolved[:120]}")
-            result = self._run_resolved(cmd, resolved, check=False)
+            result = self._run_resolved(
+                cmd, resolved, check=False, context=context, phase="router"
+            )
             if not result.success:
                 errors.append(f"Router deploy failed: {result.stderr}")
 
@@ -242,13 +244,15 @@ class KustomizeDeployStep(Step):
                 patches,
             )
             context.logger.log_info(
-                f"[modelserver] kubectl apply -k {kustomize_dir} (with overrides)"
+                f"[modelserver] kubectl apply -n {namespace} -k {kustomize_dir} (with overrides)"
             )
             result = cmd.kube(
                 "apply", "-n", namespace, "-k", str(kustomize_dir), check=False
             )
         else:
-            context.logger.log_info(f"[modelserver] kubectl apply -k {ms_path}")
+            context.logger.log_info(
+                f"[modelserver] kubectl apply -n {namespace} -k {ms_path}"
+            )
             result = cmd.kube("apply", "-n", namespace, "-k", ms_path, check=False)
 
         if not result.success:
@@ -267,7 +271,9 @@ class KustomizeDeployStep(Step):
                 / "components"
                 / "monitoring"
             )
-            context.logger.log_info(f"[monitoring] kubectl apply -k {mon_path}")
+            context.logger.log_info(
+                f"[monitoring] kubectl apply -n {namespace} -k {mon_path}"
+            )
             result = cmd.kube(
                 "apply", "-n", namespace, "-k", str(mon_path), check=False
             )
@@ -312,20 +318,69 @@ class KustomizeDeployStep(Step):
             stack_name=stack_path.name,
         )
 
-    @staticmethod
-    def _run_resolved(cmd: CommandExecutor, resolved: str, *, check: bool = True):
+    # Names of environment variables whose *value* we scrub from any log
+    # line before printing. Guides carry only placeholders in the README
+    # itself, but the process may hold real credentials in these vars
+    # (see `_ensure_hf_token_secret`); this is a belt-and-braces guard so
+    # a future refactor can't inadvertently echo them.
+    _SECRET_ENV_VARS = (
+        "HF_TOKEN",
+        "LLMDBENCH_HF_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+    )
+    _PLACEHOLDER_TOKENS = frozenset({"HF_TOKEN_PLACEHOLDER", ""})
+
+    @classmethod
+    def _scrub_secrets(cls, text: str) -> str:
+        """Replace any known secret env var value that appears literally in
+        *text* with ``<redacted>``. Placeholder-shaped values (empty or the
+        documented placeholder) are ignored — nothing to protect."""
+        import os
+
+        for env_var in cls._SECRET_ENV_VARS:
+            value = os.environ.get(env_var, "")
+            if value in cls._PLACEHOLDER_TOKENS:
+                continue
+            if value in text:
+                text = text.replace(value, "<redacted>")
+        return text
+
+    @classmethod
+    def _run_resolved(
+        cls,
+        cmd: CommandExecutor,
+        resolved: str,
+        *,
+        check: bool = True,
+        context: ExecutionContext | None = None,
+        phase: str | None = None,
+    ):
+        """Execute the given resolved command via the right CommandExecutor
+        method, logging the exact final invocation (post-transformation)
+        with secrets scrubbed. Pass ``phase`` for the log tag; omit both
+        ``context`` and ``phase`` to run silently (used by tests)."""
         tokens = shlex.split(resolved)
         if not tokens:
+            if context is not None and phase is not None:
+                context.logger.log_info(f"[{phase}] {cls._scrub_secrets(resolved)}")
             return cmd.execute(resolved, check=check)
 
         binary = tokens[0]
         rest = tokens[1:]
 
+        if binary == "helm" and rest and rest[0] == "install":
+            # llm-d-benchmark rewrites `helm install` to
+            # `helm upgrade --install` so re-runs are idempotent. Log
+            # the transformed form so the log matches what actually ran.
+            rest = ["upgrade", "--install"] + rest[1:]
+
+        if context is not None and phase is not None:
+            display = f"{binary} {' '.join(shlex.quote(t) for t in rest)}"
+            context.logger.log_info(f"[{phase}] {cls._scrub_secrets(display)}")
+
         if binary in ("kubectl", "oc"):
             return cmd.kube(*rest, check=check)
         if binary == "helm":
-            if rest and rest[0] == "install":
-                rest = ["upgrade", "--install"] + rest[1:]
             return cmd.helm(*rest, check=check)
 
         return cmd.execute(resolved, check=check)
