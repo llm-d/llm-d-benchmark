@@ -12,6 +12,7 @@ import uuid
 import hashlib
 import json
 import binascii
+from pathlib import Path
 from typing import Any
 from datetime import datetime, timezone
 
@@ -1272,6 +1273,156 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
         },
     )
 
+    return load_benchmark_report(br_dict)
+
+
+def import_eval_containers(results_file: str) -> BenchmarkReportV02:
+    """Convert eval-containers agentic output into a v0.2 Benchmark Report.
+
+    eval-containers runs a real agent, not a synthetic load generator, so its
+    serving-perf signal lives in the OTel gateway traces (one span per LLM
+    call). This reads ``traces.jsonl`` for request latency + throughput and the
+    task ``result.json`` for the reward. The reward is a task-correctness signal
+    with no slot in the perf schema, so it rides in ``results.observability`` --
+    the format's extra-permitted area for ad-hoc result metrics. Server-side
+    observability (KV cache, queue depth) is not produced here; the framework
+    scrapes that from the served pods, harness-agnostic.
+    """
+    res = Path(results_file)
+    root = res.parent.parent if res.parent.name == "task" else res.parent
+
+    def _read(rel: str) -> dict:
+        try:
+            return json.loads((root / rel).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    reward = _read("task/result.json")
+    agent = _read("agent/result.json")
+    model = _read("model/result.json")
+
+    # --- request performance from the gateway OTel spans (one per LLM call) ---
+    lats_ms: list[float] = []
+    n_calls = 0
+    in_tok = out_tok = 0
+    t_first = t_last = None
+    traces = root / "traces.jsonl"
+    if traces.exists():
+        for line in traces.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                doc = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            for rs in doc.get("resourceSpans", []):
+                for ss in rs.get("scopeSpans", []):
+                    for sp in ss.get("spans", []):
+                        name = sp.get("name", "")
+                        # one span per LLM request, across gateways: bifrost emits
+                        # /anthropic/v1/messages or /openai/.../completions; litellm
+                        # emits litellm_request. Skip the child provider span
+                        # (llm.call) so requests aren't double-counted.
+                        if not any(
+                            s in name
+                            for s in (
+                                "messages",
+                                "completions",
+                                "responses",
+                                "litellm_request",
+                            )
+                        ):
+                            continue
+                        n_calls += 1
+                        st = int(sp.get("startTimeUnixNano", 0) or 0)
+                        en = int(sp.get("endTimeUnixNano", 0) or 0)
+                        if st and en and en > st:
+                            lats_ms.append((en - st) / 1e6)
+                            t_first = st if t_first is None else min(t_first, st)
+                            t_last = en if t_last is None else max(t_last, en)
+                        for a in sp.get("attributes", []):
+                            k = a.get("key", "")
+                            iv = int(a.get("value", {}).get("intValue") or 0)
+                            if k.endswith("input_tokens") or k.endswith(
+                                "prompt_tokens"
+                            ):
+                                in_tok += iv
+                            elif k.endswith("output_tokens") or k.endswith(
+                                "completion_tokens"
+                            ):
+                                out_tok += iv
+
+    def _stat(xs: list[float]):
+        if not xs:
+            return None
+        a = np.array(xs, dtype=float)
+        return {
+            "units": Units.MS,
+            "mean": float(a.mean()),
+            "stddev": float(a.std()),
+            "min": float(a.min()),
+            "p50": float(np.percentile(a, 50)),
+            "p90": float(np.percentile(a, 90)),
+            "p99": float(np.percentile(a, 99)),
+            "max": float(a.max()),
+        }
+
+    n = n_calls
+    dur_s = (
+        (t_last - t_first) / 1e9 if (t_first and t_last and t_last > t_first) else None
+    )
+
+    br_dict = _populate_benchmark_report_from_envars()
+    # The harness-pod skeleton fills scenario.load.* from the run env; provide
+    # agentic-appropriate defaults so the report is valid outside a pod too.
+    load = br_dict.setdefault("scenario", {}).setdefault("load", {})
+    load.setdefault("metadata", {})  # required by the v0.2 schema
+    std = load.setdefault("standardized", {})
+    std.setdefault("tool", "eval-containers")
+    std.setdefault("tool_version", "")
+    std.setdefault("source", "sampled")  # tasks sampled from the benchmark dataset
+    std.setdefault("input_seq_len", {"distribution": "other", "value": 0})
+    # the agentic workload itself, in the native (free-form) subsection
+    load.setdefault("native", {}).setdefault("args", {}).update(
+        {
+            "harness": "eval-containers",
+            "benchmark": reward.get("benchmark", ""),
+            "agent": agent.get("agent", ""),
+            "model": model.get("model", ""),
+            "task_id": str(reward.get("task_id", "")),
+            "workload_type": "agentic-multi-turn",
+        }
+    )
+
+    agg: dict = {"latency": {}, "throughput": {}}
+    rl = _stat(lats_ms)
+    if rl:
+        agg["latency"]["request_latency"] = rl
+    if dur_s:
+        agg["throughput"]["request_rate"] = {
+            "units": Units.QUERY_PER_S,
+            "mean": n / dur_s,
+        }
+        agg["throughput"]["total_token_rate"] = {
+            "units": Units.TOKEN_PER_S,
+            "mean": (in_tok + out_tok) / dur_s,
+        }
+
+    results = br_dict.setdefault("results", {})
+    results["request_performance"] = {"aggregate": agg}
+    # reward is a task-correctness signal with no formal perf slot, so it rides
+    # in results.observability -- the schema's extra-permitted area for ad-hoc
+    # result metrics. Server-side observability stays the framework's job.
+    results.setdefault("observability", {}).update(
+        {
+            "eval_containers_reward": reward.get("reward"),
+            "eval_containers_passed": reward.get("passed"),
+            "eval_containers_llm_calls": n,
+            "eval_containers_input_tokens": in_tok or None,
+            "eval_containers_output_tokens": out_tok or None,
+        }
+    )
     return load_benchmark_report(br_dict)
 
 

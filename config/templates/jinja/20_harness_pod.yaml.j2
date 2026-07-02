@@ -69,11 +69,14 @@ spec:
         secretKeyRef:
           name: {{ huggingface.secretName }}
           key: {{ huggingface.tokenKey }}
+          # optional: offline / external-endpoint harnesses start without the secret.
+          optional: true
     - name: HUGGING_FACE_HUB_TOKEN
       valueFrom:
         secretKeyRef:
           name: {{ huggingface.secretName }}
           key: {{ huggingface.tokenKey }}
+          optional: true
 {% endif %}
     - name: POD_NAME
       valueFrom:

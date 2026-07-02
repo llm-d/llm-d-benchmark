@@ -1,0 +1,367 @@
+# eval-containers / aider-polyglot example scenario.
+#
+# Deploys a model on llm-d (the CPU inference-sim base below -- swap for a real
+# GPU-served model for meaningful scores) and runs the eval-containers harness:
+# the aider-polyglot agentic coding benchmark, one task per parallel pod.
+#
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot run -p "$NS" -j <#tasks>
+#
+# The model deployment below mirrors sim.yaml (CPU, no GPU); only the
+# images.benchmark and harness blocks differ. aider-polyglot runs fully offline
+# -- the harness pod needs no internet egress.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here use the default values from defaults.yaml.
+
+scenario:
+  # ============================================================================
+  # Sim - Resource-limited simulated inference (no GPUs)
+  # ============================================================================
+  - name: "eval-aider-polyglot"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
+    # -------------------------------------------------------------------------
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+      gpuMemoryUtilization: 0
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=1024
+      maxModelLen: 1024
+      size: 2Gi
+
+    # The eval-containers harness runs an offline agentic benchmark against the
+    # served endpoint -- it pulls nothing from HuggingFace, so skip the
+    # framework's HF_TOKEN injection (no llm-d-hf-token secret required).
+    huggingface:
+      enabled: false
+
+
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # This scenario targets CPU-only nodes (no GPU required).
+    # -------------------------------------------------------------------------
+    affinity:
+      enabled: true
+      nodeSelector:
+        kubernetes.io/os: linux
+
+    # -------------------------------------------------------------------------
+    # Accelerator Configuration -- no GPUs
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=0
+    # -------------------------------------------------------------------------
+    accelerator:
+      count: 0
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY=24
+      # To pass capacity planner sanity checking
+      memory: 24
+
+    # -------------------------------------------------------------------------
+    # Override images for modelservice (inference-sim image)
+    # Corresponds to: LLMDBENCH_LLMD_IMAGE_NAME=llm-d-inference-sim
+    #                 LLMDBENCH_LLMD_IMAGE_TAG=latest
+    # -------------------------------------------------------------------------
+    images:
+      vllm:
+        repository: ghcr.io/llm-d/llm-d-inference-sim
+        tag: latest
+      # The harness pod runs THIS image: agent + in-pod gateway + grader + otel,
+      # the single-container standalone bundle. Swap for any published
+      # evals/<benchmark>--<agent>-standalone image to run a different eval.
+      benchmark:
+        repository: ghcr.io/exgentic/evals/aider-polyglot--claude-code-standalone
+        tag: v0.1.0
+        pullPolicy: IfNotPresent
+
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Standalone Deployment Configuration
+    # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
+    # -------------------------------------------------------------------------
+    standalone:
+      enabled: false
+      replicas: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      accelerator:
+        count: 0
+
+      # No GPU on simulation scenarios -- override the nvidia default from
+      # defaults.yaml so the standalone template's nodeAffinity block targets
+      # an OS label that actually exists on cluster nodes instead of
+      # nvidia.com/gpu.product.
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
+      image:
+        repository: ghcr.io/llm-d/llm-d-inference-sim
+        tag: latest
+        pullPolicy: IfNotPresent
+
+      vllm:
+        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port 8000 --served-model-name ${model.name}"
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+      # shell: /bin/sh
+
+      shmMemory: 500Mi
+
+      volumes:
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 500Mi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: true
+      replicas: 1
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        modelCommand: imageDefault
+        additionalFlags: []
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 1
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        modelCommand: imageDefault
+        additionalFlags: []
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=2Gi
+    #                 LLMDBENCH_VLLM_COMMON_PVC_ACCESS_MODE=ReadWriteOnce
+    # -------------------------------------------------------------------------
+    storage:
+      # Harness results PVC. kind's local-path provisioner is ReadWriteOnce-only
+      # and single-node, so RWO works there; a multi-node cluster with RWX storage
+      # can override accessModes + storageClassName.
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+      modelPvc:
+        # storageClassName: standard-rwx       # GKE
+        # storageClassName: shared-vast       # Kubernetes
+        # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+        size: 2Gi
+        accessMode:
+          - ReadWriteOnce
+      uriProtocol: hf
+
+    # -------------------------------------------------------------------------
+    # Timeout Configuration
+    # Corresponds to: LLMDBENCH_CONTROL_WAIT_TIMEOUT=300
+    # -------------------------------------------------------------------------
+    timeouts:
+      controlWait: 300
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_PVC_SIZE=3Gi
+    #                 LLMDBENCH_HARNESS_CPU_NR=1
+    #                 LLMDBENCH_HARNESS_CPU_MEM=2Gi
+    # -------------------------------------------------------------------------
+    harness:
+      name: eval-containers
+      experimentProfile: aider-polyglot.yaml
+      # Run our script directly instead of the default load-generator entrypoint
+      # (llm-d-benchmark.sh, which is not present in the eval image).
+      entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh
+      pvcSize: 5Gi
+      # A real agent + in-pod gateway runs here, not a load generator -- give it room.
+      resources:
+        cpu: "2"
+        memory: 6Gi
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Sim scenarios do not use the routing proxy sidecar
+    # -------------------------------------------------------------------------
+    routing:
+      proxy:
+        enabled: false
+
+    # =========================================================================
+    # GATEWAY -- toggle the router topology
+    # -------------------------------------------------------------------------
+    # `epponly` is the llm-d "Standalone Mode" router topology
+    # (see https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md):
+    # no Kubernetes Gateway is installed, the router Helm chart is swapped
+    # from `llm-d-router-gateway-dev` to `llm-d-router-standalone-dev`,
+    # and the EPP pod runs an Envoy sidecar that serves HTTP directly on
+    # the `{model_id_label}-router-epp`
+    # Service (port 80 -> 8081). HTTPRoute and `llm-d-infra` are not
+    # rendered, no gateway-provider control plane is installed.
+    #
+    # Flip this to any of the gateway-backed options to switch topology
+    # without changing anything else in the scenario:
+    #   epponly                     -- no Gateway (default here)
+    #   istio                       -- istio-base + istiod + Gateway + HTTPRoute
+    #   agentgateway                -- agentgateway controller + Gateway + HTTPRoute
+    #   gke                         -- GKE-managed Gateway + HTTPRoute
+    #   data-science-gateway-class  -- OpenDataHub managed Gateway + HTTPRoute
+    #
+    # This setting is ignored when `kustomize.enabled: true` (or when
+    # `-t kustomize` is passed) -- in that mode the upstream llm-d guide
+    # manifests are applied verbatim and define their own router topology.
+    # =========================================================================
+    gateway:
+      className: epponly
+
+    # -------------------------------------------------------------------------
+    # Infrastructure / Gateway Configuration
+    # Corresponds to: LLMDBENCH_VLLM_INFRA_GATEWAY_*
+    # -------------------------------------------------------------------------
+    infrastructure:
+      gateway:
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+
+    # -------------------------------------------------------------------------
+    # Workload Configuration
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR
+    # -------------------------------------------------------------------------
+    workDir: "~/data/eval-aider-polyglot"

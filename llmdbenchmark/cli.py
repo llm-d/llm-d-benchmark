@@ -825,7 +825,10 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_namespace=harness_ns,
         model_name=getattr(args, "model", None) or plan_info.get("model_name"),
         logger=logger,
-        harness_name=getattr(args, "harness", None),
+        harness_name=(
+            getattr(args, "harness", None)
+            or (plan_info.get("harness", {}) or {}).get("name")
+        ),
         harness_profile=getattr(args, "workload", None),
         experiment_treatments_file=experiments_file,
         profile_overrides=getattr(args, "overrides", None),

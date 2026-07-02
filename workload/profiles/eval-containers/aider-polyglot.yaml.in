@@ -1,0 +1,8 @@
+# eval-containers / aider-polyglot profile (fields read from env, not here).
+harness: eval-containers
+benchmark: aider-polyglot
+description: "Exercism polyglot code-editing -- 6 languages, 225 tasks, fully offline, multi-turn."
+tasks: 225
+internet: false
+model: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+endpoint: "REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL"

@@ -34,6 +34,7 @@ _RESULT_PATTERNS: dict[str, str] = {
     "guidellm": "results.json",
     "vllm-benchmark": "openai*.json",
     "inferencemax": "*.json",
+    "eval-containers": "task/result.json",
 }
 
 # Summary marker per harness -- the line in stdout.log where the
@@ -51,6 +52,7 @@ _WRITER_NAMES: dict[str, str] = {
     "vllm-benchmark": "vllm-benchmark",
     "inferencemax": "inferencemax",
     "nop": "nop",
+    "eval-containers": "eval-containers",
 }
 
 
@@ -183,6 +185,18 @@ def _convert_via_api(
 ) -> str | None:
     """Attempt conversion using the benchmark_report Python API."""
     try:
+        if writer_name == "eval-containers":
+            # Agentic harness: request/session perf from OTel + reward in
+            # results.observability. 0.2-only; skip other versions quietly.
+            if br_version != "0.2":
+                return None
+            from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+                import_eval_containers,
+            )
+
+            import_eval_containers(str(result_file)).export_yaml(str(output_file))
+            return None
+
         if br_version == "0.1":
             from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import (
                 import_inference_perf,

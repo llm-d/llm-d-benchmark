@@ -1,0 +1,8 @@
+# eval-containers / gaia profile (needs internet egress; HF token if gated).
+harness: eval-containers
+benchmark: gaia
+description: "GAIA general AI-assistant tasks -- 165 tasks, internet + tool use, multi-turn."
+tasks: 165
+internet: true
+model: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+endpoint: "REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL"
