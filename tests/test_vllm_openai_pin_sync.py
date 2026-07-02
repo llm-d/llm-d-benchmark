@@ -21,6 +21,18 @@ def _doc_pin_for(dependency: str) -> str:
     raise AssertionError(f"Did not find {dependency} in {UPSTREAM_VERSIONS_PATH}")
 
 
+def _install_sh_pin_for(tool: str) -> str:
+    pattern = rf'^\s*{re.escape(tool)}\)\s+echo\s+"([^"]+)"\s+;;'
+    match = re.search(
+        pattern,
+        INSTALL_SH_PATH.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    if match:
+        return match.group(1)
+    raise AssertionError(f"Did not find {tool} pin in {INSTALL_SH_PATH}")
+
+
 def test_vllm_and_vllm_openai_pins_stay_in_sync():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
 
@@ -37,10 +49,4 @@ def test_vllm_and_vllm_openai_pins_stay_in_sync():
 
 
 def test_oc_pin_stays_in_sync():
-    match = re.search(
-        r'^\s*oc\)\s+echo\s+"([^"]+)"\s+;;',
-        INSTALL_SH_PATH.read_text(encoding="utf-8"),
-        re.MULTILINE,
-    )
-    assert match is not None
-    assert _doc_pin_for("oc") == match.group(1)
+    assert _doc_pin_for("oc") == _install_sh_pin_for("oc")
