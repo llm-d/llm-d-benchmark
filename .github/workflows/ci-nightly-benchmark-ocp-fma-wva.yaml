@@ -10,8 +10,8 @@ name: CI - Nightly Run Benchmark on OCP ("WVA+FMA" autoscaling path)
 # scaling benefit to amortize it. Override via inputs.workload if needed.
 #
 # This workflow runs TWO benchmark passes for direct comparison:
-#   1. baseline (WVA without FMA) — `cicd/ocp-nofma-wva`
-#   2. WVA with FMA               — `guides/workload-autoscaling`
+#   1. baseline (WVA without FMA) — `cicd/ocp-wva`
+#   2. WVA with FMA               — `cicd/ocp-wva-fma-warmstart`
 #
 
 on:
@@ -25,12 +25,12 @@ on:
         description: 'Baseline scenario (WVA without FMA)'
         required: false
         type: 'string'
-        default: 'ocp-nofma-wva'
+        default: 'ocp-wva'
       standup_scenario:
         description: 'WVA with FMA scenario'
         required: false
         type: 'string'
-        default: 'workload-autoscaling'
+        default: 'ocp-wva-fma-warmstart'
       decode_pods:
         description: 'Number of decode pods (FMA path keeps decode at 0; baseline uses 1)'
         required: false
@@ -122,11 +122,11 @@ jobs:
   # =========================================================================
   baseline:
     name: Baseline (WVA without FMA)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: 'modelservice'
-      standup_scenario: ${{ inputs.baseline_scenario || 'ocp-nofma-wva' }}
+      standup_scenario: ${{ inputs.baseline_scenario || 'ocp-wva' }}
       decode_pods: ${{ inputs.decode_pods || 'auto' }}
       prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
@@ -158,15 +158,15 @@ jobs:
   nightly:
     name: WVA with FMA (modelservice gateway)
     needs: [baseline]
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
-      scenario_dir: 'guides'
+      scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       # Both methods: this scenario deploys modelservice (gateway/EPP/
       # InferencePool) AND layers FMA on top (launcher pods serve traffic
       # via the modelservice gateway). Comma-separated value
       # makes both code paths fire.
       standup_method: 'modelservice,fma'
-      standup_scenario: ${{ inputs.standup_scenario || 'workload-autoscaling' }}
+      standup_scenario: ${{ inputs.standup_scenario || 'ocp-wva-fma-warmstart' }}
       decode_pods: ${{ inputs.decode_pods || 'auto' }}
       prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
       accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
@@ -200,8 +200,8 @@ jobs:
       GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
       LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'ocp' }}
-      BASELINE_SCENARIO: ${{ inputs.baseline_scenario || 'ocp-nofma-wva' }}
-      FMA_WVA_SCENARIO: ${{ inputs.standup_scenario || 'workload-autoscaling' }}
+      BASELINE_SCENARIO: ${{ inputs.baseline_scenario || 'ocp-wva' }}
+      FMA_WVA_SCENARIO: ${{ inputs.standup_scenario || 'ocp-wva-fma-warmstart' }}
     steps:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093

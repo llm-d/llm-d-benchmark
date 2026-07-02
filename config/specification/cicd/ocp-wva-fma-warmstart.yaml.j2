@@ -1,4 +1,4 @@
-# OpenShift Container Platform CI/CD Specification - WVA + modelservice baseline (no FMA)
+# OpenShift Container Platform CI/CD Specification - WVA + FMA
 
 # [REQUIRED]
 {% set base_dir = base_dir | default('../') -%}
@@ -14,4 +14,4 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/cicd/ocp-nofma-wva.yaml
+  path: {{ base_dir }}/config/scenarios/cicd/ocp-wva-fma-warmstart.yaml

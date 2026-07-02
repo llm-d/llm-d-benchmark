@@ -1,12 +1,14 @@
 # This is the no-FMA baseline scenario for WVA. Topology:
 # Qwen3-32B served by 1 modelservice decode pod, scaled by WVA's HPA.
-# Mirrors guides/workload-autoscaling.yaml exactly except for fma.enabled=false
+# Apples-to-apples with the WVA+FMA arm (cicd/ocp-wva-fma-warmstart): both disable
+# vLLM prefix caching so the comparison measures the scaling path, not the
+# prefix cache.
 #
 # Running:
 #
-#   llmdbenchmark --spec cicd/ocp-nofma-wva standup -p <namespace>
+#   llmdbenchmark --spec cicd/ocp-wva standup -p <namespace>
 scenario:
-  - name: "ocp-nofma-wva-cicd"
+  - name: "ocp-wva-cicd"
 
     kustomize:
       enabled: false
@@ -62,7 +64,7 @@ scenario:
       # Controller container image.
       image:
         repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-        tag: v0.8.0-rc5
+        tag: v0.8.0
 
       replicaCount: 1                # WVA controller pod replicas (1 is the chart default)
 
@@ -387,7 +389,7 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS
     # =========================================================================
-    workDir: "/tmp/llmdbenchcicd-ocp-nofma-wva/"
+    workDir: "/tmp/llmdbenchcicd-ocp-wva/"
 
     harness:
       name: inference-perf
