@@ -16,6 +16,11 @@ benchmark".
 
 Skipped when ``fma.enabled`` is false or no requester deployment was
 rendered (``fma.requester.replicas == 0``).
+
+A scenario may select an alternate warmup by setting the top-level
+``fmaWarmupStep`` key; ``step_02a_fma_warmup_hotstart`` delegates to
+:class:`FMAWarmupHotStartStep` (load all launchers, scale down to a sleeping
+vLLM, then benchmark scales back up).
 """
 
 import time
@@ -54,6 +59,24 @@ class FMAWarmupStep(Step):
 
         plan_config = self._load_stack_config(stack_path)
         stack_name = stack_path.name
+
+        # Per-stack warmup-variant dispatch. A scenario can opt into an
+        # alternate warmup by setting the top-level `fmaWarmupStep` key (it
+        # survives rendering into config.yaml via the plain deep-merge in
+        # render_plans.py, and the root config schema is extra="allow").
+        # `get_run_steps()` registers a single step-02a for the whole run, so
+        # the selection has to happen here at execute time where we have the
+        # per-stack config in hand. Hot-start loads all launchers, then scales
+        # the requester Deployment down to minReplicas so the extra launchers
+        # hold a sleeping vLLM (model in memory) before the benchmark drives
+        # scale-up 1->N.
+        warmup_step = self._resolve(plan_config, "fmaWarmupStep", default="")
+        if warmup_step == "step_02a_fma_warmup_hotstart":
+            from llmdbenchmark.run.steps.step_02a_fma_warmup_hotstart import (
+                FMAWarmupHotStartStep,
+            )
+
+            return FMAWarmupHotStartStep().execute(context, stack_path)
 
         if not self._resolve(plan_config, "fma.enabled", default=False):
             return StepResult(

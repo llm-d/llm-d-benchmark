@@ -9,9 +9,14 @@ name: CI - Nightly Run Benchmark on OCP ("WVA+FMA" autoscaling path)
 # exercises autoscaling and FMA pays its steady-state overhead with no
 # scaling benefit to amortize it. Override via inputs.workload if needed.
 #
-# This workflow runs TWO benchmark passes for direct comparison:
-#   1. baseline (WVA without FMA) — `cicd/ocp-wva`
-#   2. WVA with FMA               — `cicd/ocp-wva-fma-warmstart`
+# This workflow runs THREE benchmark passes for direct comparison:
+#   1. baseline (WVA without FMA)        — `cicd/ocp-wva`
+#   2. WVA with FMA (warm-start)         — `cicd/ocp-wva-fma-warmstart`
+#   3. WVA with FMA (hot-start)          — `cicd/ocp-wva-fma-hotstart`
+#
+# The hot-start variant pre-loads all models during standup, then scales down
+# to 1 before the benchmark. This isolates scaling algorithm performance from
+# model loading latency, providing a cleaner measurement of HPA/WVA behavior.
 #
 
 on:
@@ -27,10 +32,15 @@ on:
         type: 'string'
         default: 'ocp-wva'
       standup_scenario:
-        description: 'WVA with FMA scenario'
+        description: 'WVA with FMA scenario (warm-start)'
         required: false
         type: 'string'
         default: 'ocp-wva-fma-warmstart'
+      hotstart_scenario:
+        description: 'WVA with FMA scenario (hot-start)'
+        required: false
+        type: 'string'
+        default: 'ocp-wva-fma-hotstart'
       decode_pods:
         description: 'Number of decode pods (FMA path keeps decode at 0; baseline uses 1)'
         required: false
@@ -149,14 +159,15 @@ jobs:
     secrets: inherit
 
   # =========================================================================
-  # Pass 2: WVA with FMA
+  # Pass 2: WVA with FMA (Warm-Start)
   #
   # Same load against the same gateway/EPP path, but with FMA layered on:
   # decode.replicas: 0, FMA's launcher pods serve traffic, requester
-  # Deployment is the WVA scale target.
+  # Deployment is the WVA scale target. Warm-start deploys 1 replica initially,
+  # model loads during warmup, then benchmark scales 1->N.
   # =========================================================================
   nightly:
-    name: WVA with FMA (modelservice gateway)
+    name: WVA with FMA (Warm-Start)
     needs: [baseline]
     uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
@@ -189,19 +200,57 @@ jobs:
     secrets: inherit
 
   # =========================================================================
-  # Display: combine both result sets in the GH Step Summary
+  # Pass 3: WVA with FMA (Hot-Start)
+  #
+  # Hot-start variant: deploys all maxReplicas initially so all models load
+  # in parallel during standup. After loading, scales down to 1 (vLLM sleeps).
+  # Benchmark then scales 1->N, measuring pure HPA/WVA behavior without model
+  # loading latency confounding the results.
+  # =========================================================================
+  hotstart:
+    name: WVA with FMA (Hot-Start)
+    needs: [baseline]
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
+      standup_method: 'modelservice,fma'
+      standup_scenario: ${{ inputs.hotstart_scenario || 'ocp-wva-fma-hotstart' }}
+      decode_pods: ${{ inputs.decode_pods || 'auto' }}
+      prefill_pods: ${{ inputs.prefill_pods || 'auto' }}
+      accelerator_type: ${{ inputs.accelerator_type || 'gpu' }}
+      backend_type: ${{ inputs.backend_type || 'vllm' }}
+      infra_provider: ${{ inputs.infra_provider || 'ocp' }}
+      connector: ${{ inputs.connector || '' }}
+      cluster_namespace: 'llmdbenchcicdhsns-ocp'
+      helm_release: 'lmdbenchcicdhsr-ocp'
+      workspace_dir: '/tmp/llmdbenchcicdhs-ocp'
+      bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
+      bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      gateway_class: ${{ inputs.gateway_class || 'epponly' }}
+      monitoring_enabled: ${{ inputs.monitoring_enabled || 'true' }}
+      dry_run: ${{ inputs.dry_run || 'false' }}
+      verbose: ${{ inputs.verbose || 'false' }}
+      harness: ${{ inputs.harness || 'inference-perf' }}
+      workload: ${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}
+      wait_timeout: ${{ inputs.wait_timeout || '7200' }}
+    secrets: inherit
+
+  # =========================================================================
+  # Display: combine all three result sets in the GH Step Summary
   # =========================================================================
   display-results:
-    name: Display Results (Baseline + WVA with FMA)
-    needs: [baseline, nightly]
+    name: Display Results (Baseline + WVA with FMA Warm-Start + Hot-Start)
+    needs: [baseline, nightly, hotstart]
     if: always()
     runs-on: ubuntu-latest
     env:
       GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
-      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'ocp' }}
+      LLMDBENCH_CICD_TARGET: ${{ inputs.infra_provider || 'ocp' }}
       BASELINE_SCENARIO: ${{ inputs.baseline_scenario || 'ocp-wva' }}
-      FMA_WVA_SCENARIO: ${{ inputs.standup_scenario || 'ocp-wva-fma-warmstart' }}
+      FMA_WVA_WARMSTART_SCENARIO: ${{ inputs.standup_scenario || 'ocp-wva-fma-warmstart' }}
+      FMA_WVA_HOTSTART_SCENARIO: ${{ inputs.hotstart_scenario || 'ocp-wva-fma-hotstart' }}
     steps:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -217,8 +266,9 @@ jobs:
         run: |
           set +e
           BASELINE_DIR="/tmp/baseline-results"
-          FMA_WVA_DIR="/tmp/fma-wva-results"
-          mkdir -p "$BASELINE_DIR" "$FMA_WVA_DIR"
+          FMA_WVA_WARMSTART_DIR="/tmp/fma-wva-warmstart-results"
+          FMA_WVA_HOTSTART_DIR="/tmp/fma-wva-hotstart-results"
+          mkdir -p "$BASELINE_DIR" "$FMA_WVA_WARMSTART_DIR" "$FMA_WVA_HOTSTART_DIR"
 
           # Pick the most recent <date> subdir that actually has data
           latest_date_under() {
@@ -229,14 +279,18 @@ jobs:
               | sort | tail -1
           }
           BL_PREFIX="gs://${GCS_PATH}/${BASELINE_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice/"
-          FW_PREFIX="gs://${GCS_PATH}/${FMA_WVA_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
+          FW_WARMSTART_PREFIX="gs://${GCS_PATH}/${FMA_WVA_WARMSTART_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
+          FW_HOTSTART_PREFIX="gs://${GCS_PATH}/${FMA_WVA_HOTSTART_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
           BL_DATE=$(latest_date_under "$BL_PREFIX")
-          FW_DATE=$(latest_date_under "$FW_PREFIX")
-          echo "Baseline data date: ${BL_DATE:-none found}"
-          echo "FMA+WVA data date:  ${FW_DATE:-none found}"
+          FW_WARMSTART_DATE=$(latest_date_under "$FW_WARMSTART_PREFIX")
+          FW_HOTSTART_DATE=$(latest_date_under "$FW_HOTSTART_PREFIX")
+          echo "Baseline data date:           ${BL_DATE:-none found}"
+          echo "FMA+WVA Warm-Start data date: ${FW_WARMSTART_DATE:-none found}"
+          echo "FMA+WVA Hot-Start data date:  ${FW_HOTSTART_DATE:-none found}"
 
           [ -n "$BL_DATE" ] && gcloud storage cp -r "${BL_PREFIX}${BL_DATE}" "$BASELINE_DIR/" || true
-          [ -n "$FW_DATE" ] && gcloud storage cp -r "${FW_PREFIX}${FW_DATE}" "$FMA_WVA_DIR/" || true
+          [ -n "$FW_WARMSTART_DATE" ] && gcloud storage cp -r "${FW_WARMSTART_PREFIX}${FW_WARMSTART_DATE}" "$FMA_WVA_WARMSTART_DIR/" || true
+          [ -n "$FW_HOTSTART_DATE" ] && gcloud storage cp -r "${FW_HOTSTART_PREFIX}${FW_HOTSTART_DATE}" "$FMA_WVA_HOTSTART_DIR/" || true
 
           # PyYAML for cluster-state parsing in the timing-row computation
           # below; ubuntu-latest doesn't have it pre-installed in the user
@@ -251,14 +305,17 @@ jobs:
             # $1 = pass dir, $2 = filename
             find "$1" -path "*/results/*" -name "$2" 2>/dev/null | sort | tail -1
           }
-          BL_SUM=$(find_in_results "$BASELINE_DIR" "summary_lifecycle_metrics.json")
-          FW_SUM=$(find_in_results "$FMA_WVA_DIR"  "summary_lifecycle_metrics.json")
-          BL_WVA=$(find_in_results "$BASELINE_DIR" "wva-controller.log")
-          FW_WVA=$(find_in_results "$FMA_WVA_DIR"  "wva-controller.log")
-          BL_RES=$(find_in_results "$BASELINE_DIR" "resources.yaml")
-          FW_RES=$(find_in_results "$FMA_WVA_DIR"  "resources.yaml")
+          BL_SUM=$(find_in_results "$BASELINE_DIR"            "summary_lifecycle_metrics.json")
+          FW_WARMSTART_SUM=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "summary_lifecycle_metrics.json")
+          FW_HOTSTART_SUM=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "summary_lifecycle_metrics.json")
+          BL_WVA=$(find_in_results "$BASELINE_DIR"            "wva-controller.log")
+          FW_WARMSTART_WVA=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "wva-controller.log")
+          FW_HOTSTART_WVA=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "wva-controller.log")
+          BL_RES=$(find_in_results "$BASELINE_DIR"            "resources.yaml")
+          FW_WARMSTART_RES=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "resources.yaml")
+          FW_HOTSTART_RES=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "resources.yaml")
 
-          python3 - "$BL_SUM" "$FW_SUM" "$BL_WVA" "$FW_WVA" "$BL_RES" "$FW_RES" \
+          python3 - "$BL_SUM" "$FW_WARMSTART_SUM" "$FW_HOTSTART_SUM" "$BL_WVA" "$FW_WARMSTART_WVA" "$FW_HOTSTART_WVA" "$BL_RES" "$FW_WARMSTART_RES" "$FW_HOTSTART_RES" \
             >> "$GITHUB_STEP_SUMMARY" <<'PY'
           import json, sys, os, re, datetime
           try:
@@ -267,7 +324,9 @@ jobs:
           except ImportError:
               HAVE_YAML = False
 
-          bl_sum, fw_sum, bl_wva, fw_wva, bl_res, fw_res = sys.argv[1:7]
+          (bl_sum, fw_ws_sum, fw_hs_sum,
+           bl_wva, fw_ws_wva, fw_hs_wva,
+           bl_res, fw_ws_res, fw_hs_res) = sys.argv[1:10]
 
           def load_json(p):
               if not p or not os.path.isfile(p):
@@ -279,7 +338,8 @@ jobs:
                   return None
 
           bl = load_json(bl_sum)
-          fw = load_json(fw_sum)
+          fw_ws = load_json(fw_ws_sum)   # WVA with FMA — warm start
+          fw_hs = load_json(fw_hs_sum)   # WVA with FMA — hot start
 
           def get(d, *keys, scale=1.0):
               if d is None: return None
@@ -338,7 +398,8 @@ jobs:
               return sum(deltas) / len(deltas) if deltas else None
 
           bl_cold_start = cold_start_mean(bl_wva)
-          fw_cold_start = cold_start_mean(fw_wva)
+          fw_ws_cold_start = cold_start_mean(fw_ws_wva)
+          fw_hs_cold_start = cold_start_mean(fw_hs_wva)
 
           # T_actuation: mean wall-clock from each requester pod's creation to
           # its Ready transition. Comes from kube API (resources.yaml) — no DPC
@@ -382,11 +443,12 @@ jobs:
               return sum(durs)/len(durs) if durs else None
 
           bl_actuation = actuation_mean(bl_res)
-          fw_actuation = actuation_mean(fw_res)
+          fw_ws_actuation = actuation_mean(fw_ws_res)
+          fw_hs_actuation = actuation_mean(fw_hs_res)
 
           # ----- Render the table --------------------------------------------
-          print("| Metric | Baseline (WVA without FMA) | WVA with FMA |")
-          print("|---|---:|---:|")
+          print("| Metric | Baseline (WVA without FMA) | WVA with FMA Warm Start | WVA with FMA Hot Start |")
+          print("|---|---:|---:|---:|")
 
           rows = [
               ("Duration (s)",    "benchmark_time_seconds", None, 0, ""),
@@ -414,19 +476,22 @@ jobs:
               unit = row[-1]
               prec = 0 if any(s in label for s in ("Total", "Successes", "Failures", "Duration", "tok/s")) else 1
               bl_v = get(bl, *keys, scale=scale)
-              fw_v = get(fw, *keys, scale=scale)
-              print(f"| {label} | {fmt(bl_v, unit, prec)} | {fmt(fw_v, unit, prec)} |")
+              fw_ws_v = get(fw_ws, *keys, scale=scale)
+              fw_hs_v = get(fw_hs, *keys, scale=scale)
+              print(f"| {label} | {fmt(bl_v, unit, prec)} | {fmt(fw_ws_v, unit, prec)} | {fmt(fw_hs_v, unit, prec)} |")
 
-          print(f"| Cold-start mean (s) — wva log | {fmt(bl_cold_start, '', 1)} | {fmt(fw_cold_start, '', 1)} |")
+          print(f"| Cold-start mean (s) — wva log | {fmt(bl_cold_start, '', 1)} | {fmt(fw_ws_cold_start, '', 1)} | {fmt(fw_hs_cold_start, '', 1)} |")
 
           # Mean pod create→Ready (kube-perspective). Captures the whole
-          # cold-start wall-clock for both passes.
-          print(f"| T_actuation mean (s) — pod create→ready | {fmt(bl_actuation, '', 1)} | {fmt(fw_actuation, '', 1)} |")
+          # cold-start wall-clock for all three passes.
+          print(f"| T_actuation mean (s) — pod create→ready | {fmt(bl_actuation, '', 1)} | {fmt(fw_ws_actuation, '', 1)} | {fmt(fw_hs_actuation, '', 1)} |")
 
           if bl is None:
               print("\n_No baseline results found._")
-          if fw is None:
-              print("\n_No WVA+FMA results found._")
+          if fw_ws is None:
+              print("\n_No WVA+FMA warm-start results found._")
+          if fw_hs is None:
+              print("\n_No WVA+FMA hot-start results found._")
           if not HAVE_YAML:
               print("\n_Note: PyYAML unavailable; scale-event timing rows skipped._")
           PY
@@ -446,10 +511,11 @@ jobs:
         id: cs
         run: |
           set +e
-          for label in baseline fma_wva; do
+          for label in baseline fma_wva_warmstart fma_wva_hotstart; do
             case $label in
-              baseline) base=/tmp/baseline-results ;;
-              fma_wva)  base=/tmp/fma-wva-results ;;
+              baseline)          base=/tmp/baseline-results ;;
+              fma_wva_warmstart) base=/tmp/fma-wva-warmstart-results ;;
+              fma_wva_hotstart)  base=/tmp/fma-wva-hotstart-results ;;
             esac
             latest=$(find "$base" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
             exp=""
@@ -496,40 +562,78 @@ jobs:
           f="${{ steps.cs.outputs.baseline_exp }}/pods.txt"
           [ -f "$f" ] && cat "$f" || echo "no pods.txt for baseline"
 
-      # ---------------- WVA with FMA dumps ---------------------------------
+      # ---------------- WVA with FMA (Warm-Start) dumps --------------------
 
-      - name: Dump HPA — WVA with FMA
+      - name: Dump HPA — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_exp }}/hpa.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa.txt"
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa.txt"
+          [ -f "$f" ] && cat "$f" || echo "no hpa.txt for warm-start"
 
-      - name: Dump HPA describe — WVA with FMA
+      - name: Dump HPA describe — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_exp }}/hpa-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt"
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa-describe.txt"
+          [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for warm-start"
 
-      - name: Dump WVA controller log tail — WVA with FMA
+      - name: Dump WVA controller log tail — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_exp }}/wva-controller.log"
-          [ -f "$f" ] && tail -200 "$f" || echo "no wva-controller.log"
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/wva-controller.log"
+          [ -f "$f" ] && tail -200 "$f" || echo "no wva-controller.log for warm-start"
 
-      - name: Dump FMA launcher-populator log tail — WVA with FMA
+      - name: Dump FMA launcher-populator log tail — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f=$(find "${{ steps.cs.outputs.fma_wva_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
-          [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log"
+          f=$(find "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
+          [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log for warm-start"
 
-      - name: Dump events — WVA with FMA
+      - name: Dump events — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_exp }}/events.log"
-          [ -f "$f" ] && cat "$f" || echo "no events.log"
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/events.log"
+          [ -f "$f" ] && cat "$f" || echo "no events.log for warm-start"
 
-      - name: Dump pods — WVA with FMA
+      - name: Dump pods — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_exp }}/pods.txt"
-          [ -f "$f" ] && cat "$f" || echo "no pods.txt"
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/pods.txt"
+          [ -f "$f" ] && cat "$f" || echo "no pods.txt for warm-start"
+
+      # ---------------- WVA with FMA (Hot-Start) dumps ---------------------
+
+      - name: Dump HPA — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa.txt"
+          [ -f "$f" ] && cat "$f" || echo "no hpa.txt for hot-start"
+
+      - name: Dump HPA describe — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa-describe.txt"
+          [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for hot-start"
+
+      - name: Dump WVA controller log tail — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/wva-controller.log"
+          [ -f "$f" ] && tail -200 "$f" || echo "no wva-controller.log for hot-start"
+
+      - name: Dump FMA launcher-populator log tail — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f=$(find "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
+          [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log for hot-start"
+
+      - name: Dump events — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/events.log"
+          [ -f "$f" ] && cat "$f" || echo "no events.log for hot-start"
+
+      - name: Dump pods — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/pods.txt"
+          [ -f "$f" ] && cat "$f" || echo "no pods.txt for hot-start"

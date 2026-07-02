@@ -1,0 +1,301 @@
+# CI/CD WVA + FMA HOT-START benchmark scenario (OpenShift).
+#
+# Hot-start variant of ocp-wva-fma-warmstart.yaml. Measures WVA scaling behavior
+# isolated from model loading latency. Goal: identical 1->N scaling as warm-start
+# but without model load time confounding the results.
+#
+# Standup Phase:
+#   1. Deploy all 10 requester pods immediately (vs. 1 in warm-start)
+#   2. All launcher pods simultaneously load Qwen3-32B (~10-20 min total)
+#   3. After all pods ready, scale requester pods down to 1 (vLLM sleeps)
+#   4. Confirm all launcher pods have sleeping vLLM instance
+#
+# Benchmark Phase:
+#   - HPA scales 1->10 as load arrives (IDENTICAL to warm-start)
+#   - Difference: No model load latency; scaling measures ONLY HPA/WVA behavior
+#   - All models pre-loaded in memory, so scale-up is instantaneous
+#
+# The WVA+FMA arm of the FMA-vs-WVA comparison nightly. Its no-FMA baseline is
+# cicd/ocp-wva; the two are kept apples-to-apples (same model, WVA config,
+# and heavy workload profile, both with vLLM prefix caching off) so the
+# comparison measures the scaling path, not the prefix cache. For the
+# user-facing WVA well-lit path that the WVA make targets consume, use
+# guides/workload-autoscaling (WVA-only).
+#
+# All HPA / VariantAutoscaling knobs are listed below even when they match
+# defaults.yaml, so the full surface area is visible in one place.
+#
+# Note: FMA owns the elastic vLLM tier here, so the modelservice decode and
+# prefill Deployments are explicitly disabled below (decode.enabled: false,
+# prefill.enabled: false). modelservice still renders the gateway / EPP /
+# InferencePool that route to the FMA launcher pods.
+#
+# WVA scales an FMA-served model deployment. Topology:
+#
+#   modelservice (decode.enabled: false) provides gateway / EPP / InferencePool
+#     / PodMonitor; its decode Deployment is disabled — FMA owns the
+#     elastic vLLM tier instead.
+#
+#   FMA (fma.enabled: true)           launcher pods host vLLM and serve
+#     inference traffic; the requester Deployment holds the GPU lease
+#     that FMA scales.
+#
+#   WVA (wva.enabled: true)           scales the FMA requester Deployment;
+#     FMA's launcher-populator reconciles launcher pods to match.
+#
+# How EPP reaches FMA: 12_router-values.yaml.j2 emits a router.modelServers
+# selector matching `llm-d.ai/inferenceServing=true, llm-d.ai/model=<id>`.
+# 24_fma-deployment.yaml.j2 puts those labels on the InferenceServerConfig's
+# `modelServerConfig.labels` (NOT on the LauncherConfig pod template) — the
+# dual-pods controller propagates them to the launcher pod at BIND time, so
+# only launchers actually serving traffic show up in the InferencePool.
+#
+# How WVA tracks FMA: launcher pods carry `llm-d.ai/variant=<id>-fma` (also
+# applied at bind time via the ISC; label-based variant identification per
+# WVA repo PR #1145). Templates 27/28 retarget the VariantAutoscaling + HPA
+# at the FMA requester Deployment (`fma-requester-<id>`) when fma.enabled.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
+#
+# Running:
+#
+#   llmdbenchmark --spec cicd/ocp-wva-fma-hotstart standup -p <namespace>
+#
+# `wva.enabled: true` and `fma.enabled: true` are already set below, so no CLI
+# flag is needed to enable them for this scenario.
+
+scenario:
+  # ============================================================================
+  # CI/CD WVA + FMA HOT-START - Qwen3-32B served by FMA launchers, autoscaled by WVA
+  # ============================================================================
+  - name: "ocp-wva-fma-hotstart-cicd"
+
+    kustomize:
+      enabled: false
+
+    # =========================================================================
+    # MODEL CONFIGURATION
+    # =========================================================================
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    fma:
+      enabled: true
+      iterations: 1
+
+      # HOT-START CHANGE #1: Deploy all replicas at standup for parallel model loading
+      # Initially set to maxReplicas so all launcher pods load models simultaneously
+      # during standup. After model loading completes, the warmup step scales this
+      # down to 1 to put vLLM servers into sleep state while keeping models in memory.
+      # Benchmark then scales 1->N, measuring pure HPA/WVA behavior (identical to
+      # warm-start) without model load latency.
+      requester:
+        replicas: 10  # ← Match maxReplicas; will be scaled down after warmup
+
+      # HOT-START CHANGE #2: Extended warmup for parallel model loading + scale-down
+      # Warmup sequence:
+      #   1. Wait for Deployment to be Available (all 10 pods Ready)
+      #   2. No additional buffer (models already loaded on all pods)
+      #   3. Scale requester Deployment down to 1 (vLLM sleeps on 9 pods)
+      #   4. Confirm sleeping vLLM instances are present
+      warmupTimeout: 1200  # ← Increased: 10-20 min model load + scale-down verification
+      warmupBufferSeconds: 0  # ← No buffer needed
+
+    # =========================================================================
+    # WVA CONFIGURATION
+    # =========================================================================
+    wva:
+      enabled: true
+      wellLitPath: optimized-baseline-hotstart
+
+      namespace: ""
+
+      image:
+        repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
+        tag: v0.8.0
+
+      replicaCount: 1
+      controller:
+        enabled: true
+      namespaceScoped: true
+
+      metrics:
+        enabled: true
+        port: 8443
+        secure: true
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      variantAutoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        variantCost: "10.0"
+        slo:
+          tpot: 10
+          ttft: 1000
+
+      hpa:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        targetAvgValue: 1
+
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 30
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+          scaleDown:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+
+      vllmService:
+        enabled: false
+
+    # =========================================================================
+    # WVA-RELATED CHART VERSIONS
+    # =========================================================================
+    chartVersions:
+      wva: 0.6.0
+      prometheusAdapter: 5.2.0
+
+    # =========================================================================
+    # ROUTING / GAIE CONFIGURATION
+    # =========================================================================
+    router:
+      epp:
+        pluginsConfigFile: "wva-plugins.yaml"
+        pluginsCustomConfig:
+          wva-plugins.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            featureGates:
+              - flowControl
+            plugins:
+              - type: queue-scorer
+              - type: kv-cache-utilization-scorer
+              - type: prefix-cache-scorer
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: queue-scorer
+                    weight: 2
+                  - pluginRef: kv-cache-utilization-scorer
+                    weight: 2
+                  - pluginRef: prefix-cache-scorer
+                    weight: 3
+
+    # =========================================================================
+    # PREFILL / DECODE CONFIGURATION
+    # =========================================================================
+    prefill:
+      enabled: false
+
+    decode:
+      enabled: false
+      replicas: 0
+      # The FMA requester's nodeAffinity borrows decode.acceleratorType.labelValue
+      # (24_fma-deployment.yaml.j2), and WVA's saturation engine reads it back off
+      # the requester. The cluster resolver skips auto-detection for disabled
+      # sections, so pin the product explicitly here (pokprod = H100) — otherwise
+      # the requester's affinity stays "auto" and it never schedules. Non-"auto"
+      # values are left untouched by the resolver.
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
+
+    # =========================================================================
+    # VLLM COMMON CONFIGURATION
+    # =========================================================================
+    vllmCommon:
+      kvTransfer:
+        enabled: true
+        connector: NixlConnector
+        role: kv_both
+
+      flags:
+        enforceEager: false
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # =========================================================================
+    # STORAGE
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 1Ti
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "/tmp/llmdbenchcicd-ocp-wva-fma-hotstart/"
+
+    # Custom run-phase warmup step for hot-start scenario.
+    # Specifies step_02a_fma_warmup_hotstart instead of the default
+    # step_02a_fma_warmup. Hot-start warmup:
+    #   1. Waits for all N replicas to load (all launchers hot)
+    #   2. Scales down to minReplicas (puts vLLM to sleep, keeps models in memory)
+    #   3. Verifies launcher pods exist with sleeping vLLM instances
+    # Benchmark then scales 1->N (same as warm-start) but without load latency.
+    fmaWarmupStep: step_02a_fma_warmup_hotstart
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic_heavy.yaml
+      # The heavy profile drives high RPS against Qwen3-32B; the infra
+      # reusable does not pass --wait-timeout on the CLI so the CLI falls
+      # back to this field (see cli.py harness_wait_timeout resolution).
+      # Hot-start uses a larger value than warm-start/baseline (5400): its
+      # standup loads all 10 launchers in parallel (~10-20 min) before the
+      # run even begins, matching the hot-start job's wait_timeout: 7200.
+      waitTimeout: 7200
+
+    images:
+      benchmark:
+        tag: nightly
