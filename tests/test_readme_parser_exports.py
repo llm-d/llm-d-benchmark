@@ -175,9 +175,7 @@ class TestSingleQuotedExports:
             ```
             """,
         )
-        assert parse_guide_readme(readme).variables == {
-            "JSON": '{"model": "qwen"}'
-        }
+        assert parse_guide_readme(readme).variables == {"JSON": '{"model": "qwen"}'}
 
 
 class TestMalformedExports:

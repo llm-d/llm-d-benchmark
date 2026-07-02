@@ -117,7 +117,9 @@ class TestRunResolvedLogging:
         ctx.logger.log_info.assert_called_once_with(
             "[prerequisites] kubectl apply -n ns -k /path/to/overlay/"
         )
-        cmd.kube.assert_called_once_with("apply", "-n", "ns", "-k", "/path/to/overlay/", check=False)
+        cmd.kube.assert_called_once_with(
+            "apply", "-n", "ns", "-k", "/path/to/overlay/", check=False
+        )
 
     def test_helm_install_rewritten_to_upgrade_install(self):
         ctx = self._make_context()
@@ -135,7 +137,15 @@ class TestRunResolvedLogging:
         assert "helm install " not in logged
         # And the cmd.helm arg list must match.
         cmd.helm.assert_called_once_with(
-            "upgrade", "--install", "my-guide", "oci://foo", "-f", "bar.yaml", "-n", "ns", check=False
+            "upgrade",
+            "--install",
+            "my-guide",
+            "oci://foo",
+            "-f",
+            "bar.yaml",
+            "-n",
+            "ns",
+            check=False,
         )
 
     def test_secrets_scrubbed_from_log(self, monkeypatch):
