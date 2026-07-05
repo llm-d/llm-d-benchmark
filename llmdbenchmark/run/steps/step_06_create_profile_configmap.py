@@ -204,7 +204,7 @@ class CreateProfileConfigmapStep(Step):
         namespace: str,
         context,
     ) -> tuple[bool, str]:
-        """Create a ConfigMap via kubectl create --dry-run | kubectl apply."""
+        """Create a ConfigMap via kubectl create --dry-run | server-side apply."""
         cm_yaml_path = context.run_dir() / f"{name}.yaml"
 
         result = cmd.kube(
@@ -228,6 +228,7 @@ class CreateProfileConfigmapStep(Step):
 
         result = cmd.kube(
             "apply",
+            "--server-side",
             "-f",
             str(cm_yaml_path),
             "--namespace",
