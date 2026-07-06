@@ -115,17 +115,16 @@ class AdminPrerequisitesStep(Step):
 
         existing_crds = self._get_existing_crds(cmd, context)
 
-        self._install_gateway_api_crds(
-            cmd,
-            plan_config,
-            errors,
-            existing_crds,
-        )
-
         deploy_methods = context.deployed_methods or []
         modelservice_active = "modelservice" in deploy_methods
 
         if modelservice_active:
+            self._install_gateway_api_crds(
+                cmd,
+                plan_config,
+                errors,
+                existing_crds,
+            )
             self._install_gateway_api_extension_crds(
                 cmd,
                 plan_config,
