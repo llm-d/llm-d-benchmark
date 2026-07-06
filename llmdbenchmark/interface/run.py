@@ -75,6 +75,14 @@ def add_subcommands(
         help="Workload profile name (e.g., sanity_random.yaml).",
     )
     run_parser.add_argument(
+        "--workload-file-path",
+        default=env("LLMDBENCH_WORKLOAD_FILE_PATH"),
+        help=(
+            "Path to a local workload profile file. When set, this file is used "
+            "instead of resolving --workload under workload/profiles/<harness>."
+        ),
+    )
+    run_parser.add_argument(
         "-e",
         "--experiments",
         default=env("LLMDBENCH_EXPERIMENTS"),

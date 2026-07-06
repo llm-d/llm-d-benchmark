@@ -85,6 +85,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # Run-phase configuration (set by _execute_run)
     harness_name: str | None = None
     harness_profile: str | None = None
+    workload_file_path: str | None = None
     experiment_treatments_file: str | None = None
     profile_overrides: str | None = None
     harness_output: str = "local"

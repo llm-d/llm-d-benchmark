@@ -104,6 +104,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 |------|---------|-------------|
 | `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name: `inference-perf`, `guidellm`, `vllm-benchmark`, `inferencemax`, `nop` |
 | `-w WORKLOAD` | `LLMDBENCH_WORKLOAD` | Workload profile name (e.g., `sanity_random.yaml`, `chatbot_synthetic.yaml`) |
+| `--workload-file-path FILE` | `LLMDBENCH_WORKLOAD_FILE_PATH` | Local workload profile file path |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) -- `deploy_ns,harness_ns` or single namespace for both |
 | `-m MODEL` | `LLMDBENCH_MODEL` | Model name override (e.g., `Qwen/Qwen3-32B`) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method used during standup (`standalone`, `modelservice`) |

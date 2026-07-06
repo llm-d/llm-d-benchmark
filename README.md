@@ -485,6 +485,7 @@ llmdbenchmark --version
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name (inference-perf, guidellm, vllm-benchmark) |
 | `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile YAML |
+| `--workload-file-path FILE` | `LLMDBENCH_WORKLOAD_FILE_PATH` | Local workload profile file path |
 | `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment treatments YAML for parameter sweeping |
 | `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | Workload parameter overrides (param=value,...) |
 | `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination (local, gs://, s3://) |

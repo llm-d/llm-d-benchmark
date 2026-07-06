@@ -107,6 +107,7 @@ Executes benchmark experiments against deployed infrastructure.
 | `-m` / `--model` | `LLMDBENCH_MODEL` | Model name override |
 | `-l` / `--harness` | `LLMDBENCH_HARNESS` | Harness name |
 | `-w` / `--workload` | `LLMDBENCH_WORKLOAD` | Workload profile name |
+| `--workload-file-path` | `LLMDBENCH_WORKLOAD_FILE_PATH` | Local workload profile file path |
 | `-e` / `--experiments` | `LLMDBENCH_EXPERIMENTS` | Experiment treatments YAML |
 | `-o` / `--overrides` | `LLMDBENCH_OVERRIDES` | Profile parameter overrides (param=value,...) |
 | `-r` / `--output` | `LLMDBENCH_OUTPUT` | Results destination (local, gs://, s3://) |

@@ -830,6 +830,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             or (plan_info.get("harness", {}) or {}).get("name")
         ),
         harness_profile=getattr(args, "workload", None),
+        workload_file_path=getattr(args, "workload_file_path", None),
         experiment_treatments_file=experiments_file,
         profile_overrides=getattr(args, "overrides", None),
         harness_output=getattr(args, "output", "local") or "local",
@@ -1498,6 +1499,10 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_MODEL": ("model", "--model"),
         "LLMDBENCH_HARNESS": ("harness", "--harness"),
         "LLMDBENCH_WORKLOAD": ("workload", "--workload"),
+        "LLMDBENCH_WORKLOAD_FILE_PATH": (
+            "workload_file_path",
+            "--workload-file-path",
+        ),
         "LLMDBENCH_EXPERIMENTS": ("experiments", "--experiments"),
         "LLMDBENCH_OVERRIDES": ("overrides", "--overrides"),
         "LLMDBENCH_OUTPUT": ("output", "--output"),
@@ -1596,6 +1601,7 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--model": ["--model", "-m"],
         "--harness": ["--harness", "-l"],
         "--workload": ["--workload", "-w"],
+        "--workload-file-path": ["--workload-file-path"],
         "--experiments": ["--experiments", "-e"],
         "--overrides": ["--overrides", "-o"],
         "--output": ["--output", "-r"],
