@@ -396,3 +396,7 @@ scenario:
       # Heavy variant — same load as guides/workload-autoscaling.yaml so the
       # FMA pass and this baseline are exercised under matched RPS.
       experimentProfile: shared_prefix_synthetic_heavy.yaml
+      # The heavy profile drives high RPS against Qwen3-32B; the infra
+      # reusable does not pass --wait-timeout on the CLI so the CLI falls
+      # back to this field (see cli.py harness_wait_timeout resolution).
+      waitTimeout: 5400
