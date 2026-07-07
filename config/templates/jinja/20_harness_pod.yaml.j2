@@ -20,7 +20,13 @@ spec:
       runAsUser: 0
     command: ["sh", "-c"]
     args:
-    - "{{ harness_command }}"
+    - >-
+      for script in /workspace/harnesses/*.sh; do
+        [ -e "$script" ] || continue;
+        cp "$script" /usr/local/bin/;
+        chmod +x "/usr/local/bin/$(basename "$script")";
+      done;
+      {{ harness_command }}
     resources:
       limits:
         cpu: "{{ harness.resources.cpu }}"
