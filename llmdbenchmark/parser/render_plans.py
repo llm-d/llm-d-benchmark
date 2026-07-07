@@ -1294,6 +1294,48 @@ class RenderPlans:
                 errors.append(f"{yaml_file.name}: {str(e)[:100]}")
         return errors
 
+    @staticmethod
+    def _validate_kustomize_patches(values: dict, stack_name: str) -> list[str]:
+        """Validate inline kustomize patches during plan rendering."""
+        kustomize_config = values.get("kustomize") or {}
+        if not kustomize_config.get("enabled"):
+            return []
+
+        errors: list[str] = []
+        patches = kustomize_config.get("patches") or []
+        for index, entry in enumerate(patches):
+            if not isinstance(entry, dict):
+                errors.append(
+                    f"[{stack_name}] kustomize.patches[{index}] must be a mapping"
+                )
+                continue
+
+            patch = entry.get("patch", "")
+            if not patch:
+                continue
+
+            try:
+                documents = list(yaml.safe_load_all(patch))
+            except yaml.YAMLError as exc:
+                errors.append(
+                    f"[{stack_name}] kustomize.patches[{index}].patch is invalid "
+                    f"YAML: {str(exc)[:100]}"
+                )
+                continue
+
+            for doc_index, document in enumerate(documents):
+                if document is None:
+                    continue
+                if not isinstance(document, dict):
+                    doc_label = "" if len(documents) == 1 else f" document {doc_index}"
+                    errors.append(
+                        f"[{stack_name}] kustomize.patches[{index}].patch"
+                        f"{doc_label} expected YAML mapping, got "
+                        f"{type(document).__name__}"
+                    )
+
+        return errors
+
     def _build_sibling_stacks(
         self,
         stacks: list[dict],
@@ -1465,6 +1507,14 @@ class RenderPlans:
             stack_name=stack_name,
         )
         for msg in epponly_errors:
+            self.logger.log_error(msg)
+            stack_errors.render_errors.append(msg)
+
+        kustomize_errors = self._validate_kustomize_patches(
+            merged_values,
+            stack_name=stack_name,
+        )
+        for msg in kustomize_errors:
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 
