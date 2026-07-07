@@ -216,24 +216,18 @@ scenario:
       # -----------------------------------------------------------------------
       # VariantAutoscaling — per-model scaling intent
       #
-      # Should match the HPA min/max below; the VA caps what the controller
-      # is willing to compute, the HPA caps what actually gets applied.
+      # WVA's annotation-based path (28_wva-hpa.yaml.j2) replaced the
+      # VariantAutoscaling CR, so only variantCost is still read (emitted as the
+      # llm-d.ai/variant-cost annotation on the HPA). The former enabled /
+      # minReplicas / maxReplicas / slo keys drove the deprecated VA CR and are
+      # dropped — min/max live in the HPA block below.
       # -----------------------------------------------------------------------
       variantAutoscaling:
-        enabled: true                # required for the VA to render at all
-        minReplicas: 1               # controller floor — never compute below this
-        maxReplicas: 10              # controller ceiling — never compute above this
         # Relative GPU cost weight used by WVA's saturation solver to decide
         # WHICH model to scale when several share GPU capacity. Higher =
         # more expensive to scale up. Common tiering: H100=10, A100=8,
         # L40S=5, MI300X=10. Tweak per stack to express your business priority.
         variantCost: "10.0"
-        # SLO targets the controller tries to keep the variant within when
-        # computing desiredReplicas. Lower numbers = more aggressive scale-up
-        # under load.
-        slo:
-          tpot: 10                   # Time-Per-Output-Token target (ms)
-          ttft: 1000                 # Time-To-First-Token target (ms)
 
       # -----------------------------------------------------------------------
       # HorizontalPodAutoscaler — what actually changes the replica count
