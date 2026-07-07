@@ -237,11 +237,19 @@ def _populate_run(ev_dict: dict) -> dict:
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
-    try:
-        cert = ssl.get_server_certificate((host, port), timeout=5)
-    except (TimeoutError, OSError):
-        # As a failover, just use the service host
-        cert = host
+    cert = None
+    if host and port:
+        try:
+            cert = ssl.get_server_certificate((host, port), timeout=5)
+        except (TimeoutError, OSError):
+            # As a failover, just use the service host
+            cert = host
+    if not cert:
+        cert = (
+            ev_dict.get("harness_stack_endpoint_url")
+            or ev_dict.get("vllm_common_namespace")
+            or "run-only"
+        )
     cid = str(uuid.uuid5(uuid.NAMESPACE_DNS, cert))
 
     # Use the namespace for "user"
@@ -300,13 +308,28 @@ def _populate_load() -> dict:
             value = None
         args[key] = value
 
-    # Import config file, if it exists
-    config_file = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "")
-    try:
-        with open(config_file, "r", encoding="UTF-8") as file:
-            config = yaml.safe_load(file)
-    except (FileNotFoundError, IsADirectoryError):
-        config = None
+    # Import config file, if it exists. In run-only/local analysis the workload
+    # env var may be just a file name, while harness_args carries the full path.
+    config = None
+    config_candidates = [
+        os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", ""),
+        args.get("config_file", ""),
+    ]
+    run_metadata = _load_run_metadata()
+    results_dir = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "")
+    harness_workload = run_metadata.get("harness_workload", "")
+    if results_dir and harness_workload:
+        config_candidates.append(os.path.join(results_dir, harness_workload))
+
+    for config_file in config_candidates:
+        if not config_file:
+            continue
+        try:
+            with open(config_file, "r", encoding="UTF-8") as file:
+                config = yaml.safe_load(file)
+            break
+        except (FileNotFoundError, IsADirectoryError):
+            continue
 
     br_dict = {
         "scenario": {
