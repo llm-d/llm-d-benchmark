@@ -12,15 +12,21 @@
    ============================================================================ #}
 {% if wva is defined and wva.enabled | default(false) %}
 {% set _wva_ns = wva.namespace | default(namespace.name, true) %}
-{# ClusterRoleBindings produced by the upstream overlay. Per-tenant uniqueness
-   is added by suffixing metadata.name with the WVA namespace; roleRef.name
-   stays at the upstream default because the ClusterRole is shared. #}
-{% set _cluster_role_bindings = [
+{# ClusterRoleBindings from the upstream overlay. Renamed per-namespace to avoid
+   cross-tenant collisions. The overlay hard-codes their subject namespace to
+   `wva-system` and kustomize's `namespace:` won't rewrite an already-set CRB
+   subject, so we repoint it to {{ _wva_ns }} — otherwise the controller SA is
+   unbound (tokenreviews/variantautoscalings forbidden, HPA stuck at <unknown>).
+   Split by subject location: _crb_wva_subject (SA in the WVA namespace, repoint)
+   vs _crb_ext_subject (prometheus SA elsewhere, rename only). #}
+{% set _crb_wva_subject = [
   'wva-epp-metrics-reader-role-binding',
   'wva-manager-cluster-monitoring-view',
   'wva-manager-rolebinding',
   'wva-metrics-auth-rolebinding',
   'wva-metrics-reader-rolebinding',
+] %}
+{% set _crb_ext_subject = [
   'wva-prometheus-cluster-monitoring-view',
 ] %}
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -47,10 +53,21 @@ patches:
       path: /spec/replicas
       value: {{ wva.replicaCount | default(1) }}
 
-# Suffix each ClusterRoleBinding's metadata.name with the WVA namespace so
-# concurrent WVA installs in different namespaces don't fight over these
-# cluster-scoped binding names
-{% for _crb in _cluster_role_bindings %}
+# Rename + repoint subject namespace to {{ _wva_ns }} (SA lives in WVA namespace).
+{% for _crb in _crb_wva_subject %}
+- target:
+    kind: ClusterRoleBinding
+    name: {{ _crb }}
+  patch: |-
+    - op: replace
+      path: /metadata/name
+      value: {{ _crb }}-{{ _wva_ns }}
+    - op: replace
+      path: /subjects/0/namespace
+      value: {{ _wva_ns }}
+{% endfor %}
+# Rename only — subject SA is in openshift-user-workload-monitoring, leave it.
+{% for _crb in _crb_ext_subject %}
 - target:
     kind: ClusterRoleBinding
     name: {{ _crb }}
