@@ -507,19 +507,20 @@ class WorkloadMonitoringStep(Step):
         context: ExecutionContext,
         errors: list,
     ) -> None:
-        """Install WVA controller + prometheus-adapter once per unique namespace.
+        """Install WVA controller + per-namespace Prometheus auth once per unique namespace.
 
         Runs only when at least one rendered stack has ``wva.enabled: true``
         and the platform is OpenShift. Provisions:
 
-        1. prometheus-adapter helm chart + prometheus-ca ConfigMap in the
-           user-workload monitoring namespace (cluster-scoped dependency,
-           installed once regardless of how many WVA namespaces exist).
+        1. Verify KEDA is installed (cluster-scoped, pre-installed by admin).
         2. The thanos-querier ClusterRole (from rendered 22_prometheus-rbac).
-        3. The WVA namespace label (from rendered 23_wva-namespace).
-        4. The WVA controller helm chart into each unique wva.namespace.
+        3. The WVA namespace label + ServiceAccount + ClusterRoleBinding
+           (from rendered 23_wva-namespace).
+        4. Per-namespace Prometheus bearer token Secret + TriggerAuthentication
+           (minted dynamically via create_prometheus_auth_secret).
+        5. The WVA controller helm chart into each unique wva.namespace.
 
-        The chart itself brings its own RBAC (``templates/rbac/*``), CRD
+        The WVA chart itself brings its own RBAC (``templates/rbac/*``), CRD
         (``llmd.ai/variantautoscaling``), ServiceMonitor, and ConfigMaps.
         """
         pairs = wva_mod.stacks_enabling_wva(context.rendered_stacks or [])
@@ -533,20 +534,16 @@ class WorkloadMonitoringStep(Step):
             )
             return
 
-        # prometheus-adapter + ClusterRole: cluster-wide, install once
-        # from the first stack's rendered templates.
-        first_stack, first_cfg = pairs[0]
-        monitoring_ns = first_cfg.get("openshiftMonitoring", {}).get(
-            "userWorkloadMonitoringNamespace", "openshift-user-workload-monitoring"
-        )
+        # Verify KEDA is installed cluster-wide (shared infra, not managed here).
+        wva_mod.verify_keda_installed(cmd, context)
 
+        # Extract Prometheus CA cert for per-namespace auth Secret.
         prom_ca_cert = wva_mod.extract_prometheus_ca_cert(cmd, context.logger)
         if not prom_ca_cert:
             context.logger.log_warning(
                 "Could not extract a Prometheus CA cert. Skipping "
-                "prometheus-adapter install -- the WVA controller will still "
-                "run (TLS insecureSkipVerify=true) but the HPA will not "
-                "receive metrics, so auto-scaling is disabled.\n"
+                "KEDA authentication setup -- the WVA controller will still "
+                "run but KEDA ScaledObject metric queries will fail.\n"
                 "  To fix, ensure either:\n"
                 "    1) `oc get secret thanos-querier-tls -n openshift-monitoring` "
                 "returns the secret (needs cluster-admin on most clusters), or\n"
@@ -554,22 +551,21 @@ class WorkloadMonitoringStep(Step):
                 "deploy namespace (this is the built-in fallback; any "
                 "authenticated user has access)."
             )
-        else:
-            wva_mod.install_prometheus_adapter(
-                cmd=cmd,
-                context=context,
-                plan_config=first_cfg,
-                stack_path=first_stack,
-                monitoring_ns=monitoring_ns,
-                prom_ca_cert=prom_ca_cert,
-                errors=errors,
-            )
 
-        # One WVA controller per unique wva.namespace.
+        # One WVA controller + auth setup per unique wva.namespace.
         for wva_ns, (stack_path, plan_config) in wva_mod.unique_wva_namespaces(
             pairs
         ).items():
             wva_mod.apply_wva_namespace_label(cmd, stack_path, wva_ns)
+            if prom_ca_cert:
+                wva_mod.create_prometheus_auth_secret(
+                    cmd=cmd,
+                    context=context,
+                    stack_path=stack_path,
+                    wva_namespace=wva_ns,
+                    prom_ca_cert=prom_ca_cert,
+                    errors=errors,
+                )
             wva_mod.install_wva_for_namespace(
                 cmd=cmd,
                 context=context,

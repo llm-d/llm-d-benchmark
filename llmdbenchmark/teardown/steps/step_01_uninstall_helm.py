@@ -263,24 +263,25 @@ class UninstallHelmStep(Step):
     ) -> None:
         """Tear down WVA resources.
 
-        Always deletes the per-stack VariantAutoscaling + HPA so the model
-        no longer auto-scales after teardown.
+        Always deletes the per-stack VariantAutoscaling + ScaledObject so the model
+        no longer auto-scales after teardown. Deleting the ScaledObject cascades
+        to KEDA's generated HPA deletion.
 
         The (per-namespace) WVA controller is uninstalled on full-scenario
         teardowns (no ``--stack`` filter), because there are no remaining
         stacks of this scenario to depend on it. A partial-stack teardown
         (``--stack X``) preserves the controller -- the sibling stacks of
         this scenario in the same namespace still need it. ``--deep``
-        forces uninstall regardless of the filter.
+        forces uninstall regardless of the filter. When the controller is
+        uninstalled, also cleans up the per-namespace resources we created:
+        ServiceAccount, Secret, and ClusterRoleBinding.
 
-        prometheus-adapter and its supporting cluster-wide resources
-        (``allow-thanos-querier-api-access`` ClusterRole, ``prometheus-ca``
-        ConfigMap) are NEVER touched by teardown — not even with --deep.
-        They are shared cluster-wide infrastructure used by every WVA
-        tenant's HPA pipeline. Their lifecycle is managed once at the
-        cluster level (e.g. by a platform admin), and removing them on a
-        per-tenant teardown would silently break every other namespace's
-        autoscaling.
+        KEDA operator and the cluster-wide ``allow-thanos-querier-api-access``
+        ClusterRole are NEVER touched by teardown — not even with --deep.
+        They are shared cluster-wide infrastructure used by every WVA tenant's
+        ScaledObject pipeline. Their lifecycle is managed once at the cluster
+        level (e.g. by a platform admin), and removing them on a per-tenant
+        teardown would silently break every other namespace's autoscaling.
 
         Skipped entirely on non-OpenShift platforms — standup gates the
         WVA install on OpenShift (see step_03), so on other platforms
@@ -321,12 +322,13 @@ class UninstallHelmStep(Step):
         if not wva_stacks:
             return
 
-        # 1. Per-stack VariantAutoscaling + HPA: always delete. Suffix is
+        # 1. Per-stack VariantAutoscaling + ScaledObject: always delete. Suffix is
         # `-fma` under FMA, `-decode` otherwise -- matches templates 27/28.
+        # Deleting the ScaledObject cascades to KEDA's generated HPA.
         for wva_ns, model_id_label, fma_enabled, _stack_path in wva_stacks:
             variant_suffix = "fma" if fma_enabled else "decode"
             resource_name = f"{model_id_label}-{variant_suffix}"
-            for kind in ("hpa", "variantautoscaling.llmd.ai"):
+            for kind in ("scaledobject.keda.sh", "variantautoscaling.llmd.ai"):
                 context.logger.log_info(
                     f"Deleting {kind}/{resource_name} from ns/{wva_ns}"
                 )
@@ -374,7 +376,7 @@ class UninstallHelmStep(Step):
         else:
             mode_msg = "Full-scenario teardown: uninstalling WVA controller(s)."
         context.logger.log_info(
-            f"{mode_msg} prometheus-adapter and shared cluster RBAC are kept intact."
+            f"{mode_msg} KEDA operator and shared cluster RBAC are kept intact."
         )
         for wva_ns in sorted(seen_ns):
             stack_path = seen_ns[wva_ns]
@@ -406,6 +408,40 @@ class UninstallHelmStep(Step):
                 errors.append(
                     f"Failed to uninstall WVA controller in {wva_ns}: "
                     f"{uninstall.stderr}"
+                )
+
+            # Clean up per-namespace resources we created (ServiceAccount, Secret).
+            # ClusterRoleBinding is cluster-scoped so we handle it separately.
+            for kind, name in (
+                ("serviceaccount", "wva-prometheus-auth"),
+                ("secret", "prometheus-auth"),
+            ):
+                result = cmd.kube(
+                    "delete",
+                    kind,
+                    name,
+                    "--namespace",
+                    wva_ns,
+                    "--ignore-not-found=true",
+                    check=False,
+                )
+                if result.success:
+                    context.logger.log_info(
+                        f"  Deleted {kind}/{name} from ns/{wva_ns}", emoji="🗑️"
+                    )
+
+            # Delete the namespace-suffixed ClusterRoleBinding (cluster-scoped).
+            crb_name = f"allow-thanos-querier-api-access-{wva_ns}"
+            result = cmd.kube(
+                "delete",
+                "clusterrolebinding",
+                crb_name,
+                "--ignore-not-found=true",
+                check=False,
+            )
+            if result.success:
+                context.logger.log_info(
+                    f"  Deleted clusterrolebinding/{crb_name}", emoji="🗑️"
                 )
 
     def _delete_download_job(

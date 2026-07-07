@@ -11,7 +11,7 @@ from llmdbenchmark.smoketests.validators.wva import WvaSmoketestMixin
 class OptimizedBaselineValidator(WvaSmoketestMixin, BaseSmoketest):
     """Validates optimized baseline scenario.
 
-    Also runs WVA resource checks (controller, prometheus-adapter, VA, HPA)
+    Also runs WVA resource checks (controller, KEDA, ScaledObject)
     when the rendered stack has ``wva.enabled: true``; the mixin is a no-op
     for non-WVA stacks.
     """

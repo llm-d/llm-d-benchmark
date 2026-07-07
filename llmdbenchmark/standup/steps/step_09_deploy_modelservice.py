@@ -644,14 +644,14 @@ class DeployModelserviceStep(Step):
         stack_path: Path,
         errors: list,
     ) -> None:
-        """Apply this stack's VariantAutoscaling + HPA to the WVA namespace.
+        """Apply this stack's VariantAutoscaling + ScaledObject to the WVA namespace.
 
-        The WVA controller + prometheus-adapter were already installed by
-        step_02 once per unique wva.namespace. Here we only kubectl apply
-        the per-stack resources so a single controller can manage multiple
-        models.
+        The WVA controller was already installed by step_03 once per unique
+        wva.namespace. Here we only kubectl apply the per-stack resources so
+        a single controller can manage multiple models. KEDA generates and
+        manages the HPA automatically when the ScaledObject is applied.
         """
-        for stem in ("27_wva-variantautoscaling", "28_wva-hpa"):
+        for stem in ("27_wva-variantautoscaling", "28_wva-scaledobject"):
             yaml_path = self._find_yaml(stack_path, stem)
             if not (yaml_path and self._has_yaml_content(yaml_path)):
                 continue
@@ -665,11 +665,12 @@ class DeployModelserviceStep(Step):
         context: ExecutionContext,
         plan_config: dict,
     ) -> None:
-        """Log the current state of this stack's VariantAutoscaling + HPA.
+        """Log the current state of this stack's VariantAutoscaling + ScaledObject + HPA.
 
-        Lets the standup output show what got created (VA OPTIMIZED, HPA
-        TARGETS / REPLICAS, etc.) without the operator needing a follow-up
-        ``oc get``. Best-effort - failures here don't fail step_09.
+        Lets the standup output show what got created (VA OPTIMIZED, ScaledObject
+        status, HPA TARGETS/REPLICAS, etc.) without needing follow-up ``oc get``.
+        Best-effort - failures here don't fail step_09. KEDA's generated HPA
+        carries the same name as the ScaledObject.
         """
         wva_cfg = plan_config.get("wva", {}) or {}
         wva_ns = wva_cfg.get("namespace") or plan_config.get("namespace", {}).get(
@@ -683,6 +684,7 @@ class DeployModelserviceStep(Step):
 
         for kind, label in (
             ("variantautoscaling.llmd.ai", "VariantAutoscaling"),
+            ("scaledobject.keda.sh", "ScaledObject"),
             ("hpa", "HorizontalPodAutoscaler"),
         ):
             result = cmd.kube(
@@ -695,8 +697,6 @@ class DeployModelserviceStep(Step):
             )
             if result.success and result.stdout.strip():
                 context.logger.log_info(f"📋 {label} state in ns/{wva_ns}:")
-                # Indent each line so it visually groups with the
-                # header above it in the standup log.
                 for line in result.stdout.rstrip().splitlines():
                     context.logger.log_info(f"    {line}")
             else:

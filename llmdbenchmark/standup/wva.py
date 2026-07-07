@@ -1,16 +1,16 @@
 """Shared helpers for installing the Workload Variant Autoscaler (WVA).
 
-The WVA controller and its runtime dependencies (prometheus-adapter,
-prometheus-ca ConfigMap, thanos-querier ClusterRole) are cluster/admin-scoped
-and must be provisioned *before* any per-stack work runs. These helpers are
-called from ``step_02_admin_prerequisites`` once per unique ``wva.namespace``
-across all rendered stacks. Per-stack resources (VariantAutoscaling + HPA)
-are rendered from ``27_wva-variantautoscaling.yaml.j2`` /
-``28_wva-hpa.yaml.j2`` and applied in ``step_09``.
+The WVA controller and its runtime dependencies (ServiceAccount, bearer token
+Secret, thanos-querier ClusterRole) are cluster/admin-scoped and must be
+provisioned *before* any per-stack work runs. KEDA itself is pre-installed by
+cluster admins and not managed by this harness. These helpers are called from
+``step_03_workload_monitoring`` once per unique ``wva.namespace`` across all
+rendered stacks. Per-stack resources (VariantAutoscaling + ScaledObject) are
+rendered from ``27_wva-variantautoscaling.yaml.j2`` / ``28_wva-scaledobject.yaml.j2``
+and applied in ``step_09``.
 
 Helpers live in this module (rather than in a step class) so both the
-admin step and per-stack step can import them without a cyclic
-dependency.
+admin step and per-stack step can import them without a cyclic dependency.
 """
 
 from __future__ import annotations
@@ -172,165 +172,130 @@ def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-lo
         )
 
 
-def install_prometheus_adapter(  # pylint: disable=too-many-arguments
+def verify_keda_installed(cmd: CommandExecutor, context: ExecutionContext) -> bool:
+    """Verify that KEDA is installed on the cluster.
+
+    Checks for the ScaledObject CRD (a portable probe that doesn't assume
+    KEDA's namespace or release name). Logs a warning but returns anyway if
+    missing — KEDA is treated as optional shared cluster infra, not required
+    by this harness. If missing, the ScaledObjects will fail to reconcile
+    and the smoketest will detect it.
+    """
+    result = cmd.kube(
+        "get",
+        "crd",
+        "scaledobjects.keda.sh",
+        check=False,
+    )
+    if result.success:
+        context.logger.log_info("✓ KEDA ScaledObject CRD found")
+        return True
+
+    context.logger.log_warning(
+        "KEDA is not installed on this cluster (ScaledObject CRD not found). "
+        "WVA autoscaling will not work until KEDA is installed by a cluster admin. "
+        "Install via: helm install keda kedacore/keda -n keda --create-namespace"
+    )
+    return False
+
+
+def create_prometheus_auth_secret(
     cmd: CommandExecutor,
     context: ExecutionContext,
-    plan_config: dict,
     stack_path: Path,
-    monitoring_ns: str,
-    prom_ca_cert: str,
+    wva_namespace: str,
+    prom_ca_cert: str | None,
     errors: list,
 ) -> None:
-    """Install the prometheus-adapter helm chart + prometheus-ca ConfigMap.
+    """Create a per-namespace Prometheus bearer token Secret + TriggerAuthentication.
 
-    Cluster-scoped dependency for WVA: runs once up front regardless of
-    how many model namespaces host WVA controllers.
+    Mints a token from the ServiceAccount created in 23_wva-namespace.yaml.j2,
+    stores it alongside the CA cert in a Secret, and applies the TriggerAuthentication
+    CR that KEDA's ScaledObject will reference for metric queries.
     """
+    if not prom_ca_cert:
+        context.logger.log_warning(
+            f"Prometheus CA cert is missing for ns/{wva_namespace}. "
+            "KEDA will not be able to query Prometheus."
+        )
+        return
+
+    # Mint a token from the ServiceAccount we created in 23_wva-namespace.yaml.j2
+    token_result = cmd.kube(
+        "create",
+        "token",
+        "wva-prometheus-auth",
+        "-n",
+        wva_namespace,
+        check=False,
+    )
+    if not token_result.success:
+        errors.append(
+            f"Failed to mint bearer token for ns/{wva_namespace}: {token_result.stderr}"
+        )
+        return
+
+    bearer_token = token_result.stdout.strip()
+    if not bearer_token:
+        errors.append(f"Bearer token is empty for ns/{wva_namespace}")
+        return
+
+    # Create the prometheus-auth Secret with dry-run + apply (idempotent pattern)
     tmp_dir = Path(tempfile.mkdtemp())
-    cert_path = tmp_dir / "prometheus-ca.crt"
+    cert_path = tmp_dir / "ca.crt"
     cert_path.write_text(prom_ca_cert, encoding="utf-8")
 
-    # Create-or-update the prometheus-ca ConfigMap in the monitoring ns.
-    result = cmd.kube(
+    secret_result = cmd.kube(
         "create",
-        "configmap",
-        "prometheus-ca",
+        "secret",
+        "generic",
+        "prometheus-auth",
         f"--from-file=ca.crt={cert_path}",
+        f"--from-literal=bearerToken={bearer_token}",
         "--dry-run=client",
         "-o",
         "yaml",
-        namespace=monitoring_ns,
+        "-n",
+        wva_namespace,
         check=False,
     )
-    if result.success and result.stdout.strip():
-        cm_yaml_path = tmp_dir / "prometheus-ca-configmap.yaml"
-        cm_yaml_path.write_text(result.stdout, encoding="utf-8")
+    if secret_result.success and secret_result.stdout.strip():
+        secret_yaml_path = tmp_dir / "prometheus-auth-secret.yaml"
+        secret_yaml_path.write_text(secret_result.stdout, encoding="utf-8")
         apply_result = cmd.kube(
             "apply",
             "-f",
-            str(cm_yaml_path),
-            namespace=monitoring_ns,
+            str(secret_yaml_path),
+            "-n",
+            wva_namespace,
             check=False,
         )
         if not apply_result.success:
-            context.logger.log_warning(
-                f"prometheus-ca ConfigMap apply failed: {apply_result.stderr}"
-            )
-    elif not result.success:
-        context.logger.log_warning(
-            f"prometheus-ca ConfigMap creation failed: {result.stderr}"
-        )
-
-    # prometheus-adapter is a cluster-scoped install (it owns a ClusterRole
-    # `prometheus-adapter-resource-reader` that can only belong to a single
-    # helm release cluster-wide). If another tenant in the cluster already
-    # installed it — common on shared OCP clusters — we can't
-    # `helm upgrade --install` ours on top without stealing ownership of
-    # that ClusterRole, so we reuse the existing release.
-    #
-    # We intentionally do NOT probe the external-metrics discovery API here
-    # to confirm the existing install serves `wva_desired_replicas`: the
-    # adapter only lists a metric in discovery once its `seriesQuery`
-    # returns at least one matching series from Prometheus, and at
-    # admin-install time no VariantAutoscaling exists yet, so no series is
-    # being produced. A discovery miss at this point is ambiguous (rule
-    # missing vs no VA yet) and previously misled users into "fixing" a
-    # non-existent rule problem. Rule correctness is verified later in
-    # the smoketest (post-VA-apply) where a discovery miss is unambiguous.
-    existing_release, existing_ns = _find_existing_prometheus_adapter_release(cmd)
-    apisvc_target = _find_existing_external_metrics_apiservice(cmd)
-    if existing_release:
-        context.logger.log_info(
-            f"ℹ️  prometheus-adapter is already installed cluster-wide "
-            f"(release={existing_release!r}, namespace={existing_ns!r}). "
-            "Reusing it — rule correctness will be validated by the "
-            "smoketest after the VariantAutoscaling is applied."
-        )
-    elif apisvc_target:
-        context.logger.log_info(
-            f"ℹ️  v1beta1.external.metrics.k8s.io is already registered to "
-            f"{apisvc_target}. Skipping prometheus-adapter helm install — "
-            "the existing adapter serves the wva_desired_replicas metric."
-        )
-    else:
-        repo_url = _require_config(
-            plan_config,
-            "helmRepositories",
-            "prometheusAdapter",
-            "url",
-        )
-        chart_name = _require_config(
-            plan_config,
-            "helmRepositories",
-            "prometheusAdapter",
-            "name",
-        )
-        repo_alias = "prometheus-community"
-
-        cmd.helm("repo", "add", repo_alias, repo_url, check=False)
-        cmd.helm("repo", "update", check=False)
-
-        adapter_values = _find_yaml(stack_path, "21_prometheus-adapter-values")
-        if not adapter_values:
             errors.append(
-                "prometheus-adapter values template (21_prometheus-adapter-values) "
-                "not found"
-            )
-            return
-
-        # Pin prometheus-adapter chart version (from chartVersions.prometheusAdapter
-        # in defaults.yaml) so newer releases can't break the external-metric
-        # rule format the WVA chart emits. Upstream README uses this same pin.
-        adapter_version = plan_config.get("chartVersions", {}).get(
-            "prometheusAdapter", ""
-        )
-
-        context.logger.log_info(
-            f"📦 Installing prometheus-adapter"
-            f"{' v' + adapter_version if adapter_version else ''} "
-            f"into ns/{monitoring_ns}"
-        )
-        version_args = ("--version", adapter_version) if adapter_version else ()
-        result = cmd.helm(
-            "upgrade",
-            "--install",
-            "prometheus-adapter",
-            f"{repo_alias}/{chart_name}",
-            *version_args,
-            "--namespace",
-            monitoring_ns,
-            "--create-namespace",
-            "-f",
-            str(adapter_values),
-        )
-        if not result.success:
-            errors.append(f"Failed to install prometheus-adapter: {result.stderr}")
-        else:
-            # Live progress wait so we don't race step_03 ahead of the
-            # adapter actually serving the external-metrics API.
-            wait = cmd.wait_for_pods(
-                label="app.kubernetes.io/name=prometheus-adapter",
-                namespace=monitoring_ns,
-                timeout=300,
-                poll_interval=5,
-                description=f"prometheus-adapter in ns/{monitoring_ns}",
-            )
-            if not wait.success:
-                errors.append(
-                    f"prometheus-adapter pods did not become Ready in "
-                    f"ns/{monitoring_ns}: {wait.stderr}"
-                )
-
-    rbac_yaml = _find_yaml(stack_path, "22_prometheus-rbac")
-    if rbac_yaml and _has_yaml_content(rbac_yaml):
-        result = cmd.kube("apply", "-f", str(rbac_yaml), check=False)
-        if not result.success:
-            context.logger.log_warning(
-                f"ClusterRole creation failed (non-fatal): {result.stderr}"
+                f"Failed to apply prometheus-auth Secret in ns/{wva_namespace}: "
+                f"{apply_result.stderr}"
             )
     else:
+        errors.append(
+            f"Failed to generate prometheus-auth Secret for ns/{wva_namespace}: "
+            f"{secret_result.stderr}"
+        )
+        return
+
+    # Apply the TriggerAuthentication template
+    ta_yaml = _find_yaml(stack_path, "21_keda-triggerauthentication")
+    if not ta_yaml:
         context.logger.log_warning(
-            "prometheus RBAC template (22_prometheus-rbac) not found"
+            f"TriggerAuthentication template not found for ns/{wva_namespace}. "
+            "KEDA ScaledObject will fail to authenticate."
+        )
+        return
+
+    result = cmd.kube("apply", "-f", str(ta_yaml), "-n", wva_namespace, check=False)
+    if not result.success:
+        errors.append(
+            f"Failed to apply TriggerAuthentication in ns/{wva_namespace}: "
+            f"{result.stderr}"
         )
 
 
@@ -381,64 +346,6 @@ def unique_wva_namespaces(
 
 
 # --- internal helpers ------------------------------------------------------
-
-
-def _find_existing_prometheus_adapter_release(
-    cmd: CommandExecutor,
-) -> tuple[str | None, str | None]:
-    """Return (release_name, release_namespace) if prometheus-adapter is
-    already installed *anywhere* in the cluster, else (None, None).
-
-    Uses the cluster-scoped ``prometheus-adapter-resource-reader``
-    ClusterRole as the probe — the chart always creates it with a unique
-    name, so its helm ownership annotations point at the one release that
-    currently owns the install. Any tenant that ran
-    ``helm install prometheus-adapter ...`` (including llm-d-slo-queueing-test,
-    kube-prometheus-stack subchart, etc.) will show up here.
-    """
-    result = cmd.kube(
-        "get",
-        "clusterrole",
-        "prometheus-adapter-resource-reader",
-        "-o",
-        "jsonpath="
-        "'{.metadata.annotations.meta\\.helm\\.sh/release-name}"
-        "|{.metadata.annotations.meta\\.helm\\.sh/release-namespace}'",
-        check=False,
-    )
-    if not result.success or not result.stdout.strip():
-        return None, None
-
-    payload = result.stdout.strip().strip("'")
-    release_name, _, release_ns = payload.partition("|")
-    release_name = release_name or None
-    release_ns = release_ns or None
-    return release_name, release_ns
-
-
-def _find_existing_external_metrics_apiservice(
-    cmd: CommandExecutor,
-) -> str | None:
-    """Return ``namespace/service`` if the external-metrics APIService is
-    registered and available, else None.
-    """
-    result = cmd.kube(
-        "get",
-        "apiservice",
-        "v1beta1.external.metrics.k8s.io",
-        "-o",
-        "jsonpath="
-        "'{.spec.service.namespace}/{.spec.service.name}|"
-        '{.status.conditions[?(@.type=="Available")].status}\'',
-        check=False,
-    )
-    if not result.success or not result.stdout.strip():
-        return None
-    payload = result.stdout.strip().strip("'")
-    target, _, available = payload.partition("|")
-    if available != "True" or "/" not in target:
-        return None
-    return target
 
 
 def _find_yaml(stack_path: Path, stem_prefix: str) -> Path | None:

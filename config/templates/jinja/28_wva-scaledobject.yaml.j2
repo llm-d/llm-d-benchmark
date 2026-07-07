@@ -1,11 +1,9 @@
 {# ============================================================================
-   28_wva-hpa.yaml.j2
+   28_wva-scaledobject.yaml.j2
 
-   Per-stack HorizontalPodAutoscaler. WVA's annotation-based discovery path:
-   the controller reconciles every HPA carrying `llm-d.ai/managed: "true"`,
-   computes the desired replica count for the variant, and emits the
-   `wva_desired_replicas{variant_name=<hpa name>, exported_namespace=<ns>}`
-   external metric this HPA reads back via prometheus-adapter.
+   Per-stack KEDA ScaledObject for WVA-managed autoscaling. KEDA queries
+   Prometheus for wva_desired_replicas and scales the Deployment accordingly.
+   Replaces the native HPA + prometheus-adapter external metrics pattern.
 
    WVA discovers everything via the three opt-in annotations
    (managed, model-id, variant-cost).
@@ -23,11 +21,12 @@
 {% set variant_suffix = 'decode' %}
 {% endif %}
 {% set hpa_name = model_id_label ~ '-' ~ variant_suffix %}
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+{% set wva_ns = wva.namespace | default(namespace.name, true) %}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
 metadata:
   name: {{ hpa_name }}
-  namespace: {{ wva.namespace | default(namespace.name, true) }}
+  namespace: {{ wva_ns }}
   annotations:
     llm-d.ai/managed: "true"
     llm-d.ai/model-id: "{{ model.name }}"
@@ -37,22 +36,22 @@ spec:
     apiVersion: apps/v1
     kind: {{ scale_kind }}
     name: {{ scale_name }}
-  minReplicas: {{ wva.hpa.minReplicas | default(1) }}
-  maxReplicas: {{ wva.hpa.maxReplicas | default(16) }}
-  metrics:
-    - type: External
-      external:
-        metric:
-          name: wva_desired_replicas
-          selector:
-            matchLabels:
-              variant_name: {{ hpa_name }}
-              exported_namespace: {{ wva.namespace | default(namespace.name, true) }}
-        target:
-          type: AverageValue
-          averageValue: "{{ wva.hpa.targetAvgValue | default(1) }}"
+  minReplicaCount: {{ wva.hpa.minReplicas | default(1) }}
+  maxReplicaCount: {{ wva.hpa.maxReplicas | default(16) }}
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: "{{ wva.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local') }}:{{ wva.prometheus.port | default(9091) }}"
+      query: |
+        wva_desired_replicas{variant_name="{{ hpa_name }}",exported_namespace="{{ wva_ns }}"}
+      threshold: "{{ wva.hpa.targetAvgValue | default(1) }}"
+      authModes: "bearer"
+    authenticationRef:
+      name: prometheus-auth
 {% if wva.hpa.behavior is defined %}
-  behavior:
-{{ wva.hpa.behavior | toyaml | indent(4, first=True) }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+{{ wva.hpa.behavior | toyaml | indent(6, first=True) }}
 {% endif %}
 {% endif %}

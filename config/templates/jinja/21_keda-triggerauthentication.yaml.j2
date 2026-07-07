@@ -1,0 +1,26 @@
+{# ============================================================================
+   21_keda-triggerauthentication.yaml.j2
+
+   KEDA TriggerAuthentication CR for Prometheus/Thanos bearer token access.
+   References a Secret containing the bearer token and CA certificate.
+   The Secret itself is created dynamically at install time via Python code
+   in wva.py::create_prometheus_auth_secret() to mint a fresh token per
+   namespace, avoiding the need to template credentials.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: prometheus-auth
+  namespace: {{ wva.namespace | default(namespace.name, true) }}
+spec:
+  secretTargetRef:
+  - parameter: bearerToken
+    name: prometheus-auth
+    key: bearerToken
+  - parameter: ca
+    name: prometheus-auth
+    key: ca.crt
+{% endif %}

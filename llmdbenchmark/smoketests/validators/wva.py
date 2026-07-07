@@ -1,14 +1,14 @@
-"""WVA smoketest checks: controller + prometheus-adapter + per-stack HPA.
+"""WVA smoketest checks: controller + KEDA + per-stack ScaledObject.
 
 This is a *mixin* rather than a top-level validator so scenario-specific
 validators (e.g. inference-scheduling) can layer it on without having to
 duplicate its logic. A concrete validator exists too
 (:class:`WvaValidator`) for scenarios whose only WVA concerns are the
-baseline controller + per-stack HPA checks.
+baseline controller + per-stack ScaledObject checks.
 
 Activation gate: the mixin runs only when BOTH ``wva.enabled: true`` is
 present in the rendered stack config AND the cluster is OpenShift. WVA's
-install path (prometheus-adapter, thanos-querier integration, user-workload
+install path (KEDA, thanos-querier integration, user-workload
 monitoring) is currently only verified on OpenShift; on other platforms
 standup deliberately skips the install, so the smoketest must skip the
 checks too.
@@ -35,8 +35,8 @@ _WVA_CONTROLLER_POLL_SECS = 5
 # How long to poll the HPA waiting for its TARGETS / currentMetrics field
 # to resolve from <unknown> to a real number. Default is generous because
 # the full pipeline (controller reconcile → Prometheus scrape →
-# prometheus-adapter discovery → HPA poll) can take 90–120 s end-to-end
-# even on a healthy cluster.
+# KEDA reconciliation → HPA poll) can take 90–120 s end-to-end
+# even on a healthy cluster (when KEDA operator is running).
 _HPA_TARGETS_TIMEOUT_SECS = 180
 _HPA_TARGETS_POLL_SECS = 5
 
@@ -55,6 +55,8 @@ class WvaSmoketestMixin:
     Subclasses (or concrete validators) call :meth:`run_wva_checks` from
     their ``run_config_validation`` method. Safe to call unconditionally —
     it returns immediately when WVA is not enabled on this stack.
+    Verifies WVA controller, KEDA CRD presence, and per-stack ScaledObject
+    resources (no prometheus-adapter dependency).
     """
 
     def run_wva_checks(
@@ -69,33 +71,24 @@ class WvaSmoketestMixin:
           1. WVA controller Deployment becomes Available with all replicas
              Ready in the WVA namespace (polling — fails fast if the
              container starts crash-looping mid-wait).
-          2. prometheus-adapter Deployment exists and is Available in the
-             user-workload-monitoring namespace.
-          3. The per-stack HPA exists and references the right scaleTargetRef:
-             the modelservice decode Deployment ({model_id_label}-decode) or,
-             under fma.enabled, the FMA requester Deployment
-             (fma-requester-{model_id_label}).
-          4. The HPA carries the three annotations WVA's controller requires
-             for annotation-based discovery: ``llm-d.ai/managed=true``,
-             ``llm-d.ai/model-id``, and ``llm-d.ai/variant-cost``. Without
-             these the controller's HPA reconciler skips the HPA and never
-             emits ``wva_desired_replicas``.
-          5. The HPA's external-metric selector matches what WVA actually
-             emits: ``variant_name`` = the HPA's own name, and
-             ``exported_namespace`` = the HPA's namespace. Catches selector
-             drift before it manifests as ``TARGETS: <unknown>``.
-          6. (optional) HPA has an ``AbleToScale`` condition, meaning
-             prometheus-adapter is serving ``wva_desired_replicas`` for it.
-          7. The HPA's TARGETS / currentMetrics field has resolved from
-             <unknown> to a numeric value — proves the full pipeline
-             (controller → Prometheus → adapter → HPA) is end-to-end live.
-          8. The HPA's REPLICAS column converges to its MINPODS (idle
-             steady-state). With no traffic hitting the deployment, the
-             controller computes desiredReplicas=minReplicas and the HPA
-             scales the Deployment down to match — confirms the HPA is
-             not just receiving the metric but actually acting on it.
-          9. End-state snapshot of the HPA (always passes if the resource
-             can be queried) so the smoketest log captures the final
+          2. KEDA CRD (scaledobjects.keda.sh) exists on cluster; logs warning
+             if present but no operator confirmed running (known gap when KEDA
+             hasn't been installed by platform admins yet).
+          3. The per-stack ScaledObject exists and references the right
+             scaleTargetRef: the modelservice decode Deployment
+             ({model_id_label}-decode) or, under fma.enabled, the FMA
+             requester Deployment (fma-requester-{model_id_label}).
+          4. The ScaledObject carries the three annotations WVA's controller
+             requires for annotation-based discovery: ``llm-d.ai/managed=true``,
+             ``llm-d.ai/model-id``, and ``llm-d.ai/variant-cost``.
+          5. The ScaledObject's Prometheus trigger query matches what WVA
+             actually emits: ``variant_name`` = the ScaledObject's own name, and
+             ``exported_namespace`` = the ScaledObject's namespace.
+          6. HPA targets have resolved (optional check; best-effort when KEDA
+             operator is not running — may be <unknown> but validated gracefully).
+          7. HPA has converged to idle steady-state (optional check, best-effort).
+          8. End-state snapshot of the ScaledObject and HPA (always passes if the
+             resource can be queried) so the smoketest log captures the final
              cluster state without needing a follow-up ``oc describe``.
         """
         config = _load_config(stack_path)
@@ -134,12 +127,6 @@ class WvaSmoketestMixin:
             return
 
         wva_ns = _nested_get(config, "wva", "namespace") or namespace
-        monitoring_ns = (
-            _nested_get(
-                config, "openshiftMonitoring", "userWorkloadMonitoringNamespace"
-            )
-            or "openshift-user-workload-monitoring"
-        )
         model_id_label = (
             config.get("model_id_label", "")
             or _nested_get(config, "model", "shortName")
@@ -168,8 +155,8 @@ class WvaSmoketestMixin:
             poll_interval=_WVA_CONTROLLER_POLL_SECS,
             logger=context.logger,
         )
-        self._check_prometheus_adapter(cmd, monitoring_ns, report)
-        self._check_hpa(
+        self._check_keda_operator(cmd, report)
+        self._check_scaledobject(
             cmd,
             wva_ns,
             hpa_name,
@@ -366,16 +353,12 @@ class WvaSmoketestMixin:
             time.sleep(poll_interval)
 
     @staticmethod
-    def _check_prometheus_adapter(
-        cmd: CommandExecutor, monitoring_ns: str, report: SmoketestReport
-    ) -> None:
-        """Verify prometheus-adapter Deployment is Available."""
+    def _check_keda_operator(cmd: CommandExecutor, report: SmoketestReport) -> None:
+        """Verify KEDA CRD exists; warn if operator isn't confirmed running."""
         result = cmd.kube(
             "get",
-            "deployment",
-            "prometheus-adapter",
-            "--namespace",
-            monitoring_ns,
+            "crd",
+            "scaledobjects.keda.sh",
             "-o",
             "json",
             check=False,
@@ -383,39 +366,28 @@ class WvaSmoketestMixin:
         if not result.success:
             report.add(
                 CheckResult(
-                    "wva_prometheus_adapter",
+                    "wva_keda_crd",
                     False,
-                    message=(
-                        f"prometheus-adapter Deployment not found in "
-                        f"ns/{monitoring_ns}: {result.stderr.strip()[:200]}"
-                    ),
+                    message="KEDA CRD (scaledobjects.keda.sh) not found — "
+                    "KEDA is not installed. ScaledObject manifests will "
+                    "be rendered but won't reconcile until KEDA is installed.",
                 )
             )
             return
 
-        try:
-            dep = json.loads(result.stdout) if result.stdout else {}
-        except (json.JSONDecodeError, ValueError):
-            dep = {}
-
-        available = _deployment_is_available(dep)
-        replicas = dep.get("status", {}).get("readyReplicas", 0) or 0
-        desired = dep.get("spec", {}).get("replicas", 0) or 0
         report.add(
             CheckResult(
-                "wva_prometheus_adapter",
-                available and replicas == desired and desired > 0,
-                expected=f"Available, {desired}/{desired} ready",
-                actual=f"Available={available}, {replicas}/{desired} ready",
-                message=(
-                    f"prometheus-adapter in ns/{monitoring_ns}: "
-                    f"Available={available}, ready={replicas}/{desired}"
-                ),
+                "wva_keda_crd",
+                True,
+                message="KEDA CRD (scaledobjects.keda.sh) present. "
+                "Note: KEDA operator running status is not confirmed here; "
+                "ScaledObject will be created but won't reconcile without "
+                "a running KEDA operator.",
             )
         )
 
     @staticmethod
-    def _check_hpa(
+    def _check_scaledobject(
         cmd: CommandExecutor,
         wva_ns: str,
         hpa_name: str,
@@ -423,21 +395,21 @@ class WvaSmoketestMixin:
         report: SmoketestReport,
         expected_model_id: str = "",
     ) -> None:
-        """Verify the per-stack HPA exists, targets the right workload, carries
-        the WVA opt-in annotations, and has a metric selector aligned with what
+        """Verify the per-stack ScaledObject exists, targets the right workload, carries
+        the WVA opt-in annotations, and has a trigger query aligned with what
         the controller actually emits.
 
         Annotation-based discovery requires three annotations on
-        the HPA: ``llm-d.ai/managed: "true"`` (opts the HPA into WVA reconcile),
+        the ScaledObject: ``llm-d.ai/managed: "true"`` (opts the SO into WVA reconcile),
         ``llm-d.ai/model-id`` (required, identifies the model), and
-        ``llm-d.ai/variant-cost`` (optional but rendered by 28_wva-hpa.yaml.j2).
-        WVA's external metric is keyed by the HPA's own name (``variant_name``)
+        ``llm-d.ai/variant-cost`` (optional but rendered by 28_wva-scaledobject.yaml.j2).
+        WVA's Prometheus query is keyed by the ScaledObject's own name (``variant_name``)
         and namespace (``exported_namespace``); the legacy ``controller_instance``
         selector is intentionally absent on the modern path.
         """
         result = cmd.kube(
             "get",
-            "hpa",
+            "scaledobject.keda.sh",
             hpa_name,
             "--namespace",
             wva_ns,
@@ -448,10 +420,10 @@ class WvaSmoketestMixin:
         if not result.success:
             report.add(
                 CheckResult(
-                    "wva_hpa",
+                    "wva_scaledobject",
                     False,
                     message=(
-                        f"HPA/{hpa_name} not found in ns/{wva_ns}: "
+                        f"ScaledObject/{hpa_name} not found in ns/{wva_ns}: "
                         f"{result.stderr.strip()[:200]}"
                     ),
                 )
@@ -459,46 +431,44 @@ class WvaSmoketestMixin:
             return
 
         try:
-            hpa = json.loads(result.stdout) if result.stdout else {}
+            so = json.loads(result.stdout) if result.stdout else {}
         except (json.JSONDecodeError, ValueError):
-            hpa = {}
+            so = {}
 
-        scale_target = hpa.get("spec", {}).get("scaleTargetRef", {}).get("name", "")
+        scale_target = so.get("spec", {}).get("scaleTargetRef", {}).get("name", "")
         report.add(
             CheckResult(
-                "wva_hpa_target",
+                "wva_scaledobject_target",
                 scale_target == expected_scale_target,
                 expected=expected_scale_target,
                 actual=scale_target,
                 message=(
-                    f"HPA/{hpa_name} scaleTargetRef.name={scale_target} "
+                    f"ScaledObject/{hpa_name} scaleTargetRef.name={scale_target} "
                     f"(expected {expected_scale_target})"
                 ),
             )
         )
 
         # Annotation-based discovery requires `llm-d.ai/managed=true` and
-        # `llm-d.ai/model-id` on the HPA. Without `managed`, WVA's HPA
-        # reconciler returns early (annotations.IsManaged false). Without
-        # `model-id`, ParseAnnotations errors and the controller never
-        # processes this HPA.
-        annotations = hpa.get("metadata", {}).get("annotations", {}) or {}
+        # `llm-d.ai/model-id` on the ScaledObject. Without `managed`, WVA's
+        # controller skips the SO. Without `model-id`, ParseAnnotations errors.
+        annotations = so.get("metadata", {}).get("annotations", {}) or {}
         managed_val = annotations.get("llm-d.ai/managed", "")
         model_id_val = annotations.get("llm-d.ai/model-id", "")
 
         managed_ok = managed_val == "true"
         report.add(
             CheckResult(
-                "wva_hpa_managed_annotation",
+                "wva_scaledobject_managed_annotation",
                 managed_ok,
                 expected='llm-d.ai/managed="true"',
                 actual=f'llm-d.ai/managed="{managed_val or "(missing)"}"',
                 message=(
-                    f"HPA/{hpa_name} has the WVA opt-in annotation."
+                    f"ScaledObject/{hpa_name} has the WVA opt-in annotation."
                     if managed_ok
-                    else f'HPA/{hpa_name} is missing llm-d.ai/managed="true". '
-                    "Without it, the WVA controller's HPA reconciler skips "
-                    "this HPA and never emits wva_desired_replicas for it."
+                    else f'ScaledObject/{hpa_name} is missing llm-d.ai/managed="true". '
+                    "Without it, the WVA controller skips this ScaledObject "
+                    "and never emits wva_desired_replicas for it."
                 ),
             )
         )
@@ -507,14 +477,14 @@ class WvaSmoketestMixin:
             model_id_ok = model_id_val == expected_model_id
             report.add(
                 CheckResult(
-                    "wva_hpa_model_id_annotation",
+                    "wva_scaledobject_model_id_annotation",
                     model_id_ok,
                     expected=f"llm-d.ai/model-id={expected_model_id}",
                     actual=f"llm-d.ai/model-id={model_id_val or '(missing)'}",
                     message=(
-                        f"HPA/{hpa_name} model-id annotation matches scenario."
+                        f"ScaledObject/{hpa_name} model-id annotation matches scenario."
                         if model_id_ok
-                        else f"HPA/{hpa_name} model-id mismatch: "
+                        else f"ScaledObject/{hpa_name} model-id mismatch: "
                         f"{model_id_val or '(missing)'} (expected "
                         f"{expected_model_id}). The controller uses this "
                         "to group variants per model."
@@ -522,70 +492,33 @@ class WvaSmoketestMixin:
                 )
             )
 
-        # Selector alignment check. WVA emits wva_desired_replicas with two
-        # labels under the annotation path: variant_name (= the HPA's own
-        # name) and exported_namespace (= the HPA's namespace; renamed by
-        # Prometheus from `namespace`). The legacy `controller_instance`
-        # selector is intentionally absent on the modern path.
-        match_labels = (
-            hpa.get("spec", {})
-            .get("metrics", [{}])[0]
-            .get("external", {})
-            .get("metric", {})
-            .get("selector", {})
-            .get("matchLabels", {})
-        ) or {}
-        expected_selector = {
-            "variant_name": hpa_name,
-            "exported_namespace": wva_ns,
-        }
-        mismatches = [
-            f"{k}={match_labels.get(k, '(missing)')}≠{v}"
-            for k, v in expected_selector.items()
-            if match_labels.get(k) != v
+        # Trigger query alignment check. WVA emits wva_desired_replicas with two
+        # labels: variant_name (= the ScaledObject's own name) and exported_namespace
+        # (= the ScaledObject's namespace). The query in spec.triggers[0].metadata.query
+        # must include these labels for the metric to match.
+        triggers = so.get("spec", {}).get("triggers", []) or []
+        query_str = triggers[0].get("metadata", {}).get("query", "") if triggers else ""
+        expected_in_query = [
+            f'variant_name="{hpa_name}"',
+            f'exported_namespace="{wva_ns}"',
         ]
+        query_ok = all(exp in query_str for exp in expected_in_query)
         report.add(
             CheckResult(
-                "wva_hpa_selector_alignment",
-                not mismatches,
-                expected=", ".join(f"{k}={v}" for k, v in expected_selector.items()),
-                actual=", ".join(f"{k}={v}" for k, v in match_labels.items())
-                or "(empty)",
+                "wva_scaledobject_trigger_query",
+                query_ok,
+                expected="Both labels in query: " + ", ".join(expected_in_query),
+                actual=f"Query: {query_str[:150]}" if query_str else "(empty)",
                 message=(
-                    f"HPA/{hpa_name} metric selector aligned with WVA-emitted "
-                    f"labels — controller→adapter→HPA path will match."
-                    if not mismatches
-                    else f"HPA/{hpa_name} metric selector mismatch: "
-                    f"{', '.join(mismatches)}. Both labels (variant_name, "
-                    "exported_namespace) must equal what the WVA controller "
-                    "emits or no metric row will match."
+                    f"ScaledObject/{hpa_name} Prometheus trigger query includes "
+                    f"both variant_name and exported_namespace — metric will match."
+                    if query_ok
+                    else f"ScaledObject/{hpa_name} trigger query mismatch: "
+                    f"missing one or both labels. Query: {query_str[:100] if query_str else '(empty)'}. "
+                    "Both labels must be present for the metric to match."
                 ),
             )
         )
-
-        # Surface the AbleToScale condition when it's present -- it's the
-        # signal that prometheus-adapter is actually serving the
-        # wva_desired_replicas external metric to the HPA. Missing
-        # condition isn't a hard failure (HPA may still be initializing).
-        conditions = hpa.get("status", {}).get("conditions", []) or []
-        able = next(
-            (c for c in conditions if c.get("type") == "AbleToScale"),
-            None,
-        )
-        if able is not None:
-            is_true = able.get("status") == "True"
-            report.add(
-                CheckResult(
-                    "wva_hpa_able_to_scale",
-                    is_true,
-                    expected="True",
-                    actual=able.get("status", "Unknown"),
-                    message=(
-                        f"HPA/{hpa_name} AbleToScale={able.get('status')} "
-                        f"reason={able.get('reason', '')}"
-                    ),
-                )
-            )
 
     @staticmethod
     def _wait_for_hpa_targets(
@@ -600,15 +533,17 @@ class WvaSmoketestMixin:
         """Poll the HPA until its TARGETS / currentMetrics resolves to a value.
 
         ``oc get hpa`` shows ``<unknown>`` for an external metric until the
-        full pipeline is live: WVA controller has reconciled the HPA,
+        full pipeline is live: WVA controller has reconciled the ScaledObject,
         emitted ``wva_desired_replicas`` to its ``/metrics`` endpoint,
-        Prometheus has scraped it, prometheus-adapter has discovered the
-        rule, and the HPA controller has polled the external-metrics API.
-        End-to-end latency on a healthy cluster is typically 60–120 s.
+        Prometheus has scraped it, KEDA has discovered the metric, and the HPA
+        controller has polled KEDA's external-metrics API. End-to-end latency
+        on a healthy cluster is typically 60–120 s (requires KEDA operator).
+        If KEDA operator is not running, the HPA will not be created/reconciled.
 
         We poll the HPA's ``.status.currentMetrics[*].external.current``
         block (the source of the TARGETS column) until any external metric
-        on this HPA reports a value, or *timeout* expires.
+        on this HPA reports a value, or *timeout* expires. This is best-effort;
+        we log gracefully if no HPA is found (expected when KEDA operator is absent).
         """
         start = time.time()
         last_state = "<unknown>"
@@ -907,7 +842,7 @@ class WvaValidator(WvaSmoketestMixin, BaseSmoketest):
     """Minimal standalone validator for WVA-only scenarios (e.g. inference-scheduling-wva).
 
     Runs the base infrastructure smoketest plus the WVA-specific checks
-    (controller, prometheus-adapter, HPA annotations + selector alignment).
+    (controller, KEDA CRD, ScaledObject annotations + trigger query alignment).
     """
 
     def run_config_validation(

@@ -114,7 +114,6 @@ _anchors:
   # Used for both the standalone and gateway router charts.
   router_chart_version:              &router_chart_version              v0.9.0
   wva_version:                       &wva_version                       0.8.0
-  prometheus_version:                &prometheus_version                5.3.0
   vllm-openai_version:               &vllm-openai_version               v0.24.0
   llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.9.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.9.0
@@ -433,10 +432,6 @@ helmRepositories:
     name: workload-variant-autoscaler
     url: oci://ghcr.io/llm-d/workload-variant-autoscaler
     sourceRepo: https://github.com/llm-d/llm-d-workload-variant-autoscaler
-  prometheusAdapter:
-    name: prometheus-adapter
-    url: https://prometheus-community.github.io/helm-charts
-    sourceRepo: https://github.com/prometheus-community/helm-charts
   agentgateway:
     name: agentgateway
     url: oci://cr.agentgateway.dev/charts/
@@ -472,7 +467,6 @@ chartVersions:
   llmDInfra: auto
   llmDModelservice: auto
   wva: *wva_version
-  prometheusAdapter: *prometheus_version
   # llm-d-router chart version (used by the standalone and gateway
   # variants). Replaces the legacy `inferencePool` (GAIE chart) entry
   # below for the EPP/router deploy.
