@@ -3,6 +3,7 @@
 [![Release Status](https://img.shields.io/badge/Version-0.6-yellow)](https://github.com/llm-d/llm-d/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Join Slack](https://img.shields.io/badge/Join_Slack-blue?logo=slack)](https://llm-d.ai/slack)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fllm-d%2Fllm-d-benchmark.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fllm-d%2Fllm-d-benchmark?ref=badge_shield)
 
 [![.github/workflows/ci-nightly-benchmark-build-image.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-build-image.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-build-image.yaml)
 
@@ -819,3 +820,6 @@ See [tests/README.md](tests/README.md) for unit test details.
 ## License
 
 Licensed under Apache License 2.0. See [LICENSE](LICENSE) for details.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fllm-d%2Fllm-d-benchmark.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fllm-d%2Fllm-d-benchmark?ref=badge_large)
