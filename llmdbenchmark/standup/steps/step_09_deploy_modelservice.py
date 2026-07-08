@@ -369,7 +369,8 @@ class DeployModelserviceStep(Step):
             self._log_wva_stack_state(cmd, context, plan_config)
 
         # EPP+KEDA saturation autoscaling (controller-free alternative to WVA).
-        # Per-stack: ServiceMonitor, EPP metrics RBAC, TriggerAuthentication, ScaledObject.
+        # Per-stack: ServiceMonitor, EPP metrics RBAC, TriggerAuthentication,
+        # ScaledObject.
         epp_keda_config = plan_config.get("eppKedaSaturation", {})
         if epp_keda_config.get("enabled", False) and context.is_openshift:
             self._apply_epp_keda_stack_resources(cmd, stack_path, errors)
@@ -672,10 +673,10 @@ class DeployModelserviceStep(Step):
         context: ExecutionContext,
         plan_config: dict,
     ) -> None:
-        """Log the current state of this stack's VariantAutoscaling + ScaledObject + HPA.
+        """Log current state of VariantAutoscaling + ScaledObject + HPA.
 
-        Lets the standup output show what got created (VA OPTIMIZED, ScaledObject
-        status, HPA TARGETS/REPLICAS, etc.) without needing follow-up ``oc get``.
+        Shows what got created (VA OPTIMIZED, ScaledObject status,
+        HPA TARGETS/REPLICAS, etc.) without needing follow-up ``oc get``.
         Best-effort - failures here don't fail step_09. KEDA's generated HPA
         carries the same name as the ScaledObject.
         """
@@ -873,5 +874,6 @@ class DeployModelserviceStep(Step):
                     f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
                 )
                 context.logger.log_info(
-                    f"   {cmd._kube_bin} get configmap {cm_name} -n {harness_ns} -o yaml"
+                    f"   {cmd._kube_bin} get configmap {cm_name} "
+                    f"-n {harness_ns} -o yaml"
                 )

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
-from llmdbenchmark.smoketests.base import BaseSmoketest, _load_config, _nested_get
+from llmdbenchmark.smoketests.base import _load_config, _nested_get
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 
 
@@ -60,13 +60,20 @@ class EppKedaSaturationSmoketestMixin:
                 CheckResult(
                     name="EPP+KEDA platform gate",
                     status="SKIPPED",
-                    message="EPP+KEDA enabled but platform is not OpenShift (not yet verified on other platforms)",
+                    message=(
+                        "EPP+KEDA enabled but platform is not OpenShift "
+                        "(not yet verified on other platforms)"
+                    ),
                 )
             )
             return
 
         cmd = context.require_cmd()
-        epp_keda_ns = _nested_get(config, "eppKedaSaturation", "namespace") or _nested_get(config, "namespace", "name") or "default"
+        epp_keda_ns = (
+            _nested_get(config, "eppKedaSaturation", "namespace")
+            or _nested_get(config, "namespace", "name")
+            or "default"
+        )
         model_id_label = _nested_get(config, "model", "shortName") or "model"
         fma_enabled = _nested_get(config, "fma", "enabled") or False
         hpa_name = f"{model_id_label}-{'fma' if fma_enabled else 'decode'}-saturation"
@@ -94,23 +101,40 @@ class EppKedaSaturationSmoketestMixin:
                 CheckResult(
                     name="KEDA CRD present",
                     status="FAILED",
-                    message="KEDA is not installed on this cluster (ScaledObject CRD not found)",
+                    message=(
+                        "KEDA is not installed on this cluster "
+                        "(ScaledObject CRD not found)"
+                    ),
                 )
             )
 
     def _check_scaledobject_exists(
-        self, cmd: CommandExecutor, namespace: str, hpa_name: str, report: SmoketestReport
+        self,
+        cmd: CommandExecutor,
+        namespace: str,
+        hpa_name: str,
+        report: SmoketestReport,
     ) -> None:
         """Verify ScaledObject exists and has READY=True."""
         result = cmd.kube(
-            "get", "scaledobject", f"{hpa_name}-saturation", "-n", namespace, "-o", "json", check=False
+            "get",
+            "scaledobject",
+            f"{hpa_name}-saturation",
+            "-n",
+            namespace,
+            "-o",
+            "json",
+            check=False,
         )
         if not result.success:
             report.add_check(
                 CheckResult(
                     name="ScaledObject exists",
                     status="FAILED",
-                    message=f"ScaledObject {hpa_name}-saturation not found in ns/{namespace}",
+                    message=(
+                        f"ScaledObject {hpa_name}-saturation "
+                        f"not found in ns/{namespace}"
+                    ),
                 )
             )
             return
@@ -118,10 +142,14 @@ class EppKedaSaturationSmoketestMixin:
         try:
             data = json.loads(result.stdout)
             ready = data.get("status", {}).get("conditions", [])
-            is_ready = any(c.get("type") == "Ready" and c.get("status") == "True" for c in ready)
+            is_ready = any(
+                c.get("type") == "Ready" and c.get("status") == "True" for c in ready
+            )
             status = "PASSED" if is_ready else "FAILED"
             message = f"ScaledObject READY={is_ready}"
-            report.add_check(CheckResult(name="ScaledObject READY", status=status, message=message))
+            report.add_check(
+                CheckResult(name="ScaledObject READY", status=status, message=message)
+            )
         except (json.JSONDecodeError, KeyError, AttributeError) as e:
             report.add_check(
                 CheckResult(
@@ -132,20 +160,28 @@ class EppKedaSaturationSmoketestMixin:
             )
 
     def _check_hpa_targets_resolved(
-        self, cmd: CommandExecutor, namespace: str, hpa_name: str, report: SmoketestReport
+        self,
+        cmd: CommandExecutor,
+        namespace: str,
+        hpa_name: str,
+        report: SmoketestReport,
     ) -> None:
         """Poll HPA until TARGETS resolve from <unknown> to real numbers."""
         hpa_name_keda = f"keda-hpa-{hpa_name}-saturation"
         start = time.time()
 
         while time.time() - start < _HPA_TARGETS_TIMEOUT_SECS:
-            result = cmd.kube("get", "hpa", hpa_name_keda, "-n", namespace, "-o", "json", check=False)
+            result = cmd.kube(
+                "get", "hpa", hpa_name_keda, "-n", namespace, "-o", "json", check=False
+            )
             if result.success:
                 try:
                     data = json.loads(result.stdout)
                     current_metrics = data.get("status", {}).get("currentMetrics", [])
                     if current_metrics:
-                        has_unknown = any("unknown" in str(m).lower() for m in current_metrics)
+                        has_unknown = any(
+                            "unknown" in str(m).lower() for m in current_metrics
+                        )
                         if not has_unknown:
                             report.add_check(
                                 CheckResult(
@@ -164,12 +200,19 @@ class EppKedaSaturationSmoketestMixin:
             CheckResult(
                 name="HPA targets resolved",
                 status="FAILED",
-                message=f"HPA {hpa_name_keda} TARGETS still <unknown> after {_HPA_TARGETS_TIMEOUT_SECS}s",
+                message=(
+                    f"HPA {hpa_name_keda} TARGETS still <unknown> after "
+                    f"{_HPA_TARGETS_TIMEOUT_SECS}s"
+                ),
             )
         )
 
     def _snapshot_resources(
-        self, cmd: CommandExecutor, namespace: str, hpa_name: str, report: SmoketestReport
+        self,
+        cmd: CommandExecutor,
+        namespace: str,
+        hpa_name: str,
+        report: SmoketestReport,
     ) -> None:
         """Capture final ScaledObject and HPA state."""
         result = cmd.kube(

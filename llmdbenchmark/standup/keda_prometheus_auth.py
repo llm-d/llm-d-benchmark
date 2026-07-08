@@ -11,8 +11,6 @@ import base64
 import tempfile
 from pathlib import Path
 
-import yaml
-
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 
@@ -127,12 +125,13 @@ def create_prometheus_auth_secret(
     Args:
         cmd: CommandExecutor instance.
         context: ExecutionContext instance.
-        stack_path: Path to the rendered stack (for finding the TriggerAuthentication template).
-        target_namespace: Kubernetes namespace where the Secret and TA will be created.
-        prom_ca_cert: PEM-encoded CA certificate for Prometheus (can be None).
-        sa_name: ServiceAccount name to mint the token from (default: "wva-prometheus-auth").
-        ta_template_stem: Template filename stem to locate the TriggerAuthentication YAML
-                         (default: "21_keda-triggerauthentication").
+        stack_path: Path to the rendered stack (for finding the TA template).
+        target_namespace: Kubernetes namespace for the Secret and TA.
+        prom_ca_cert: PEM-encoded CA certificate for Prometheus (optional).
+        sa_name: ServiceAccount name to mint the token from
+            (default: "wva-prometheus-auth").
+        ta_template_stem: Template filename stem to locate the TA YAML
+            (default: "21_keda-triggerauthentication").
         errors: List to append error messages to (optional).
     """
     if errors is None:
@@ -155,7 +154,8 @@ def create_prometheus_auth_secret(
     )
     if not token_result.success:
         errors.append(
-            f"Failed to mint bearer token for ns/{target_namespace}: {token_result.stderr}"
+            f"Failed to mint bearer token for ns/{target_namespace}: "
+            f"{token_result.stderr}"
         )
         return
 
@@ -222,7 +222,10 @@ def create_prometheus_auth_secret(
 
 
 def apply_namespace_label(
-    cmd: CommandExecutor, stack_path: Path, target_namespace: str, ns_template_stem: str = "23_wva-namespace"
+    cmd: CommandExecutor,
+    stack_path: Path,
+    target_namespace: str,
+    ns_template_stem: str = "23_wva-namespace",
 ) -> None:
     """Apply the rendered namespace YAML (Namespace + user-monitoring label)."""
     ns_yaml = _find_yaml(stack_path, ns_template_stem)

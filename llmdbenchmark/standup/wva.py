@@ -23,8 +23,6 @@ import yaml
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.standup.keda_prometheus_auth import (
-    extract_prometheus_ca_cert,
-    verify_keda_installed,
     create_prometheus_auth_secret as _create_prometheus_auth_secret,
     apply_namespace_label,
     _find_yaml,
@@ -112,9 +110,9 @@ def create_prometheus_auth_secret(
     prom_ca_cert: str | None,
     errors: list,
 ) -> None:
-    """Create a per-namespace Prometheus bearer token Secret + TriggerAuthentication.
+    """Create per-namespace Prometheus bearer token Secret + TriggerAuthentication.
 
-    Wrapper for the generic function with WVA-specific defaults (SA name and template stem).
+    Wrapper for generic function with WVA-specific defaults (SA name and template stem).
     """
     _create_prometheus_auth_secret(
         cmd,
@@ -131,12 +129,14 @@ def create_prometheus_auth_secret(
 def apply_wva_namespace_label(
     cmd: CommandExecutor, stack_path: Path, wva_namespace: str
 ) -> None:
-    """Apply the rendered 23_wva-namespace YAML (Namespace + user-monitoring label)."""
-    apply_namespace_label(cmd, stack_path, wva_namespace, ns_template_stem="23_wva-namespace")
+    """Apply rendered 23_wva-namespace YAML (Namespace + user-monitoring label)."""
+    apply_namespace_label(
+        cmd, stack_path, wva_namespace, ns_template_stem="23_wva-namespace"
+    )
 
 
 def stacks_enabling_wva(rendered_stacks: list[Path]) -> list[tuple[Path, dict]]:
-    """Return (stack_path, plan_config) pairs for every rendered stack with wva.enabled."""
+    """Return (stack_path, plan_config) pairs for each stack with wva.enabled."""
     pairs: list[tuple[Path, dict]] = []
     for stack_path in rendered_stacks:
         cfg_file = stack_path / "config.yaml"
@@ -170,29 +170,6 @@ def unique_wva_namespaces(
         if wva_ns not in result:
             result[wva_ns] = (stack_path, cfg)
     return result
-
-
-# --- internal helpers ------------------------------------------------------
-
-
-def _find_yaml(stack_path: Path, stem_prefix: str) -> Path | None:
-    """Locate a rendered YAML under *stack_path* by filename stem prefix."""
-    for candidate in stack_path.glob(f"{stem_prefix}*.yaml"):
-        return candidate
-    return None
-
-
-def _has_yaml_content(path: Path) -> bool:
-    """Return True if *path* contains any non-comment YAML content."""
-    if not path.exists():
-        return False
-    text = path.read_text(encoding="utf-8")
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        return True
-    return False
 
 
 def _require_config(cfg: dict, *keys: str):

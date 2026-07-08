@@ -16,8 +16,6 @@ import yaml
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.standup.keda_prometheus_auth import (
-    verify_keda_installed,
-    extract_prometheus_ca_cert,
     create_prometheus_auth_secret,
     apply_namespace_label,
     _find_yaml,
@@ -25,8 +23,10 @@ from llmdbenchmark.standup.keda_prometheus_auth import (
 )
 
 
-def stacks_enabling_epp_keda_saturation(rendered_stacks: list[Path]) -> list[tuple[Path, dict]]:
-    """Return (stack_path, plan_config) pairs for every stack with eppKedaSaturation.enabled."""
+def stacks_enabling_epp_keda_saturation(
+    rendered_stacks: list[Path],
+) -> list[tuple[Path, dict]]:
+    """Return (stack_path, plan_config) pairs for stacks with eppKedaSaturation.enabled."""
     pairs: list[tuple[Path, dict]] = []
     for stack_path in rendered_stacks:
         cfg_file = stack_path / "config.yaml"
@@ -45,10 +45,10 @@ def stacks_enabling_epp_keda_saturation(rendered_stacks: list[Path]) -> list[tup
 def unique_epp_keda_saturation_namespaces(
     stacks: list[tuple[Path, dict]],
 ) -> dict[str, tuple[Path, dict]]:
-    """Group stacks by their eppKedaSaturation.namespace (falling back to namespace.name).
+    """Group stacks by eppKedaSaturation.namespace (falling back to namespace.name).
 
-    Returns a mapping {epp_keda_ns: (first_stack_path, first_plan_config)} so the caller
-    can install infra once per namespace using that stack's rendered values.
+    Returns a mapping {epp_keda_ns: (stack_path, plan_config)} so the caller
+    can install infrastructure once per namespace.
     """
     result: dict[str, tuple[Path, dict]] = {}
     for stack_path, cfg in stacks:
