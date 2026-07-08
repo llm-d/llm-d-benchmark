@@ -183,6 +183,7 @@ class DeployHarnessStep(Step):
 
         for treatment_idx, treatment in enumerate(treatments, 1):
             treatment_start = time.time()
+            treatment_errors: list[str] = []
 
             # Generate experiment ID
             timestamp = int(time.time())
@@ -360,10 +361,15 @@ class DeployHarnessStep(Step):
 
             if deploy_errors:
                 errors.extend(deploy_errors)
+                treatment_errors.extend(deploy_errors)
 
             if not treatment_pod_names:
+                no_pods_error = f"No pods deployed for treatment '{treatment_label}'"
+                errors.append(no_pods_error)
+                treatment_errors.append(no_pods_error)
                 context.logger.log_error(
-                    f"No pods deployed for treatment '{treatment_label}'"
+                    f"[{treatment_idx}/{total_treatments}] Treatment "
+                    f"'{treatment_label}' failed: {no_pods_error}"
                 )
                 continue
 
@@ -376,6 +382,7 @@ class DeployHarnessStep(Step):
                 )
                 if wait_errors:
                     errors.extend(wait_errors)
+                    treatment_errors.extend(wait_errors)
 
             # --- Phase 3: Collect this treatment's results ---
             if not context.dry_run and not context.harness_debug:
@@ -388,6 +395,7 @@ class DeployHarnessStep(Step):
                 )
                 if collect_errors:
                     errors.extend(collect_errors)
+                    treatment_errors.extend(collect_errors)
 
             # --- Phase 4: Capture pod logs (when monitoring is enabled) ---
             monitoring = (plan_config or {}).get("monitoring", {})
@@ -434,11 +442,18 @@ class DeployHarnessStep(Step):
             context.experiment_ids.append(experiment_id)
 
             elapsed = time.time() - treatment_start
-            context.logger.log_info(
-                f"[{treatment_idx}/{total_treatments}] Treatment '{treatment_label}' "
-                f"complete ({int(elapsed)}s)",
-                emoji="\u2705",
-            )
+            if treatment_errors:
+                context.logger.log_error(
+                    f"[{treatment_idx}/{total_treatments}] Treatment "
+                    f"'{treatment_label}' failed ({int(elapsed)}s): "
+                    f"{len(treatment_errors)} error(s)"
+                )
+            else:
+                context.logger.log_info(
+                    f"[{treatment_idx}/{total_treatments}] Treatment "
+                    f"'{treatment_label}' complete ({int(elapsed)}s)",
+                    emoji="\u2705",
+                )
 
         if errors:
             return StepResult(
