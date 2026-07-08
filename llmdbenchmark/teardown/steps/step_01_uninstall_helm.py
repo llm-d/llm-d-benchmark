@@ -1,5 +1,6 @@
 """Teardown Step 01 -- Uninstall Helm releases, OpenShift routes, and download jobs."""
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -17,6 +18,20 @@ from llmdbenchmark.utilities.kube_helpers import (
 
 class UninstallHelmStep(Step):
     """Uninstall Helm releases and associated routes."""
+
+    # Helm statuses that a plain `helm uninstall` cannot reliably clear and
+    # that block a subsequent standup `helmfile apply` from reinstalling.
+    # For releases in these states we delete the backing release secret
+    # directly instead of calling `helm uninstall`.
+    _WEDGED_HELM_STATES = frozenset(
+        {
+            "uninstalling",
+            "pending-install",
+            "pending-upgrade",
+            "pending-rollback",
+            "failed",
+        }
+    )
 
     def __init__(self):
         super().__init__(
@@ -190,35 +205,69 @@ class UninstallHelmStep(Step):
         model_labels: list[str],
         errors: list,
     ):
-        """Find and uninstall Helm releases matching the release name or model labels."""
+        """Find and uninstall Helm releases matching the release name or model labels.
+
+        Uses ``helm list --all`` so releases stuck in a transitional state
+        (``uninstalling`` / ``pending-*`` / ``failed``) are visible -- the
+        default ``helm list`` hides them. A release left ``uninstalling`` by
+        a previously interrupted teardown is otherwise never cleaned: it
+        blocks the next standup's ``helmfile apply`` (which no-ops on an
+        already-present release) so the EPP/InferencePool never redeploy.
+        For such wedged releases ``helm uninstall`` does not reliably clear
+        the release, so we delete the backing release secret directly.
+        """
         result = cmd.helm(
             "list",
             "--namespace",
             namespace,
-            "--no-headers",
+            "--all",
+            "-o",
+            "json",
         )
         if not result.success:
             return
 
-        for line in result.stdout.strip().splitlines():
-            parts = line.split()
-            if not parts:
+        try:
+            releases = json.loads(result.stdout) or []
+        except ValueError:
+            releases = []
+
+        for rel in releases:
+            release_name = rel.get("name", "")
+            if not release_name or not self._release_matches(
+                release_name, release, model_labels
+            ):
                 continue
-            release_name = parts[0]
-            if self._release_matches(release_name, release, model_labels):
-                context.logger.log_info(
-                    f'Uninstalling Helm release "{release_name}" from {namespace}'
+
+            status = rel.get("status", "")
+            if status in self._WEDGED_HELM_STATES:
+                context.logger.log_warning(
+                    f'Helm release "{release_name}" in {namespace} is stuck in '
+                    f'state "{status}" (interrupted teardown); deleting its '
+                    "release secret(s) directly."
                 )
-                uninstall = cmd.helm(
-                    "uninstall",
-                    release_name,
-                    "--namespace",
-                    namespace,
+                cmd.kube(
+                    "delete",
+                    "secret",
+                    "-l",
+                    f"owner=helm,name={release_name}",
+                    "--ignore-not-found=true",
+                    namespace=namespace,
+                    check=False,
                 )
-                if not uninstall.success:
-                    errors.append(
-                        f"Failed to uninstall {release_name}: {uninstall.stderr}"
-                    )
+                continue
+
+            context.logger.log_info(
+                f'Uninstalling Helm release "{release_name}" from {namespace}'
+            )
+            uninstall = cmd.helm(
+                "uninstall",
+                release_name,
+                "--namespace",
+                namespace,
+            )
+            if not uninstall.success:
+                errors.append(f"Failed to uninstall {release_name}: {uninstall.stderr}")
 
     @staticmethod
     def _release_matches(

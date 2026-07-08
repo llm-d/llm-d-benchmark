@@ -320,3 +320,109 @@ class TestWvaTeardownPolicy:
             f"expected uninstall={expected_uninstall}, "
             f"kube calls={cmd.kube_calls}"
         )
+
+
+# ---------------------------------------------------------------------------
+# _uninstall_releases: handling of releases stuck in a transitional state
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _ListStubCmd(_StubCmd):
+    """Stub whose ``helm list`` returns a canned JSON payload of releases."""
+
+    releases: list[dict] = field(default_factory=list)
+
+    def helm(self, *args: str, **kwargs: Any) -> _StubResult:
+        self.helm_calls.append(args)
+        if args and args[0] == "list":
+            import json as _json
+
+            return _StubResult(success=True, stdout=_json.dumps(self.releases))
+        return _StubResult(success=True)
+
+
+def _secret_delete_calls(cmd: _StubCmd) -> list[tuple]:
+    """All ``kube delete secret ...`` invocations recorded on the stub."""
+    return [
+        args
+        for args in cmd.kube_calls
+        if len(args) >= 2 and args[0] == "delete" and args[1] == "secret"
+    ]
+
+
+def _helm_uninstall_calls(cmd: _StubCmd) -> list[tuple]:
+    return [args for args in cmd.helm_calls if args and args[0] == "uninstall"]
+
+
+class TestUninstallReleasesWedged:
+    def test_wedged_release_secret_deleted_not_uninstalled(self) -> None:
+        """A release stuck 'uninstalling' has its release secret deleted
+        directly; `helm uninstall` is NOT (re-)issued for it."""
+        step = UninstallHelmStep()
+        ctx = _StubContext()
+        cmd = _ListStubCmd(
+            releases=[
+                {"name": "mymodel-router", "status": "uninstalling"},
+            ]
+        )
+        errors: list = []
+
+        step._uninstall_releases(
+            cmd, ctx, "ns1", release="", model_labels=["mymodel"], errors=errors
+        )
+
+        # list issued with --all so transitional releases are visible
+        list_calls = [a for a in cmd.helm_calls if a and a[0] == "list"]
+        assert list_calls and "--all" in list_calls[0]
+
+        deletes = _secret_delete_calls(cmd)
+        assert len(deletes) == 1
+        assert "owner=helm,name=mymodel-router" in deletes[0]
+        assert _helm_uninstall_calls(cmd) == []
+        assert errors == []
+
+    def test_healthy_release_uninstalled_normally(self) -> None:
+        """A deployed release is uninstalled via `helm uninstall`, not by
+        deleting its secret."""
+        step = UninstallHelmStep()
+        ctx = _StubContext()
+        cmd = _ListStubCmd(
+            releases=[
+                {"name": "mymodel-router", "status": "deployed"},
+            ]
+        )
+        errors: list = []
+
+        step._uninstall_releases(
+            cmd, ctx, "ns1", release="", model_labels=["mymodel"], errors=errors
+        )
+
+        assert _secret_delete_calls(cmd) == []
+        uninstalls = _helm_uninstall_calls(cmd)
+        assert len(uninstalls) == 1
+        assert "mymodel-router" in uninstalls[0]
+
+    def test_unrelated_release_ignored(self) -> None:
+        """A release matching neither the release name nor any model label is
+        left untouched."""
+        step = UninstallHelmStep()
+        ctx = _StubContext()
+        cmd = _ListStubCmd(
+            releases=[
+                {"name": "someone-elses-thing", "status": "uninstalling"},
+            ]
+        )
+        errors: list = []
+
+        step._uninstall_releases(
+            cmd,
+            ctx,
+            "ns1",
+            release="myrelease",
+            model_labels=["mymodel"],
+            errors=errors,
+        )
+
+        assert _secret_delete_calls(cmd) == []
+        assert _helm_uninstall_calls(cmd) == []
