@@ -157,6 +157,11 @@ scenario:
         minReplicas: 1
         variantCost: "10.0"
 
+      # Autoscaling — feeds the KEDA ScaledObject (28_wva-scaledobject.yaml.j2):
+      # min/maxReplicas -> min/maxReplicaCount, targetAvgValue -> the Prometheus
+      # trigger threshold on wva_desired_replicas, behavior -> the ScaledObject's
+      # advanced.horizontalPodAutoscalerConfig.behavior. KEDA owns the generated
+      # HPA. (`hpa:` key name retained as the ScaledObject's config surface.)
       hpa:
         enabled: true
         minReplicas: 1

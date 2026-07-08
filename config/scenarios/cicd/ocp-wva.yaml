@@ -111,31 +111,33 @@ scenario:
         variantCost: "10.0"
 
       # -----------------------------------------------------------------------
-      # HorizontalPodAutoscaler — what actually changes the replica count
+      # Autoscaling — what actually changes the replica count
       #
-      # The HPA reads `wva_desired_replicas` (emitted by the WVA controller
-      # via prometheus-adapter) and scales the decode Deployment between
-      # min/max.
+      # These keys feed the KEDA ScaledObject (28_wva-scaledobject.yaml.j2):
+      # minReplicas/maxReplicas -> minReplicaCount/maxReplicaCount, targetAvgValue
+      # -> the Prometheus trigger threshold on wva_desired_replicas, and behavior
+      # -> advanced.horizontalPodAutoscalerConfig.behavior. KEDA queries WVA's
+      # metric and generates/owns the underlying HPA that scales the Deployment.
+      # (The `hpa:` key name is retained as the config surface the ScaledObject
+      # template reads.)
       # -----------------------------------------------------------------------
       hpa:
-        enabled: true                # set false to render the VA only, no HPA
-        minReplicas: 1               # never scale below this — must be >= 1
-                                     # (HPA refuses to manage targets at 0)
-                                     # Keep aligned with variantAutoscaling.minReplicas above.
-        maxReplicas: 10              # safety ceiling — scale-up cap regardless
-                                     # of what the controller computes
-                                     # Keep aligned with variantAutoscaling.maxReplicas above.
-        targetAvgValue: 1            # target value the HPA tries to reach for
+        enabled: true                # set false to skip rendering the ScaledObject
+        minReplicas: 1               # ScaledObject minReplicaCount — must be >= 1
+                                     # (KEDA's generated HPA won't manage a 0 floor)
+        maxReplicas: 10              # ScaledObject maxReplicaCount — scale-up ceiling
+        targetAvgValue: 1            # Prometheus trigger threshold for
                                      # `wva_desired_replicas` per pod.
                                      # 1 = "match controller's desiredReplicas
                                      # exactly". Don't change unless you
-                                     # understand HPA averaging math.
+                                     # understand the trigger averaging math.
 
-        # Scaling behavior — how aggressively the HPA reacts. See:
+        # Scaling behavior — passed through to the ScaledObject's
+        # advanced.horizontalPodAutoscalerConfig.behavior. See:
         #   https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
         behavior:
           scaleUp:
-            # 30s (down from upstream's 120) so HPA reacts quickly when WVA
+            # 30s (down from upstream's 120) so scaling reacts quickly when WVA
             # trips saturation — important for benchmark runs where the
             # configured load exceeds 1-replica capacity. Default 120s
             # leaves ~2 min of queue growth before relief, which pushes
