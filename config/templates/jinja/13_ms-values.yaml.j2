@@ -231,11 +231,11 @@ requester:
 {# ========================================================================== #}
 {# DECODE SECTION                                                             #}
 {# ========================================================================== #}
-{# Probe port: always use servicePort (8000) to match bash behavior.
-   The inference port is what Kubernetes probes check -- whether the proxy
-   is in front (proxy on 8000, vLLM on 8200) or vLLM binds directly (8000).
-   The vllm.port (8200) is only for the --port flag in the vLLM command. #}
-{% set decode_effective_port = decode.vllm.servicePort -%}
+{# Probe port: follow the vLLM bind port. When the routing proxy is disabled,
+   vLLM binds directly to servicePort (8000). When the proxy is enabled,
+   vLLM binds to vllm.port (8200) and the sidecar handles servicePort (8000). #}
+{% set decode_proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+{% set decode_effective_port = decode.vllm.servicePort if decode_proxy_disabled else decode.vllm.port -%}
 decode:
   create: {{ decode_create | lower }}
 {% if decode_create %}
