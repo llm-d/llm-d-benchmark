@@ -10,7 +10,10 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
-from llmdbenchmark.standup.keda_saturation import stacks_enabling_epp_keda_saturation, unique_epp_keda_saturation_namespaces
+from llmdbenchmark.standup.keda_saturation import (
+    stacks_enabling_epp_keda_saturation,
+    unique_epp_keda_saturation_namespaces,
+)
 from llmdbenchmark.utilities.kube_helpers import (
     force_remove_finalizers_by_selector,
     wait_for_pods_deleted,
@@ -514,11 +517,15 @@ class UninstallHelmStep(Step):
         context.logger.log_info("Deleting EPP+KEDA ScaledObjects...")
         for stack_path, cfg in pairs:
             epp_keda_cfg = cfg.get("eppKedaSaturation", {}) or {}
-            epp_keda_ns = epp_keda_cfg.get("namespace") or cfg.get("namespace", {}).get("name", "")
+            epp_keda_ns = epp_keda_cfg.get("namespace") or cfg.get("namespace", {}).get(
+                "name", ""
+            )
             if not epp_keda_ns:
                 continue
 
-            scaledobject_yaml = _find_yaml(stack_path, "30_epp-keda-saturation-scaledobject")
+            scaledobject_yaml = _find_yaml(
+                stack_path, "30_epp-keda-saturation-scaledobject"
+            )
             if scaledobject_yaml and _has_yaml_content(scaledobject_yaml):
                 result = cmd.kube(
                     "delete",
@@ -530,16 +537,22 @@ class UninstallHelmStep(Step):
                     check=False,
                 )
                 if result.success:
-                    context.logger.log_info(f"  Deleted ScaledObject from ns/{epp_keda_ns}")
+                    context.logger.log_info(
+                        f"  Deleted ScaledObject from ns/{epp_keda_ns}"
+                    )
 
         # Per-namespace: delete ServiceMonitor + RBAC, TriggerAuthentication, Secret, SA, ClusterRoleBindings.
         unique_namespaces = unique_epp_keda_saturation_namespaces(pairs)
         for epp_keda_ns in sorted(unique_namespaces):
-            context.logger.log_info(f"Cleaning up EPP+KEDA resources in ns/{epp_keda_ns}...")
+            context.logger.log_info(
+                f"Cleaning up EPP+KEDA resources in ns/{epp_keda_ns}..."
+            )
 
             # Delete EPP ServiceMonitor + metrics reader RBAC (rendered as 29_epp-keda-saturation-epp-monitoring.yaml.j2).
             stack_path = unique_namespaces[epp_keda_ns][0]
-            epp_monitoring_yaml = _find_yaml(stack_path, "29_epp-keda-saturation-epp-monitoring")
+            epp_monitoring_yaml = _find_yaml(
+                stack_path, "29_epp-keda-saturation-epp-monitoring"
+            )
             if epp_monitoring_yaml and _has_yaml_content(epp_monitoring_yaml):
                 result = cmd.kube(
                     "delete",
@@ -578,7 +591,9 @@ class UninstallHelmStep(Step):
             # Delete cluster-scoped ClusterRoleBindings (thanos-querier + EPP metrics reader).
             for crb_suffix in ("", "-epp-metrics-reader"):
                 crb_name = f"allow-thanos-querier-api-access-{epp_keda_ns}{crb_suffix}"
-                crb_name_alt = f"epp-metrics-reader-{epp_keda_ns}" if crb_suffix else None
+                crb_name_alt = (
+                    f"epp-metrics-reader-{epp_keda_ns}" if crb_suffix else None
+                )
                 for name in [crb_name, crb_name_alt]:
                     if not name:
                         continue
