@@ -359,10 +359,9 @@ class DeployModelserviceStep(Step):
                     f"service/{route_service}:80"
                 )
 
-        # WVA controller + prometheus-adapter are installed up-front by
-        # step_02 (admin prerequisites). Here we only apply this stack's
-        # VariantAutoscaling + HPA resources so the (already-running)
-        # controller can manage THIS model's decode deployment.
+        # WVA controller is installed up-front by step_03 (admin prerequisites).
+        # Here we only apply this stack's KEDA ScaledObject so the (already-running)
+        # controller can manage THIS model's decode deployment via KEDA autoscaling.
         wva_config = plan_config.get("wva", {})
         if wva_config.get("enabled", False) and context.is_openshift:
             self._apply_wva_stack_resources(cmd, stack_path, errors)
@@ -644,14 +643,14 @@ class DeployModelserviceStep(Step):
         stack_path: Path,
         errors: list,
     ) -> None:
-        """Apply this stack's VariantAutoscaling + ScaledObject to the WVA namespace.
+        """Apply this stack's KEDA ScaledObject to the WVA namespace.
 
         The WVA controller was already installed by step_03 once per unique
-        wva.namespace. Here we only kubectl apply the per-stack resources so
+        wva.namespace. Here we only kubectl apply the per-stack ScaledObject so
         a single controller can manage multiple models. KEDA generates and
         manages the HPA automatically when the ScaledObject is applied.
         """
-        for stem in ("27_wva-variantautoscaling", "28_wva-scaledobject"):
+        for stem in ("28_wva-scaledobject",):
             yaml_path = self._find_yaml(stack_path, stem)
             if not (yaml_path and self._has_yaml_content(yaml_path)):
                 continue
@@ -665,10 +664,10 @@ class DeployModelserviceStep(Step):
         context: ExecutionContext,
         plan_config: dict,
     ) -> None:
-        """Log the current state of this stack's VariantAutoscaling + ScaledObject + HPA.
+        """Log the current state of this stack's KEDA ScaledObject + HPA.
 
-        Lets the standup output show what got created (VA OPTIMIZED, ScaledObject
-        status, HPA TARGETS/REPLICAS, etc.) without needing follow-up ``oc get``.
+        Lets the standup output show what got created (ScaledObject status,
+        HPA TARGETS/REPLICAS, etc.) without needing follow-up ``oc get``.
         Best-effort - failures here don't fail step_09. KEDA's generated HPA
         carries the same name as the ScaledObject.
         """
@@ -683,7 +682,6 @@ class DeployModelserviceStep(Step):
         resource_name = f"{model_id_label}-decode"
 
         for kind, label in (
-            ("variantautoscaling.llmd.ai", "VariantAutoscaling"),
             ("scaledobject.keda.sh", "ScaledObject"),
             ("hpa", "HorizontalPodAutoscaler"),
         ):
