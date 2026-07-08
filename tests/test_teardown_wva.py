@@ -4,7 +4,7 @@ Behavior under test:
 - Full-scenario teardown (no ``--stack`` filter): controller is uninstalled.
 - Partial-stack teardown (``--stack X`` filter set): controller is preserved.
 - ``--deep``: controller is uninstalled regardless of filter.
-- Per-stack VariantAutoscaling + HPA are always deleted, regardless of mode.
+- Per-stack KEDA ScaledObject is always deleted, regardless of mode.
 - Non-OpenShift platforms: WVA teardown is skipped entirely.
 """
 

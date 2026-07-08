@@ -312,7 +312,7 @@ class UninstallHelmStep(Step):
     ) -> None:
         """Tear down WVA resources.
 
-        Always deletes the per-stack VariantAutoscaling + ScaledObject so the model
+        Always deletes the per-stack KEDA ScaledObject so the model
         no longer auto-scales after teardown. Deleting the ScaledObject cascades
         to KEDA's generated HPA deletion.
 
@@ -371,13 +371,13 @@ class UninstallHelmStep(Step):
         if not wva_stacks:
             return
 
-        # 1. Per-stack VariantAutoscaling + ScaledObject: always delete. Suffix is
-        # `-fma` under FMA, `-decode` otherwise -- matches templates 27/28.
+        # 1. Per-stack ScaledObject: always delete. Suffix is
+        # `-fma` under FMA, `-decode` otherwise -- matches template 28.
         # Deleting the ScaledObject cascades to KEDA's generated HPA.
         for wva_ns, model_id_label, fma_enabled, _stack_path in wva_stacks:
             variant_suffix = "fma" if fma_enabled else "decode"
             resource_name = f"{model_id_label}-{variant_suffix}"
-            for kind in ("scaledobject.keda.sh", "variantautoscaling.llmd.ai"):
+            for kind in ("scaledobject.keda.sh",):
                 context.logger.log_info(
                     f"Deleting {kind}/{resource_name} from ns/{wva_ns}"
                 )
