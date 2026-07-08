@@ -1,0 +1,74 @@
+{# ============================================================================
+   30_epp-keda-saturation-scaledobject.yaml.j2
+
+   Per-stack KEDA ScaledObject for direct EPP saturation autoscaling.
+   KEDA queries Prometheus for pool-average metrics (KV cache utilization
+   and queue depth) and scales the Deployment accordingly.
+
+   No WVA controller, no VariantAutoscaling, no prometheus-adapter.
+   Just dual Prometheus triggers → HPA.
+
+   Only rendered when eppKedaSaturation.enabled is true.
+   ============================================================================ #}
+{% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
+{% if fma is defined and fma.enabled | default(false) %}
+{% set scale_kind = 'Deployment' %}
+{% set scale_name = 'fma-requester-' ~ model_id_label %}
+{% set hpa_name = model_id_label ~ '-fma' %}
+{% else %}
+{% set scale_kind = 'Deployment' %}
+{% set scale_name = model_id_label ~ '-decode' %}
+{% set hpa_name = model_id_label ~ '-decode' %}
+{% endif %}
+{% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
+{% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label, true) %}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ hpa_name }}-saturation
+  namespace: {{ epp_ns }}
+  annotations:
+    llm-d.ai/managed: "true"
+    llm-d.ai/model-id: "{{ model.name }}"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ scale_kind }}
+    name: {{ scale_name }}
+  minReplicaCount: {{ eppKedaSaturation.scaledObject.minReplicas | default(1) }}
+  maxReplicaCount: {{ eppKedaSaturation.scaledObject.maxReplicas | default(10) }}
+  pollingInterval: {{ eppKedaSaturation.scaledObject.pollingInterval | default(15) }}
+  triggers:
+  # Pool-average KV cache utilization (0.0–1.0)
+  - type: prometheus
+    name: kv-cache
+    metricType: AverageValue
+    metadata:
+      serverAddress: "{{ eppKedaSaturation.prometheus.baseUrl }}:{{ eppKedaSaturation.prometheus.port }}"
+      query: |
+        max(inference_pool_average_kv_cache_utilization{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
+      threshold: "{{ eppKedaSaturation.scaledObject.kvCacheThreshold | default('0.7') }}"
+      activationThreshold: "{{ eppKedaSaturation.scaledObject.activationThreshold | default('0') }}"
+      unsafeSsl: "{{ (eppKedaSaturation.scaledObject.unsafeSsl | default(true)) | lower }}"
+    authenticationRef:
+      name: prometheus-auth
+  # Pool-average request queue size
+  - type: prometheus
+    name: queue-size
+    metricType: AverageValue
+    metadata:
+      serverAddress: "{{ eppKedaSaturation.prometheus.baseUrl }}:{{ eppKedaSaturation.prometheus.port }}"
+      query: |
+        max(inference_pool_average_queue_size{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
+      threshold: "{{ eppKedaSaturation.scaledObject.queueSizeThreshold | default('2') }}"
+      activationThreshold: "{{ eppKedaSaturation.scaledObject.activationThreshold | default('0') }}"
+      unsafeSsl: "{{ (eppKedaSaturation.scaledObject.unsafeSsl | default(true)) | lower }}"
+    authenticationRef:
+      name: prometheus-auth
+{% if eppKedaSaturation.scaledObject.behavior is defined %}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+{{ eppKedaSaturation.scaledObject.behavior | toyaml | indent(6, first=True) }}
+{% endif %}
+{% endif %}

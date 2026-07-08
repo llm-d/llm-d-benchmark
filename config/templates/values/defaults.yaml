@@ -1441,6 +1441,47 @@ wva:
     scheme: http
 
 # ============================================================================
+# EPP+KEDA SATURATION AUTOSCALING
+# ============================================================================
+# Direct KEDA autoscaling using EPP pool metrics, without WVA controller.
+# Queries inference_pool_average_kv_cache_utilization and
+# inference_pool_average_queue_size directly.
+eppKedaSaturation:
+  enabled: false
+  namespace: ""                 # defaults to namespace.name at render time
+  prometheus:
+    baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+    port: 9091
+  epp:
+    poolName: ""                # InferencePool name; defaults to model_id_label
+    serviceLabelSelector: {}    # matchLabels for EPP Service selector
+    metricsPortName: http-metrics
+    metricsPort: 9090
+    prometheusServiceAccount: thanos-querier
+    prometheusServiceAccountNamespace: openshift-monitoring
+  scaledObject:
+    minReplicas: 1
+    maxReplicas: 10
+    pollingInterval: 15
+    kvCacheThreshold: "0.7"    # scale up when pool-avg KV cache > 70%
+    queueSizeThreshold: "2"    # scale up when pool-avg queue > 2 requests
+    activationThreshold: "0"
+    unsafeSsl: true
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 0
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 180  # adjust to actual pod startup time
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 300
+
+# ============================================================================
 # GATEWAY PROVIDERS
 # ============================================================================
 gatewayProviders:

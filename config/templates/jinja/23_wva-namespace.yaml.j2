@@ -1,26 +1,29 @@
 {# ============================================================================
    23_wva-namespace.yaml.j2
 
-   Namespace manifest for WVA with the OpenShift user-monitoring label.
+   Namespace manifest with OpenShift user-monitoring label.
    This label is required so that user-workload-monitoring can discover
-   and scrape WVA metrics in this namespace.
+   and scrape metrics in this namespace.
 
-   Namespaced-mode WVA uses `wva.namespace` (which defaults to the model
-   namespace). `kubectl apply` against this manifest is idempotent — if
-   the namespace already exists from step_05, the label is simply merged.
+   Supports both WVA and EPP+KEDA modes. Uses `wva.namespace` if WVA is enabled,
+   otherwise `eppKedaSaturation.namespace` (both default to the model namespace).
+   `kubectl apply` against this manifest is idempotent — if the namespace already
+   exists from step_05, the label is simply merged.
 
    Also includes ServiceAccount + ClusterRoleBinding for KEDA's bearer token
    access to Prometheus/Thanos. These are created per-namespace and suffixed
-   to support multi-tenant deployments (multiple WVA namespaces in one cluster).
+   to support multi-tenant deployments.
 
-   Only rendered when wva.enabled is true.
+   Rendered when either wva.enabled or eppKedaSaturation.enabled is true.
    ============================================================================ #}
-{% if wva is defined and wva.enabled | default(false) %}
-{% set wva_ns = wva.namespace | default(namespace.name, true) %}
+{% set wva_enabled = wva is defined and wva.enabled | default(false) %}
+{% set epp_keda_enabled = eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
+{% if wva_enabled or epp_keda_enabled %}
+{% set target_ns = wva.namespace | default(eppKedaSaturation.namespace, true) | default(namespace.name, true) %}
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: {{ wva_ns }}
+  name: {{ target_ns }}
   labels:
     openshift.io/user-monitoring: "true"
 ---
@@ -28,12 +31,12 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: wva-prometheus-auth
-  namespace: {{ wva_ns }}
+  namespace: {{ target_ns }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: allow-thanos-querier-api-access-{{ wva_ns }}
+  name: allow-thanos-querier-api-access-{{ target_ns }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -41,5 +44,5 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: wva-prometheus-auth
-  namespace: {{ wva_ns }}
+  namespace: {{ target_ns }}
 {% endif %}

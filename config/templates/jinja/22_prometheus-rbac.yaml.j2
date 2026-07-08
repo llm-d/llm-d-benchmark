@@ -2,11 +2,12 @@
    22_prometheus-rbac.yaml.j2
 
    ClusterRole granting access to Thanos Querier API endpoints.
-   Required by the prometheus-adapter to query WVA metrics.
+   Required by both WVA (prometheus-adapter) and EPP+KEDA (KEDA ScaledObject)
+   to query Prometheus metrics.
 
-   Only rendered when wva.enabled is true.
+   Rendered when either wva.enabled or eppKedaSaturation.enabled is true.
    ============================================================================ #}
-{% if wva is defined and wva.enabled | default(false) %}
+{% if (wva is defined and wva.enabled | default(false)) or (eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false)) %}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

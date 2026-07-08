@@ -368,6 +368,13 @@ class DeployModelserviceStep(Step):
             self._apply_wva_stack_resources(cmd, stack_path, errors)
             self._log_wva_stack_state(cmd, context, plan_config)
 
+        # EPP+KEDA saturation autoscaling (controller-free alternative to WVA).
+        # Per-stack: ServiceMonitor, EPP metrics RBAC, TriggerAuthentication, ScaledObject.
+        epp_keda_config = plan_config.get("eppKedaSaturation", {})
+        if epp_keda_config.get("enabled", False) and context.is_openshift:
+            self._apply_epp_keda_stack_resources(cmd, stack_path, errors)
+            self._log_epp_keda_stack_state(cmd, context, plan_config)
+
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if not errors:
@@ -697,6 +704,71 @@ class DeployModelserviceStep(Step):
             )
             if result.success and result.stdout.strip():
                 context.logger.log_info(f"📋 {label} state in ns/{wva_ns}:")
+                for line in result.stdout.rstrip().splitlines():
+                    context.logger.log_info(f"    {line}")
+            else:
+                context.logger.log_warning(
+                    f"Could not query {label}/{resource_name} for state log: "
+                    f"{result.stderr.strip()[:200] or '(empty)'}"
+                )
+
+    def _apply_epp_keda_stack_resources(
+        self,
+        cmd: CommandExecutor,
+        stack_path: Path,
+        errors: list,
+    ) -> None:
+        """Apply EPP+KEDA saturation autoscaling per-stack resources.
+
+        EPP monitoring setup (ServiceMonitor, RBAC) is installed by step_03
+        (admin prerequisites, once per namespace). Here we apply the
+        per-stack ScaledObject so KEDA can query metrics and auto-generate
+        the HPA. Multiple models scale independently via their own ScaledObjects.
+        """
+        for stem in ("30_epp-keda-saturation-scaledobject",):
+            yaml_path = self._find_yaml(stack_path, stem)
+            if not (yaml_path and self._has_yaml_content(yaml_path)):
+                continue
+            result = cmd.kube("apply", "-f", str(yaml_path))
+            if not result.success:
+                errors.append(f"Failed to apply {stem}: {result.stderr}")
+
+    def _log_epp_keda_stack_state(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+    ) -> None:
+        """Log the current state of this stack's EPP+KEDA ScaledObject + HPA.
+
+        Lets the standup output show what got created (ScaledObject
+        status, HPA TARGETS/REPLICAS, etc.) without needing follow-up ``oc get``.
+        Best-effort - failures here don't fail step_09.
+        """
+        epp_keda_cfg = plan_config.get("eppKedaSaturation", {}) or {}
+        epp_keda_ns = epp_keda_cfg.get("namespace") or plan_config.get(
+            "namespace", {}
+        ).get("name", "")
+        model_id_label = plan_config.get("model_id_label", "")
+        fma_enabled = plan_config.get("fma", {}).get("enabled", False)
+        hpa_name = f"{model_id_label}-{'fma' if fma_enabled else 'decode'}-saturation"
+
+        for label, resource_name in (
+            ("ScaledObject", hpa_name + "-saturation"),
+            ("HPA", "keda-hpa-" + hpa_name + "-saturation"),
+        ):
+            result = cmd.kube(
+                "get",
+                resource_name.split("-")[0].lower(),
+                resource_name,
+                "-n",
+                epp_keda_ns,
+                "-o",
+                "wide",
+                check=False,
+            )
+            if result.success and result.stdout.strip():
+                context.logger.log_info(f"📋 {label} state in ns/{epp_keda_ns}:")
                 for line in result.stdout.rstrip().splitlines():
                     context.logger.log_info(f"    {line}")
             else:

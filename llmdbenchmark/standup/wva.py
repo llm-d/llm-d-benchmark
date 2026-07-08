@@ -15,7 +15,6 @@ admin step and per-stack step can import them without a cyclic dependency.
 
 from __future__ import annotations
 
-import base64
 import tempfile
 from pathlib import Path
 
@@ -23,81 +22,14 @@ import yaml
 
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
-
-
-def extract_prometheus_ca_cert(cmd: CommandExecutor, logger) -> str | None:
-    """Extract the Prometheus CA cert from the OpenShift monitoring stack.
-
-    Tries (in order):
-      1. ``thanos-querier-tls`` — the main cert used by the upstream WVA guide.
-      2. The service-ca ConfigMap injected by OpenShift
-         (``openshift-service-ca.crt``) — always readable by any pod/user
-         with access to a namespace, so this is a safe fallback when
-         secret read is blocked by RBAC.
-
-    Returns the PEM-encoded cert, or ``None`` if nothing works. Logs the
-    concrete failure reason so RBAC vs. missing-resource vs. decode-error
-    can be told apart at the console.
-    """
-    # CommandExecutor.kube() concatenates argv with spaces and runs via
-    # shell=True, so any backslash in a jsonpath arg is eaten by the shell
-    # unless we single-quote the whole thing. `tls.crt` contains a literal
-    # dot, which kubectl's jsonpath needs escaped as `tls\.crt`; we wrap
-    # in single quotes so both the backslash and dot survive the shell.
-
-    # Try 1: thanos-querier-tls (same source the upstream guide uses)
-    result = cmd.kube(
-        "get",
-        "secret",
-        "thanos-querier-tls",
-        "--namespace",
-        "openshift-monitoring",
-        "-o",
-        r"'jsonpath={.data.tls\.crt}'",
-        check=False,
-    )
-    if result.success and result.stdout.strip():
-        try:
-            cert_bytes = base64.b64decode(result.stdout.strip())
-            return _ensure_trailing_newline(cert_bytes.decode("utf-8"))
-        except Exception as exc:  # noqa: BLE001 -- log and fall through
-            logger.log_warning(f"Failed to decode thanos-querier-tls CA cert: {exc}")
-    elif not result.success:
-        logger.log_debug(
-            f"Could not read secret/thanos-querier-tls in openshift-monitoring: "
-            f"{result.stderr.strip()[:300]}"
-        )
-
-    # Try 2: openshift-service-ca.crt ConfigMap (present in every namespace
-    # on OCP, contains the cluster service-ca used to sign internal certs
-    # including thanos-querier). Readable by any authenticated user with
-    # namespace access — no openshift-monitoring read permission needed.
-    result = cmd.kube(
-        "get",
-        "configmap",
-        "openshift-service-ca.crt",
-        "-o",
-        r"'jsonpath={.data.service-ca\.crt}'",
-        check=False,
-    )
-    if result.success and result.stdout.strip():
-        logger.log_info(
-            "Using openshift-service-ca.crt ConfigMap as Prometheus CA fallback "
-            "(thanos-querier-tls secret was not readable)"
-        )
-        return _ensure_trailing_newline(result.stdout)
-
-    logger.log_debug(
-        f"Could not read openshift-service-ca.crt ConfigMap: "
-        f"{result.stderr.strip()[:300]}"
-    )
-    return None
-
-
-def _ensure_trailing_newline(cert: str) -> str:
-    """Return *cert* with a trailing newline (PEM convention)."""
-    cert = cert.strip()
-    return cert + "\n" if cert else ""
+from llmdbenchmark.standup.keda_prometheus_auth import (
+    extract_prometheus_ca_cert,
+    verify_keda_installed,
+    create_prometheus_auth_secret as _create_prometheus_auth_secret,
+    apply_namespace_label,
+    _find_yaml,
+    _has_yaml_content,
+)
 
 
 def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-locals,unused-argument
@@ -172,33 +104,6 @@ def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-lo
         )
 
 
-def verify_keda_installed(cmd: CommandExecutor, context: ExecutionContext) -> bool:
-    """Verify that KEDA is installed on the cluster.
-
-    Checks for the ScaledObject CRD (a portable probe that doesn't assume
-    KEDA's namespace or release name). Logs a warning but returns anyway if
-    missing — KEDA is treated as optional shared cluster infra, not required
-    by this harness. If missing, the ScaledObjects will fail to reconcile
-    and the smoketest will detect it.
-    """
-    result = cmd.kube(
-        "get",
-        "crd",
-        "scaledobjects.keda.sh",
-        check=False,
-    )
-    if result.success:
-        context.logger.log_info("✓ KEDA ScaledObject CRD found")
-        return True
-
-    context.logger.log_warning(
-        "KEDA is not installed on this cluster (ScaledObject CRD not found). "
-        "WVA autoscaling will not work until KEDA is installed by a cluster admin. "
-        "Install via: helm install keda kedacore/keda -n keda --create-namespace"
-    )
-    return False
-
-
 def create_prometheus_auth_secret(
     cmd: CommandExecutor,
     context: ExecutionContext,
@@ -209,103 +114,25 @@ def create_prometheus_auth_secret(
 ) -> None:
     """Create a per-namespace Prometheus bearer token Secret + TriggerAuthentication.
 
-    Mints a token from the ServiceAccount created in 23_wva-namespace.yaml.j2,
-    stores it alongside the CA cert in a Secret, and applies the TriggerAuthentication
-    CR that KEDA's ScaledObject will reference for metric queries.
+    Wrapper for the generic function with WVA-specific defaults (SA name and template stem).
     """
-    if not prom_ca_cert:
-        context.logger.log_warning(
-            f"Prometheus CA cert is missing for ns/{wva_namespace}. "
-            "KEDA will not be able to query Prometheus."
-        )
-        return
-
-    # Mint a token from the ServiceAccount we created in 23_wva-namespace.yaml.j2
-    token_result = cmd.kube(
-        "create",
-        "token",
-        "wva-prometheus-auth",
-        "-n",
+    _create_prometheus_auth_secret(
+        cmd,
+        context,
+        stack_path,
         wva_namespace,
-        check=False,
+        prom_ca_cert,
+        sa_name="wva-prometheus-auth",
+        ta_template_stem="21_keda-triggerauthentication",
+        errors=errors,
     )
-    if not token_result.success:
-        errors.append(
-            f"Failed to mint bearer token for ns/{wva_namespace}: {token_result.stderr}"
-        )
-        return
-
-    bearer_token = token_result.stdout.strip()
-    if not bearer_token:
-        errors.append(f"Bearer token is empty for ns/{wva_namespace}")
-        return
-
-    # Create the prometheus-auth Secret with dry-run + apply (idempotent pattern)
-    tmp_dir = Path(tempfile.mkdtemp())
-    cert_path = tmp_dir / "ca.crt"
-    cert_path.write_text(prom_ca_cert, encoding="utf-8")
-
-    secret_result = cmd.kube(
-        "create",
-        "secret",
-        "generic",
-        "prometheus-auth",
-        f"--from-file=ca.crt={cert_path}",
-        f"--from-literal=bearerToken={bearer_token}",
-        "--dry-run=client",
-        "-o",
-        "yaml",
-        "-n",
-        wva_namespace,
-        check=False,
-    )
-    if secret_result.success and secret_result.stdout.strip():
-        secret_yaml_path = tmp_dir / "prometheus-auth-secret.yaml"
-        secret_yaml_path.write_text(secret_result.stdout, encoding="utf-8")
-        apply_result = cmd.kube(
-            "apply",
-            "-f",
-            str(secret_yaml_path),
-            "-n",
-            wva_namespace,
-            check=False,
-        )
-        if not apply_result.success:
-            errors.append(
-                f"Failed to apply prometheus-auth Secret in ns/{wva_namespace}: "
-                f"{apply_result.stderr}"
-            )
-    else:
-        errors.append(
-            f"Failed to generate prometheus-auth Secret for ns/{wva_namespace}: "
-            f"{secret_result.stderr}"
-        )
-        return
-
-    # Apply the TriggerAuthentication template
-    ta_yaml = _find_yaml(stack_path, "21_keda-triggerauthentication")
-    if not ta_yaml:
-        context.logger.log_warning(
-            f"TriggerAuthentication template not found for ns/{wva_namespace}. "
-            "KEDA ScaledObject will fail to authenticate."
-        )
-        return
-
-    result = cmd.kube("apply", "-f", str(ta_yaml), "-n", wva_namespace, check=False)
-    if not result.success:
-        errors.append(
-            f"Failed to apply TriggerAuthentication in ns/{wva_namespace}: "
-            f"{result.stderr}"
-        )
 
 
 def apply_wva_namespace_label(
     cmd: CommandExecutor, stack_path: Path, wva_namespace: str
 ) -> None:
     """Apply the rendered 23_wva-namespace YAML (Namespace + user-monitoring label)."""
-    ns_yaml = _find_yaml(stack_path, "23_wva-namespace")
-    if ns_yaml and _has_yaml_content(ns_yaml):
-        cmd.kube("apply", "-f", str(ns_yaml), check=False)
+    apply_namespace_label(cmd, stack_path, wva_namespace, ns_template_stem="23_wva-namespace")
 
 
 def stacks_enabling_wva(rendered_stacks: list[Path]) -> list[tuple[Path, dict]]:

@@ -1221,6 +1221,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_methods=getattr(args, "methods", None),
         cli_monitoring=getattr(args, "monitoring", None),
         cli_wva=getattr(args, "wva", False),
+        cli_epp_keda_saturation=getattr(args, "epp_keda_saturation", False),
         cli_gateway_class=getattr(args, "gateway_class", None),
         setup_overrides=setup_overrides,
         cli_non_admin=getattr(args, "non_admin", False),
@@ -1822,6 +1823,8 @@ def cli() -> None:
         args.debug = env_bool("LLMDBENCH_DEBUG")
     if hasattr(args, "wva") and not args.wva:
         args.wva = env_bool("LLMDBENCH_WVA")
+    if hasattr(args, "epp_keda_saturation") and not args.epp_keda_saturation:
+        args.epp_keda_saturation = env_bool("LLMDBENCH_EPP_KEDA_SATURATION")
     if not args.specification_file:
         parser.error(
             "the following arguments are required: --specification_file/--spec"

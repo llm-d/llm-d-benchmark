@@ -99,13 +99,14 @@ Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS,
 Every command takes a `--spec` that selects the configuration for your cluster and GPU type. Specs are Jinja2 templates under `config/specification/`:
 
 ```bash
---spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
---spec guides/optimized-baseline        # optimized baseline guide (formerly inference-scheduling)
---spec guides/workload-autoscaling      # optimized baseline + WVA autoscaling
---spec multi-model-wva                  # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
---spec pd-disaggregation               # prefill-decode disaggregation guide
+--spec gpu                                      # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
+--spec guides/optimized-baseline                # optimized baseline guide (formerly inference-scheduling)
+--spec guides/workload-autoscaling              # optimized baseline + WVA autoscaling
+--spec guides/epp-keda-saturation               # optimized baseline + direct EPP+KEDA autoscaling (no WVA controller)
+--spec multi-model-wva                          # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
+--spec pd-disaggregation                       # prefill-decode disaggregation guide
 ...
---spec /full/path/to/my-spec.yaml.j2    # custom spec
+--spec /full/path/to/my-spec.yaml.j2            # custom spec
 ```
 
 If the name is ambiguous or not found, the CLI lists all available specs and exits.
@@ -311,6 +312,7 @@ See [workload/README.md](workload/README.md) for the full experiment file format
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
 | Multi-model scenarios and the `shared:` block | [config/README.md](config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config), [developer-guide](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block) |
 | Workload-variant-autoscaler, including multi-pool setup | [docs/workload-variant-autoscaler.md](docs/workload-variant-autoscaler.md) |
+| EPP+KEDA saturation autoscaling (direct KEDA, no WVA controller) | [docs/epp-keda-saturation-autoscaling.md](docs/epp-keda-saturation-autoscaling.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
 | Smoketests, per-scenario validation, adding validators | [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) |
@@ -435,6 +437,7 @@ llmdbenchmark --version
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
 | `--annotations` | `LLMDBENCH_ANNOTATIONS` | Extra annotations for deployed resources |
 | `--wva` | `LLMDBENCH_WVA` | Workload Variant Autoscaler config |
+| `--epp-keda-saturation` | `LLMDBENCH_EPP_KEDA_SATURATION` | Direct EPP+KEDA saturation autoscaling (controller-free) |
 
 ### Teardown Options
 
@@ -781,6 +784,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Quickstart](docs/quickstart.md)
 - [Resource Requirements](docs/resource_requirements.md)
 - [WVA (Workload Variant Autoscaler)](docs/workload-variant-autoscaler.md)
+- [EPP+KEDA Saturation Autoscaling](docs/epp-keda-saturation-autoscaling.md)
 - [Upstream Versions](docs/upstream-versions.md)
 - [FAQ](docs/faq.md)
 

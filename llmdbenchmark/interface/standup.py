@@ -83,6 +83,12 @@ def add_subcommands(
         help="Enable Workload Variant Autoscaler (WVA) for this standup.",
     )
     standup_parser.add_argument(
+        "--epp-keda-saturation",
+        action="store_true",
+        default=False,
+        help="Enable EPP+KEDA saturation autoscaling (controller-free alternative to WVA).",
+    )
+    standup_parser.add_argument(
         "--monitoring",
         action=argparse.BooleanOptionalAction,
         default=None,

@@ -49,6 +49,7 @@ class RenderPlans:
         cli_methods: str | None = None,
         cli_monitoring: bool | None = None,
         cli_wva: bool = False,
+        cli_epp_keda_saturation: bool = False,
         cli_gateway_class: str | None = None,
         setup_overrides: dict | None = None,
         cli_stack_filter: list[str] | None = None,
@@ -65,6 +66,7 @@ class RenderPlans:
         self.cli_methods = cli_methods
         self.cli_monitoring = cli_monitoring
         self.cli_wva = cli_wva
+        self.cli_epp_keda_saturation = cli_epp_keda_saturation
         # CLI override for `gateway.className`. Applied per-stack in
         # `_resolve_gateway_class` ahead of `_validate_epponly_constraints`
         # so the validator sees the post-override value. Only affects
@@ -553,6 +555,27 @@ class RenderPlans:
         wva_config["enabled"] = True
 
         self.logger.log_info("Workload Variant Autoscaler enabled from CLI")
+        return result
+
+    def _resolve_epp_keda_saturation(self, values: dict) -> dict:
+        """Enable EPP+KEDA saturation autoscaling when ``--epp-keda-saturation`` is set."""
+        if not self.cli_epp_keda_saturation:
+            return values
+
+        result = deepcopy(values)
+
+        # Mutual-exclusion check: can't use both WVA and EPP+KEDA for the same stack
+        wva_config = result.get("wva", {}) or {}
+        if wva_config.get("enabled", False):
+            raise ValueError(
+                "Cannot enable both WVA and EPP+KEDA saturation autoscaling for the same stack. "
+                "Choose one: pass either `-u/--wva` or `--epp-keda-saturation`, not both."
+            )
+
+        epp_keda_config = result.setdefault("eppKedaSaturation", {})
+        epp_keda_config["enabled"] = True
+
+        self.logger.log_info("EPP+KEDA saturation autoscaling enabled from CLI")
         return result
 
     def _resolve_deploy_method(self, values: dict) -> dict:
@@ -1486,6 +1509,7 @@ class RenderPlans:
         merged_values = self._resolve_gateway_class(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_wva(merged_values)
+        merged_values = self._resolve_epp_keda_saturation(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)
         merged_values = self._resolve_per_stack_identity(

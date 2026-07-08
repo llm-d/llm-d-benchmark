@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import yaml
+
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.parser.cluster_resource_resolver import effective_accelerator_count
 from llmdbenchmark.standup import wva as wva_mod
+from llmdbenchmark.standup import keda_saturation as keda_sat_mod
 from llmdbenchmark.utilities.capacity_validator import run_capacity_planner
 
 
@@ -501,6 +504,11 @@ class WorkloadMonitoringStep(Step):
         # triggers the install; one WVA controller per unique wva.namespace.
         self._install_wva_if_enabled(cmd, context, errors)
 
+        # EPP+KEDA saturation autoscaling (controller-free alternative to WVA).
+        # Similar setup but no WVA controller, no VariantAutoscaling CRs.
+        # Queries EPP's pool metrics directly.
+        self._install_epp_keda_saturation_if_enabled(cmd, context, errors)
+
     def _install_wva_if_enabled(
         self,
         cmd: CommandExecutor,
@@ -572,6 +580,73 @@ class WorkloadMonitoringStep(Step):
                 plan_config=plan_config,
                 stack_path=stack_path,
                 wva_namespace=wva_ns,
+                prom_ca_cert=prom_ca_cert,
+                errors=errors,
+            )
+
+    def _install_epp_keda_saturation_if_enabled(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+    ) -> None:
+        """Install EPP+KEDA saturation autoscaling resources for enabled stacks.
+
+        Runs only when at least one rendered stack has ``eppKedaSaturation.enabled: true``
+        and the platform is OpenShift. Provisions (once per unique epp_keda_ns):
+
+        1. Verify KEDA is installed (cluster-scoped, pre-installed by admin).
+        2. The thanos-querier ClusterRole (from rendered 22_prometheus-rbac).
+        3. The EPP+KEDA namespace label + ServiceAccount + ClusterRoleBinding
+           (from rendered 23_wva-namespace, reused for both WVA and EPP+KEDA).
+        4. Per-namespace Prometheus bearer token Secret + TriggerAuthentication.
+        5. EPP ServiceMonitor + metrics reader RBAC (from rendered 29_epp-keda-saturation-epp-monitoring).
+
+        No WVA controller, no VariantAutoscaling CRs — just direct EPP metric queries via KEDA.
+        """
+        try:
+            pairs = keda_sat_mod.stacks_enabling_epp_keda_saturation(context.rendered_stacks or [])
+        except Exception as e:
+            import traceback
+            errors.append(f"Failed to check EPP+KEDA stacks: {e}\n{traceback.format_exc()}")
+            return
+
+        if not pairs:
+            return
+
+        if not context.is_openshift:
+            context.logger.log_info(
+                "ℹ️  EPP+KEDA saturation is enabled but platform is not OpenShift -- "
+                "skipping admin setup (not yet verified on non-OCP)"
+            )
+            return
+
+        # Verify KEDA is installed cluster-wide.
+        keda_sat_mod.verify_keda_installed(cmd, context)
+
+        # Extract Prometheus CA cert for per-namespace auth Secret.
+        prom_ca_cert = keda_sat_mod.extract_prometheus_ca_cert(cmd, context.logger)
+        if not prom_ca_cert:
+            context.logger.log_warning(
+                "Could not extract a Prometheus CA cert for EPP+KEDA. "
+                "Skipping KEDA authentication setup -- KEDA ScaledObject metric queries will fail.\n"
+                "  To fix, ensure either:\n"
+                "    1) `oc get secret thanos-querier-tls -n openshift-monitoring` "
+                "returns the secret (needs cluster-admin on most clusters), or\n"
+                "    2) `oc get cm openshift-service-ca.crt` works in the "
+                "deploy namespace (this is the built-in fallback; any "
+                "authenticated user has access)."
+            )
+
+        # One EPP+KEDA setup per unique eppKedaSaturation.namespace.
+        for epp_keda_ns, (stack_path, plan_config) in keda_sat_mod.unique_epp_keda_saturation_namespaces(
+            pairs
+        ).items():
+            keda_sat_mod.install_epp_keda_saturation_for_namespace(
+                cmd=cmd,
+                context=context,
+                stack_path=stack_path,
+                epp_keda_namespace=epp_keda_ns,
                 prom_ca_cert=prom_ca_cert,
                 errors=errors,
             )
