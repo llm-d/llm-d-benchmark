@@ -53,7 +53,9 @@ def unique_epp_keda_saturation_namespaces(
     result: dict[str, tuple[Path, dict]] = {}
     for stack_path, cfg in stacks:
         epp_keda_cfg = cfg.get("eppKedaSaturation", {}) or {}
-        epp_keda_ns = epp_keda_cfg.get("namespace") or cfg.get("namespace", {}).get("name", "")
+        epp_keda_ns = epp_keda_cfg.get("namespace") or cfg.get("namespace", {}).get(
+            "name", ""
+        )
         if not epp_keda_ns:
             continue
         if epp_keda_ns not in result:
@@ -83,7 +85,9 @@ def install_epp_keda_saturation_for_namespace(
         f"🎯 Setting up EPP+KEDA saturation autoscaling for ns/{epp_keda_namespace}"
     )
 
-    apply_namespace_label(cmd, stack_path, epp_keda_namespace, ns_template_stem="23_wva-namespace")
+    apply_namespace_label(
+        cmd, stack_path, epp_keda_namespace, ns_template_stem="23_wva-namespace"
+    )
 
     create_prometheus_auth_secret(
         cmd,
@@ -96,7 +100,9 @@ def install_epp_keda_saturation_for_namespace(
         errors=errors,
     )
 
-    epp_monitoring_yaml = _find_yaml(stack_path, "29_epp-keda-saturation-epp-monitoring")
+    epp_monitoring_yaml = _find_yaml(
+        stack_path, "29_epp-keda-saturation-epp-monitoring"
+    )
     if not epp_monitoring_yaml:
         context.logger.log_warning(
             f"EPP monitoring template (29_epp-keda-saturation-epp-monitoring) not found for ns/{epp_keda_namespace}. "

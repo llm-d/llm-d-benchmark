@@ -604,10 +604,15 @@ class WorkloadMonitoringStep(Step):
         No WVA controller, no VariantAutoscaling CRs — just direct EPP metric queries via KEDA.
         """
         try:
-            pairs = keda_sat_mod.stacks_enabling_epp_keda_saturation(context.rendered_stacks or [])
+            pairs = keda_sat_mod.stacks_enabling_epp_keda_saturation(
+                context.rendered_stacks or []
+            )
         except Exception as e:
             import traceback
-            errors.append(f"Failed to check EPP+KEDA stacks: {e}\n{traceback.format_exc()}")
+
+            errors.append(
+                f"Failed to check EPP+KEDA stacks: {e}\n{traceback.format_exc()}"
+            )
             return
 
         if not pairs:
@@ -638,9 +643,10 @@ class WorkloadMonitoringStep(Step):
             )
 
         # One EPP+KEDA setup per unique eppKedaSaturation.namespace.
-        for epp_keda_ns, (stack_path, plan_config) in keda_sat_mod.unique_epp_keda_saturation_namespaces(
-            pairs
-        ).items():
+        for epp_keda_ns, (
+            stack_path,
+            plan_config,
+        ) in keda_sat_mod.unique_epp_keda_saturation_namespaces(pairs).items():
             keda_sat_mod.install_epp_keda_saturation_for_namespace(
                 cmd=cmd,
                 context=context,
