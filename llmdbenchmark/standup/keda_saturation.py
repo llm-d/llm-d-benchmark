@@ -16,6 +16,8 @@ import yaml
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.standup.keda_prometheus_auth import (
+    verify_keda_installed,  # noqa: F401
+    extract_prometheus_ca_cert,  # noqa: F401
     create_prometheus_auth_secret,
     apply_namespace_label,
     _find_yaml,
