@@ -21,6 +21,23 @@
    The prometheus-proxy URL is CONFIGURABLE via eppKedaSaturation.prometheus.proxyUrl
    in the scenario/config. Default: "http://prometheus-proxy.openshift-keda:8080"
 
+   WHY NOT USE TRADITIONAL BEARER TOKENS?
+   ======================================
+   On OpenShift 4.19+, the cluster-monitoring-operator (CMA) hardens kube-rbac-proxy
+   with a static authorization policy that only allows tokens from specific system
+   ServiceAccounts (e.g., openshift-monitoring/prometheus-k8s). External bearer tokens
+   from Kubernetes Secrets are rejected with 401 Unauthorized, even with proper RBAC
+   ClusterRoles. This is a cluster-level security constraint, not an RBAC issue.
+
+   SOLUTION: Pod-native projected tokens
+   ======================================
+   Instead of external bearer tokens (which kube-rbac-proxy rejects), we use projected
+   service account tokens native to the pod. The keda-operator ServiceAccount gets
+   cluster-monitoring-view RBAC, allowing its projected token to query Prometheus.
+   A local proxy intercepts KEDA's HTTP requests and adds the pod's own token, which
+   is always trusted by kube-rbac-proxy. This pattern matches how other cluster
+   components (e.g., WVA) successfully authenticate to Prometheus on 4.19+.
+
    SMOKE TEST:
    ===========
    After deployment, verify the proxy is accessible and working:
