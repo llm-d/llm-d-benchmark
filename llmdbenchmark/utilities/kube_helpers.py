@@ -163,58 +163,40 @@ def wait_for_pods_by_label(
     """
     errors: list[str] = []
 
-    def _all_pods_terminal() -> bool:
-        phases = cmd.kube(
-            "get", "pods", "-l", f"app={label}", "--namespace", namespace,
-            "-o", "jsonpath={.items[*].status.phase}", check=False,
-        )
-        if not phases.success:
-            return False
-        vals = phases.stdout.split()
-        return bool(vals) and all(p in ("Succeeded", "Failed") for p in vals)
-
-    # Phase A: Wait for pods to become Ready — unless they already finished.
+    # POLL-based wait (replaces two-phase `kubectl wait`). A short-lived agentic
+    # pod can reach Succeeded/Failed before/at `kubectl wait --for=Ready=True`
+    # (which then hangs the full timeout: a terminal pod never becomes Ready nor
+    # is deleted), and phase B errors NotFound when a finished pod is GC'd
+    # between polls. Polling phases is immune: "arrived" = Running or terminal;
+    # "done" = all terminal OR gone. --natan (via claude)
+    import time as _time
+    def _phases():
+        r = cmd.kube("get", "pods", "-l", f"app={label}", "--namespace", namespace,
+                     "-o", "jsonpath={.items[*].status.phase}", check=False)
+        return r.stdout.split() if r.success else []
     context.logger.log_info(
         f"Waiting for pods (label=app={label}) to start (timeout={timeout}s)..."
     )
-    if _all_pods_terminal():
-        context.logger.log_info("All pods already terminal — skipping Ready wait")
-    else:
-        result = cmd.kube(
-            "wait",
-            "--for=condition=Ready=True",
-            "pod",
-            "-l",
-            f"app={label}",
-            "--namespace",
-            namespace,
-            f"--timeout={timeout}s",
-            check=False,
-        )
-        # A pod that finished mid-wait flips to terminal, not Ready — tolerate that.
-        if not result.success and not _all_pods_terminal():
-            errors.append(f"Pods failed to become Ready: {result.stderr.strip()}")
-            return errors
-
+    ARRIVED=("Running","Succeeded","Failed"); TERMINAL=("Succeeded","Failed")
+    waited=0; poll=5; arrived=False
+    while waited < timeout:
+        ph=_phases()
+        if ph and all(p in ARRIVED for p in ph): arrived=True; break
+        _time.sleep(poll); waited+=poll
+    if not arrived:
+        errors.append(f"Pods failed to reach Running/terminal within {timeout}s (phases={_phases()})")
+        return errors
     context.logger.log_info("All pods are running")
-
-    # Phase B: Wait for pods to complete (Ready=False after finish)
     context.logger.log_info(
         f"Waiting for pods (label=app={label}) to complete (timeout={timeout}s)..."
     )
-    result = cmd.kube(
-        "wait",
-        f"--timeout={timeout}s",
-        "--for=condition=ready=False",
-        "pod",
-        "-l",
-        f"app={label}",
-        "--namespace",
-        namespace,
-        check=False,
-    )
-    if not result.success:
-        errors.append(f"Pods did not complete within timeout: {result.stderr.strip()}")
+    done=False
+    while waited < timeout:
+        ph=_phases()
+        if not ph or all(p in TERMINAL for p in ph): done=True; break
+        _time.sleep(poll); waited+=poll
+    if not done:
+        errors.append(f"Pods did not complete within {timeout}s (phases={_phases()})")
         return errors
 
     # Check for crash states
