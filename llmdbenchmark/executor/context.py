@@ -93,6 +93,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_wait_timeout: int = 3600
     harness_debug: bool = False
     harness_skip_run: bool = False
+    # When True, collect results via a gzip'd ``oc exec | tar`` stream instead
+    # of ``oc cp``. Copies the same files -- only the transfer mechanism
+    # differs -- but is much faster for large result trees. Relies on the
+    # fragile apiserver exec stream (retried). Off by default. See step_07.
+    harness_fast_collect: bool = False
     # When True, reset the vLLM prefix, multimodal, and encoder caches
     # (POST /reset_prefix_cache, /reset_mm_cache, /reset_encoder_cache) on
     # every serving pod before each treatment's run, so every treatment

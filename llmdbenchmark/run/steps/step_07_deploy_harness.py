@@ -10,6 +10,7 @@ cluster resources.
 import base64
 import json
 import random
+import shlex
 import shutil
 import string
 import time
@@ -726,19 +727,89 @@ class DeployHarnessStep(Step):
             f"{', '.join(matching_dirs)}"
         )
 
+        # Opt-in via --fast-collect / LLMDBENCH_FAST_COLLECT. When off (the
+        # default) results are collected with the original ``oc cp`` path
+        # (slow: ~95 min/dir because the ~1.5 GB per_request_lifecycle_metrics.json
+        # tunnels through the apiserver exec stream at ~0.3 MB/s). The fast path
+        # copies the exact same files -- it only swaps ``oc cp`` for a gzip'd
+        # ``oc exec | tar`` stream, which crosses the tunnel far faster.
+        FAST_COLLECT = context.harness_fast_collect
+
         for dir_name in matching_dirs:
-            remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
             local_path = local_results_dir / dir_name
             local_path.mkdir(parents=True, exist_ok=True)
 
-            cp_result = cmd.kube(
-                "cp",
-                "--retries=5",
-                remote_path,
-                str(local_path),
-                namespace=namespace,
-                check=False,
-            )
+            if FAST_COLLECT:
+                remote_dir = f"{results_dir_prefix}/{dir_name}"
+                # Build ``oc`` prefix matching CommandExecutor.kube() so kubeconfig
+                # / context / namespace are honored.
+                oc_prefix = ["oc"]
+                if cmd.kubeconfig:
+                    oc_prefix += ["--kubeconfig", shlex.quote(cmd.kubeconfig)]
+                if cmd.kube_context:
+                    oc_prefix += ["--context", shlex.quote(cmd.kube_context)]
+                oc_prefix += ["--namespace", shlex.quote(namespace)]
+                # gzip in-stream: fewer bytes cross the fragile apiserver exec
+                # tunnel, so the transfer finishes well before the stream's
+                # idle/size limits kick in. The JSON-heavy results tree
+                # compresses ~5-10x.
+                inner = (
+                    " ".join(
+                        oc_prefix
+                        + [
+                            "exec",
+                            shlex.quote(data_pod),
+                            "--",
+                            "tar",
+                            "cz",
+                            "-C",
+                            shlex.quote(remote_dir),
+                            ".",
+                        ]
+                    )
+                    + f" | tar xz -C {shlex.quote(str(local_path))}"
+                )
+                # ``pipefail`` makes a mid-stream oc exec failure surface as a
+                # non-zero exit even if ``tar x`` consumed partial data and
+                # exited 0. Stderr is left on its own fd so it lands in
+                # cp_result.stderr for the existing failure formatter.
+                bash_cmd = f"bash -c {shlex.quote('set -o pipefail; ' + inner)}"
+                # A dropped exec stream (`tar: Unexpected EOF`) is transient:
+                # retry the whole pipeline. `tar xz` overwrites into local_path,
+                # so a partial extraction from a failed attempt is harmless.
+                max_attempts = 5
+                for cp_attempt in range(1, max_attempts + 1):
+                    cp_result = cmd.execute(bash_cmd, check=False)
+                    if cp_result.success:
+                        break
+                    context.logger.log_warning(
+                        f"FAST_COLLECT pipeline attempt {cp_attempt}/{max_attempts} "
+                        f"failed for {dir_name} (exit={cp_result.exit_code}): "
+                        f"{(cp_result.stderr or cp_result.stdout)[:300]}"
+                    )
+                    if cp_attempt < max_attempts:
+                        time.sleep(min(5 * cp_attempt, 30))
+                if not cp_result.success:
+                    context.logger.log_error(
+                        f"FAST_COLLECT pipeline failed for {dir_name} after "
+                        f"{max_attempts} attempt(s) "
+                        f"(exit={cp_result.exit_code}): "
+                        f"{(cp_result.stderr or cp_result.stdout)[:500]}"
+                    )
+                else:
+                    context.logger.log_info(
+                        f"FAST Collected {remote_dir} to {local_path}"
+                    )
+            else:
+                remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
+                cp_result = cmd.kube(
+                    "cp",
+                    "--retries=5",
+                    remote_path,
+                    str(local_path),
+                    namespace=namespace,
+                    check=False,
+                )
 
             if cp_result.success:
                 file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
