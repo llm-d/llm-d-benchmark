@@ -8,6 +8,33 @@
    No WVA controller, no VariantAutoscaling, no prometheus-adapter.
    Just dual Prometheus triggers → HPA.
 
+   PROMETHEUS QUERY PROXY:
+   =======================
+   This template uses a local prometheus-proxy deployment (24_prometheus-proxy.yaml.j2)
+   running in the openshift-keda namespace. The proxy:
+
+     - Listens on http://prometheus-proxy.openshift-keda:8080
+     - Uses the KEDA operator's projected ServiceAccount token for authentication
+     - Forwards queries to the cluster's Prometheus (thanos-querier)
+     - Avoids kube-rbac-proxy 401 Unauthorized errors that occur with external bearer tokens
+
+   The prometheus-proxy URL is CONFIGURABLE via eppKedaSaturation.prometheus.proxyUrl
+   in the scenario/config. Default: "http://prometheus-proxy.openshift-keda:8080"
+
+   SMOKE TEST:
+   ===========
+   After deployment, verify the proxy is accessible and working:
+
+     # From any pod in the cluster:
+     curl -s "http://prometheus-proxy.openshift-keda:8080/api/v1/query?query=node_memory_MemFree_bytes" | head -c 200
+
+     # Expected: JSON response with metrics data (not a 401 or 404 error)
+
+   If the proxy returns 401, check:
+     1. prometheus-proxy pod is Running: kubectl get pod -n openshift-keda -l app=prometheus-proxy
+     2. keda-operator SA has cluster-monitoring-view role:
+        kubectl get clusterrolebinding | grep keda-operator | grep cluster-monitoring-view
+
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
@@ -22,6 +49,7 @@
 {% endif %}
 {% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
 {% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router-epp', true) %}
+{% set prom_proxy_url = eppKedaSaturation.prometheus.proxyUrl | default('http://prometheus-proxy.openshift-keda:8080', true) %}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -40,31 +68,26 @@ spec:
   pollingInterval: {{ eppKedaSaturation.scaledObject.pollingInterval | default(15) }}
   triggers:
   # Pool-average KV cache utilization (0.0–1.0)
+  # Queries prometheus-proxy in openshift-keda namespace (configurable via eppKedaSaturation.prometheus.proxyUrl)
   - type: prometheus
     name: kv-cache
     metricType: AverageValue
     metadata:
-      serverAddress: "{{ eppKedaSaturation.prometheus.baseUrl }}:{{ eppKedaSaturation.prometheus.port }}"
+      serverAddress: "{{ prom_proxy_url }}"
       query: |
         max(inference_pool_average_kv_cache_utilization{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
       threshold: "{{ eppKedaSaturation.scaledObject.kvCacheThreshold | default('0.7') }}"
       activationThreshold: "{{ eppKedaSaturation.scaledObject.activationThreshold | default('0') }}"
-      unsafeSsl: "{{ (eppKedaSaturation.scaledObject.unsafeSsl | default(true)) | lower }}"
-    authenticationRef:
-      name: prometheus-auth
   # Pool-average request queue size
   - type: prometheus
     name: queue-size
     metricType: AverageValue
     metadata:
-      serverAddress: "{{ eppKedaSaturation.prometheus.baseUrl }}:{{ eppKedaSaturation.prometheus.port }}"
+      serverAddress: "{{ prom_proxy_url }}"
       query: |
         max(inference_pool_average_queue_size{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
       threshold: "{{ eppKedaSaturation.scaledObject.queueSizeThreshold | default('2') }}"
       activationThreshold: "{{ eppKedaSaturation.scaledObject.activationThreshold | default('0') }}"
-      unsafeSsl: "{{ (eppKedaSaturation.scaledObject.unsafeSsl | default(true)) | lower }}"
-    authenticationRef:
-      name: prometheus-auth
 {% if eppKedaSaturation.scaledObject.behavior is defined %}
   advanced:
     horizontalPodAutoscalerConfig:

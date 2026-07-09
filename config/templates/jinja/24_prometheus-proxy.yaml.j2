@@ -1,0 +1,148 @@
+{# ============================================================================
+   24_prometheus-proxy.yaml.j2
+
+   Prometheus query proxy that uses the KEDA operator's projected token
+   to query cluster Prometheus. This solves the kube-rbac-proxy authentication
+   issue on OpenShift 4.19 where external bearer tokens are rejected.
+
+   The proxy runs in openshift-keda namespace and listens on HTTP :8080.
+   KEDA ScaledObjects in any namespace can query it via:
+     serverAddress: "http://prometheus-proxy.openshift-keda:8080"
+
+   Replaces the TriggerAuthentication bearer-token pattern which doesn't
+   work with hardcoded kube-rbac-proxy authorization rules.
+   ============================================================================ #}
+{% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-proxy-script
+  namespace: openshift-keda
+  labels:
+    app: prometheus-proxy
+    managed-by: llm-d-benchmark
+data:
+  proxy.py: |
+    #!/usr/bin/env python3
+    import http.server, socketserver, urllib.request, urllib.error, ssl, sys
+    TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    CA_CERT_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    PROMETHEUS_URL = "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+    LISTEN_PORT = 8080
+    try:
+        with open(TOKEN_PATH, 'r') as f:
+            token = f.read().strip()
+        print(f"[INFO] Loaded token from {TOKEN_PATH}", file=sys.stderr)
+    except Exception as e:
+        print(f"[ERROR] Failed to load token: {e}", file=sys.stderr)
+        sys.exit(1)
+    ctx = ssl.create_default_context()
+    ctx.load_verify_locations(CA_CERT_PATH)
+    class ProxyHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            query_path = self.path
+            if query_path.startswith('/'):
+                query_path = query_path[1:]
+            target_url = f"{PROMETHEUS_URL}/{query_path}"
+            print(f"[PROXY] {self.client_address[0]} -> {target_url}", file=sys.stderr)
+            try:
+                req = urllib.request.Request(target_url)
+                req.add_header('Authorization', f'Bearer {token}')
+                req.add_header('User-Agent', 'prometheus-proxy/1.0')
+                with urllib.request.urlopen(req, context=ctx, timeout=30) as response:
+                    content = response.read()
+                    self.send_response(response.status)
+                    self.send_header('Content-Type', response.headers.get('Content-Type', 'application/json'))
+                    self.send_header('Content-Length', len(content))
+                    self.end_headers()
+                    self.wfile.write(content)
+            except urllib.error.HTTPError as e:
+                print(f"[ERROR] HTTP {e.code}", file=sys.stderr)
+                self.send_response(e.code)
+                self.send_header('Content-Type', 'text/plain')
+                error_msg = f"Prometheus error: {e.code}".encode()
+                self.send_header('Content-Length', len(error_msg))
+                self.end_headers()
+                self.wfile.write(error_msg)
+            except Exception as e:
+                print(f"[ERROR] {e}", file=sys.stderr)
+                self.send_response(500)
+                self.send_header('Content-Type', 'text/plain')
+                error_msg = f"Proxy error: {str(e)}".encode()
+                self.send_header('Content-Length', len(error_msg))
+                self.end_headers()
+                self.wfile.write(error_msg)
+        def log_message(self, format, *args):
+            pass
+    with socketserver.TCPServer(("0.0.0.0", LISTEN_PORT), ProxyHandler) as httpd:
+        print(f"[INFO] Prometheus proxy listening on :{LISTEN_PORT}", file=sys.stderr)
+        httpd.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-proxy
+  namespace: openshift-keda
+  labels:
+    app: prometheus-proxy
+    managed-by: llm-d-benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-proxy
+  template:
+    metadata:
+      labels:
+        app: prometheus-proxy
+    spec:
+      serviceAccountName: keda-operator
+      containers:
+      - name: proxy
+        image: python:3.11-slim
+        command:
+        - python3
+        - /opt/prometheus-proxy/proxy.py
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: proxy-script
+          mountPath: /opt/prometheus-proxy
+          readOnly: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+      volumes:
+      - name: proxy-script
+        configMap:
+          name: prometheus-proxy-script
+          defaultMode: 0555
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-proxy
+  namespace: openshift-keda
+  labels:
+    app: prometheus-proxy
+    managed-by: llm-d-benchmark
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: prometheus-proxy
+{% endif %}

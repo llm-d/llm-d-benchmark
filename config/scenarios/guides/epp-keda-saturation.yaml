@@ -42,7 +42,7 @@ scenario:
       enabled: false
 
     gateway:
-      className: epponly
+      className: agentgateway
 
     # =========================================================================
     # EPP+KEDA SATURATION CONFIGURATION
