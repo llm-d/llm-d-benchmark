@@ -31,7 +31,6 @@ spec:
       # `llm-d.ai/guide` on serving pods (FMA via 24_fma-deployment.yaml.j2's
       # ISC labels stamped at bind time; modelservice via 13_ms-values.yaml.j2).
       # Selecting on `guide` keeps the PodMonitor identical for both paths
-      # — same as Braulio's working FMA+WVA setup in PR #552/#579.
       llm-d.ai/guide: "{{ wva.wellLitPath }}"
 {% else %}
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"

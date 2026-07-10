@@ -374,6 +374,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
                     "Iteration": iteration["iteration"]["value"],
                     "vLLM Name": launcher_info["name"],
                     "Node": node,
+                    "GPU UUID": launcher_info["requester_info"].get("gpu_uuids", ""),
                     "Actuation Condition": actuation_condition,
                     "T_actuation(s)": ttrr,
                     "T_hot(s)": t_hot_val,

@@ -119,7 +119,6 @@ scenario:
       #   3. Scale requester Deployment down to 1 (vLLM sleeps on 9 pods)
       #   4. Confirm sleeping vLLM instances are present
       warmupTimeout: 1200  # ← Increased: 10-20 min model load + scale-down verification
-      warmupBufferSeconds: 0  # ← No buffer needed
 
     # =========================================================================
     # WVA CONFIGURATION

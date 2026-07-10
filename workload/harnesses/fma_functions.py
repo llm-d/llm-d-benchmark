@@ -36,6 +36,7 @@ from nop_functions import (
 logger = logging.getLogger(__name__)
 
 DUAL_LABEL = "dual-pods.llm-d.ai/dual"
+ACCELERATORS_ANNOTATION = "dual-pods.llm-d.ai/accelerators"
 FMA_TIMEOUT = 10.0 * 60.0  # time (seconds) to wait
 
 # Name of the requester container whose start time is the actuation baseline
@@ -52,6 +53,7 @@ class FMARequesterInfo:
     ready_timestamp: float = 0.0
     dual_label_timestamp: float = 0.0
     container_start_timestamp: float = 0.0
+    gpu_uuids: str = ""
     pod: Any | None = None
 
     def dump(self) -> dict[str, Any]:
@@ -470,6 +472,9 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
         requester_info.ready_timestamp = get_ready_timestamp(p)
         requester_info.dual_label_timestamp = get_dual_label_timestamp(p)
         requester_info.container_start_timestamp = get_container_start_timestamp(p)
+        requester_info.gpu_uuids = (p.metadata.annotations or {}).get(
+            ACCELERATORS_ANNOTATION, ""
+        )
         requester_info.pod = p
         all_requester_pods[p.metadata.name] = requester_info
 
@@ -524,6 +529,11 @@ def wait_for_requester_pods(  # pylint: disable=too-many-arguments,too-many-posi
                     requester_info.container_start_timestamp = (
                         get_container_start_timestamp(pod)
                     )
+                    _gpu = (pod.metadata.annotations or {}).get(
+                        ACCELERATORS_ANNOTATION, ""
+                    )
+                    if _gpu:
+                        requester_info.gpu_uuids = _gpu
                     # only calculate if it wasn't already calculated
                     if requester_info.dual_label_timestamp == 0.0:
                         requester_info.dual_label_timestamp = get_dual_label_timestamp(

@@ -146,8 +146,6 @@ scenario:
       # Warmup: a deliberate wait inserted in the run phase before the
       # benchmark fires.
       warmupTimeout: 600
-      warmupBufferSeconds: 240          # ~4 min; covers Qwen3-32B model load
-                                        # on remaining launchers in the pool
 
     # =========================================================================
     # WVA CONFIGURATION

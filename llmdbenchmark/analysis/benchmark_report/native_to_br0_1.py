@@ -2547,6 +2547,7 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                     "units": Units.S,
                     "value": requester_info.get("container_start_timestamp", 0.0),
                 }
+                ri["gpu_uuids"] = requester_info.get("gpu_uuids", "")
                 info["requester_info"] = ri
 
                 info["actuation_condition"] = launcher_info["actuation_condition"]
