@@ -65,7 +65,7 @@
 {% set hpa_name = model_id_label ~ '-decode' %}
 {% endif %}
 {% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
-{% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router-epp', true) %}
+{% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router', true) %}
 {% set prom_proxy_url = eppKedaSaturation.prometheus.proxyUrl | default('http://prometheus-proxy.openshift-keda:8080', true) %}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
