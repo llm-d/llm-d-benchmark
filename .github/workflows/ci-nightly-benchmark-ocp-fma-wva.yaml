@@ -401,10 +401,10 @@ jobs:
           fw_ws_cold_start = cold_start_mean(fw_ws_wva)
           fw_hs_cold_start = cold_start_mean(fw_hs_wva)
 
-          # T_actuation: mean wall-clock from each requester pod's creation to
-          # its Ready transition. Comes from kube API (resources.yaml) — no DPC
-          # log needed, so works for baseline (decode pods) AND FMA (requester
-          # pods).
+          # T_actuation: mean wall-clock from each serving container's START to
+          # its pod's Ready transition. Measuring from container start (not pod
+          # creation) excludes scheduling + image-pull + volume-mount overhead —
+          # matching FMA's httpstart, which times from container start.
           def _iso_full(s):
               """Parse an RFC3339 timestamp (with optional fractional seconds
               and Z suffix) into a tz-aware datetime, or None on failure."""
@@ -414,6 +414,18 @@ jobs:
                   return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
               except (ValueError, TypeError):
                   return None
+
+          # Serving-container names whose start marks the beginning of model
+          # actuation: "vllm" for the WVA/decode baseline,
+          # "inference-server" for FMA launcher & requester pods.
+          SERVING_CONTAINERS = ("inference-server", "vllm")
+
+          def _container_started(item):
+              for cs in item.get('status', {}).get('containerStatuses', []):
+                  if cs.get('name') in SERVING_CONTAINERS:
+                      running = (cs.get('state') or {}).get('running') or {}
+                      return _iso_full(running.get('startedAt'))
+              return None
 
           def actuation_mean(resources_path):
               if not HAVE_YAML or not resources_path or not os.path.isfile(resources_path):
@@ -432,14 +444,14 @@ jobs:
                   name = item.get('metadata', {}).get('name', '')
                   if 'fma-requester' not in name and '-decode-' not in name:
                       continue
-                  created = _iso_full(item['metadata'].get('creationTimestamp'))
+                  start = _container_started(item) or _iso_full(item['metadata'].get('creationTimestamp'))
                   ready = None
                   for c in item.get('status', {}).get('conditions', []):
                       if c.get('type') == 'Ready' and c.get('status') == 'True':
                           ready = _iso_full(c.get('lastTransitionTime'))
                           break
-                  if created and ready:
-                      durs.append((ready - created).total_seconds())
+                  if start and ready:
+                      durs.append((ready - start).total_seconds())
               return sum(durs)/len(durs) if durs else None
 
           bl_actuation = actuation_mean(bl_res)
@@ -482,9 +494,8 @@ jobs:
 
           print(f"| Cold-start mean (s) — wva log | {fmt(bl_cold_start, '', 1)} | {fmt(fw_ws_cold_start, '', 1)} | {fmt(fw_hs_cold_start, '', 1)} |")
 
-          # Mean pod create→Ready (kube-perspective). Captures the whole
-          # cold-start wall-clock for all three passes.
-          print(f"| T_actuation mean (s) — pod create→ready | {fmt(bl_actuation, '', 1)} | {fmt(fw_ws_actuation, '', 1)} | {fmt(fw_hs_actuation, '', 1)} |")
+          # Mean serving-container start→Ready.
+          print(f"| T_actuation mean (s) — container start→ready | {fmt(bl_actuation, '', 1)} | {fmt(fw_ws_actuation, '', 1)} | {fmt(fw_hs_actuation, '', 1)} |")
 
           if bl is None:
               print("\n_No baseline results found._")

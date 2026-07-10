@@ -5,9 +5,8 @@ Secret, thanos-querier ClusterRole) are cluster/admin-scoped and must be
 provisioned *before* any per-stack work runs. KEDA itself is pre-installed by
 cluster admins and not managed by this harness. These helpers are called from
 ``step_03_workload_monitoring`` once per unique ``wva.namespace`` across all
-rendered stacks. Per-stack resources (VariantAutoscaling + ScaledObject) are
-rendered from ``27_wva-variantautoscaling.yaml.j2`` / ``28_wva-scaledobject.yaml.j2``
-and applied in ``step_09``.
+rendered stacks. Per-stack ScaledObject is rendered from
+``28_wva-scaledobject.yaml.j2`` and applied in ``step_09``.
 
 Helpers live in this module (rather than in a step class) so both the
 admin step and per-stack step can import them without a cyclic dependency.
