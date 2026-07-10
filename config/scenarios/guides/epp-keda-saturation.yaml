@@ -43,6 +43,7 @@ scenario:
 
     gateway:
       className: agentgateway
+      externallyManaged: true  # agentgateway already exists in cluster
 
     # =========================================================================
     # EPP+KEDA SATURATION CONFIGURATION
