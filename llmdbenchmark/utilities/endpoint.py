@@ -797,3 +797,167 @@ def test_model_serving(
         return None  # success
 
     return last_error
+
+
+# vLLM cache-reset endpoints hit on each serving pod when ``reset_caches``
+# is enabled. All are POST, take no body, and only exist when the server was
+# launched with VLLM_SERVER_DEV_MODE=1.
+_CACHE_RESET_ENDPOINTS = (
+    "/reset_prefix_cache",
+    "/reset_mm_cache",
+    "/reset_encoder_cache",
+)
+
+
+def reset_caches_pods(
+    cmd: CommandExecutor,
+    namespace: str,
+    model_label: str,
+    inference_port: str | int,
+    plan_config: dict | None = None,
+    logger=None,
+    timeout_seconds: int = 30,
+) -> list[str]:
+    """Reset the prefix, multimodal, and encoder caches on every vLLM pod.
+
+    Discovers running pods labelled ``llm-d.ai/model=<model_label>`` in
+    *namespace* (all stack types -- modelservice, standalone, FMA --
+    apply this label to their served vLLM pods) and issues a single
+    ephemeral curl pod that loops over every pod IP, POSTing each of
+    ``/reset_prefix_cache``, ``/reset_mm_cache``, and
+    ``/reset_encoder_cache`` to it on *inference_port*.
+
+    These reset endpoints only exist when the vLLM server was launched with
+    ``VLLM_SERVER_DEV_MODE=1`` (the repo default via
+    ``vllmCommon.flags.serverDevMode``); a scenario that turns it off gets
+    a 404. All failures here are non-fatal: this returns a list of warning
+    strings (also logged if *logger* is given) and never raises, so a
+    failed reset never aborts a benchmark run.
+    """
+    warnings: list[str] = []
+
+    def _warn(msg: str) -> None:
+        warnings.append(msg)
+        if logger:
+            logger.log_warning(msg)
+
+    if not model_label:
+        _warn(
+            "reset_caches: no model label resolved -- cannot select "
+            "vLLM pods, skipping reset."
+        )
+        return warnings
+
+    # Discover running pod IPs by the serving-pod label. The jsonpath must
+    # contain no spaces: cmd.kube() joins argv with spaces and hands the
+    # result to a shell, so a `{range .items[*]}...` template would be
+    # word-split and its tail mis-read by kubectl as a positional pod name
+    # (colliding with `-l`). The space-free `{.items[*].status.podIP}` form
+    # prints every IP separated by a single space instead.
+    ip_result = cmd.kube(
+        "get",
+        "pods",
+        "-l",
+        f"llm-d.ai/model={model_label}",
+        "--namespace",
+        namespace,
+        "--field-selector=status.phase=Running",
+        "-o",
+        "jsonpath={.items[*].status.podIP}",
+        check=False,
+    )
+    if ip_result.dry_run:
+        return warnings
+    if not ip_result.success:
+        _warn(
+            f"reset_caches: failed to list vLLM pods in ns/{namespace}: "
+            f"{(ip_result.stderr or ip_result.stdout)[:200]}"
+        )
+        return warnings
+
+    pod_ips = [ip for ip in ip_result.stdout.split() if ip and ip != "null"]
+    if not pod_ips:
+        _warn(
+            f"reset_caches: no running vLLM pods found for "
+            f"'llm-d.ai/model={model_label}' in ns/{namespace} -- skipping reset."
+        )
+        return warnings
+
+    # Batch every pod IP x every cache endpoint into a single ephemeral curl
+    # pod. `-w '\n%{http_code}'` appends each request's status so a total
+    # failure is still diagnosable; per-request failures are surfaced inline
+    # by curl's own stderr (folded in via 2>&1). Non-2xx (esp. 404 when dev
+    # mode is off) is a warning, not an error.
+    ip_list = " ".join(pod_ips)
+    endpoint_list = " ".join(_CACHE_RESET_ENDPOINTS)
+    reset_url_tmpl = f"http://$ip:{inference_port}$ep"
+    inner = (
+        f"for ip in {ip_list}; do "
+        f"for ep in {endpoint_list}; do "
+        f'echo "== $ip$ep =="; '
+        f"curl -sk --max-time {timeout_seconds} "
+        f'-w "\\n%{{http_code}}\\n" -X POST {reset_url_tmpl} 2>&1; '
+        f"done; "
+        f"done"
+    )
+    curl_cmd = f"'{inner}'"
+
+    override_args = _build_overrides(plan_config)
+    curl_image = "quay.io/fedora/fedora"
+    pod_name = f"reset-caches-{_rand_suffix()}"
+
+    kubectl_args = (
+        [
+            "run",
+            pod_name,
+            "--rm",
+            "--attach",
+            "--quiet",
+            "--restart=Never",
+            "--namespace",
+            namespace,
+            f"--image={curl_image}",
+        ]
+        + _ephemeral_label_args()
+        + override_args
+        + ["--command", "--", "sh", "-c", curl_cmd]
+    )
+
+    result = cmd.kube(*kubectl_args, check=False)
+
+    if result.dry_run:
+        return warnings
+
+    if not result.success:
+        _warn(
+            f"reset_caches: curl pod failed against "
+            f"{len(pod_ips)} vLLM pod(s): "
+            f"{(result.stderr or result.stdout)[:200]}"
+        )
+        return warnings
+
+    # Every request prints its own trailing HTTP status line. A non-2xx
+    # anywhere is worth a warning -- most commonly VLLM_SERVER_DEV_MODE not
+    # being enabled (404), or a cache the server build doesn't support.
+    statuses = [
+        line.strip() for line in result.stdout.splitlines() if line.strip().isdigit()
+    ]
+    bad = [s for s in statuses if not s.startswith("2")]
+    if bad:
+        hint = ""
+        if "404" in bad:
+            hint = (
+                " (endpoint not found -- was the server launched with "
+                "VLLM_SERVER_DEV_MODE=1?)"
+            )
+        _warn(
+            f"reset_caches: {len(bad)}/{len(statuses)} reset request(s) "
+            f"returned non-2xx (e.g. HTTP {bad[0]}){hint}"
+        )
+    elif logger:
+        logger.log_info(
+            f"Reset prefix/mm/encoder caches on {len(pod_ips)} vLLM pod(s) "
+            f"in ns/{namespace}"
+        )
+
+    return warnings

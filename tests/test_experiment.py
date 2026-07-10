@@ -839,3 +839,65 @@ class TestSetupTreatment:
         overrides = {"model": {"maxModelLen": 16000}}
         t = SetupTreatment(name="test", overrides=overrides)
         assert t.overrides == overrides
+
+
+class TestReadResetCaches:
+    """Tests for ``parser.read_reset_caches`` -- the top-level
+    ``reset_caches`` key plumbed from the experiment YAML."""
+
+    def _write(self, tmp_path: Path, body: str) -> Path:
+        p = tmp_path / "exp.yaml"
+        p.write_text(textwrap.dedent(body), encoding="utf-8")
+        return p
+
+    def test_true(self, tmp_path: Path):
+        from llmdbenchmark.experiment.parser import read_reset_caches
+
+        p = self._write(
+            tmp_path,
+            """
+            reset_caches: true
+            treatments:
+              - name: t0
+            """,
+        )
+        assert read_reset_caches(str(p)) is True
+
+    def test_false(self, tmp_path: Path):
+        from llmdbenchmark.experiment.parser import read_reset_caches
+
+        p = self._write(
+            tmp_path,
+            """
+            reset_caches: false
+            treatments:
+              - name: t0
+            """,
+        )
+        assert read_reset_caches(str(p)) is False
+
+    def test_absent_defaults_false(self, tmp_path: Path):
+        from llmdbenchmark.experiment.parser import read_reset_caches
+
+        p = self._write(
+            tmp_path,
+            """
+            treatments:
+              - name: t0
+            """,
+        )
+        assert read_reset_caches(str(p)) is False
+
+    def test_none_or_missing_file_defaults_false(self, tmp_path: Path):
+        from llmdbenchmark.experiment.parser import read_reset_caches
+
+        assert read_reset_caches(None) is False
+        assert read_reset_caches(str(tmp_path / "nope.yaml")) is False
+
+    def test_real_input_length_sweep_defaults_false(self):
+        """The shipped experiment file keeps the key commented out."""
+        from llmdbenchmark.experiment.parser import read_reset_caches
+
+        f = PROJECT_ROOT / "experiments" / "input-length-sweep.yaml"
+        if f.exists():
+            assert read_reset_caches(str(f)) is False

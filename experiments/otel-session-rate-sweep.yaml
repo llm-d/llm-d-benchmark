@@ -18,6 +18,16 @@
 #     --workload otel_traces.yaml \
 #     --experiments experiments/otel-session-rate-sweep.yaml \
 #     --analyze
+#
+# Cache reset: with `reset_caches` enabled, before each treatment's run
+# the harness POSTs /reset_prefix_cache, /reset_mm_cache, and
+# /reset_encoder_cache to every vLLM serving pod, so every session-rate
+# treatment starts against cold caches without redeploying the stack.
+# Requires the server to run with VLLM_SERVER_DEV_MODE=1 (the repo
+# default via vllmCommon.flags.serverDevMode); if dev mode is off the
+# endpoints 404 and the reset is skipped with a warning (non-fatal).
+# Default false.
+reset_caches: true
 
 treatments:
   - name: rate0p02

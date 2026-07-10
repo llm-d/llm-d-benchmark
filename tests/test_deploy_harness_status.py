@@ -138,3 +138,112 @@ def test_treatment_with_wait_errors_is_reported_failed(
     assert "harness pod failed" in result.errors
     assert any("Treatment 'default' failed" in error for error in logger.errors)
     assert not any("Treatment 'default' complete" in info for info in logger.infos)
+
+
+def _base_context(tmp_path: Path, logger: _Logger) -> ExecutionContext:
+    stack_path = tmp_path / "plan" / "stack"
+    stack_path.mkdir(parents=True)
+    (stack_path / "config.yaml").write_text(
+        yaml.safe_dump(_plan_config()),
+        encoding="utf-8",
+    )
+    context = ExecutionContext(
+        plan_dir=tmp_path / "plan",
+        workspace=tmp_path,
+        base_dir=Path(__file__).resolve().parents[1],
+        namespace="bench",
+        harness_namespace="bench",
+        logger=logger,
+        cmd=_Command(),
+    )
+    context.deployed_endpoints["stack"] = "http://endpoint"
+    return context, stack_path
+
+
+def _patch_run_helpers(monkeypatch: Any) -> None:
+    """Stub out the wait/collect/delete helpers so the loop completes."""
+    monkeypatch.setattr(
+        deploy_harness,
+        "wait_for_pods_by_label",
+        lambda *_a, **_k: [],
+    )
+    monkeypatch.setattr(
+        DeployHarnessStep,
+        "_collect_treatment_results_discovery",
+        lambda *_a, **_k: [],
+    )
+    monkeypatch.setattr(
+        deploy_harness,
+        "delete_pods_by_names",
+        lambda *_a, **_k: None,
+    )
+
+
+def test_reset_caches_called_once_per_treatment(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.reset_caches = True
+    context.experiment_treatments = [
+        {"name": "t0", "overrides": {}},
+        {"name": "t1", "overrides": {}},
+    ]
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        deploy_harness,
+        "reset_caches_pods",
+        lambda cmd, ns, label, port, **kw: calls.append((ns, label, port)) or [],
+    )
+    _patch_run_helpers(monkeypatch)
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert result.success
+    # One reset per treatment, targeting the serving namespace, the model
+    # label, and vllmCommon.inferencePort from the fixture.
+    assert len(calls) == 2
+    assert all(ns == "bench" for ns, _label, _port in calls)
+    assert all(port == 8000 for _ns, _label, port in calls)
+
+
+def test_reset_caches_not_called_when_disabled(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    # reset_caches defaults to False.
+    context.experiment_treatments = [{"name": "t0", "overrides": {}}]
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        deploy_harness,
+        "reset_caches_pods",
+        lambda *a, **k: calls.append(a) or [],
+    )
+    _patch_run_helpers(monkeypatch)
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert result.success
+    assert calls == []
+
+
+def test_reset_caches_skipped_in_dry_run(tmp_path: Path, monkeypatch: Any) -> None:
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.reset_caches = True
+    context.dry_run = True
+    context.experiment_treatments = [{"name": "t0", "overrides": {}}]
+
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        deploy_harness,
+        "reset_caches_pods",
+        lambda *a, **k: calls.append(a) or [],
+    )
+
+    DeployHarnessStep().execute(context, stack_path)
+
+    assert calls == []

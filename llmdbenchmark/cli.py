@@ -810,6 +810,15 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
 
     experiments_file = experiment_file_override or getattr(args, "experiments", None)
 
+    # Honor the top-level ``reset_caches`` key in the experiment YAML. When
+    # set, step_07 POSTs the vLLM cache-reset endpoints (prefix/mm/encoder)
+    # to every serving pod before each treatment's run. Covers both the
+    # `run` and `experiment` subcommands, which both flow their file through
+    # ``experiments_file``.
+    from llmdbenchmark.experiment.parser import read_reset_caches
+
+    reset_caches = read_reset_caches(experiments_file)
+
     context = ExecutionContext(
         plan_dir=config.plan_dir,
         workspace=config.workspace,
@@ -842,6 +851,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         ),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
+        reset_caches=reset_caches,
         harness_service_account=getattr(args, "serviceaccount", None),
         harness_envvars_to_pod=getattr(args, "envvarspod", None),
         analyze_locally=getattr(args, "analyze", False),

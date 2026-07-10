@@ -29,6 +29,7 @@ from llmdbenchmark.utilities.kube_helpers import (
     capture_infrastructure_logs,
 )
 from llmdbenchmark.utilities.cloud_upload import upload_results_dir
+from llmdbenchmark.utilities.endpoint import reset_caches_pods
 
 
 class DeployHarnessStep(Step):
@@ -216,6 +217,29 @@ class DeployHarnessStep(Step):
                 if treatment
                 else profile_name
             )
+
+            # Reset the vLLM prefix/multimodal/encoder caches before this
+            # treatment's run so it starts cold. Fires once per treatment
+            # (before the parallel-pod group), not per parallel pod: the
+            # parallel pods run concurrently against the same servers, so a
+            # reset between them would wipe a cache a sibling is actively
+            # warming. Non-fatal -- warnings only.
+            if (
+                context.reset_caches
+                and not context.dry_run
+                and not context.harness_debug
+            ):
+                inference_port = (
+                    (plan_config or {}).get("vllmCommon", {}).get("inferencePort", 8000)
+                )
+                reset_caches_pods(
+                    cmd,
+                    deploy_namespace or harness_ns,
+                    model_label,
+                    inference_port,
+                    plan_config=plan_config,
+                    logger=context.logger,
+                )
 
             for parallel_idx in range(1, parallelism + 1):
                 pod_suffix = self._rand_suffix(8)

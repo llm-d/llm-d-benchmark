@@ -136,6 +136,29 @@ def _count_run_treatments(exp_data: dict) -> int:
     return 0
 
 
+def read_reset_caches(experiments_file: str | Path | None) -> bool:
+    """Read the top-level ``reset_caches`` flag from an experiment YAML.
+
+    Returns False when the file is unset, missing, unreadable, not a mapping,
+    or lacks the key -- the feature is strictly opt-in and never blocks a run
+    on a parse problem here. Consumed by the ``run``/``experiment`` CLI paths
+    to populate ``ExecutionContext.reset_caches``.
+    """
+    if not experiments_file:
+        return False
+    path = Path(experiments_file)
+    if not path.exists():
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    return bool(data.get("reset_caches", False))
+
+
 def parse_experiment(path: Path) -> ExperimentPlan:
     """Parse an experiment YAML file into an ExperimentPlan."""
     path = Path(path).resolve()

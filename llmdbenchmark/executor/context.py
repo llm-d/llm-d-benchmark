@@ -93,6 +93,13 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_wait_timeout: int = 3600
     harness_debug: bool = False
     harness_skip_run: bool = False
+    # When True, reset the vLLM prefix, multimodal, and encoder caches
+    # (POST /reset_prefix_cache, /reset_mm_cache, /reset_encoder_cache) on
+    # every serving pod before each treatment's run, so every treatment
+    # starts against cold caches. Set via the top-level ``reset_caches`` key
+    # in the --experiments YAML. Requires the server to run with
+    # VLLM_SERVER_DEV_MODE=1 (the repo default); resets are non-fatal.
+    reset_caches: bool = False
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
     analyze_locally: bool = False
