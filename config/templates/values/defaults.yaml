@@ -707,6 +707,26 @@ routing:
     # zapTimeEncoding: epoch
 
 # ============================================================================
+# HTTPROUTE CONFIGURATION
+#
+# Gateway-API HTTPRoute settings consumed by 08_httproute.yaml.j2. Applies to
+# every rule the template emits (both per-stack and shared modes).
+#
+#   requestTimeout        End-to-end request timeout the gateway enforces.
+#                         Requests exceeding it are aborted with a 502 (which
+#                         surfaces as a "connection reset by peer" on the
+#                         decode routing-proxy loopback hop). Set "0s" to
+#                         disable -- appropriate for long agentic turns.
+#   backendRequestTimeout Per-retry backend timeout; "0s" disables.
+#
+# Shared-mode-only knobs (mode/name/pathPrefix/rewriteTo) are documented in
+# the template header and read with their own defaults.
+# ============================================================================
+httpRoute:
+  requestTimeout: "300s"
+  backendRequestTimeout: "0s"
+
+# ============================================================================
 # VLLM COMMON CONFIGURATION
 # ============================================================================
 vllmCommon:

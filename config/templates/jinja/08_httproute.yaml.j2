@@ -19,6 +19,19 @@
                              no substitution token the stacks will collide
      httpRoute.rewriteTo    (default: "/v1")
 
+   Timeout knobs (both modes, optional; Gateway-API HTTPRoute timeouts):
+     httpRoute.requestTimeout         (default: "300s") - end-to-end request
+                             timeout the gateway enforces. Long agentic turns
+                             that exceed it are aborted with a 502; set "0s"
+                             to disable. Applies to every rule this template
+                             emits.
+     httpRoute.backendRequestTimeout  (default: "0s")  - per-retry backend
+                             timeout; "0s" disables.
+#}
+{% set _request_timeout = (httpRoute.requestTimeout if httpRoute is defined and httpRoute.requestTimeout is defined else '300s') %}
+{% set _backend_request_timeout = (httpRoute.backendRequestTimeout if httpRoute is defined and httpRoute.backendRequestTimeout is defined else '0s') %}
+{#
+
    `siblingStacks` and `stackIndex` are injected by
    llmdbenchmark.parser.render_plans._process_stack.
 #}
@@ -57,8 +70,8 @@ spec:
         port: {{ decode.vllm.servicePort }}
         weight: 1
       timeouts:
-        backendRequest: 0s
-        request: 300s
+        backendRequest: {{ _backend_request_timeout }}
+        request: {{ _request_timeout }}
       matches:
         - path:
             type: PathPrefix
@@ -90,8 +103,8 @@ spec:
         port: {{ decode.vllm.servicePort }}
         weight: 1
       timeouts:
-        backendRequest: 0s
-        request: 0s
+        backendRequest: {{ _backend_request_timeout }}
+        request: {{ _request_timeout }}
       matches:
         - path:
             type: PathPrefix
@@ -110,7 +123,7 @@ spec:
         port: {{ decode.vllm.servicePort }}
         weight: 1
       timeouts:
-        backendRequest: 0s
-        request: 0s
+        backendRequest: {{ _backend_request_timeout }}
+        request: {{ _request_timeout }}
 {% endif %}
 {% endif %}

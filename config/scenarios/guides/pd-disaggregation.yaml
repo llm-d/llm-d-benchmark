@@ -146,6 +146,17 @@ scenario:
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
 
     # -------------------------------------------------------------------------
+    # HTTPRoute Configuration
+    # requestTimeout: end-to-end Gateway-API HTTPRoute timeout the istio
+    # gateway enforces per request. Long agentic turns that exceed it are
+    # aborted by the gateway with a 502 (surfaces as "connection reset by
+    # peer" on the decode routing-proxy loopback hop). Set "0s" to disable.
+    # -------------------------------------------------------------------------
+    httpRoute:
+      requestTimeout: "300s"
+      backendRequestTimeout: "0s"
+
+    # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # Reference: https://github.com/llm-d/llm-d/blob/main/guides/pd-disaggregation/router/pd-disaggregation.values.yaml
     # The plugins block uses the `llm-d.ai/v1alpha1` apiVersion shipped
