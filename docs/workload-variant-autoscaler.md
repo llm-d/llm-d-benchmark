@@ -515,9 +515,7 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 |---|---|
 | Kustomize wrapper for the WVA controller install | [`config/templates/jinja/19_wva-kustomize.yaml.j2`](../config/templates/jinja/19_wva-kustomize.yaml.j2) |
 | WVA namespace label patch | [`config/templates/jinja/23_wva-namespace.yaml.j2`](../config/templates/jinja/23_wva-namespace.yaml.j2) |
-| Per-stack `VariantAutoscaling` | [`config/templates/jinja/27_wva-variantautoscaling.yaml.j2`](../config/templates/jinja/27_wva-variantautoscaling.yaml.j2) |
-| Per-stack `HorizontalPodAutoscaler` | [`config/templates/jinja/28_wva-hpa.yaml.j2`](../config/templates/jinja/28_wva-hpa.yaml.j2) |
-| `prometheus-adapter` values | [`config/templates/jinja/21_prometheus-adapter-values.yaml.j2`](../config/templates/jinja/21_prometheus-adapter-values.yaml.j2) |
+| Per-stack `VariantAutoscaling` + `HorizontalPodAutoscaler` | [`config/templates/jinja/28_wva-scaledobject.yaml.j2`](../config/templates/jinja/28_wva-scaledobject.yaml.j2) |
 | `allow-thanos-querier-api-access` ClusterRole | [`config/templates/jinja/22_prometheus-rbac.yaml.j2`](../config/templates/jinja/22_prometheus-rbac.yaml.j2) |
 | Cluster-wide WVA defaults (chart version, image, monitoring URL) | [`config/templates/values/defaults.yaml`](../config/templates/values/defaults.yaml) (`wva:` and `chartVersions.wva` blocks) |
 | Standup admin install (controller + adapter) | [`llmdbenchmark/standup/steps/step_03_workload_monitoring.py`](../llmdbenchmark/standup/steps/step_03_workload_monitoring.py) |
