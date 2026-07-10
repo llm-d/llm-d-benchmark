@@ -515,11 +515,12 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 |---|---|
 | Kustomize wrapper for the WVA controller install | [`config/templates/jinja/19_wva-kustomize.yaml.j2`](../config/templates/jinja/19_wva-kustomize.yaml.j2) |
 | WVA namespace label patch | [`config/templates/jinja/23_wva-namespace.yaml.j2`](../config/templates/jinja/23_wva-namespace.yaml.j2) |
+| KEDA trigger authentication | [`config/templates/jinja/21_keda-triggerauthentication.yaml.j2`](../config/templates/jinja/21_keda-triggerauthentication.yaml.j2) |
 | Per-stack `VariantAutoscaling` + `HorizontalPodAutoscaler` | [`config/templates/jinja/28_wva-scaledobject.yaml.j2`](../config/templates/jinja/28_wva-scaledobject.yaml.j2) |
 | `allow-thanos-querier-api-access` ClusterRole | [`config/templates/jinja/22_prometheus-rbac.yaml.j2`](../config/templates/jinja/22_prometheus-rbac.yaml.j2) |
 | Cluster-wide WVA defaults (chart version, image, monitoring URL) | [`config/templates/values/defaults.yaml`](../config/templates/values/defaults.yaml) (`wva:` and `chartVersions.wva` blocks) |
 | Standup admin install (controller + adapter) | [`llmdbenchmark/standup/steps/step_03_workload_monitoring.py`](../llmdbenchmark/standup/steps/step_03_workload_monitoring.py) |
-| Standup per-stack VA/HPA apply | [`llmdbenchmark/standup/steps/step_09_deploy_modelservice.py`](../llmdbenchmark/standup/steps/step_09_deploy_modelservice.py) |
+| Standup per-stack WVA/KEDA apply | [`llmdbenchmark/standup/steps/step_09_deploy_modelservice.py`](../llmdbenchmark/standup/steps/step_09_deploy_modelservice.py) |
 | Shared install/teardown helpers | [`llmdbenchmark/standup/wva.py`](../llmdbenchmark/standup/wva.py) |
 | Teardown logic | [`llmdbenchmark/teardown/steps/step_01_uninstall_helm.py`](../llmdbenchmark/teardown/steps/step_01_uninstall_helm.py) |
 | Smoketest WVA mixin | [`llmdbenchmark/smoketests/validators/wva.py`](../llmdbenchmark/smoketests/validators/wva.py) |

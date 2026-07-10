@@ -7,6 +7,7 @@ step_08, and step_10.
 
 from __future__ import annotations
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -27,6 +28,55 @@ CRASH_STATES = {
 }
 
 DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
+
+
+def _container_crash_summary(pod_name: str, container_status: dict) -> str | None:
+    """Return a concise crash summary for one container status."""
+    container_name = container_status.get("name", "?")
+
+    state = container_status.get("state", {}) or {}
+    last_state = container_status.get("lastState", {}) or {}
+
+    current_terminated = state.get("terminated") or {}
+    current_waiting = state.get("waiting") or {}
+    last_terminated = last_state.get("terminated") or {}
+
+    current_reason = current_terminated.get("reason") or current_waiting.get("reason")
+    last_reason = last_terminated.get("reason")
+
+    if current_reason not in CRASH_STATES and last_reason not in CRASH_STATES:
+        return None
+
+    details = []
+    if current_reason in CRASH_STATES:
+        details.append(current_reason)
+    if last_reason in CRASH_STATES and last_reason != current_reason:
+        details.append(f"last terminated: {last_reason}")
+
+    exit_code = current_terminated.get("exitCode")
+    if exit_code is None:
+        exit_code = last_terminated.get("exitCode")
+    if exit_code is not None:
+        details.append(f"exit_code={exit_code}")
+
+    return f"{pod_name}/{container_name} ({', '.join(details)})"
+
+
+def _summarize_pod_failures(pods_json: str) -> list[str]:
+    """Extract crash summaries from ``kubectl get pods -o json`` output."""
+    try:
+        data = json.loads(pods_json)
+    except json.JSONDecodeError:
+        return []
+
+    failures: list[str] = []
+    for item in data.get("items", []):
+        pod_name = item.get("metadata", {}).get("name", "?")
+        for container_status in item.get("status", {}).get("containerStatuses", []):
+            summary = _container_crash_summary(pod_name, container_status)
+            if summary:
+                failures.append(summary)
+    return failures
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +253,7 @@ def wait_for_pods_by_label(
         errors.append(f"Pods did not complete within timeout: {result.stderr.strip()}")
         return errors
 
-    # Check for crash states
+    # Check for crash states and surface the concrete pod/container reason.
     check_result = cmd.kube(
         "get",
         "pods",
@@ -211,18 +261,19 @@ def wait_for_pods_by_label(
         f"app={label}",
         "--namespace",
         namespace,
-        "--no-headers",
+        "-o",
+        "json",
         check=False,
     )
     if check_result.success and check_result.stdout:
-        for state in CRASH_STATES:
-            if state in check_result.stdout:
-                errors.append(
-                    f"Found pods in error state. Run: "
-                    f"kubectl --namespace {namespace} get pods "
-                    f"-l app={label}"
-                )
-                break
+        failures = _summarize_pod_failures(check_result.stdout)
+        if failures:
+            errors.append(
+                "Found pods in error state: "
+                f"{'; '.join(failures)}. Run: "
+                f"kubectl --namespace {namespace} describe pod "
+                f"-l app={label}"
+            )
 
     if not errors:
         context.logger.log_info("All pods completed successfully")
