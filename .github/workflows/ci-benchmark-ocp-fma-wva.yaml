@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark on OCP ("WVA+FMA" autoscaling path)
+name: CI - Run Benchmark on OCP ("WVA+FMA" autoscaling path)
 
 # Mirrors ci-nightly-benchmark-ocp-fma.yaml but targets the WVA(modelservice)+FMA scenario
 # under inference-perf load. Default harness is inference-perf +
@@ -314,8 +314,11 @@ jobs:
           BL_RES=$(find_in_results "$BASELINE_DIR"            "resources.yaml")
           FW_WARMSTART_RES=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "resources.yaml")
           FW_HOTSTART_RES=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "resources.yaml")
+          BL_EVENTS=$(find_in_results "$BASELINE_DIR"            "events.json")
+          FW_WARMSTART_EVENTS=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "events.json")
+          FW_HOTSTART_EVENTS=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "events.json")
 
-          python3 - "$BL_SUM" "$FW_WARMSTART_SUM" "$FW_HOTSTART_SUM" "$BL_WVA" "$FW_WARMSTART_WVA" "$FW_HOTSTART_WVA" "$BL_RES" "$FW_WARMSTART_RES" "$FW_HOTSTART_RES" \
+          python3 - "$BL_SUM" "$FW_WARMSTART_SUM" "$FW_HOTSTART_SUM" "$BL_WVA" "$FW_WARMSTART_WVA" "$FW_HOTSTART_WVA" "$BL_RES" "$FW_WARMSTART_RES" "$FW_HOTSTART_RES" "$BL_EVENTS" "$FW_WARMSTART_EVENTS" "$FW_HOTSTART_EVENTS" \
             >> "$GITHUB_STEP_SUMMARY" <<'PY'
           import json, sys, os, re, datetime
           try:
@@ -326,7 +329,8 @@ jobs:
 
           (bl_sum, fw_ws_sum, fw_hs_sum,
            bl_wva, fw_ws_wva, fw_hs_wva,
-           bl_res, fw_ws_res, fw_hs_res) = sys.argv[1:10]
+           bl_res, fw_ws_res, fw_hs_res,
+           bl_events, fw_ws_events, fw_hs_events) = sys.argv[1:13]
 
           def load_json(p):
               if not p or not os.path.isfile(p):
@@ -354,52 +358,9 @@ jobs:
               if isinstance(v, float): return f"{v:.{precision}f}{unit}"
               return f"{v}{unit}"
 
-          # ----- Scale-event timing (single-source: WVA controller log) -----
-          # Cold-start mean = mean delta between each `"shouldScaleUp":true`
-          # event and the FIRST subsequent reconcile where WVA observes the
-          # replica count has increased (`"totalReplicas":N+1`)
-          ISO_RE = re.compile(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})Z')
-
-          def parse_iso(s):
-              if not s: return None
-              try:
-                  return datetime.datetime.strptime(s.split('.')[0].rstrip('Z'),
-                                                    '%Y-%m-%dT%H:%M:%S')
-              except ValueError:
-                  return None
-
-          def cold_start_mean(log_path):
-              if not log_path or not os.path.isfile(log_path):
-                  return None
-              scale_up_rx = re.compile(r'"shouldScaleUp":\s*true')
-              total_rx = re.compile(r'"totalReplicas":\s*(\d+)')
-              pending_decision_ts = None
-              last_observed_n = None
-              deltas = []
-              with open(log_path) as f:
-                  for line in f:
-                      m = ISO_RE.match(line)
-                      if not m:
-                          continue
-                      ts = parse_iso(m.group(1))
-                      if ts is None:
-                          continue
-                      n_match = total_rx.search(line)
-                      if n_match:
-                          n = int(n_match.group(1))
-                          if (pending_decision_ts is not None
-                                  and last_observed_n is not None
-                                  and n > last_observed_n):
-                              deltas.append((ts - pending_decision_ts).total_seconds())
-                              pending_decision_ts = None
-                          last_observed_n = n
-                      if scale_up_rx.search(line) and pending_decision_ts is None:
-                          pending_decision_ts = ts
-              return sum(deltas) / len(deltas) if deltas else None
-
-          bl_cold_start = cold_start_mean(bl_wva)
-          fw_ws_cold_start = cold_start_mean(fw_ws_wva)
-          fw_hs_cold_start = cold_start_mean(fw_hs_wva)
+          # ----- Scale actuation timing (scaler-agnostic: pod lifecycle) -----
+          # FMA requester Deployment is scaled via a KEDAScaledObject -> HPA,
+          # so timing is measured from the captured resources.yaml (pod status)
 
           # T_actuation: mean wall-clock from each serving container's START to
           # its pod's Ready transition. Measuring from container start (not pod
@@ -458,6 +419,76 @@ jobs:
           fw_ws_actuation = actuation_mean(fw_ws_res)
           fw_hs_actuation = actuation_mean(fw_hs_res)
 
+          # T_scale_up: autoscaler scale-UP latency, event-anchored. t0 = each
+          # HPA SuccessfulRescale scale-up event (where "New size" increases);
+          # t1 = that replica's Ready. Only scale-UPs count, so it's robust to
+          # the end-of-run scale-down that overwrites HPA.lastScaleTime. Reads
+          # events.json (absolute timestamps) + resources.yaml (pod Ready) --
+          # identical for WVA & EPP-KEDA (both drive a KEDA-managed HPA that
+          # emits SuccessfulRescale). Returns None if no scale-up event is found
+          # or the scaled-up pods were already deleted by capture time.
+          def t_scale_up_mean(events_path, resources_path):
+              if not HAVE_YAML or not events_path or not os.path.isfile(events_path):
+                  return None
+              try:
+                  with open(events_path) as f:
+                      ev = json.load(f)
+              except (ValueError, OSError):
+                  return None
+              size_rx = re.compile(r'New size:\s*(\d+)')
+              def _etime(e):
+                  return e.get('lastTimestamp') or e.get('eventTime') or e.get('firstTimestamp') or ''
+              ups, prev = [], None
+              evitems = ev.get('items', []) if isinstance(ev, dict) else []
+              for e in sorted(evitems, key=_etime):
+                  if e.get('reason') != 'SuccessfulRescale':
+                      continue
+                  if (e.get('involvedObject', {}) or {}).get('kind') != 'HorizontalPodAutoscaler':
+                      continue
+                  m = size_rx.search(e.get('message', '') or '')
+                  if not m:
+                      continue
+                  n = int(m.group(1))
+                  t = _iso_full(_etime(e))
+                  if t and (prev is None or n > prev):
+                      ups.append(t)
+                  prev = n
+              if not ups:
+                  return None
+              readies = []
+              if resources_path and os.path.isfile(resources_path):
+                  try:
+                      with open(resources_path) as f:
+                          doc = yaml.safe_load(f)
+                  except (yaml.YAMLError, OSError):
+                      doc = None
+                  ritems = doc.get('items', []) if isinstance(doc, dict) and doc.get('kind') == 'List' else []
+                  for item in ritems:
+                      if item.get('kind') != 'Pod':
+                          continue
+                      name = item.get('metadata', {}).get('name', '')
+                      if 'fma-requester' not in name and '-decode-' not in name:
+                          continue
+                      for c in item.get('status', {}).get('conditions', []):
+                          if c.get('type') == 'Ready' and c.get('status') == 'True':
+                              r = _iso_full(c.get('lastTransitionTime'))
+                              if r:
+                                  readies.append(r)
+              readies.sort()
+              used = [False] * len(readies)
+              durs = []
+              for t0 in ups:
+                  for i, r in enumerate(readies):
+                      if not used[i] and r >= t0:
+                          durs.append((r - t0).total_seconds())
+                          used[i] = True
+                          break
+              return sum(durs) / len(durs) if durs else None
+
+          bl_t_scale_up = t_scale_up_mean(bl_events, bl_res)
+          fw_ws_t_scale_up = t_scale_up_mean(fw_ws_events, fw_ws_res)
+          fw_hs_t_scale_up = t_scale_up_mean(fw_hs_events, fw_hs_res)
+
           # ----- Render the table --------------------------------------------
           print("| Metric | Baseline (WVA without FMA) | WVA with FMA Warm Start | WVA with FMA Hot Start |")
           print("|---|---:|---:|---:|")
@@ -492,9 +523,7 @@ jobs:
               fw_hs_v = get(fw_hs, *keys, scale=scale)
               print(f"| {label} | {fmt(bl_v, unit, prec)} | {fmt(fw_ws_v, unit, prec)} | {fmt(fw_hs_v, unit, prec)} |")
 
-          print(f"| Cold-start mean (s) — wva log | {fmt(bl_cold_start, '', 1)} | {fmt(fw_ws_cold_start, '', 1)} | {fmt(fw_hs_cold_start, '', 1)} |")
-
-          # Mean serving-container start→Ready.
+          print(f"| T_scale_up mean (s) — HPA scale→ready | {fmt(bl_t_scale_up, '', 1)} | {fmt(fw_ws_t_scale_up, '', 1)} | {fmt(fw_hs_t_scale_up, '', 1)} |")
           print(f"| T_actuation mean (s) — container start→ready | {fmt(bl_actuation, '', 1)} | {fmt(fw_ws_actuation, '', 1)} | {fmt(fw_hs_actuation, '', 1)} |")
 
           if bl is None:
@@ -555,6 +584,18 @@ jobs:
           f="${{ steps.cs.outputs.baseline_exp }}/hpa-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for baseline"
 
+      - name: Dump ScaledObject — Baseline (WVA without FMA)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.baseline_exp }}/scaledobject.txt"
+          [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for baseline"
+
+      - name: Dump ScaledObject describe — Baseline (WVA without FMA)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.baseline_exp }}/scaledobject-describe.txt"
+          [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for baseline"
+
       - name: Dump WVA controller log tail — Baseline (WVA without FMA)
         if: always()
         run: |
@@ -586,6 +627,18 @@ jobs:
         run: |
           f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for warm-start"
+
+      - name: Dump ScaledObject — WVA with FMA (Warm-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/scaledobject.txt"
+          [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for warm-start"
+
+      - name: Dump ScaledObject describe — WVA with FMA (Warm-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/scaledobject-describe.txt"
+          [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for warm-start"
 
       - name: Dump WVA controller log tail — WVA with FMA (Warm-Start)
         if: always()
@@ -624,6 +677,18 @@ jobs:
         run: |
           f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for hot-start"
+
+      - name: Dump ScaledObject — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/scaledobject.txt"
+          [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for hot-start"
+
+      - name: Dump ScaledObject describe — WVA with FMA (Hot-Start)
+        if: always()
+        run: |
+          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/scaledobject-describe.txt"
+          [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for hot-start"
 
       - name: Dump WVA controller log tail — WVA with FMA (Hot-Start)
         if: always()
