@@ -48,6 +48,7 @@ class _Context:
     model_name: str | None = None
     dataset_url: str | None = None
     dry_run: bool = False
+    harness_debug: bool = False
     experiment_treatments_file: str | None = None
     profile_overrides: str | None = None
     experiment_treatments: list[dict] | None = None
@@ -147,3 +148,33 @@ def test_render_profiles_returns_error_for_missing_local_workload_file(
     assert not result.success
     assert result.message == "Workload profile file not found"
     assert result.errors == [f"Workload profile file not found: {missing_file}"]
+
+
+def test_debug_render_profiles_includes_all_harness_workloads(tmp_path: Path) -> None:
+    base_dir = tmp_path / "base"
+    inference_perf_dir = base_dir / "workload" / "profiles" / "inference-perf"
+    guidellm_dir = base_dir / "workload" / "profiles" / "guidellm"
+    inference_perf_dir.mkdir(parents=True)
+    guidellm_dir.mkdir(parents=True)
+    (inference_perf_dir / "sanity.yaml.in").write_text(
+        "target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL\n",
+        encoding="utf-8",
+    )
+    (guidellm_dir / "chat.yaml.in").write_text("profile: constant\n", encoding="utf-8")
+
+    context = _Context(
+        workspace=tmp_path / "workspace",
+        base_dir=base_dir,
+        harness_debug=True,
+        deployed_endpoints={"stack": "http://endpoint"},
+    )
+
+    result = RenderProfilesStep().execute(context, _write_stack(tmp_path))
+
+    assert result.success
+    assert (
+        context.workload_profiles_dir() / "inference-perf" / "sanity.yaml"
+    ).read_text(encoding="utf-8") == "target: http://endpoint\n"
+    assert (context.workload_profiles_dir() / "guidellm" / "chat.yaml").read_text(
+        encoding="utf-8"
+    ) == "profile: constant\n"

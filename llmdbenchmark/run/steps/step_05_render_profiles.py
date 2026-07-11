@@ -140,6 +140,14 @@ class RenderProfilesStep(Step):
         if dataset_file_override is not None:
             env_map["LLMDBENCH_RUN_DATASET_FILE"] = dataset_file_override
 
+        if getattr(context, "harness_debug", False) and workload_file_path is None:
+            return self._render_all_debug_profiles(
+                context,
+                base_dir,
+                env_map,
+                stack_name,
+            )
+
         # Output directory for rendered profiles
         output_dir = context.workload_profiles_dir() / harness_name
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -254,6 +262,71 @@ class RenderProfilesStep(Step):
             step_name=self.name,
             success=True,
             message=f"Profiles rendered for {stack_name}",
+            stack_name=stack_name,
+        )
+
+    def _render_all_debug_profiles(
+        self,
+        context: ExecutionContext,
+        base_dir: Path,
+        env_map: dict[str, str],
+        stack_name: str,
+    ) -> StepResult:
+        """Render every built-in harness profile for a debug harness pod."""
+        profiles_root = base_dir / "workload" / "profiles"
+        if not profiles_root.is_dir():
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="Profile source directory not found",
+                errors=[f"Profiles directory not found: {profiles_root}"],
+                stack_name=stack_name,
+            )
+
+        rendered_count = 0
+        harness_count = 0
+        for harness_dir in sorted(profiles_root.iterdir()):
+            if not harness_dir.is_dir():
+                continue
+
+            output_dir = context.workload_profiles_dir() / harness_dir.name
+            output_dir.mkdir(parents=True, exist_ok=True)
+            harness_count += 1
+
+            for src_file in sorted(harness_dir.iterdir()):
+                if not src_file.is_file():
+                    continue
+                dest_name = (
+                    src_file.name[:-3]
+                    if src_file.name.endswith(".in")
+                    else src_file.name
+                )
+                dest_file = output_dir / dest_name
+                if context.dry_run:
+                    context.logger.log_info(
+                        f"[DRY RUN] Would render debug profile "
+                        f"{harness_dir.name}/{src_file.name} -> {dest_file}"
+                    )
+                    rendered_count += 1
+                    continue
+                if src_file.name.endswith(".yaml.in"):
+                    render_profile_file(src_file, dest_file, env_map)
+                else:
+                    shutil.copy2(src_file, dest_file)
+                rendered_count += 1
+
+        context.logger.log_info(
+            f"Debug profiles rendered to {context.workload_profiles_dir()}"
+        )
+        return StepResult(
+            step_number=self.number,
+            step_name=self.name,
+            success=True,
+            message=(
+                f"Rendered {rendered_count} debug workload profile(s) "
+                f"across {harness_count} harness(es)"
+            ),
             stack_name=stack_name,
         )
 

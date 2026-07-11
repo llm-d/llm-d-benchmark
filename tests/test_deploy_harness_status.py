@@ -415,3 +415,32 @@ def test_validate_failures_falls_back_for_non_otel_workload(
     # The positive failure count is ignored for a non-otel workload: the pods
     # exited clean, so the treatment succeeds.
     assert result.success
+
+
+def test_debug_harness_uses_generic_name_and_mounts_all_profiles(
+    tmp_path: Path,
+) -> None:
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.harness_debug = True
+    profiles_root = context.workload_profiles_dir()
+    (profiles_root / "guidellm").mkdir(parents=True)
+    (profiles_root / "inference-perf").mkdir(parents=True)
+    (profiles_root / "guidellm" / "chat.yaml").write_text(
+        "profile: constant\n", encoding="utf-8"
+    )
+    (profiles_root / "inference-perf" / "sanity.yaml").write_text(
+        "target: endpoint\n", encoding="utf-8"
+    )
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert result.success
+    pod_files = list(context.run_dir().glob("llmdbench-harness-debug-*.yaml"))
+    assert len(pod_files) == 1
+    pod = yaml.safe_load(pod_files[0].read_text(encoding="utf-8"))
+    assert pod["metadata"]["name"].startswith("llmdbench-harness-debug-")
+    container = pod["spec"]["containers"][0]
+    mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
+    assert mounts["guidellm-profiles"] == "/workspace/profiles/guidellm"
+    assert mounts["inference-perf-profiles"] == "/workspace/profiles/inference-perf"

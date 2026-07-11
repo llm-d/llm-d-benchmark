@@ -160,17 +160,22 @@ spec:
     volumeMounts:
     - name: results
       mountPath: /requests
-    - name: {{ harness.name }}-profiles
-      mountPath: /workspace/profiles/{{ harness.name }}
+{% set profile_mounts = profile_mounts | default([harness.name]) %}
+{% for profile_harness in profile_mounts %}
+    - name: {{ profile_harness }}-profiles
+      mountPath: /workspace/profiles/{{ profile_harness }}
+{% endfor %}
     - name: harness-scripts
       mountPath: /workspace/harnesses
   volumes:
   - name: results
     persistentVolumeClaim:
       claimName: {{ storage.workloadPvc.name }}
-  - name: {{ harness.name }}-profiles
+{% for profile_harness in profile_mounts %}
+  - name: {{ profile_harness }}-profiles
     configMap:
-      name: {{ harness.name }}-profiles
+      name: {{ profile_harness }}-profiles
+{% endfor %}
   - name: harness-scripts
     configMap:
       name: llmdbench-harness-scripts

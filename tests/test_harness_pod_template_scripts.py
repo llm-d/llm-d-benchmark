@@ -123,3 +123,32 @@ def test_harness_pod_receives_configured_time_series_metrics() -> None:
     }
 
     assert env["LLMDBENCH_TIME_SERIES_METRICS"] == '["vllm:custom_metric"]'
+
+
+def test_harness_pod_mounts_all_debug_profile_configmaps() -> None:
+    template_path = (
+        Path(__file__).resolve().parent.parent
+        / "config"
+        / "templates"
+        / "jinja"
+        / "20_harness_pod.yaml.j2"
+    )
+    values = _template_values()
+    values["profile_mounts"] = ["guidellm", "inference-perf"]
+
+    rendered = DeployHarnessStep._render_template(
+        template_path.read_text(encoding="utf-8"), values
+    )
+    pod = yaml.safe_load(rendered)
+    container = pod["spec"]["containers"][0]
+    mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
+    volumes = {
+        volume["name"]: volume["configMap"]["name"]
+        for volume in pod["spec"]["volumes"]
+        if "configMap" in volume
+    }
+
+    assert mounts["guidellm-profiles"] == "/workspace/profiles/guidellm"
+    assert mounts["inference-perf-profiles"] == "/workspace/profiles/inference-perf"
+    assert volumes["guidellm-profiles"] == "guidellm-profiles"
+    assert volumes["inference-perf-profiles"] == "inference-perf-profiles"

@@ -187,6 +187,7 @@ class DeployHarnessStep(Step):
             f"parallel pod(s) for '{harness_name}' (sequential per treatment)..."
         )
 
+        profile_mounts = self._profile_mounts(context, harness_name)
         total_deployed = 0
 
         for treatment_idx, treatment in enumerate(treatments, 1):
@@ -262,7 +263,11 @@ class DeployHarnessStep(Step):
 
                 for parallel_idx in range(1, parallelism + 1):
                     pod_suffix = self._rand_suffix(8)
-                    pod_name = f"{harness_name}-{pod_suffix}"
+                    pod_name = (
+                        f"llmdbench-harness-debug-{pod_suffix}"
+                        if context.harness_debug
+                        else f"{harness_name}-{pod_suffix}"
+                    )
 
                     # Per-pod results directory, suffixed with the pod index.
                     results_dir = f"{results_dir_prefix}/{experiment_id}_{parallel_idx}"
@@ -306,6 +311,7 @@ class DeployHarnessStep(Step):
                             "stack_type": stack_type,
                             "deploy_method": deploy_method,
                             "cluster_type": context.platform_type,
+                            "profile_mounts": profile_mounts,
                         }
                     )
 
@@ -929,6 +935,23 @@ class DeployHarnessStep(Step):
     def _rand_suffix(length: int = 8) -> str:
         """Generate a random lowercase alphanumeric suffix."""
         return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+    @staticmethod
+    def _profile_mounts(context: ExecutionContext, harness_name: str) -> list[str]:
+        """Return profile ConfigMaps to mount into the harness pod."""
+        if not context.harness_debug:
+            return [harness_name]
+
+        profiles_root = context.workload_profiles_dir()
+        if not profiles_root.is_dir():
+            return [harness_name]
+
+        mounts = [
+            path.name
+            for path in sorted(profiles_root.iterdir())
+            if path.is_dir() and any(child.is_file() for child in path.iterdir())
+        ]
+        return mounts or [harness_name]
 
     @staticmethod
     def _render_template(template_content: str, values: dict) -> str:

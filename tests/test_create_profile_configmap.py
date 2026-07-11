@@ -44,9 +44,20 @@ class _StubCmd:
 class _StubContext:
     def __init__(self, run_dir: Path) -> None:
         self._run_dir = run_dir
+        self.logger = _Logger()
 
     def run_dir(self) -> Path:
         return self._run_dir
+
+    def workload_profiles_dir(self) -> Path:
+        path = self._run_dir / "workload" / "profiles"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
+class _Logger:
+    def log_info(self, *_: Any, **__: Any) -> None:
+        pass
 
 
 class _StubLogger:
@@ -185,3 +196,35 @@ def test_harness_configmap_includes_repository_analyzers(tmp_path: Path) -> None
     assert f"--from-file={harness.name}={harness}" in create_args
     assert f"--from-file={analyzer.name}={analyzer}" in create_args
     assert not any(str(ignored) in arg for arg in create_args)
+
+
+def test_debug_profiles_create_configmap_for_each_harness(tmp_path: Path) -> None:
+    context = _StubContext(tmp_path)
+    profiles_root = context.workload_profiles_dir()
+    (profiles_root / "inference-perf").mkdir()
+    (profiles_root / "guidellm").mkdir()
+    (profiles_root / "inference-perf" / "a.yaml").write_text("a: 1\n")
+    (profiles_root / "guidellm" / "b.yaml").write_text("b: 1\n")
+    cmd = _StubCmd(
+        [
+            _Result(success=True, stdout="apiVersion: v1\nkind: ConfigMap\n"),
+            _Result(success=True),
+            _Result(success=True, stdout="apiVersion: v1\nkind: ConfigMap\n"),
+            _Result(success=True),
+        ]
+    )
+
+    results = CreateProfileConfigmapStep()._create_debug_profiles_configmaps(
+        context,
+        cmd,
+        "bench",
+    )
+
+    assert results == [
+        (True, "ConfigMap 'guidellm-profiles' created"),
+        (True, "ConfigMap 'inference-perf-profiles' created"),
+    ]
+    created_configmaps = [
+        call[0][2] for call in cmd.kube_calls if call[0][:2] == ("create", "configmap")
+    ]
+    assert created_configmaps == ["guidellm-profiles", "inference-perf-profiles"]
