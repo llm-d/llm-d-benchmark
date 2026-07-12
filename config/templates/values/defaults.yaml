@@ -1348,7 +1348,7 @@ downloadJob:
 # ============================================================================
 dataAccess:
   rsyncPort: *rsync_port
-  runAsUser: 0
+  runAsUser: ~
   nodeSelector: {}
   tolerations: []
 
