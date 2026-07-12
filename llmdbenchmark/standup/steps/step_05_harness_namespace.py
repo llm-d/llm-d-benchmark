@@ -122,7 +122,17 @@ class HarnessNamespaceStep(Step):
         if pod_yaml:
             result = cmd.kube("apply", "-f", str(pod_yaml))
             if not result.success:
-                errors.append(f"Failed to create data access pod: {result.stderr}")
+                if "Forbidden" in result.stderr and "pod updates may not change" in result.stderr:
+                    context.logger.log_info(
+                        "Data access pod spec changed — deleting stale pod and recreating..."
+                    )
+                    cmd.kube(
+                        "delete", "pod", "access-to-harness-data-workload-pvc",
+                        "--namespace", harness_ns, "--ignore-not-found", check=False,
+                    )
+                    result = cmd.kube("apply", "-f", str(pod_yaml))
+                if not result.success:
+                    errors.append(f"Failed to create data access pod: {result.stderr}")
 
         svc_yaml = self._find_rendered_yaml(
             context, "07_service_access_to_harness_data"
