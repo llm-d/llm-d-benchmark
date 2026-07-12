@@ -1,0 +1,27 @@
+# Cluster config for IBM Cloud OpenShift (VPC, exgentic cluster).
+#
+# Usage:
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
+#     --cluster-config config/cluster-configs/examples/openshift-ibm-vpc.yaml \
+#     -U <endpoint> -m <model> -p <namespace> -j 5
+#
+# Prerequisites (one-time, requires cluster-admin):
+#   oc create serviceaccount anyuid-sa -n <namespace>
+#   oc adm policy add-scc-to-user anyuid -z anyuid-sa -n <namespace>
+
+storage:
+  workloadPvc:
+    # IBM Cloud VPC file storage -- supports ReadWriteMany across nodes.
+    accessModes:
+      - ReadWriteMany
+    storageClassName: ibmc-vpc-file-1000-iops
+
+harness:
+  # ServiceAccount pre-granted the anyuid SCC (allows runAsUser: 0).
+  serviceAccount: anyuid-sa
+  # The eval container image expects to run as root.
+  runAsUser: 0
+
+dataAccess:
+  serviceAccount: anyuid-sa
+  runAsUser: 0

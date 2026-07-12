@@ -1,0 +1,15 @@
+# Cluster config for a local kind cluster.
+#
+# kind uses a single-node local-path provisioner (ReadWriteOnce only).
+# No SCCs, no anyuid needed -- pods can run as any user by default.
+#
+# Usage:
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
+#     --cluster-config config/cluster-configs/examples/kind.yaml \
+#     -U <endpoint> -m <model> -p <namespace> -j 1
+
+storage:
+  workloadPvc:
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: standard
