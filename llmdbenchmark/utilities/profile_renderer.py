@@ -114,15 +114,10 @@ def render_profile_file(
 
 
 # Dotted-key prefixes that flag a workload-treatment override as actually
-# being a plan/scenario field. Putting any of these under top-level
-# ``treatments:`` (or ``--overrides``) is a silent no-op today -- the value
-# lands in a corner of the override dict that ``apply_overrides`` walks
-# against the workload profile YAML, where the key path never exists.
-#
-# To actually vary these fields, the user wants ``setup.treatments`` in an
-# experiment YAML (modelservice/standalone), or ``kustomize.extraHelmSets``
-# (kustomize). ``classify_override_miss`` returns a sharper hint when it
-# sees one of these prefixes.
+# being a plan/scenario field. These never match the workload profile YAML,
+# so a treatment override on one is a silent no-op; to vary them the user
+# wants ``setup.treatments`` or ``kustomize.extraHelmSets`` instead.
+# ``classify_override_miss`` returns a sharper hint for these prefixes.
 _PLAN_LEVEL_PREFIXES: tuple[str, ...] = (
     "decode.",
     "prefill.",
@@ -168,21 +163,62 @@ def classify_override_miss(key: str) -> str:
     )
 
 
+_MISSING = object()
+
+
+def _descend(container: Any, part: str) -> Any:
+    """Step one level into a dict key or a list index.
+
+    Returns the child node, or ``_MISSING`` if ``part`` doesn't address an
+    existing element. Integer-looking ``part`` values index into lists, so
+    dotted paths can traverse list elements.
+    """
+    if isinstance(container, dict):
+        return container[part] if part in container else _MISSING
+    if isinstance(container, list):
+        try:
+            idx = int(part)
+        except ValueError:
+            return _MISSING
+        if -len(container) <= idx < len(container):
+            return container[idx]
+    return _MISSING
+
+
+def _assign(container: Any, part: str, value: Any) -> bool:
+    """Set ``part`` on the parent ``container`` (dict key or list index).
+
+    Returns True on success. A list index must already be in range (we set,
+    never append/grow); a bad index or non-container parent fails.
+    """
+    if isinstance(container, dict):
+        container[part] = value
+        return True
+    if isinstance(container, list):
+        try:
+            idx = int(part)
+        except ValueError:
+            return False
+        if -len(container) <= idx < len(container):
+            container[idx] = value
+            return True
+    return False
+
+
 def apply_overrides(
     profile_content: str, overrides: dict[str, str]
 ) -> tuple[str, list[str]]:
     """Apply dotted key=value overrides to a rendered YAML profile.
 
-    Parses the YAML, walks dotted keys to set values, and re-dumps.
+    Parses the YAML, walks dotted keys to set values, and re-dumps. Path
+    segments address dict keys or (when integer-looking) list indices.
 
-    Returns ``(rendered_content, unmatched_keys)``. ``unmatched_keys`` is the
-    list of override keys whose dotted path did not exist in the profile --
-    they were silently dropped under the old API. The caller is expected to
-    log a warning per unmatched key (see :func:`classify_override_miss` for a
-    pre-built hint).
+    Returns ``(rendered_content, unmatched_keys)``, where ``unmatched_keys``
+    are override keys whose dotted path did not exist in the profile. The
+    caller is expected to log a warning per unmatched key (see
+    :func:`classify_override_miss` for a pre-built hint).
 
-    Falls back to ``(original_content, [])`` if YAML parsing fails (we can't
-    even tell what would have matched).
+    Falls back to ``(original_content, [])`` if YAML parsing fails.
     """
     import yaml  # pylint: disable=import-outside-toplevel
 
@@ -191,26 +227,23 @@ def apply_overrides(
         if not isinstance(data, dict):
             return profile_content, []
 
-        # An override is "unmatched" when one of the PARENT keys along its
-        # dotted path doesn't exist -- in that case we can't even reach the
-        # leaf to write to, and silently dropping it is the bug we're
-        # warning about. A missing LEAF is still allowed (intentional
-        # add-new-field overrides keep working), but in practice a missing
-        # leaf with all parents present is unusual; we don't warn on it.
+        # An override is "unmatched" when a PARENT key along its dotted path
+        # doesn't exist, so we can't reach the leaf to write to. A missing
+        # leaf on a dict parent is still allowed (add-new-field overrides);
+        # a list parent requires an in-range index (see _assign).
         unmatched: list[str] = []
         for key, value in overrides.items():
             parts = key.split(".")
             target = data
             parent_chain_intact = True
             for part in parts[:-1]:
-                if isinstance(target, dict) and part in target:
-                    target = target[part]
-                else:
+                target = _descend(target, part)
+                if target is _MISSING:
                     parent_chain_intact = False
                     break
-            if parent_chain_intact and isinstance(target, dict):
-                target[parts[-1]] = _coerce_value(value)
-            else:
+            if not parent_chain_intact or not _assign(
+                target, parts[-1], _coerce_value(value)
+            ):
                 unmatched.append(key)
 
         return (

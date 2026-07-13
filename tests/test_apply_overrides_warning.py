@@ -103,17 +103,31 @@ class TestApplyOverridesMatching:
             "router.epp.pluginsConfigFile",
         }
 
-    def test_list_indexed_path_is_currently_reported_as_unmatched(self):
-        """``load.stages.0.rate`` -- the walker hits the ``stages`` list and
-        ``"0" in <list>`` is False, so the path is reported as unmatched.
+    def test_list_indexed_path_is_applied(self):
+        """An integer segment indexes into a list, so the override reaches
+        the leaf and is applied."""
+        import yaml
 
-        This is a pre-existing limitation of apply_overrides (it only walks
-        dicts), unrelated to the plan-level warning. We pin it here so a
-        future contributor who adds list-index support gets a failing test
-        to update, rather than silently changing the warning surface.
-        """
-        _, unmatched = apply_overrides(PROFILE, {"load.stages.0.rate": "10"})
-        assert unmatched == ["load.stages.0.rate"]
+        content, unmatched = apply_overrides(PROFILE, {"load.stages.0.rate": "10"})
+        assert unmatched == []
+        assert yaml.safe_load(content)["load"]["stages"][0]["rate"] == 10
+
+    def test_negative_list_index_is_applied(self):
+        import yaml
+
+        content, unmatched = apply_overrides(PROFILE, {"load.stages.-1.duration": "90"})
+        assert unmatched == []
+        assert yaml.safe_load(content)["load"]["stages"][-1]["duration"] == 90
+
+    def test_out_of_range_list_index_is_reported(self):
+        """A list index past the end can't be reached (we set, never grow)."""
+        _, unmatched = apply_overrides(PROFILE, {"load.stages.5.rate": "10"})
+        assert unmatched == ["load.stages.5.rate"]
+
+    def test_non_integer_list_index_is_reported(self):
+        """A non-integer segment against a list parent doesn't address anything."""
+        _, unmatched = apply_overrides(PROFILE, {"load.stages.foo.rate": "10"})
+        assert unmatched == ["load.stages.foo.rate"]
 
     def test_yaml_parse_failure_returns_original_and_empty_unmatched(self):
         bad = "this: is:\n  - broken: ["
