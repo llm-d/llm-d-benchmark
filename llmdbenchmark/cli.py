@@ -815,9 +815,31 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     # to every serving pod before each treatment's run. Covers both the
     # `run` and `experiment` subcommands, which both flow their file through
     # ``experiments_file``.
-    from llmdbenchmark.experiment.parser import read_reset_caches
+    from llmdbenchmark.experiment.parser import read_reset_caches, read_run_controls
 
     reset_caches = read_reset_caches(experiments_file)
+
+    # Per-treatment retry / result-gating controls: YAML value, overridden by
+    # the matching CLI flag when set, else the default.
+    _run_controls = read_run_controls(experiments_file)
+    _cli_max_attempts = getattr(args, "treatment_max_attempts", None)
+    treatment_max_attempts = (
+        max(1, int(_cli_max_attempts))
+        if _cli_max_attempts is not None
+        else _run_controls["treatment_max_attempts"]
+    )
+    _cli_stop_on_error = getattr(args, "treatment_stop_on_error", None)
+    treatment_stop_on_error = (
+        bool(_cli_stop_on_error)
+        if _cli_stop_on_error is not None
+        else _run_controls["treatment_stop_on_error"]
+    )
+    _cli_validate_failures = getattr(args, "validate_failures", None)
+    validate_failures = (
+        bool(_cli_validate_failures)
+        if _cli_validate_failures is not None
+        else _run_controls["validate_failures"]
+    )
 
     context = ExecutionContext(
         plan_dir=config.plan_dir,
@@ -852,6 +874,9 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
         reset_caches=reset_caches,
+        treatment_max_attempts=treatment_max_attempts,
+        treatment_stop_on_error=treatment_stop_on_error,
+        validate_failures=validate_failures,
         harness_service_account=getattr(args, "serviceaccount", None),
         harness_envvars_to_pod=getattr(args, "envvarspod", None),
         analyze_locally=getattr(args, "analyze", False),

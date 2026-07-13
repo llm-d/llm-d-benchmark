@@ -100,6 +100,17 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # in the --experiments YAML. Requires the server to run with
     # VLLM_SERVER_DEV_MODE=1 (the repo default); resets are non-fatal.
     reset_caches: bool = False
+    # Retry a failed treatment up to this many times, each attempt deleting
+    # its pods and faulty results and re-running with a fresh experiment_id
+    # (so reset_caches re-fires). 1 = no retry.
+    treatment_max_attempts: int = 1
+    # Abort the treatment loop once a treatment exhausts its attempts, instead
+    # of recording it failed and continuing to the remaining treatments.
+    treatment_stop_on_error: bool = False
+    # Gate treatment success on the harness-reported failure count, not just
+    # pod state. Workload-specific (see _FAILURE_VALIDATORS in step_07); an
+    # unrecognized workload warns and falls back to pod state.
+    validate_failures: bool = False
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
     analyze_locally: bool = False

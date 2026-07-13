@@ -139,6 +139,40 @@ def add_subcommands(
         help="Seconds to wait for harness completion (0 = do not wait).",
     )
     run_parser.add_argument(
+        "--treatment-max-attempts",
+        type=int,
+        default=env_int("LLMDBENCH_TREATMENT_MAX_ATTEMPTS"),
+        help=(
+            "Retry a failed treatment up to N times: delete its pods and faulty "
+            "results dir, then re-run with a fresh experiment_id (so reset_caches "
+            "fires again for cold caches). 1 = no retry (default). Overrides the "
+            "top-level treatment_max_attempts key in --experiments YAML."
+        ),
+    )
+    run_parser.add_argument(
+        "--treatment-stop-on-error",
+        action="store_true",
+        default=None,
+        help=(
+            "Abort the run's treatment loop once a treatment exhausts its "
+            "attempts, instead of recording it failed and continuing. Default: "
+            "continue remaining treatments. Overrides the top-level "
+            "treatment_stop_on_error key in --experiments YAML."
+        ),
+    )
+    run_parser.add_argument(
+        "--validate-failures",
+        action="store_true",
+        default=None,
+        help=(
+            "Fail (and retry) a treatment when its summary_lifecycle_metrics.json "
+            "reports failures.count > 0, or the file is missing/unparseable. "
+            "Only applies to the otel_traces workload; other workloads warn and "
+            "fall back to Kubernetes pod state. Default: pod state only. "
+            "Overrides the top-level validate_failures key in --experiments YAML."
+        ),
+    )
+    run_parser.add_argument(
         "-x",
         "--dataset",
         default=env("LLMDBENCH_DATASET"),

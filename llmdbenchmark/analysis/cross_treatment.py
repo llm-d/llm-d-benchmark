@@ -13,6 +13,8 @@ per-treatment analysis completes).
 from __future__ import annotations
 
 import csv
+import glob
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -258,6 +260,9 @@ def generate_cross_treatment_summary(
 
     # Generate overlaid per-request CDF plots across treatments
     plot_count += _generate_overlaid_cdf_plots(results_dir, output_dir, context)
+
+    # Generate overlaid vLLM cache-vs-time plots across treatments
+    plot_count += _generate_overlaid_cache_plots(results_dir, output_dir, context)
 
     return len(rows)
 
@@ -897,6 +902,276 @@ def _extract_per_request_metrics(pr_file: Path) -> dict[str, list[float]]:
                 metrics["itl"].append(token_times[i] - token_times[i - 1])
 
     return metrics
+
+
+# vLLM cache-vs-time overlay across treatments, keyed by treatment name (the
+# raw swept value is not recoverable from result dir names).
+
+_CACHE_RAW_GLOB = "metrics/raw/*_metrics.log"
+_CACHE_KV = "vllm:kv_cache_usage_perc"
+_CACHE_QUERIES = "vllm:prefix_cache_queries_total"
+_CACHE_HITS = "vllm:prefix_cache_hits_total"
+_CACHE_EPS = 1e-9
+_CACHE_TRIM_PAD_SEC = 1.0
+_CACHE_METRIC_RE = re.compile(
+    r"([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{[^}]*\})? ([\d.eE+-]+)(?:\s+\d+)?$"
+)
+
+
+def _cache_epoch_from_name(path: Path) -> float | None:
+    m = re.search(r"_(\d+)_metrics\.log$", path.name)
+    return float(m.group(1)) if m else None
+
+
+def _cache_parse_snapshot(path: Path) -> dict[str, float]:
+    """Parse one raw snapshot: {KV: mean, QUERIES: sum, HITS: sum} if present."""
+    buckets: dict[str, list[float]] = {
+        _CACHE_KV: [],
+        _CACHE_QUERIES: [],
+        _CACHE_HITS: [],
+    }
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                m = _CACHE_METRIC_RE.match(line)
+                if not m:
+                    continue
+                name = m.group(1)
+                if name in buckets:
+                    buckets[name].append(float(m.group(2)))
+    except OSError:
+        return {}
+    out: dict[str, float] = {}
+    if buckets[_CACHE_KV]:
+        out[_CACHE_KV] = sum(buckets[_CACHE_KV]) / len(buckets[_CACHE_KV])
+    if buckets[_CACHE_QUERIES]:
+        out[_CACHE_QUERIES] = sum(buckets[_CACHE_QUERIES])
+    if buckets[_CACHE_HITS]:
+        out[_CACHE_HITS] = sum(buckets[_CACHE_HITS])
+    return out
+
+
+def _cache_trim_to_active(
+    series: list[tuple[float, dict[str, float]]],
+) -> list[tuple[float, dict[str, float]]]:
+    """Clip a run's series to its active window (idle pre/post scrapes off)."""
+    n = len(series)
+    if n == 0:
+        return series
+    active = [False] * n
+    prev_q: float | None = None
+    for i, (_, values) in enumerate(series):
+        kv = values.get(_CACHE_KV)
+        if kv is not None and kv > _CACHE_EPS:
+            active[i] = True
+        q = values.get(_CACHE_QUERIES)
+        if q is not None:
+            if prev_q is not None and q - prev_q > 0:
+                active[i] = True
+            prev_q = q
+    if not any(active):
+        return series
+    first = active.index(True)
+    last = n - 1 - active[::-1].index(True)
+    lo = max(0, first - 1)
+    hi = min(n - 1, last + 1)
+    while lo > 0 and series[lo][0] - series[lo - 1][0] <= _CACHE_TRIM_PAD_SEC:
+        lo -= 1
+    while hi < n - 1 and series[hi + 1][0] - series[hi][0] <= _CACHE_TRIM_PAD_SEC:
+        hi += 1
+    return series[lo : hi + 1]
+
+
+def _cache_load_series(results_dir: Path) -> list[tuple[float, dict[str, float]]]:
+    """Return [(elapsed_sec, {metric: value}), ...] for one treatment, trimmed to its active window and re-based to t=0."""
+    files = sorted(glob.glob(str(results_dir / _CACHE_RAW_GLOB)))
+    samples: list[tuple[float, dict[str, float]]] = []
+    for f in files:
+        p = Path(f)
+        epoch = _cache_epoch_from_name(p)
+        if epoch is None:
+            continue
+        values = _cache_parse_snapshot(p)
+        if values:
+            samples.append((epoch, values))
+    if not samples:
+        return []
+    samples.sort(key=lambda s: s[0])
+    t0 = samples[0][0]
+    series = [(epoch - t0, values) for epoch, values in samples]
+    series = _cache_trim_to_active(series)
+    if series:
+        base = series[0][0]
+        series = [(t - base, values) for t, values in series]
+    return series
+
+
+def _generate_overlaid_cache_plots(
+    results_dir: Path,
+    output_dir: Path,
+    context: "ExecutionContext | None" = None,
+) -> int:
+    """Overlay each treatment's vLLM cache time series on shared axes.
+
+    Emits three PNGs (KV usage, prefix-cache totals, prefix-cache hit rate),
+    one line per treatment. No-op with fewer than 2 treatments having snapshots.
+    """
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return 0
+
+    colors = [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#17becf",
+    ]
+
+    # points: [(treatment_label, series), ...]
+    points: list[tuple[str, list[tuple[float, dict[str, float]]]]] = []
+    for subdir in sorted(results_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+        series = _cache_load_series(subdir)
+        if series:
+            points.append((_shorten_treatment_label(subdir.name), series))
+
+    if len(points) < 2:
+        return 0
+
+    generated = 0
+
+    def _color(idx: int) -> str:
+        return colors[idx % len(colors)]
+
+    # 1) KV-cache usage over time
+    fig, ax = plt.subplots(figsize=(14, 5))
+    drew = False
+    for idx, (label, series) in enumerate(points):
+        xs = [t for t, v in series if _CACHE_KV in v]
+        ys = [v[_CACHE_KV] for _, v in series if _CACHE_KV in v]
+        if not xs:
+            continue
+        ax.plot(
+            xs,
+            ys,
+            marker="o",
+            markersize=1.5,
+            linewidth=1.6,
+            color=_color(idx),
+            label=label,
+        )
+        drew = True
+    ax.set_xlabel("time since run start (sec)")
+    ax.set_ylabel("KV cache usage (fraction)")
+    ax.set_title("KV cache usage over time (per treatment)")
+    ax.grid(True, alpha=0.3)
+    if drew:
+        ax.legend(loc="best")
+        fig.tight_layout()
+        fig.savefig(str(output_dir / "cache_overlay_kv_cache_usage.png"), dpi=150)
+        generated += 1
+    plt.close(fig)
+
+    # 2) Prefix-cache cumulative queries (solid) / hits (dashed) over time
+    fig, ax = plt.subplots(figsize=(14, 5))
+    drew = False
+    for idx, (label, series) in enumerate(points):
+        color = _color(idx)
+        q_xs = [t for t, v in series if _CACHE_QUERIES in v]
+        q_ys = [v[_CACHE_QUERIES] for _, v in series if _CACHE_QUERIES in v]
+        h_xs = [t for t, v in series if _CACHE_HITS in v]
+        h_ys = [v[_CACHE_HITS] for _, v in series if _CACHE_HITS in v]
+        if q_xs:
+            ax.plot(
+                q_xs,
+                q_ys,
+                linestyle="-",
+                linewidth=1.6,
+                color=color,
+                label=f"{label} queries",
+            )
+            drew = True
+        if h_xs:
+            ax.plot(
+                h_xs,
+                h_ys,
+                linestyle="--",
+                linewidth=1.6,
+                color=color,
+                label=f"{label} hits",
+            )
+            drew = True
+    ax.set_xlabel("time since run start (sec)")
+    ax.set_ylabel("cumulative tokens")
+    ax.set_title("Prefix cache queries/hits (cumulative) over time (per treatment)")
+    ax.grid(True, alpha=0.3)
+    if drew:
+        ax.legend(loc="best", fontsize=8)
+        fig.tight_layout()
+        fig.savefig(str(output_dir / "cache_overlay_prefix_cache_totals.png"), dpi=150)
+        generated += 1
+    plt.close(fig)
+
+    # 3) Derived per-interval prefix-cache hit rate over time
+    fig, ax = plt.subplots(figsize=(14, 5))
+    drew = False
+    for idx, (label, series) in enumerate(points):
+        pts = [
+            (t, v[_CACHE_QUERIES], v[_CACHE_HITS])
+            for t, v in series
+            if _CACHE_QUERIES in v and _CACHE_HITS in v
+        ]
+        xs: list[float] = []
+        ys: list[float] = []
+        for (_, q0, h0), (t1, q1, h1) in zip(pts, pts[1:]):
+            dq = q1 - q0
+            dh = h1 - h0
+            if dq <= 0 or dh < 0:
+                continue
+            xs.append(t1)
+            ys.append(100.0 * dh / dq)
+        if not xs:
+            continue
+        ax.plot(
+            xs,
+            ys,
+            marker="o",
+            markersize=3,
+            linewidth=1.6,
+            color=_color(idx),
+            label=label,
+        )
+        drew = True
+    ax.set_xlabel("time since run start (sec)")
+    ax.set_ylabel("prefix cache hit rate (%)")
+    ax.set_title("Prefix cache hit rate (per-interval) over time (per treatment)")
+    ax.set_ylim(0, 100)
+    ax.grid(True, alpha=0.3)
+    if drew:
+        ax.legend(loc="best")
+        fig.tight_layout()
+        fig.savefig(
+            str(output_dir / "cache_overlay_prefix_cache_hit_rate.png"), dpi=150
+        )
+        generated += 1
+    plt.close(fig)
+
+    if generated:
+        _log(context, f"Generated {generated} overlaid cache plot(s)")
+
+    return generated
 
 
 def _generate_overlaid_cdf_plots(
