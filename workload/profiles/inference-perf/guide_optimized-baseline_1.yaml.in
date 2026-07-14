@@ -58,6 +58,10 @@ data:
     system_prompt_len: 6000         # Length of the first prefix (in tokens), simulate initialization of a system prompt
     question_len: 1200              # Length of the unique question part (in tokens)
     # question_len_std=9
+    # Total input sequence length = system_prompt_len + question_len = 7200 tokens.
+    # This is the value reported on the Prism dashboard (prism.llm-d.ai) as
+    # "Input / Output Sequence Length" for the optimized-baseline (Approximate
+    # Prefix Cache Routing) scenario -- keep the two in sync if either changes.
     output_len: 1000              # Target length for the model's generated output (in tokens)
     # output_len_std=300
     enable_multi_turn_chat: false  # If enabled, the chat context will be appended for the each request.
