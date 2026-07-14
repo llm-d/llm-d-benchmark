@@ -16,8 +16,10 @@ spec:
   - name: harness
     image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
     imagePullPolicy: {{ images.benchmark.pullPolicy }}
+{% if harness.runAsUser is defined and harness.runAsUser is not none %}
     securityContext:
-      runAsUser: 0
+      runAsUser: {{ harness.runAsUser }}
+{% endif %}
     command: ["sh", "-c"]
     args:
     - >-

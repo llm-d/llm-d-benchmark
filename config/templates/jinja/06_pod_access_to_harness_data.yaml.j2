@@ -7,12 +7,17 @@ metadata:
     role: llm-d-benchmark-data-access
   namespace: {{ namespace.name }}
 spec:
+{% if dataAccess.serviceAccount is defined and dataAccess.serviceAccount %}
+  serviceAccountName: {{ dataAccess.serviceAccount }}
+{% endif %}
   containers:
   - name: rsync
     image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
     imagePullPolicy: {{ images.benchmark.pullPolicy }}
+{% if dataAccess.runAsUser is defined and dataAccess.runAsUser is not none %}
     securityContext:
       runAsUser: {{ dataAccess.runAsUser }}
+{% endif %}
     # Keep-alive so the framework can `kubectl cp` results off the PVC (tar-based,
     # not rsync). Slim benchmark images may not ship rsync, so fall back to idling.
     command: ["sh", "-c", "command -v rsync >/dev/null 2>&1 && exec rsync --daemon --no-detach --port={{ dataAccess.rsyncPort }} --log-file=/dev/stdout || exec sleep infinity"]

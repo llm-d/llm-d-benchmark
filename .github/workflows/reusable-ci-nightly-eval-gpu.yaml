@@ -1,0 +1,118 @@
+name: Reusable - Nightly Eval GPU (eval-containers, vLLM standup)
+
+# Reusable engine for the eval-containers agentic benchmarks driven against a
+# REAL vLLM model we STAND UP on a GPU -- the standard llm-d path, NOT run-only.
+#
+# Contrast with reusable-ci-nightly-eval.yaml (run-only): that engine passes
+# `-U <litellm-url>` and forwards a LiteLLM key, so no model is deployed. This
+# engine instead follows the perf nightly's lifecycle:
+#
+#     standup (deploy vLLM on 1 GPU)  ->  run (eval harness)  ->  teardown
+#
+# The eval-containers harness is endpoint-agnostic: it reads
+# LLMDBENCH_HARNESS_STACK_ENDPOINT_URL, which step_03 auto-discovers from the
+# stood-up epponly endpoint. The in-pod bifrost gateway's OPENAI_API_KEY
+# defaults to a placeholder that llm-d ignores, so NO API key is forwarded and
+# NO `-U` is passed. EVAL_MODEL is derived from the scenario's model.name, which
+# must be the SERVED model id (e.g. Qwen/Qwen3-32B).
+#
+# Target: OCP pok-prod (self-hosted runner + KUBECONFIG_DATA_OCP), same as the
+# run-only eval engine and the perf callers. Root for the eval image's /app
+# staging is granted by a namespace SA bound to the anyuid SCC (input
+# service_account); the vLLM decode pod runs under the same root grant.
+
+on:
+  workflow_call:
+    inputs:
+      scenario:          { required: true,  type: string }   # e.g. examples/eval-containers-gaia-gpu
+      cluster_namespace: { required: false, type: string, default: 'llmd-eval-gpu-nightly' }
+      service_account:   { required: false, type: string, default: 'eval-runner' }
+      # Cluster-specific overrides (storage class, SA, runAsUser). Scenarios are
+      # cluster-generic; the cluster-config supplies the target cluster's values.
+      # Point this at an OpenShift cluster-config with an RWX storage class and an
+      # anyuid-bound service account for the target cluster.
+      cluster_config:    { required: false, type: string, default: 'config/cluster-configs/examples/openshift-pokprod.yaml' }
+      methods:           { required: false, type: string, default: 'modelservice' }
+      tasks:             { required: false, type: string, default: '1' }   # -j; start at 1
+      # Deploy timeouts sized for a large-model HF download + vLLM load on first standup.
+      modelservice_deploy_timeout: { required: false, type: string, default: '3600' }
+      pvc_bind_timeout:  { required: false, type: string, default: '600' }
+      wait_timeout:      { required: false, type: string, default: '3600' }  # run pod-wait
+      dry_run:           { required: false, type: string, default: 'false' }
+      cleanup:           { required: false, type: string, default: 'true' }
+    secrets:
+      KUBECONFIG_DATA_OCP: { required: true }
+      # Public models (Qwen3) need no token; a token is forwarded only if the
+      # served model is gated. Optional.
+      LLMDBENCH_HF_TOKEN: { required: false }
+
+jobs:
+  eval-gpu:
+    runs-on: ["self-hosted", "openshift", "pok-prod"]
+    env:
+      SPEC: ${{ inputs.scenario }}
+      NS: ${{ inputs.cluster_namespace }}
+      SA: ${{ inputs.service_account }}
+      METHODS: ${{ inputs.methods }}
+      CC: ${{ inputs.cluster_config }}
+      TASKS: ${{ inputs.tasks }}
+      MS_TIMEOUT: ${{ inputs.modelservice_deploy_timeout }}
+      PVC_TIMEOUT: ${{ inputs.pvc_bind_timeout }}
+      WAIT: ${{ inputs.wait_timeout }}
+      DRY: ${{ inputs.dry_run }}
+      CLEANUP: ${{ inputs.cleanup }}
+      # Forwarded to the model download job for gated models; harmless if empty.
+      HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth to OCP (pok-prod)
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+          oc whoami --show-server
+
+      - name: Install llmdbenchmark
+        run: |
+          python3 -m venv .venv && . .venv/bin/activate
+          pip install -q -e .
+          pip install -q "git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"
+          llmdbenchmark --version
+
+      - name: Ensure namespace + anyuid-bound SA (root for eval image + vLLM)
+        run: |
+          oc create namespace "$NS" 2>/dev/null || true
+          oc create sa "$SA" -n "$NS" 2>/dev/null || true
+          oc create rolebinding "${SA}-anyuid" -n "$NS" \
+            --clusterrole=system:openshift:scc:anyuid \
+            --serviceaccount="$NS:$SA" 2>/dev/null || true
+
+      - name: Standup vLLM model on GPU
+        run: |
+          . .venv/bin/activate
+          DRYFLAG=""; [ "$DRY" = "true" ] && DRYFLAG="--dry-run"
+          llmdbenchmark --spec "$SPEC" $DRYFLAG standup \
+            --cluster-config "$CC" \
+            -p "$NS" -t "$METHODS" --base-dir . \
+            --pvc-bind-timeout "$PVC_TIMEOUT" \
+            --modelservice-deploy-timeout "$MS_TIMEOUT"
+
+      - name: Run eval against the stood-up model (no -U, no key)
+        run: |
+          . .venv/bin/activate
+          DRYFLAG=""; [ "$DRY" = "true" ] && DRYFLAG="--dry-run"
+          llmdbenchmark --spec "$SPEC" $DRYFLAG run \
+            --cluster-config "$CC" \
+            -p "$NS" -t "$METHODS" -j "$TASKS" \
+            --base-dir . --analyze --wait-timeout "$WAIT"
+
+      - name: Teardown vLLM model (free the GPU)
+        if: always()
+        run: |
+          if [ "$CLEANUP" = "true" ]; then
+            . .venv/bin/activate
+            llmdbenchmark --spec "$SPEC" teardown --cluster-config "$CC" -p "$NS" -t "$METHODS" --base-dir . || true
+            oc delete pod -n "$NS" -l app=llmdbench-harness-launcher --ignore-not-found || true
+            oc delete pod access-to-harness-data-workload-pvc -n "$NS" --ignore-not-found || true
+          fi

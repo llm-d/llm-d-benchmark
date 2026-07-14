@@ -1,0 +1,33 @@
+# Cluster config for the pok-prod OpenShift GPU cluster (H100 nodes).
+#
+# Usage:
+#   llmdbenchmark --spec examples/eval-containers-gaia-gpu standup \
+#     --cluster-config config/cluster-configs/examples/openshift-pokprod.yaml \
+#     -p <namespace> -t modelservice
+#
+# Prerequisites (one-time per namespace):
+#   oc create serviceaccount eval-runner -n <namespace>
+#   oc adm policy add-scc-to-user anyuid -z eval-runner -n <namespace>
+
+storage:
+  workloadPvc:
+    accessModes:
+      - ReadWriteMany
+    # Blank storageClassName => the PVC uses the CLUSTER DEFAULT StorageClass.
+    # pok-prod's default is an RWX shared-filesystem class, which is what the
+    # results PVC needs at -j N (shared across parallel harness pods). Set an
+    # explicit RWX class here only if your cluster default is not RWX.
+    storageClassName: ""
+  modelPvc:
+    accessModes:
+      - ReadWriteMany
+    storageClassName: ""
+
+harness:
+  # ServiceAccount pre-granted the anyuid SCC (the eval image runs as root).
+  serviceAccount: eval-runner
+  runAsUser: 0
+
+dataAccess:
+  serviceAccount: eval-runner
+  runAsUser: 0

@@ -1,0 +1,31 @@
+# Cluster config for a generic OpenShift cluster with ODF/Ceph storage.
+#
+# Usage:
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
+#     --cluster-config config/cluster-configs/examples/openshift-generic.yaml \
+#     -U <endpoint> -m <model> -p <namespace> -j 5
+#
+# Prerequisites (one-time, requires cluster-admin):
+#   oc create serviceaccount anyuid-sa -n <namespace>
+#   oc adm policy add-scc-to-user anyuid -z anyuid-sa -n <namespace>
+#
+# Storage class alternatives:
+#   ocs-storagecluster-cephfs   -- OpenShift Data Foundation (ODF), RWX
+#   azurefile-csi               -- Azure Red Hat OpenShift (ARO)
+#   efs-sc                      -- ROSA (AWS), requires EFS CSI driver
+#
+# Replace the storageClassName below with whatever your cluster provides.
+
+storage:
+  workloadPvc:
+    accessModes:
+      - ReadWriteMany
+    storageClassName: ocs-storagecluster-cephfs
+
+harness:
+  serviceAccount: anyuid-sa
+  runAsUser: 0
+
+dataAccess:
+  serviceAccount: anyuid-sa
+  runAsUser: 0

@@ -260,16 +260,16 @@ scenario:
     #                 LLMDBENCH_VLLM_COMMON_PVC_ACCESS_MODE=ReadWriteOnce
     # -------------------------------------------------------------------------
     storage:
-      # Harness results PVC. kind's local-path provisioner is ReadWriteOnce-only
-      # and single-node, so RWO works there; a multi-node cluster with RWX storage
-      # can override accessModes + storageClassName.
+      # Harness results PVC.
+      # accessModes and storageClassName are cluster-specific.
+      # Set them in your --cluster-config file (see docs/openshift-setup.md).
+      # Defaults: RWO + cluster-default storage class (works on kind/vanilla K8s).
+      # Multi-node clusters typically need ReadWriteMany and a shared storage class.
       workloadPvc:
         accessModes:
           - ReadWriteOnce
+        # storageClassName: ""   # leave empty to use the cluster default
       modelPvc:
-        # storageClassName: standard-rwx       # GKE
-        # storageClassName: shared-vast       # Kubernetes
-        # storageClassName: ocs-storagecluster-cephfs  # OpenShift
         size: 2Gi
         accessMode:
           - ReadWriteOnce
@@ -299,10 +299,15 @@ scenario:
       # (llm-d-benchmark.sh, which is not present in the eval image).
       entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh
       pvcSize: 5Gi
+      # runAsUser and serviceAccount are OpenShift-specific.
+      # Set them in your --cluster-config file (see docs/openshift-setup.md).
       # A real agent + in-pod gateway runs here, not a load generator -- give it room.
       resources:
         cpu: "2"
         memory: 6Gi
+
+    # dataAccess.runAsUser and dataAccess.serviceAccount are OpenShift-specific.
+    # Set them in your --cluster-config file (see docs/openshift-setup.md).
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)

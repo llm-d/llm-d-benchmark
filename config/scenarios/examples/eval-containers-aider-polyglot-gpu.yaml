@@ -1,0 +1,161 @@
+# eval-containers / aider-polyglot example scenario -- GPU-SERVED variant
+# (cluster-generic), serving Qwen/Qwen3-32B on a single GPU (TP=1).
+#
+# Unlike the run-only "-pp" scenario (external LiteLLM via `-U`), this STANDS UP
+# Qwen/Qwen3-32B on a GPU the standard llm-d way (modelservice) and drives the
+# eval-containers harness against that IN-CLUSTER endpoint -- no `-U`, no key.
+#
+# Served model: Qwen/Qwen3-32B, TP=1, on a single GPU.
+# The eval agent (gemini-cli) calls `openai/Qwen/Qwen3-32B` (EVAL_MODEL is
+# openai/<model.name>), which the in-pod gateway forwards to the discovered
+# in-cluster endpoint (epponly -> *-router-epp Service).
+#
+# Cluster-specific values (storage class, serviceAccount, runAsUser) live in a
+# --cluster-config file. Use an OpenShift cluster-config with an RWX storage
+# class (or a blank one to use the cluster default) + an anyuid-bound service
+# account, e.g.:
+#   --cluster-config config/cluster-configs/examples/openshift-pokprod.yaml
+#
+# Sequence (run does NOT auto-standup):
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu standup \
+#     --cluster-config <cc> -p "$NS" -t modelservice
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu run \
+#     --cluster-config <cc> -p "$NS" -j <#tasks> --analyze
+#   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu teardown \
+#     --cluster-config <cc> -p "$NS"
+#
+# aider-polyglot runs fully offline. Qwen3-32B is public on HF.
+#
+# All parameters not defined here use defaults.yaml.
+
+scenario:
+  - name: "eval-aider-polyglot-gpu"
+
+    # -------------------------------------------------------------------------
+    # Model -- the SERVED model. model.name flows to EVAL_MODEL=openai/<name>.
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    affinity:
+      enabled: true
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+    # NOTE: deliberately NO top-level `accelerator:` block (a count:0 would force
+    # accelerator.type=cpu and stamp no GPU). GPU/pod = decode.parallelism.tensor
+    # * dataLocal = 1 (TP=1, single GPU).
+
+    images:
+      vllm:
+        repository: docker.io/vllm/vllm-openai
+        tag: latest
+      benchmark:
+        repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
+        tag: latest
+        pullPolicy: Always
+
+    # Qwen3-32B weights are public; the eval itself pulls nothing from HF, so
+    # skip the framework's HF_TOKEN injection (no llm-d-hf-token secret needed).
+    huggingface:
+      enabled: false
+
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    vllmCommon:
+      shmMemory: 4Gi
+      volumes:
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+
+    prefill:
+      enabled: false
+
+    decode:
+      enabled: true
+      # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
+      # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
+      replicas: 10
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
+      # TP=1 => 1 GPU per decode pod (tensor * dataLocal = 1).
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "16"
+        requests:
+          memory: 16Gi
+          cpu: "4"
+      vllm:
+        # `custom` auto-generates the full serve command honoring maxModelLen,
+        # gpuMemoryUtilization, and tensor-parallel-size.
+        modelCommand: custom
+        # Qwen3 tool/function calling: hermes parser (verified clean with
+        # gemini-cli in the pairing tests).
+        additionalFlags:
+          - --enable-auto-tool-choice
+          - --tool-call-parser
+          - hermes
+
+    storage:
+      modelPvc:
+        size: 1Ti
+      uriProtocol: hf
+
+    timeouts:
+      controlWait: 300
+
+    harness:
+      name: eval-containers
+      experimentProfile: aider-polyglot.yaml
+      entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh
+      pvcSize: 5Gi
+      resources:
+        cpu: "2"
+        memory: 6Gi
+
+    routing:
+      proxy:
+        enabled: false
+
+    gateway:
+      className: epponly
+
+    infrastructure:
+      gateway:
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+
+    workDir: "~/data/eval-aider-polyglot-gpu"

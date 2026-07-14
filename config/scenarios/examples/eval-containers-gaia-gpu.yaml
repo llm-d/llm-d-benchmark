@@ -1,0 +1,175 @@
+# eval-containers / gaia example scenario -- GPU-SERVED variant (cluster-generic).
+#
+# Unlike the run-only "-pp" scenario (which points the eval agent at an EXTERNAL
+# LiteLLM endpoint via `-U`), this scenario STANDS UP a real vLLM model on a GPU
+# the standard llm-d way (modelservice) and drives the eval-containers harness
+# against that IN-CLUSTER served endpoint -- no `-U`, no external key.
+#
+# Served model: Qwen/Qwen3-32B, TP=1, on a single GPU (e.g. NVIDIA-H100-80GB).
+# The eval agent (codex) calls `openai/Qwen/Qwen3-32B` (EVAL_MODEL is derived
+# from model.name), which the in-pod bifrost gateway forwards to the deployed
+# endpoint that step_03 auto-discovers (epponly -> the *-router-epp Service).
+#
+# Cluster-specific values (storage class, serviceAccount, runAsUser) live in a
+# --cluster-config file, NOT here. Use an OpenShift cluster-config with an RWX
+# storage class (or a blank one to use the cluster default) + an anyuid-bound
+# service account, e.g.:
+#   --cluster-config config/cluster-configs/examples/openshift-pokprod.yaml
+#
+# Sequence (run does NOT auto-standup):
+#   llmdbenchmark --spec examples/eval-containers-gaia-gpu standup \
+#     --cluster-config <cc> -p "$NS" -t modelservice
+#   llmdbenchmark --spec examples/eval-containers-gaia-gpu run \
+#     --cluster-config <cc> -p "$NS" -j <#tasks> --analyze
+#   llmdbenchmark --spec examples/eval-containers-gaia-gpu teardown \
+#     --cluster-config <cc> -p "$NS"
+#
+# GAIA is a web/tool agentic task (harness pod needs internet egress).
+# Qwen/Qwen3-32B is public on HF, so `uriProtocol: hf` auto-downloads it.
+#
+# All parameters not defined here use defaults.yaml.
+
+scenario:
+  - name: "eval-gaia-gpu"
+
+    # -------------------------------------------------------------------------
+    # Model -- the SERVED model. model.name flows to EVAL_MODEL=openai/<name>,
+    # so it MUST be the id the agent calls.
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection -- target GPU nodes.
+    # -------------------------------------------------------------------------
+    affinity:
+      enabled: true
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+    # NOTE: deliberately NO top-level `accelerator:` block. A top-level
+    # accelerator.count:0 forces accelerator.type=cpu in 13_ms-values.yaml.j2
+    # and NO nvidia.com/gpu limit gets stamped. GPU/pod = decode.parallelism
+    # .tensor * dataLocal = 1.
+
+    images:
+      vllm:
+        repository: docker.io/vllm/vllm-openai
+        tag: latest
+      benchmark:
+        # codex agent: client-side web search, works on non-Anthropic models.
+        repository: ghcr.io/exgentic/evals/gaia--codex-standalone
+        tag: latest
+        pullPolicy: Always
+
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    vllmCommon:
+      shmMemory: 2Gi
+      volumes:
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+
+    # Decode-only (aggregated serving); prefill disabled. Scale serving capacity
+    # via decode.replicas below, not prefill.
+    prefill:
+      enabled: false
+
+    decode:
+      enabled: true
+      # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
+      # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
+      replicas: 10
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "16"
+        requests:
+          memory: 16Gi
+          cpu: "4"
+      vllm:
+        # `custom` auto-generates the full vLLM serve command (build_vllm_command)
+        # honoring model.maxModelLen (--max-model-len), gpuMemoryUtilization, and
+        # parallelism.tensor (--tensor-parallel-size), plus additionalFlags below.
+        # `imageDefault` renders only --model/--port/--served-model-name and lets
+        # the image entrypoint pick the ctx -> vLLM would use Qwen3's native 40960
+        # and OOM the KV cache on one H100.
+        modelCommand: custom
+        # build_vllm_command already emits --max-model-len/--gpu-memory-utilization
+        # /--tensor-parallel-size; only add flags it does NOT emit:
+        additionalFlags:
+          - --enable-auto-tool-choice
+          - --tool-call-parser
+          - hermes
+
+    # -------------------------------------------------------------------------
+    # Storage -- accessModes/storageClassName come from --cluster-config.
+    # (Qwen3-32B ~65GB; give the model PVC room.)
+    # -------------------------------------------------------------------------
+    storage:
+      modelPvc:
+        size: 1Ti
+      uriProtocol: hf
+
+    timeouts:
+      controlWait: 300
+
+    harness:
+      name: eval-containers
+      experimentProfile: gaia.yaml
+      # runAsUser + serviceAccount come from --cluster-config (OpenShift-specific).
+      entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh
+      pvcSize: 5Gi
+      resources:
+        cpu: "2"
+        memory: 6Gi
+
+    routing:
+      proxy:
+        enabled: false
+
+    # epponly (llm-d "Standalone Mode" router): no k8s Gateway; clients hit the
+    # EPP service directly. step_03 discovers this via find_epponly_endpoint().
+    gateway:
+      className: epponly
+
+    infrastructure:
+      gateway:
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+
+    workDir: "~/data/eval-gaia-gpu"

@@ -18,7 +18,7 @@ spec:
           args:
             - |
               mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && \
-              pip install huggingface_hub && \
+              pip install -U --user huggingface_hub && \
               export PATH="${PATH}:${HOME}/.local/bin" && \
 {% if huggingface.enabled %}
               hf auth login --token "${HF_TOKEN}" && \

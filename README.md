@@ -777,6 +777,8 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Design of Experiments (DoE)](docs/doe.md)
 - [Lifecycle](docs/lifecycle.md)
 - [Run](docs/run.md)
+- [Agentic evaluation (eval-containers)](docs/agentic_eval.md)
+- [Running eval-containers on OpenShift](docs/openshift-setup.md)
 - [Standup](docs/standup.md)
 - [Kustomize deploy method](docs/kustomize.md)
 - [Benchmarking SGLang](docs/sglang.md)

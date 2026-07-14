@@ -128,6 +128,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_gateway_class=getattr(args, "gateway_class", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
             cli_non_admin=getattr(args, "non_admin", False),
+            setup_overrides=getattr(args, "cluster_config_overrides", None),
         ).eval()
 
         try:
@@ -1273,7 +1274,14 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
 
 
 def _render_plans_for_experiment(args, logger, setup_overrides=None):
-    """Render plans with optional setup overrides. Raises PhaseError on failure."""
+    """Render plans with optional setup overrides. Raises PhaseError on failure.
+
+    ``setup_overrides`` from a treatment is deep-merged on top of any
+    ``--cluster-config`` overrides so that treatment values take precedence.
+    """
+    cluster_overrides = getattr(args, "cluster_config_overrides", None)
+    if cluster_overrides:
+        setup_overrides = _deep_merge_dicts(cluster_overrides, setup_overrides or {})
     specification_as_dict = RenderSpecification(
         specification_file=args.specification_file,
         base_dir=args.base_dir,
@@ -1872,6 +1880,17 @@ def cli() -> None:
         help="Manual OIDC token or API key for telemetry auth.",
     )
 
+    benchmark_parser.add_argument(
+        "--cluster-config",
+        "--cc",
+        default=None,
+        metavar="FILE",
+        help="Path to a YAML file with cluster-specific overrides (e.g. storageClassName, "
+        "serviceAccount, runAsUser). Values are deep-merged on top of the scenario, so only "
+        "the fields that differ per cluster need to be set. This file is not committed to the "
+        "repo -- each user maintains their own. See docs/openshift-setup.md for examples.",
+    )
+
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
@@ -2034,7 +2053,57 @@ def cli() -> None:
         }
         telemetry.push(telemetry_data)
 
+    # Load --cluster-config file into args so dispatch_cli can pass it through
+    args.cluster_config_overrides = _load_cluster_config(
+        getattr(args, "cluster_config", None), logger
+    )
+
     dispatch_cli(args, logger)
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    """Recursively merge two dicts; override values win. Same logic as RenderPlans.deep_merge."""
+    from copy import deepcopy
+    result = deepcopy(base)
+    for key, value in override.items():
+        if value is None:
+            continue
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge_dicts(result[key], value)
+        else:
+            result[key] = deepcopy(value)
+    return result
+
+
+def _load_cluster_config(path: str | None, logger) -> dict | None:
+    """Load a user-supplied cluster-config YAML and return it as a dict.
+
+    Returns None if no path was given. Exits with an error if the file
+    cannot be read or parsed.
+    """
+    if not path:
+        return None
+    import yaml as _yaml
+
+    cluster_config_path = Path(path).expanduser()
+    if not cluster_config_path.exists():
+        logger.log_error(f"--cluster-config file not found: {cluster_config_path}")
+        sys.exit(1)
+    try:
+        with open(cluster_config_path, encoding="utf-8") as f:
+            data = _yaml.safe_load(f)
+        if not isinstance(data, dict):
+            logger.log_error(
+                f"--cluster-config file must be a YAML mapping: {cluster_config_path}"
+            )
+            sys.exit(1)
+        logger.log_info(
+            f"Loaded cluster config overrides from {cluster_config_path}", emoji="🔧"
+        )
+        return data
+    except Exception as exc:
+        logger.log_error(f"Failed to load --cluster-config {cluster_config_path}: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

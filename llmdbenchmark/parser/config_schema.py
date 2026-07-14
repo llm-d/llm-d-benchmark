@@ -407,6 +407,13 @@ class HarnessConfig(BaseModel):
     inferencePerf: InferencePerfConfig
     namespace: str | None = None
     pvcSize: str | None = None
+    # Cluster-specific overrides supplied via --cluster-config (deep-merged onto
+    # the scenario). They render the harness pod's securityContext.runAsUser and
+    # serviceAccountName (see 20_harness_pod.yaml.j2). Modeled here so a valid
+    # cluster-config does not trip the extra="forbid" "Extra inputs" warning.
+    # Type-only, no default: defaults.yaml remains the source of truth.
+    runAsUser: int | None = None
+    serviceAccount: str | None = None
 
 
 # ---------------------------------------------------------------------------

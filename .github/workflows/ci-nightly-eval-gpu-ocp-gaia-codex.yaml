@@ -1,0 +1,52 @@
+name: CI - Nightly Eval GPU on OCP (gaia / codex)
+
+# GPU-SERVED eval caller: stands up Qwen/Qwen3-32B on a single H100 via llm-d
+# (modelservice) and drives the gaia / codex eval-containers agent against that
+# in-cluster served endpoint -- the standard llm-d path, NOT run-only against
+# LiteLLM. See reusable-ci-nightly-eval-gpu.yaml for the standup -> run ->
+# teardown lifecycle.
+#
+# The served model + GPU config live entirely in the scenario
+# (config/scenarios/examples/eval-containers-gaia-gpu.yaml): 1 H100, TP=1,
+# decode-only (prefill disabled). No model / endpoint inputs here because there
+# is no external endpoint -- the model is deployed and torn down each run.
+#
+# Target: OCP pok-prod (self-hosted runner + KUBECONFIG_DATA_OCP).
+
+on:
+  workflow_dispatch:
+    inputs:
+      cluster_namespace:
+        description: 'Namespace to run the eval in'
+        required: false
+        default: 'llmd-eval-gpu-nightly'
+      eval_service_account:
+        description: 'ServiceAccount bound to anyuid SCC (eval image + vLLM need root)'
+        required: false
+        default: 'eval-runner'
+      tasks:
+        description: 'Number of tasks to run (-j). Start at 1.'
+        required: false
+        default: '1'
+      dry_run:
+        description: 'Render without applying'
+        required: false
+        default: 'false'
+      cleanup:
+        description: 'Teardown the vLLM model + harness pods afterward (frees the GPU)'
+        required: false
+        default: 'true'
+  schedule:
+    - cron: '17 2 * * *'   # 02:17 UTC (offset from the run-only eval callers at 01:20/01:40)
+
+jobs:
+  eval-gpu:
+    uses: ./.github/workflows/reusable-ci-nightly-eval-gpu.yaml
+    with:
+      scenario: examples/eval-containers-gaia-gpu
+      cluster_namespace: ${{ inputs.cluster_namespace || 'llmd-eval-gpu-nightly' }}
+      service_account: ${{ inputs.eval_service_account || 'eval-runner' }}
+      tasks: ${{ inputs.tasks || '1' }}
+      dry_run: ${{ inputs.dry_run || 'false' }}
+      cleanup: ${{ inputs.cleanup || 'true' }}
+    secrets: inherit
