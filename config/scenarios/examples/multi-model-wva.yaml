@@ -105,8 +105,10 @@ shared:
     vllmService:
       enabled: false
 
+  # The WVA controller itself is installed from the upstream kustomize
+  # overlay (see wva.image.tag / wva.repoRef above), not a helm chart --
+  # this block only pins helm charts still installed by step_03.
   chartVersions:
-    wva: 0.7.0
     prometheusAdapter: 5.2.0
 
   # --------------------------------------------------------------------------
