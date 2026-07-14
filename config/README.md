@@ -1192,6 +1192,7 @@ Configured under the top-level `monitoring` section in `defaults.yaml`:
 | `monitoring.podmonitor.enabled` | `true` | Create PodMonitor resources for Prometheus scraping |
 | `monitoring.metricsPath` | `/metrics` | Prometheus scrape path |
 | `monitoring.scrapeInterval` | `"30s"` | Prometheus scrape interval |
+| `monitoring.timeSeriesMetrics` | See `defaults.yaml` | Metrics retained for processing, time-series graphs, and benchmark-report observability. Custom Prometheus metrics can be added without code changes. |
 | `monitoring.installPrometheusCrds` | `false` | Install Prometheus CRDs (PodMonitor, ServiceMonitor) during standup. Required for clusters without Prometheus Operator (e.g. Kind). |
 
 When `monitoring.enabled` is `true` and running on OpenShift, the `03_cluster-monitoring-config.yaml.j2` template renders a ConfigMap to enable user workload monitoring.

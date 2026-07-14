@@ -4,6 +4,7 @@ Process collected metrics and integrate into benchmark report.
 
 import json
 import os
+import re
 from typing import Any
 
 
@@ -184,6 +185,35 @@ def _graph_path(graph_file: str) -> str:
     return f"metrics/graphs/{graph_file}"
 
 
+def _load_time_series_metrics(metrics_dir: str) -> list[str]:
+    """Load configured metric names, with legacy defaults for older results."""
+    value = _load_json(
+        os.path.join(metrics_dir, "processed", "time_series_metrics.json")
+    )
+    if not isinstance(value, list):
+        return list(GRAPHED_METRICS)
+    return [name for name in value if isinstance(name, str) and name]
+
+
+def _metric_metadata(
+    prom_name: str, metrics_summary: dict[str, Any]
+) -> tuple[str, str, str]:
+    """Return report metadata, deriving sensible values for custom metrics."""
+    if prom_name in GRAPHED_METRICS:
+        return GRAPHED_METRICS[prom_name]
+
+    safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", prom_name).strip("_")
+    units = ""
+    for pod_name, pod_data in metrics_summary.items():
+        if pod_name.startswith("_"):
+            continue
+        metric_data = pod_data.get("metrics", {}).get(prom_name, {})
+        if metric_data:
+            units = metric_data.get("unit", "")
+            break
+    return safe_name, units, f"{safe_name}.png"
+
+
 # ---------------------------------------------------------------------------
 # Build observability entries
 # ---------------------------------------------------------------------------
@@ -191,6 +221,7 @@ def _graph_path(graph_file: str) -> str:
 
 def _build_per_metric_entries(
     metrics_summary: dict[str, Any],
+    metric_names: list[str],
 ) -> dict[str, Any]:
     """Build per-metric observability entries with per-component statistics.
 
@@ -206,9 +237,10 @@ def _build_per_metric_entries(
         role = _detect_role(pod_name)
         comp_id = _component_id(role)
 
-        for prom_name, (report_key, units, graph_file) in GRAPHED_METRICS.items():
+        for prom_name in metric_names:
             if prom_name not in metrics:
                 continue
+            report_key, units, graph_file = _metric_metadata(prom_name, metrics_summary)
 
             component_entry = {
                 "component_id": comp_id,
@@ -229,12 +261,14 @@ def _build_per_metric_entries(
 def _build_aggregated_entries(
     metrics_summary: dict[str, Any],
     obs: dict[str, Any],
+    metric_names: list[str],
 ) -> None:
     """Add cluster-wide aggregated stats to existing observability entries."""
     aggregated = metrics_summary.get("_aggregated", {}).get("metrics", {})
-    for prom_name, (report_key, units, _) in GRAPHED_METRICS.items():
+    for prom_name in metric_names:
         if prom_name not in aggregated:
             continue
+        report_key, units, _ = _metric_metadata(prom_name, metrics_summary)
         entry = obs.setdefault(report_key, {})
         entry["aggregated"] = _make_stats_dict(aggregated[prom_name], units)
 
@@ -315,8 +349,9 @@ def add_metrics_to_benchmark_report(
         os.path.join(metrics_dir, "processed", "metrics_summary.json")
     )
     if metrics_summary:
-        obs.update(_build_per_metric_entries(metrics_summary))
-        _build_aggregated_entries(metrics_summary, obs)
+        metric_names = _load_time_series_metrics(metrics_dir)
+        obs.update(_build_per_metric_entries(metrics_summary, metric_names))
+        _build_aggregated_entries(metrics_summary, obs, metric_names)
 
     # EPP log-derived metrics
     epp_summary = _load_json(os.path.join(metrics_dir, "epp_metrics_summary.json"))

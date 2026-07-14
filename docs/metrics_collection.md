@@ -40,6 +40,21 @@ Harness Pod (in-cluster)
 
 Metrics collection can be enabled via CLI (`llmdbenchmark run --monitoring`) or via scenario config. The CLI flag sets `metricsScrapeEnabled: true` at runtime, overriding the scenario default.
 
+The metrics retained for processing, visualization, and benchmark-report
+observability are configured in one place:
+
+```yaml
+monitoring:
+  timeSeriesMetrics:
+    - vllm:kv_cache_usage_perc
+    - vllm:num_requests_running
+    - vllm:custom_scheduler_metric
+```
+
+The rendered list is passed to the harness pod and saved with the processed
+metrics, so later analysis uses the same selection. Metrics without built-in
+display metadata receive a generated title, filename, and report key.
+
 | Environment Variable | Default | Description |
 |---|---|---|
 | `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED` | `false` | Enable/disable metrics collection. Set automatically when `--monitoring` is passed. |
@@ -47,6 +62,7 @@ Metrics collection can be enabled via CLI (`llmdbenchmark run --monitoring`) or 
 | `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `8200` | Prometheus metrics port (modelservice) |
 | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `8000` | Fallback port (standalone vLLM) |
 | `LLMDBENCH_VLLM_MONITORING_METRICS_PATH` | `/metrics` | Prometheus endpoint path |
+| `LLMDBENCH_TIME_SERIES_METRICS` | Rendered from config | JSON representation of `monitoring.timeSeriesMetrics` passed to the harness pod |
 | `METRICS_CURL_TIMEOUT` | `30` | Max seconds per curl request |
 | `LLMDBENCH_METRICS_POD_PATTERN` | `decode` | Fallback pod name pattern for discovery |
 

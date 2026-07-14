@@ -502,6 +502,35 @@ monitoring:
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
+  # Prometheus time-series metrics retained for processing, visualization,
+  # and benchmark-report observability entries. Add new metrics here without
+  # changing the analysis code.
+  timeSeriesMetrics:
+    - vllm:kv_cache_usage_perc
+    - vllm:gpu_cache_usage_perc
+    - vllm:cpu_cache_usage_perc
+    - vllm:gpu_memory_usage_bytes
+    - vllm:cpu_memory_usage_bytes
+    - container_memory_usage_bytes
+    - DCGM_FI_DEV_GPU_UTIL
+    - DCGM_FI_DEV_POWER_USAGE
+    - vllm:num_requests_running
+    - vllm:num_requests_waiting
+    - vllm:prefix_cache_hits_total
+    - vllm:prefix_cache_queries_total
+    - vllm:external_prefix_cache_hits_total
+    - vllm:external_prefix_cache_queries_total
+    - vllm:prefix_cache_hit_rate
+    - vllm:external_prefix_cache_hit_rate
+    - vllm:nixl_xfer_time_seconds_sum
+    - vllm:nixl_xfer_time_seconds_count
+    - vllm:nixl_bytes_transferred_sum
+    - vllm:nixl_bytes_transferred_count
+    - vllm:num_preemptions_total
+    - inference_pool_average_kv_cache_utilization
+    - inference_pool_average_queue_size
+    - inference_pool_average_running_requests
+    - inference_pool_ready_pods
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
