@@ -297,16 +297,16 @@ scenario:
       gpuMemoryUtilization: 0.85
 
     wva:
+      # Only variantCost is consumed (llm-d.ai/variant-cost annotation on the
+      # KEDA ScaledObject). Controller SLO/saturation tuning lives in the
+      # upstream overlay ConfigMaps; no VariantAutoscaling CR is rendered.
       variantAutoscaling:
-        enabled: true
-        minReplicas: 1
-        maxReplicas: 10
         variantCost: "10.0"
-        slo:
-          tpot: 10
-          ttft: 1000
+      # Drives the per-stack KEDA ScaledObject.
       hpa:
-        enabled: true
+        enabled: true                # gates the smoketest's autoscaling-aware
+                                     # replica-range check (rendering is gated
+                                     # on wva.enabled, not this)
         minReplicas: 1
         maxReplicas: 10
         targetAvgValue: 1
@@ -351,16 +351,16 @@ scenario:
       gpuMemoryUtilization: 0.85
 
     wva:
+      # Only variantCost is consumed (llm-d.ai/variant-cost annotation on the
+      # KEDA ScaledObject). Controller SLO/saturation tuning lives in the
+      # upstream overlay ConfigMaps; no VariantAutoscaling CR is rendered.
       variantAutoscaling:
-        enabled: true
-        minReplicas: 1
-        maxReplicas: 10
         variantCost: "10.0"
-        slo:
-          tpot: 10
-          ttft: 1000
+      # Drives the per-stack KEDA ScaledObject.
       hpa:
-        enabled: true
+        enabled: true                # gates the smoketest's autoscaling-aware
+                                     # replica-range check (rendering is gated
+                                     # on wva.enabled, not this)
         minReplicas: 1
         maxReplicas: 10
         targetAvgValue: 1

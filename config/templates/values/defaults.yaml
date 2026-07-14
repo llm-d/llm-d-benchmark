@@ -1433,8 +1433,8 @@ extraObjects: []
 #
 # Installed in *namespaced* mode: the controller watches only the namespace
 # it is deployed in. One controller per unique wva.namespace across rendered
-# stacks. VariantAutoscaling + HPA are rendered per-stack so a single
-# controller can manage multiple models in the same namespace.
+# stacks. A KEDA ScaledObject is rendered per-stack (28_wva-scaledobject.yaml.j2)
+# so a single controller can manage multiple models in the same namespace.
 # ============================================================================
 wva:
   enabled: false
@@ -1458,13 +1458,17 @@ wva:
   prometheus:
     baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
     port: 9091
+  # Only variantCost is consumed by rendering (llm-d.ai/variant-cost annotation
+  # on the KEDA ScaledObject). The controller's SLO / saturation tuning comes
+  # from the upstream overlay's ConfigMaps, not from per-model fields here --
+  # no VariantAutoscaling CR is rendered.
   variantAutoscaling:
-    enabled: true
     variantCost: "10.0"
-    slo:
-      tpot: 10
-      ttft: 1000
+  # Drives the per-stack KEDA ScaledObject (min/maxReplicaCount, trigger
+  # threshold, HPA behavior). Named "hpa" for parity with the upstream guide.
   hpa:
+    # Gates the smoketest's autoscaling-aware replica-range check. Does not
+    # affect rendering -- the ScaledObject is gated on wva.enabled.
     enabled: true
     minReplicas: 1
     maxReplicas: 16

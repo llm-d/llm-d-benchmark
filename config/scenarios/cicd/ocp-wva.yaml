@@ -61,6 +61,10 @@ scenario:
       # this namespace.
       namespace: ""
 
+      # Ref of llm-d/llm-d used for the WVA kustomize overlay (CRD + RBAC +
+      # controller manifests). Consumed by 19_wva-kustomize.yaml.j2.
+      repoRef: "main"
+
       # Controller container image.
       image:
         repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
@@ -97,45 +101,45 @@ scenario:
       # -----------------------------------------------------------------------
       # VariantAutoscaling — per-model scaling intent
       #
-      # Should match the HPA min/max below; the VA caps what the controller
-      # is willing to compute, the HPA caps what actually gets applied.
+      # Only `variantCost` is consumed: it becomes the `llm-d.ai/variant-cost`
+      # annotation on the KEDA ScaledObject. The WVA controller reads its SLO /
+      # saturation tuning from the ConfigMaps shipped by the upstream overlay
+      # (applied in step_03), NOT from per-model fields here — this scenario
+      # renders no VariantAutoscaling CR. The replica floor/ceiling comes from
+      # the hpa.min/maxReplicas block below.
       # -----------------------------------------------------------------------
       variantAutoscaling:
-        enabled: true                # required for the VA to render at all
-        minReplicas: 1               # controller floor — never compute below this
-        maxReplicas: 10              # controller ceiling — never compute above this
         # Relative GPU cost weight used by WVA's saturation solver to decide
         # WHICH model to scale when several share GPU capacity. Higher =
         # more expensive to scale up. Common tiering: H100=10, A100=8,
         # L40S=5, MI300X=10. Tweak per stack to express your business priority.
         variantCost: "10.0"
-        # SLO targets the controller tries to keep the variant within when
-        # computing desiredReplicas. Lower numbers = more aggressive scale-up
-        # under load.
-        slo:
-          tpot: 10                   # Time-Per-Output-Token target (ms)
-          ttft: 1000                 # Time-To-First-Token target (ms)
 
       # -----------------------------------------------------------------------
-      # HorizontalPodAutoscaler — what actually changes the replica count
+      # KEDA ScaledObject — what actually changes the replica count
       #
-      # The HPA reads `wva_desired_replicas` (emitted by the WVA controller
-      # via prometheus-adapter) and scales the decode Deployment between
-      # min/max.
+      # Named `hpa` for parity with the upstream guide, but these knobs drive a
+      # KEDA ScaledObject (28_wva-scaledobject.yaml.j2), not a native HPA +
+      # prometheus-adapter. KEDA queries Prometheus for `wva_desired_replicas`
+      # (emitted by the WVA controller) and scales the decode Deployment between
+      # min/max. KEDA generates an HPA under the hood, so `behavior` applies.
       # -----------------------------------------------------------------------
       hpa:
-        enabled: true                # set false to render the VA only, no HPA
-        minReplicas: 1               # never scale below this — must be >= 1
-                                     # (HPA refuses to manage targets at 0)
-                                     # Keep aligned with variantAutoscaling.minReplicas above.
-        maxReplicas: 10              # safety ceiling — scale-up cap regardless
-                                     # of what the controller computes
-                                     # Keep aligned with variantAutoscaling.maxReplicas above.
-        targetAvgValue: 1            # target value the HPA tries to reach for
-                                     # `wva_desired_replicas` per pod.
-                                     # 1 = "match controller's desiredReplicas
-                                     # exactly". Don't change unless you
-                                     # understand HPA averaging math.
+        enabled: true                # gates the smoketest's autoscaling-aware
+                                     # replica-range check (does not affect
+                                     # rendering; the ScaledObject is gated on
+                                     # wva.enabled)
+        minReplicas: 1               # ScaledObject minReplicaCount — never scale
+                                     # below this; must be >= 1 (KEDA/HPA refuse
+                                     # to manage targets at 0)
+        maxReplicas: 10              # ScaledObject maxReplicaCount — safety
+                                     # ceiling regardless of what the controller
+                                     # computes
+        targetAvgValue: 1            # Prometheus trigger threshold for
+                                     # `wva_desired_replicas`. 1 = "match the
+                                     # controller's desiredReplicas exactly".
+                                     # Don't change unless you understand
+                                     # HPA/KEDA averaging math.
 
         # Scaling behavior — how aggressively the HPA reacts. See:
         #   https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
