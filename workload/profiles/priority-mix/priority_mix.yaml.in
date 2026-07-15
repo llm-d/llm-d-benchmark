@@ -1,0 +1,51 @@
+endpoint_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+
+api:
+  type: chat
+  path: /v1/chat/completions
+
+load:
+  duration_seconds: 90
+  rate_per_second: 6
+  max_in_flight: 24
+  request_timeout_seconds: 180
+  fail_on_error: false
+
+request:
+  prompt: Say hello from the priority mix benchmark.
+  max_tokens: 512
+  stream: true
+
+# All three traffic classes use the SAME promptRepeat (and therefore the same
+# prompt length) so the only variable that differs between classes is the
+# priority value. This isolates the pure priority-scheduling effect from
+# prompt-length/prefill-cost confounds.
+trafficClasses:
+  - name: critical
+    weight: 0.2
+    priority: 100
+    objective: app-critical
+    fairnessID: tenant-critical
+    request:
+      promptTemplate: "Critical shared prefix for KV reuse. Stable long context facts repeated for prefill stress: alpha beta gamma delta epsilon zeta eta theta iota kappa. Request {variation}. "
+      promptRepeat: 150
+      max_tokens: 512
+  - name: normal
+    weight: 0.6
+    priority: 0
+    objective: app-normal
+    fairnessID: tenant-normal
+    request:
+      promptTemplate: "Normal shared prefix for medium priority traffic, long context stress test: lambda mu nu xi omicron pi rho sigma tau upsilon. Request {variation}. "
+      promptRepeat: 150
+      max_tokens: 512
+  - name: batch
+    weight: 0.2
+    priority: -10
+    objective: app-batch
+    fairnessID: tenant-batch
+    request:
+      promptTemplate: "Batch low priority cache pressure prompt with same length context filler section {variation}: phi chi psi omega and additional filler tokens for this sheddable traffic class only. "
+      promptRepeat: 150
+      max_tokens: 512
