@@ -5,13 +5,13 @@
 # but without model load time confounding the results.
 #
 # Standup Phase:
-#   1. Deploy all 10 requester pods immediately (vs. 1 in warm-start)
+#   1. Deploy all 6 requester pods immediately (vs. 1 in warm-start)
 #   2. All launcher pods simultaneously load Qwen3-32B (~10-20 min total)
 #   3. After all pods ready, scale requester pods down to 1 (vLLM sleeps)
 #   4. Confirm all launcher pods have sleeping vLLM instance
 #
 # Benchmark Phase:
-#   - HPA scales 1->10 as load arrives (IDENTICAL to warm-start)
+#   - HPA scales 1->6 as load arrives (IDENTICAL to warm-start)
 #   - Difference: No model load latency; scaling measures ONLY HPA/WVA behavior
 #   - All models pre-loaded in memory, so scale-up is instantaneous
 #
@@ -122,13 +122,20 @@ scenario:
       # Benchmark then scales 1->N, measuring pure HPA/WVA behavior (identical to
       # warm-start) without model load latency.
       requester:
-        replicas: 10  # ← Match maxReplicas; will be scaled down after warmup
+        replicas: 6  # ← Match maxReplicas; will be scaled down after warmup
+
+      # Standup (step 06) bound-launcher wait: how long to wait for the
+      # dual-pods-controller to bind a launcher and its vLLM to start serving
+      # (the inferenceServing/model labels appear only once serving). Hot-start
+      # loads all 6 launchers in parallel off shared storage, so give generous
+      # headroom above the 600s default to avoid a CI standup timeout.
+      boundLauncherTimeout: 1800
 
       # HOT-START CHANGE #2: Extended warmup for parallel model loading + scale-down
       # Warmup sequence:
-      #   1. Wait for Deployment to be Available (all 10 pods Ready)
+      #   1. Wait for Deployment to be Available (all 6 pods Ready)
       #   2. No additional buffer (models already loaded on all pods)
-      #   3. Scale requester Deployment down to 1 (vLLM sleeps on 9 pods)
+      #   3. Scale requester Deployment down to 1 (vLLM sleeps on 5 pods)
       #   4. Confirm sleeping vLLM instances are present
       warmupTimeout: 1200  # ← Increased: 10-20 min model load + scale-down verification
 
@@ -146,8 +153,8 @@ scenario:
       repoRef: "main"
 
       image:
-        repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-        tag: v0.8.0
+        repository: quay.io/braulio/llm-d-wva
+        tag: keda3
 
       replicaCount: 1
       controller:
@@ -175,7 +182,7 @@ scenario:
                                      # replica-range check (rendering is gated
                                      # on wva.enabled, not this)
         minReplicas: 1
-        maxReplicas: 10
+        maxReplicas: 6
         targetAvgValue: 1
 
         behavior:
@@ -310,7 +317,7 @@ scenario:
       # reusable does not pass --wait-timeout on the CLI so the CLI falls
       # back to this field (see cli.py harness_wait_timeout resolution).
       # Hot-start uses a larger value than warm-start/baseline (5400): its
-      # standup loads all 10 launchers in parallel (~10-20 min) before the
+      # standup loads all 6 launchers in parallel (~10-20 min) before the
       # run even begins, matching the hot-start job's wait_timeout: 7200.
       waitTimeout: 7200
 
