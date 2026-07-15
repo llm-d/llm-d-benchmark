@@ -19,7 +19,9 @@ class RunCleanupPreviousStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip cleanup in skip-run mode (collecting results only)."""
+        """Skip cleanup in skip-run mode, or for nok8s (no cluster)."""
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         return context.harness_skip_run
 
     def execute(

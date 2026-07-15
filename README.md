@@ -779,6 +779,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Run](docs/run.md)
 - [Standup](docs/standup.md)
 - [Kustomize deploy method](docs/kustomize.md)
+- [No-Kubernetes (nok8s) deploy method](docs/nok8s.md)
 - [Reproducibility](docs/reproducibility.md)
 - [Observability](docs/observability.md)
 - [Quickstart](docs/quickstart.md)

@@ -19,6 +19,9 @@ class CleanHarnessStep(Step):
             per_stack=False,
         )
 
+    def should_skip(self, context: ExecutionContext) -> bool:
+        return "nok8s" in (context.deployed_methods or [])
+
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:

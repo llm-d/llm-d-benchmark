@@ -296,6 +296,15 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "kustomize_enabled": (
                     plan_config.get("kustomize", {}).get("enabled", False)
                 ),
+                "nok8s_enabled": (plan_config.get("nok8s", {}).get("enabled", False)),
+                "nok8s_listen_port": (
+                    plan_config.get("nok8s", {})
+                    .get("envoy", {})
+                    .get("listenPort", 8081)
+                ),
+                "nok8s_runtime": (
+                    plan_config.get("nok8s", {}).get("runtime", "docker")
+                ),
                 "harness": plan_config.get("harness", {}),
             }
     except (OSError, _yaml.YAMLError):
@@ -374,6 +383,7 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
     fma = plan_info.get("fma_enabled", False)
     modelservice = plan_info.get("modelservice_enabled", False)
     kustomize = plan_info.get("kustomize_enabled", False)
+    nok8s = plan_info.get("nok8s_enabled", False)
 
     if phase == "run":
         # Run phase returns all enabled methods for endpoint detection
@@ -386,6 +396,8 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
             methods.append("modelservice")
         if kustomize:
             methods.append("kustomize")
+        if nok8s:
+            methods.append("nok8s")
         if methods:
             logger.log_info(
                 f"Auto-detected deploy method(s) from plan: {', '.join(methods)}"
@@ -393,6 +405,9 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
             return methods
     else:
         # Standup/teardown: treat as mutually exclusive
+        if nok8s:
+            logger.log_info("Auto-detected deploy method from plan: nok8s")
+            return ["nok8s"]
         if kustomize:
             logger.log_info("Auto-detected deploy method from plan: kustomize")
             return ["kustomize"]
@@ -432,7 +447,8 @@ def _do_standup(args, logger, render_plan_errors):
         plan_info,
     )
 
-    if not namespace:
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
         raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
@@ -453,6 +469,9 @@ def _do_standup(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
+        nok8s_deploy_timeout=int(getattr(args, "nok8s_deploy_timeout", 900) or 900),
         standalone_deploy_timeout=int(
             getattr(args, "standalone_deploy_timeout", 900) or 900
         ),
@@ -497,8 +516,12 @@ def _execute_standup(args, logger, render_plan_errors):
 
     _print_standup_summary(context, result, logger)
 
-    # Auto-chain smoketest after standup unless --skip-smoketest
-    skip_smoketest = getattr(args, "skip_smoketest", False)
+    # Auto-chain smoketest after standup unless --skip-smoketest.
+    # nok8s has no cluster/namespace for the smoketest pod and the deploy step
+    # already curls /v1/models for readiness, so skip the chained smoketest.
+    skip_smoketest = getattr(args, "skip_smoketest", False) or (
+        "nok8s" in (context.deployed_methods or [])
+    )
     if not skip_smoketest:
         logger.log_info("")
         logger.log_info(
@@ -656,7 +679,8 @@ def _print_standup_summary(context, result, logger):
     logger.log_info("  STANDUP COMPLETE")
     logger.log_info("=" * W)
     logger.log_info(f"  User:       {username}")
-    logger.log_info(f"  Platform:   {platform}")
+    if not context.container_only:
+        logger.log_info(f"  Platform:   {platform}")
     logger.log_info(f"  Mode:       {mode}")
     if len(stack_models) > 1:
         logger.log_info(f"  Models:     {len(stack_models)} (one per stack)")
@@ -667,18 +691,22 @@ def _print_standup_summary(context, result, logger):
             stack_models[0][1] if stack_models else (context.model_name or "unknown")
         )
         logger.log_info(f"  Model:      {single_model}")
-    logger.log_info(f"  Namespace:  {ns}")
-    if harness_ns != ns:
-        logger.log_info(f"  Harness NS: {harness_ns}")
+    # Namespace / Harness NS / Gateway are Kubernetes concepts; omit them for
+    # the no-Kubernetes (container_only) path.
+    if not context.container_only:
+        logger.log_info(f"  Namespace:  {ns}")
+        if harness_ns != ns:
+            logger.log_info(f"  Harness NS: {harness_ns}")
     logger.log_info(f"  Methods:    {methods}")
-    # Gateway class only takes effect on the modelservice path; for the
-    # other deploy methods the label says "n/a (...)" so the operator
-    # isn't misled by the scenario's default value.
-    from llmdbenchmark.utilities.cluster import resolve_phase_gateway_label
+    if not context.container_only:
+        # Gateway class only takes effect on the modelservice path; for the
+        # other deploy methods the label says "n/a (...)" so the operator
+        # isn't misled by the scenario's default value.
+        from llmdbenchmark.utilities.cluster import resolve_phase_gateway_label
 
-    gateway_label = resolve_phase_gateway_label(context)
-    if gateway_label:
-        logger.log_info(f"  Gateway:    {gateway_label}")
+        gateway_label = resolve_phase_gateway_label(context)
+        if gateway_label:
+            logger.log_info(f"  Gateway:    {gateway_label}")
     logger.log_info(f"  Stacks:     {stacks}")
 
     total_steps = len(result.global_results)
@@ -721,7 +749,8 @@ def _do_teardown(args, logger, render_plan_errors):
         plan_info,
     )
 
-    if not namespace:
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
         raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
@@ -738,6 +767,8 @@ def _do_teardown(args, logger, render_plan_errors):
         current_phase=Phase.TEARDOWN,
         kubeconfig=getattr(args, "kubeconfig", None),
         deployed_methods=deployed_methods,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
         deep_clean=getattr(args, "deep", False),
         release=getattr(args, "release", "llmdbench"),
         namespace=namespace,
@@ -800,6 +831,12 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
 
     endpoint_url = getattr(args, "endpoint_url", None)
     run_config_file = getattr(args, "run_config", None)
+    container_only = "nok8s" in deployed_methods
+    # No-Kubernetes: default the benchmark target to the local Envoy front door
+    # so the run is fully cluster-free (flips is_run_only_mode, skipping k8s
+    # endpoint discovery and namespace validation).
+    if container_only and not endpoint_url:
+        endpoint_url = f"http://localhost:{plan_info.get('nok8s_listen_port', 8081)}"
     is_run_only = bool(endpoint_url or run_config_file)
 
     if not namespace and not is_run_only:
@@ -815,9 +852,31 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     # to every serving pod before each treatment's run. Covers both the
     # `run` and `experiment` subcommands, which both flow their file through
     # ``experiments_file``.
-    from llmdbenchmark.experiment.parser import read_reset_caches
+    from llmdbenchmark.experiment.parser import read_reset_caches, read_run_controls
 
     reset_caches = read_reset_caches(experiments_file)
+
+    # Per-treatment retry / result-gating controls: YAML value, overridden by
+    # the matching CLI flag when set, else the default.
+    _run_controls = read_run_controls(experiments_file)
+    _cli_max_attempts = getattr(args, "treatment_max_attempts", None)
+    treatment_max_attempts = (
+        max(1, int(_cli_max_attempts))
+        if _cli_max_attempts is not None
+        else _run_controls["treatment_max_attempts"]
+    )
+    _cli_stop_on_error = getattr(args, "treatment_stop_on_error", None)
+    treatment_stop_on_error = (
+        bool(_cli_stop_on_error)
+        if _cli_stop_on_error is not None
+        else _run_controls["treatment_stop_on_error"]
+    )
+    _cli_validate_failures = getattr(args, "validate_failures", None)
+    validate_failures = (
+        bool(_cli_validate_failures)
+        if _cli_validate_failures is not None
+        else _run_controls["validate_failures"]
+    )
 
     context = ExecutionContext(
         plan_dir=config.plan_dir,
@@ -852,11 +911,16 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
         reset_caches=reset_caches,
+        treatment_max_attempts=treatment_max_attempts,
+        treatment_stop_on_error=treatment_stop_on_error,
+        validate_failures=validate_failures,
         harness_service_account=getattr(args, "serviceaccount", None),
         harness_envvars_to_pod=getattr(args, "envvarspod", None),
         analyze_locally=getattr(args, "analyze", False),
         endpoint_url=endpoint_url,
         run_config_file=run_config_file,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
         generate_config_only=getattr(args, "generate_config", False),
         dataset_url=getattr(args, "dataset", None),
         harness_data_access_timeout=int(
@@ -1065,7 +1129,8 @@ def _execute_run(args, logger, render_plan_errors):
             stack_models[0][1] if stack_models else (context.model_name or "unknown")
         )
         logger.log_info(f"  Model:         {single_model}")
-    logger.log_info(f"  Namespace:     {namespace}")
+    if not context.container_only:
+        logger.log_info(f"  Namespace:     {namespace}")
     logger.log_info(f"  Mode:          {mode}")
     logger.log_info(f"  Parallelism:   {parallelism}")
     if experiment_ids:
@@ -1080,13 +1145,16 @@ def _execute_run(args, logger, render_plan_errors):
                     logger.log_info(
                         f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)"
                     )
-    kube_bin = "oc" if context.is_openshift else "kubectl"
     logger.log_info(f"  Local results: {results_dir}")
-    logger.log_info(
-        f"  PVC results:   {kube_bin} exec -n {namespace} "
-        f"$({kube_bin} get pod -n {namespace} -l role=llm-d-benchmark-data-access "
-        f"-o jsonpath='{{.items[0].metadata.name}}') -- ls /requests/"
-    )
+    # The PVC/data-access-pod hint is Kubernetes-only; nok8s writes results
+    # straight to the local dir shown above.
+    if not context.container_only:
+        kube_bin = "oc" if context.is_openshift else "kubectl"
+        logger.log_info(
+            f"  PVC results:   {kube_bin} exec -n {namespace} "
+            f"$({kube_bin} get pod -n {namespace} -l role=llm-d-benchmark-data-access "
+            f"-o jsonpath='{{.items[0].metadata.name}}') -- ls /requests/"
+        )
     logger.log_info("=" * 60)
     logger.log_info(
         f"Run complete (mode={mode}, harness={harness}).",
@@ -1094,7 +1162,11 @@ def _execute_run(args, logger, render_plan_errors):
     )
 
     # --- Store run parameters as ConfigMap in namespace ---
-    if not context.dry_run:
+    # Skipped for nok8s (container_only): the store applies a ConfigMap via
+    # kubectl, and there is no cluster. Per-experiment run_metadata is already
+    # written into the local results dir by the harness, so the audit trail
+    # remains on disk.
+    if not context.dry_run and not context.container_only:
         _store_run_parameters_configmap(
             context, harness, workload, experiment_ids, logger
         )

@@ -1,0 +1,64 @@
+# =====================================================================
+# Experiment: OTEL Trace Replay Concurrent-Sessions Sweep (inference-perf)
+# =====================================================================
+#
+# Sweeps the number of concurrent replay sessions while replaying OTEL
+# traces. Runs every value against a single live deployment and clears the
+# vLLM caches between treatments with `reset_caches` (so each value still
+# starts against cold caches).
+#
+# Compatible harness: inference-perf
+# Compatible workload: otel_traces.yaml
+#
+# Usage (single run against an already-standing endpoint):
+#   llmdbenchmark --spec config/specification/examples/gpu.yaml.j2 run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> \
+#     --namespace <NAMESPACE> \
+#     --harness inference-perf \
+#     --workload otel_traces.yaml \
+#     --experiments experiments/concurrent-sessions-sweep.yaml \
+#     --monitoring -g METRICS_COLLECTION_INTERVAL \
+#     --wait-timeout 10800 \
+#     --analyze
+
+# Clear vLLM prefix/mm/encoder caches on every serving pod before each
+# treatment so every value starts cold. Requires VLLM_SERVER_DEV_MODE=1
+# (the repo default). Non-fatal if dev mode is off. Default false.
+reset_caches: true
+
+# Retry a failed treatment up to N times: its pods and faulty results are
+# deleted, then it re-runs with a fresh experiment_id (reset_caches fires
+# again). 1 = no retry.
+treatment_max_attempts: 5
+
+# Abort the whole run once a treatment exhausts its attempts, instead of
+# continuing to the remaining treatments. Default false.
+treatment_stop_on_error: true
+
+# Fail (and retry) a treatment when its summary_lifecycle_metrics.json
+# reports failures.count > 0 (or is missing/unparseable), even if the pod
+# exited cleanly. Only applies to the otel_traces workload (the schema is
+# workload-specific); other workloads warn and fall back to pod state.
+# Opt-in. Default false.
+validate_failures: true
+
+treatments:
+  - name: conc8
+    load.stages.0.concurrent_sessions: 8
+  - name: conc12
+    load.stages.0.concurrent_sessions: 12
+  - name: conc16
+    load.stages.0.concurrent_sessions: 16
+  - name: conc24
+    load.stages.0.concurrent_sessions: 24
+  - name: conc32
+    load.stages.0.concurrent_sessions: 32
+  - name: conc48
+    load.stages.0.concurrent_sessions: 48
+  - name: conc64
+    load.stages.0.concurrent_sessions: 64
+  - name: conc96
+    load.stages.0.concurrent_sessions: 96
+  - name: conc128
+    load.stages.0.concurrent_sessions: 128

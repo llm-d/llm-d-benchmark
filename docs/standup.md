@@ -5,9 +5,10 @@
 In order to allow reproducible and flexible experiments, and taking into account that the configuration paramaters have significant impact on the overall performance, it is necessary to provide the user with the ability to `standup` and `teardown` stacks.
 
 ## Methods
-Currently, two main standup methods are supported
+Currently, the following standup methods are supported
 a) "Standalone", with multiple VLLM `pods` controlled by a `deployment` behind a single `service`
 b) "llm-d", which leverages a combination of [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) to deploy a full-fledged `llm-d` stack
+c) "No-Kubernetes (`nok8s`)", which runs the routing stack (vLLM + EPP + Envoy) as plain `docker`/`podman` containers on a single host, with **no cluster** -- see [No-Kubernetes deploy method](nok8s.md)
 
 ## Scenarios
 All the information required for the standup of a stack is contained on a "scenario file". This information is encoded in the form of environment variables, with default values defined in `config/defaults.yaml` which can be then overriden inside a [scenario file](../config/scenarios) (YAML-based) or via [specification templates](../config/specification) (Jinja2 `.yaml.j2` files).

@@ -12,6 +12,7 @@ from llmdbenchmark.teardown.steps.step_04_clean_cluster_roles import (
 from llmdbenchmark.teardown.steps.step_05_kustomize_teardown import (
     KustomizeTeardownStep,
 )
+from llmdbenchmark.teardown.steps.step_06_nok8s_teardown import NoK8sTeardownStep
 
 
 def get_teardown_steps() -> list[Step]:
@@ -23,4 +24,5 @@ def get_teardown_steps() -> list[Step]:
         DeleteResourcesStep(),
         CleanClusterRolesStep(),
         KustomizeTeardownStep(),
+        NoK8sTeardownStep(),
     ]

@@ -1287,6 +1287,69 @@ standalone:
   extraPodConfig: {}
 
 # ============================================================================
+# NO-KUBERNETES (nok8s) DEPLOYMENT CONFIGURATION
+# Runs the llm-d routing stack (vLLM + EPP + Envoy) as plain docker/podman
+# containers on the local host, with NO Kubernetes cluster.  The EPP uses the
+# file-discovery plugin (reads endpoints.yaml) instead of a k8s InferencePool.
+# Wired: client -> Envoy (listenPort) -> EPP (grpcPort) -> vLLM (hostPort).
+# Opt-in via `nok8s.enabled: true` in a scenario or `-t nok8s` on the CLI.
+# ============================================================================
+nok8s:
+  enabled: false
+  # Container runtime: "docker" or "podman".
+  runtime: docker
+  # Host env var read at standup time and passed to the vLLM container so it
+  # can pull gated models from Hugging Face.
+  hfTokenEnv: HUGGING_FACE_HUB_TOKEN
+  # Host directory where rendered EPP/Envoy configs are staged and bind-mounted
+  # from (avoids sudo writes to /etc).
+  workspaceHostDir: "~/.llmdbench/nok8s"
+
+  # vLLM inference worker(s)
+  vllm:
+    image: docker.io/vllm/vllm-openai
+    tag: *vllm-openai_version
+    hostPort: 8000          # worker i is published on hostPort + i
+    containerPort: 8000
+    tensorParallel: 1       # accelerators to shard each worker across
+    # Accelerator preset for exposing the device to the container:
+    #   nvidia | amd | intel | gaudi | cpu | spyre
+    # Only NVIDIA is validated end-to-end; others follow each backend's
+    # documented device flags. Change `image` to the matching vLLM backend.
+    accelerator: nvidia
+    gpus: "all"             # nvidia only: docker --gpus value (podman uses CDI)
+    # Raw runtime device flags; overrides the accelerator preset entirely.
+    # Use for IBM Spyre/AIU or any custom device wiring, e.g.
+    #   deviceArgs: ["--device", "/dev/kfd", "--device", "/dev/dri"]
+    deviceArgs: []
+    shmSize: "20g"          # required for NCCL/RCCL when tensorParallel > 1
+    hfCacheDir: "~/.cache/huggingface"
+    # Number of independent vLLM workers (EPP load-balances across them). With
+    # replicas > 1 each worker is pinned to its own slice of `tensorParallel`
+    # GPU indices (replica i -> devices i*TP .. i*TP+TP-1) via the accelerator's
+    # visible-devices env. Total GPUs used = replicas * tensorParallel.
+    replicas: 1
+    extraArgs: []           # appended after `serve <MODEL> --tensor-parallel-size=N`
+
+  # Endpoint Picker (router brain), file-discovery mode
+  epp:
+    image: ghcr.io/llm-d/llm-d-router-endpoint-picker
+    tag: v0.9.0
+    grpcPort: 9002
+    grpcHealthPort: 9003
+    metricsPort: 9090
+    poolName: file-discovery
+    poolNamespace: default
+    configMountDir: /etc/epp
+
+  # Envoy front door
+  envoy:
+    image: docker.io/envoyproxy/envoy
+    tag: distroless-v1.33.2
+    listenPort: 8081
+    configMountPath: /etc/envoy/envoy.yaml
+
+# ============================================================================
 # KUSTOMIZE DEPLOYMENT CONFIGURATION
 # Opt-in via `kustomize.enabled: true` in a scenario or `-t kustomize` on
 # the CLI. Defined here (matching modelservice/standalone/fma) so the
@@ -1315,23 +1378,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.1/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.1/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.1/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.2/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.2/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.2/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.6.1
+    version: 0.6.2
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.6.1
+    tag: v0.6.2
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.1
+      tag: v0.6.2
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1345,7 +1408,7 @@ fma:
     maxInstances: 4
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.1
+      tag: v0.6.2
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:
@@ -1427,8 +1490,8 @@ extraObjects: []
 #
 # Installed in *namespaced* mode: the controller watches only the namespace
 # it is deployed in. One controller per unique wva.namespace across rendered
-# stacks. VariantAutoscaling + HPA are rendered per-stack so a single
-# controller can manage multiple models in the same namespace.
+# stacks. A KEDA ScaledObject is rendered per-stack (28_wva-scaledobject.yaml.j2)
+# so a single controller can manage multiple models in the same namespace.
 # ============================================================================
 wva:
   enabled: false
@@ -1452,13 +1515,17 @@ wva:
   prometheus:
     baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
     port: 9091
+  # Only variantCost is consumed by rendering (llm-d.ai/variant-cost annotation
+  # on the KEDA ScaledObject). The controller's SLO / saturation tuning comes
+  # from the upstream overlay's ConfigMaps, not from per-model fields here --
+  # no VariantAutoscaling CR is rendered.
   variantAutoscaling:
-    enabled: true
     variantCost: "10.0"
-    slo:
-      tpot: 10
-      ttft: 1000
+  # Drives the per-stack KEDA ScaledObject (min/maxReplicaCount, trigger
+  # threshold, HPA behavior). Named "hpa" for parity with the upstream guide.
   hpa:
+    # Gates the smoketest's autoscaling-aware replica-range check. Does not
+    # affect rendering -- the ScaledObject is gated on wva.enabled.
     enabled: true
     minReplicas: 1
     maxReplicas: 16

@@ -19,6 +19,7 @@ from llmdbenchmark.standup.steps.step_05_harness_namespace import HarnessNamespa
 from llmdbenchmark.standup.steps.step_06_fma_deploy import FMADeployStep
 from llmdbenchmark.standup.steps.step_06_standalone_deploy import StandaloneDeployStep
 from llmdbenchmark.standup.steps.step_06_kustomize_deploy import KustomizeDeployStep
+from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
 from llmdbenchmark.standup.steps.step_07_deploy_setup import DeploySetupStep
 from llmdbenchmark.standup.steps.step_08_deploy_router import DeployRouterStep
 from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
@@ -37,6 +38,7 @@ def get_standup_steps() -> list[Step]:
         FMADeployStep(),
         StandaloneDeployStep(),
         KustomizeDeployStep(),
+        NoK8sDeployStep(),
         DeploySetupStep(),
         DeployRouterStep(),
         DeployModelserviceStep(),

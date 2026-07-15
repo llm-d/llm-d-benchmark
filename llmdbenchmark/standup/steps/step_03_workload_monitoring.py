@@ -28,9 +28,11 @@ class WorkloadMonitoringStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
+        methods = context.deployed_methods or []
+        if "nok8s" in methods:
+            return True
         if context.non_admin:
             return True
-        methods = context.deployed_methods or []
         if methods == ["kustomize"] and context.kustomize_skip_infra:
             return True
         return False

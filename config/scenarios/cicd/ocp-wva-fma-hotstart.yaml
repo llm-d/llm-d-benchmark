@@ -22,8 +22,9 @@
 # user-facing WVA well-lit path that the WVA make targets consume, use
 # guides/workload-autoscaling (WVA-only).
 #
-# All HPA / VariantAutoscaling knobs are listed below even when they match
-# defaults.yaml, so the full surface area is visible in one place.
+# The scaling knobs this scenario consumes (variantAutoscaling.variantCost +
+# the hpa.* block, which drive the KEDA ScaledObject) are listed below with
+# inline notes.
 #
 # Note: FMA owns the elastic vLLM tier here, so the modelservice decode and
 # prefill Deployments are explicitly disabled below (decode.enabled: false,
@@ -52,8 +53,8 @@
 #
 # How WVA tracks FMA: launcher pods carry `llm-d.ai/variant=<id>-fma` (also
 # applied at bind time via the ISC; label-based variant identification per
-# WVA repo PR #1145). Templates 27/28 retarget the VariantAutoscaling + HPA
-# at the FMA requester Deployment (`fma-requester-<id>`) when fma.enabled.
+# WVA repo PR #1145). Template 28 retargets the KEDA ScaledObject at the FMA
+# requester Deployment (`fma-requester-<id>`) when fma.enabled.
 #
 # Based on:
 #   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
@@ -129,6 +130,10 @@ scenario:
 
       namespace: ""
 
+      # Ref of llm-d/llm-d used for the WVA kustomize overlay (CRD + RBAC +
+      # controller manifests). Consumed by 19_wva-kustomize.yaml.j2.
+      repoRef: "main"
+
       image:
         repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
         tag: v0.8.0
@@ -147,17 +152,17 @@ scenario:
         baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
         port: 9091
 
+      # Only variantCost is consumed (llm-d.ai/variant-cost annotation on the
+      # KEDA ScaledObject). Controller SLO/saturation tuning lives in the
+      # upstream overlay ConfigMaps; no VariantAutoscaling CR is rendered.
       variantAutoscaling:
-        enabled: true
-        minReplicas: 1
-        maxReplicas: 10
         variantCost: "10.0"
-        slo:
-          tpot: 10
-          ttft: 1000
 
+      # Drives the per-stack KEDA ScaledObject.
       hpa:
-        enabled: true
+        enabled: true                # gates the smoketest's autoscaling-aware
+                                     # replica-range check (rendering is gated
+                                     # on wva.enabled, not this)
         minReplicas: 1
         maxReplicas: 10
         targetAvgValue: 1

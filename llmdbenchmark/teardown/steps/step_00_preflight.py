@@ -21,6 +21,10 @@ class TeardownPreflightStep(Step):
             per_stack=False,
         )
 
+    def should_skip(self, context: ExecutionContext) -> bool:
+        # nok8s has no cluster/namespace; the nok8s teardown step handles it.
+        return "nok8s" in (context.deployed_methods or [])
+
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:

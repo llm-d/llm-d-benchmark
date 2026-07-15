@@ -13,6 +13,9 @@ from llmdbenchmark.run.steps.step_06_create_profile_configmap import (
     CreateProfileConfigmapStep,
 )
 from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
+from llmdbenchmark.run.steps.step_07_deploy_harness_local import (
+    DeployHarnessLocalStep,
+)
 from llmdbenchmark.run.steps.step_08_wait_completion import WaitCompletionStep
 from llmdbenchmark.run.steps.step_09a_capture_cluster_state import (
     CaptureClusterStateStep,
@@ -37,6 +40,7 @@ def get_run_steps() -> list[Step]:
         RenderProfilesStep(),
         CreateProfileConfigmapStep(),
         DeployHarnessStep(),
+        DeployHarnessLocalStep(),
         WaitCompletionStep(),
         CollectResultsStep(),
         CaptureClusterStateStep(),

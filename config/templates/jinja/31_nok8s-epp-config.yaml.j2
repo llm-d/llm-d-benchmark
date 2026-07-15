@@ -1,0 +1,45 @@
+{% if nok8s.enabled %}
+{# ============================================================================
+   nok8s EPP (Endpoint Picker) config — file-discovery mode.
+   Rendered only for the no-Kubernetes deployment method.  Staged to
+   {{ nok8s.epp.configMountDir }}/config.yaml on the host and bind-mounted
+   into the EPP container.  Mirrors the optimized-baseline plugin set with the
+   file-discovery plugin added so endpoints come from a YAML file instead of a
+   Kubernetes InferencePool.
+   ============================================================================ #}
+apiVersion: llm-d.ai/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - name: file-discovery
+    type: file-discovery
+    parameters:
+      path: {{ nok8s.epp.configMountDir }}/endpoints.yaml
+      watchFile: true
+  - type: queue-scorer
+  - type: kv-cache-utilization-scorer
+  - type: prefix-cache-scorer
+  - type: no-hit-lru-scorer
+  - name: metrics-source
+    type: metrics-data-source
+  - name: metrics-extractor
+    type: core-metrics-extractor
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: queue-scorer
+        weight: 2
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 2
+      - pluginRef: prefix-cache-scorer
+        weight: 3
+      - pluginRef: no-hit-lru-scorer
+        weight: 2
+dataLayer:
+  injectDefaults: false
+  discovery:
+    pluginRef: file-discovery
+  sources:
+    - pluginRef: metrics-source
+      extractors:
+        - pluginRef: metrics-extractor
+{% endif %}

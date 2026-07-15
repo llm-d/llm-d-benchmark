@@ -30,6 +30,8 @@ class CleanClusterRolesStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         if context.non_admin:
             return True
         if "modelservice" not in context.deployed_methods:

@@ -582,7 +582,7 @@ class RenderPlans:
         """Override deploy method based on CLI ``--methods`` flag.
 
         Accepts ``--methods standalone``, ``--methods modelservice``,
-        ``--methods fma`` or ``--methods kustomize``.
+        ``--methods fma``, ``--methods kustomize`` or ``--methods nok8s``.
         Only one method may be active at a time.
 
         Without ``--methods``, the scenario YAML value is used as-is.
@@ -612,23 +612,41 @@ class RenderPlans:
                 "choose one. Using kustomize."
             )
             methods = ["kustomize"]
+        if "nok8s" in methods and any(
+            m in methods for m in ("standalone", "modelservice", "fma", "kustomize")
+        ):
+            self.logger.log_warning(
+                "Cannot combine nok8s with another deploy method -- "
+                "choose one. Using nok8s."
+            )
+            methods = ["nok8s"]
 
         standalone_config = result.setdefault("standalone", {})
         modelservice_config = result.setdefault("modelservice", {})
         fma_config = result.setdefault("fma", {})
         kustomize_config = result.setdefault("kustomize", {})
+        nok8s_config = result.setdefault("nok8s", {})
 
-        if "standalone" in methods:
+        if "nok8s" in methods:
+            standalone_config["enabled"] = False
+            modelservice_config["enabled"] = False
+            fma_config["enabled"] = False
+            kustomize_config["enabled"] = False
+            nok8s_config["enabled"] = True
+            self.logger.log_info("Deploy method from CLI: nok8s")
+        elif "standalone" in methods:
             standalone_config["enabled"] = True
             modelservice_config["enabled"] = False
             fma_config["enabled"] = False
             kustomize_config["enabled"] = False
+            nok8s_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
         elif "kustomize" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = False
             fma_config["enabled"] = False
             kustomize_config["enabled"] = True
+            nok8s_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: kustomize")
         elif "modelservice" in methods or "fma" in methods:
             # Either or both. FMA layers on top of modelservice (or runs
@@ -637,6 +655,7 @@ class RenderPlans:
             # _resolve_deploy_methods returns both when both are enabled.
             standalone_config["enabled"] = False
             kustomize_config["enabled"] = False
+            nok8s_config["enabled"] = False
             modelservice_config["enabled"] = "modelservice" in methods
             fma_config["enabled"] = "fma" in methods
             chosen = [m for m in ("modelservice", "fma") if m in methods]
@@ -1548,8 +1567,15 @@ class RenderPlans:
                     f"Version resolution had issues for stack {stack_name}: {e}"
                 )
 
-        # Raises RuntimeError if "auto" values are present but cluster is unreachable
-        if self.cluster_resource_resolver:
+        # Raises RuntimeError if "auto" values are present but cluster is
+        # unreachable. Skipped for the no-Kubernetes (nok8s) method: there is
+        # no cluster to scan, and the accelerator auto-detection fields belong
+        # to the (disabled) k8s methods.
+        cli_nok8s = bool(self.cli_methods) and "nok8s" in [
+            m.strip() for m in self.cli_methods.split(",")
+        ]
+        is_nok8s = cli_nok8s or merged_values.get("nok8s", {}).get("enabled", False)
+        if self.cluster_resource_resolver and not is_nok8s:
             merged_values = self.cluster_resource_resolver.resolve_all(merged_values)
 
         merged_values = self._resolve_namespace(merged_values)

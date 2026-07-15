@@ -20,7 +20,9 @@ class CollectResultsStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip if step 06 already collected results locally."""
+        """Skip if results are already local (nok8s bind-mount, or step 06)."""
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         results_dir = context.run_results_dir()
         if results_dir.exists() and any(results_dir.iterdir()):
             return True

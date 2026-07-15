@@ -47,6 +47,8 @@ class UninstallHelmStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         # We still run for WVA-enabled stacks even when neither
         # modelservice nor fma is in deployed_methods, so the VA+HPA
         # resources get cleaned up.

@@ -45,7 +45,7 @@ def add_subcommands(
         "-t",
         "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Standup methods (standalone, modelservice, fma, kustomize).",
+        help="Standup methods (standalone, modelservice, fma, kustomize, nok8s).",
     )
     standup_parser.add_argument(
         "--gateway-class",
@@ -127,6 +127,12 @@ def add_subcommands(
         type=int,
         default=env_int("LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT"),
         help="Seconds to wait for the vLLM pods to deploy during standup in standalone mode.",
+    )
+    standup_parser.add_argument(
+        "--nok8s-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_NOK8S_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for the vLLM/EPP/Envoy containers to become ready in nok8s mode.",
     )
     standup_parser.add_argument(
         "--gateway-deploy-timeout",

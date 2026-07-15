@@ -84,6 +84,8 @@ class AdminPrerequisitesStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         if context.non_admin:
             return True
         if self._kustomize_only(context):

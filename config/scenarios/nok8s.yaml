@@ -1,0 +1,81 @@
+# No-Kubernetes (nok8s) scenario.
+#
+# Runs the llm-d routing stack (vLLM + EPP + Envoy) as plain docker/podman
+# containers on the local host -- no cluster. The benchmark harness also runs
+# as a local container against the Envoy front door (http://localhost:8081).
+#
+# Single-GPU friendly (e.g. one H100/H200). Defaults to a small ungated model
+# so a smoke run needs no Hugging Face token. Set the token in your shell so
+# the vLLM container can pull gated models:
+#     export HUGGING_FACE_HUB_TOKEN=hf_...
+#
+# Usage:
+#     llmdbenchmark --spec config/scenarios/nok8s.yaml standup --methods nok8s
+#     llmdbenchmark --spec config/scenarios/nok8s.yaml run
+#     llmdbenchmark --spec config/scenarios/nok8s.yaml teardown --methods nok8s
+
+scenario:
+  - name: "nok8s-single"
+
+    # Model served by vLLM (also the name benchmark requests must use).
+    # Set name and huggingfaceId together so the run phase (which reads
+    # huggingfaceId) and the container/endpoints templates (which read name)
+    # agree -- otherwise huggingfaceId falls back to the defaults model.
+    model:
+      name: Qwen/Qwen2.5-0.5B-Instruct
+      huggingfaceId: Qwen/Qwen2.5-0.5B-Instruct
+      shortName: qwen2-5-0-5b-instruct
+
+    # Deployment method: no Kubernetes. Disable the others explicitly
+    # (modelservice defaults to enabled) so the method is unambiguous even
+    # without passing --methods on the CLI.
+    modelservice:
+      enabled: false
+    standalone:
+      enabled: false
+    fma:
+      enabled: false
+    kustomize:
+      enabled: false
+    nok8s:
+      enabled: true
+      runtime: docker            # docker | podman
+      hfTokenEnv: HUGGING_FACE_HUB_TOKEN
+      workspaceHostDir: "~/.llmdbench/nok8s"
+      vllm:
+        image: docker.io/vllm/vllm-openai
+        tag: v0.19.1
+        hostPort: 8000
+        tensorParallel: 1
+        # Accelerator: nvidia | amd | intel | gaudi | cpu | spyre.
+        # For non-NVIDIA, also change `image` to the matching vLLM backend and
+        # (for spyre/custom) set `deviceArgs`. Examples:
+        #   amd:    image: rocm/vllm         (device flags auto: /dev/kfd,/dev/dri)
+        #   intel:  image: intel vLLM XPU    (device flags auto: /dev/dri)
+        #   gaudi:  image: habana vLLM       (--runtime=habana)
+        #   spyre:  image: <IBM vLLM-Spyre>  deviceArgs: ["--device","/dev/vfio/..."]
+        accelerator: nvidia
+        gpus: "all"
+        deviceArgs: []
+        shmSize: "20g"
+        hfCacheDir: "~/.cache/huggingface"
+        replicas: 1
+        extraArgs: []
+      epp:
+        image: ghcr.io/llm-d/llm-d-router-endpoint-picker
+        tag: v0.9.0
+        grpcPort: 9002
+        grpcHealthPort: 9003
+        metricsPort: 9090
+        poolName: file-discovery
+        poolNamespace: default
+      envoy:
+        image: docker.io/envoyproxy/envoy
+        tag: distroless-v1.33.2
+        listenPort: 8081
+
+    # Benchmark harness (runs as a local container against :8081).
+    harness:
+      name: inference-perf
+      profile: sanity_random.yaml
+      waitTimeout: 1800

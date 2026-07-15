@@ -60,6 +60,8 @@ class CaptureClusterStateStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         return context.harness_skip_run
 
     def execute(

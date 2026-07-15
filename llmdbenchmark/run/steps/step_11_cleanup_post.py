@@ -23,7 +23,9 @@ class RunCleanupPostStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip cleanup in debug mode (keep pods alive for inspection)."""
+        """Skip cleanup in debug mode, or for nok8s (no cluster resources)."""
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         return context.harness_debug
 
     def execute(

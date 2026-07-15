@@ -20,7 +20,9 @@ class WaitCompletionStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip waiting in skip-run mode."""
+        """Skip in skip-run mode, or for nok8s (the local step waits inline)."""
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         return context.harness_skip_run
 
     def execute(

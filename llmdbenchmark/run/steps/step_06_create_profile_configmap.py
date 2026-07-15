@@ -21,6 +21,11 @@ class CreateProfileConfigmapStep(Step):
             per_stack=True,
         )
 
+    def should_skip(self, context: ExecutionContext) -> bool:
+        # nok8s runs the harness as a local container with profiles and
+        # scripts bind-mounted from disk -- no ConfigMaps needed.
+        return "nok8s" in (context.deployed_methods or [])
+
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:

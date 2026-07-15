@@ -26,6 +26,10 @@ class ModelNamespaceStep(Step):
 
     def should_skip(self, context: ExecutionContext) -> bool:
         methods = context.deployed_methods or []
+        if "nok8s" in methods:
+            # vLLM pulls the model from Hugging Face at container runtime;
+            # no k8s namespace/PVC/download Job is needed.
+            return True
         return methods == ["kustomize"] and context.kustomize_skip_infra
 
     def execute(

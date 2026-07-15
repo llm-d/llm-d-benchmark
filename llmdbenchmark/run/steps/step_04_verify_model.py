@@ -20,7 +20,14 @@ class VerifyModelStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip model verification in skip-run mode or fma."""
+        """Skip in skip-run mode, fma, or nok8s.
+
+        nok8s: ``test_model_serving`` probes from an in-cluster curl pod, which
+        cannot run without a cluster; standup already verified /v1/models
+        locally, so verification here would be a futile kubectl call.
+        """
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         return context.harness_skip_run or is_fma_only_mode(context)
 
     def execute(

@@ -23,6 +23,8 @@ class HarnessNamespaceStep(Step):
 
     def should_skip(self, context: ExecutionContext) -> bool:
         methods = context.deployed_methods or []
+        if "nok8s" in methods:
+            return True
         return methods == ["kustomize"] and context.kustomize_skip_infra
 
     def execute(

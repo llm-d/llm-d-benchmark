@@ -214,7 +214,7 @@ CLI arguments override both defaults, scenario values, and environment variables
 # Override namespace
 llmdbenchmark --spec my-spec.yaml.j2 standup -p my-namespace
 
-# Override deployment method
+# Override deployment method (standalone, modelservice, fma, kustomize, nok8s)
 llmdbenchmark --spec my-spec.yaml.j2 standup -t standalone
 
 # Override model
@@ -280,9 +280,13 @@ Jinja2 templates that produce Kubernetes resource definitions. Each template cor
 | `21_prometheus-adapter-values.yaml.j2` | Prometheus adapter values |
 | `22_prometheus-rbac.yaml.j2` | Prometheus RBAC resources |
 | `23_wva-namespace.yaml.j2` | WVA namespace resources |
+| `31_nok8s-epp-config.yaml.j2` | No-Kubernetes EPP (file-discovery) config |
+| `32_nok8s-epp-endpoints.yaml.j2` | No-Kubernetes EPP endpoints (worker list) |
+| `33_nok8s-envoy.yaml.j2` | No-Kubernetes Envoy bootstrap |
+| `34_nok8s-containers.yaml.j2` | No-Kubernetes container launch spec (see [nok8s](../docs/nok8s.md)) |
 | `_macros.j2` | Shared Jinja2 macros (vLLM command gen, etc.) |
 
-Templates use Jinja2 conditionals to skip rendering when their feature is disabled. For example, standalone templates only render when `standalone.enabled` is `true`. Steps check for empty rendered files via `_has_yaml_content()` and skip applying them.
+Templates use Jinja2 conditionals to skip rendering when their feature is disabled. For example, standalone templates only render when `standalone.enabled` is `true` (and the `nok8s` templates only when `nok8s.enabled` is `true`). Steps check for empty rendered files via `_has_yaml_content()` and skip applying them.
 
 ### `templates/values/defaults.yaml`
 
@@ -304,6 +308,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `prefill` | Prefill pod configuration (disabled by default) |
 | `standalone` | Standalone deployment settings (disabled by default) |
 | `modelservice` | Modelservice deployment settings (enabled by default) |
+| `nok8s` | No-Kubernetes deployment settings (disabled by default) -- see [nok8s](../docs/nok8s.md) |
 | `images` | Container image repositories, tags, and pull policies |
 | `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes) |
 | `harness` | Benchmark harness configuration |

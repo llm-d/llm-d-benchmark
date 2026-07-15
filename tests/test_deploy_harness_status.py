@@ -247,3 +247,171 @@ def test_reset_caches_skipped_in_dry_run(tmp_path: Path, monkeypatch: Any) -> No
     DeployHarnessStep().execute(context, stack_path)
 
     assert calls == []
+
+
+def test_treatment_retries_then_succeeds(tmp_path: Path, monkeypatch: Any) -> None:
+    """A treatment that fails once then passes succeeds within max_attempts."""
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.treatment_max_attempts = 3
+    context.experiment_treatments = [{"name": "t0", "overrides": {}}]
+
+    # Fail the wait on the first attempt, pass on the second.
+    attempts = {"n": 0}
+
+    def _wait(*_a, **_k):
+        attempts["n"] += 1
+        return ["wait failed"] if attempts["n"] == 1 else []
+
+    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_label", _wait)
+    monkeypatch.setattr(
+        DeployHarnessStep, "_collect_treatment_results_discovery", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
+
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        DeployHarnessStep,
+        "_delete_faulty_results",
+        staticmethod(lambda _ctx, eid, _par: deleted.append(eid)),
+    )
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert result.success
+    assert attempts["n"] == 2  # retried once
+    assert len(deleted) == 1  # faulty results cleaned before the retry
+    assert len(context.experiment_ids) == 1  # only the successful attempt recorded
+
+
+def test_treatment_exhausts_attempts_records_failure(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.treatment_max_attempts = 2
+    context.experiment_treatments = [{"name": "t0", "overrides": {}}]
+
+    monkeypatch.setattr(
+        deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: ["wait failed"]
+    )
+    monkeypatch.setattr(
+        DeployHarnessStep, "_collect_treatment_results_discovery", lambda *_a, **_k: []
+    )
+    monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        DeployHarnessStep, "_delete_faulty_results", staticmethod(lambda *_a: None)
+    )
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert not result.success
+    assert "wait failed" in result.errors
+    # A failed treatment records no experiment_id (kept out of the upload step).
+    assert context.experiment_ids == []
+
+
+def test_stop_on_error_aborts_remaining_treatments(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.treatment_stop_on_error = True
+    context.experiment_treatments = [
+        {"name": "t0", "overrides": {}},
+        {"name": "t1", "overrides": {}},
+    ]
+
+    seen: list[str] = []
+
+    def _collect(_cmd, experiment_id, *_a, **_k):
+        seen.append(experiment_id)
+        return []
+
+    # Fail the first treatment's wait; it has no retries (default 1), so
+    # stop_on_error should abort before the second treatment runs.
+    monkeypatch.setattr(
+        deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: ["wait failed"]
+    )
+    monkeypatch.setattr(
+        DeployHarnessStep,
+        "_collect_treatment_results_discovery",
+        staticmethod(_collect),
+    )
+    monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert not result.success
+    # Only the first treatment (t0) ran; t1 was never collected.
+    assert all("-t0-" in eid for eid in seen)
+    assert not any("-t1-" in eid for eid in seen)
+
+
+def test_validate_failures_fails_clean_run(tmp_path: Path, monkeypatch: Any) -> None:
+    """A pod that exits clean but reports failures.count>0 fails the treatment."""
+    import json as _json
+
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.validate_failures = True
+    # The failures.count check is specific to the otel_traces workload.
+    context.harness_profile = "otel_traces.yaml"
+    context.experiment_treatments = [{"name": "t0", "overrides": {}}]
+
+    # Collect writes a summary with a positive failure count into the pod dir.
+    def _collect(_cmd, experiment_id, *_a, **_k):
+        d = context.run_results_dir() / f"{experiment_id}_1"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "summary_lifecycle_metrics.json").write_text(
+            _json.dumps({"failures": {"count": 2}}), encoding="utf-8"
+        )
+        return []
+
+    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        DeployHarnessStep,
+        "_collect_treatment_results_discovery",
+        staticmethod(_collect),
+    )
+    monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    assert not result.success
+    assert any("failed session" in e for e in result.errors)
+
+
+def test_validate_failures_falls_back_for_non_otel_workload(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """validate_failures on a non-otel workload warns and passes on pod state."""
+    import json as _json
+
+    logger = _Logger()
+    context, stack_path = _base_context(tmp_path, logger)
+    context.validate_failures = True
+    context.harness_profile = "random_concurrent.yaml"  # not otel_traces
+    context.experiment_treatments = [{"name": "t0", "overrides": {}}]
+
+    def _collect(_cmd, experiment_id, *_a, **_k):
+        d = context.run_results_dir() / f"{experiment_id}_1"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "summary_lifecycle_metrics.json").write_text(
+            _json.dumps({"failures": {"count": 7}}), encoding="utf-8"
+        )
+        return []
+
+    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        DeployHarnessStep,
+        "_collect_treatment_results_discovery",
+        staticmethod(_collect),
+    )
+    monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
+
+    result = DeployHarnessStep().execute(context, stack_path)
+
+    # The positive failure count is ignored for a non-otel workload: the pods
+    # exited clean, so the treatment succeeds.
+    assert result.success

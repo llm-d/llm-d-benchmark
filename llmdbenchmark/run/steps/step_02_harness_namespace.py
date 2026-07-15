@@ -31,5 +31,10 @@ class HarnessNamespaceStep(_HarnessNamespaceStep):
         PVC. Prepare it here regardless of deploy method (idempotent if a
         non-kustomize standup already created it). Only skip in collect-only
         (skip-run) mode, where no harness pod is deployed.
+
+        Also skipped for nok8s: the harness runs as a local container writing
+        to a host bind-mount, so no k8s namespace/PVC/data-access pod exists.
         """
+        if "nok8s" in (context.deployed_methods or []):
+            return True
         return context.harness_skip_run

@@ -1,0 +1,16 @@
+{% if nok8s.enabled %}
+{# ============================================================================
+   nok8s EPP endpoints file (file-discovery plugin input).
+   One entry per vLLM worker; worker i is published on hostPort + i.  Addresses
+   must be literal IPv4 (the plugin does not resolve hostnames).  With
+   watchFile: true the EPP reloads this on atomic rewrite.
+   ============================================================================ #}
+endpoints:
+{% for i in range(nok8s.vllm.replicas) %}
+  - name: vllm-{{ i }}
+    address: 127.0.0.1
+    port: "{{ nok8s.vllm.hostPort + i }}"
+    labels:
+      model: {{ model.name }}
+{% endfor %}
+{% endif %}

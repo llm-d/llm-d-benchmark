@@ -1,0 +1,49 @@
+{% if nok8s.enabled %}
+{# ============================================================================
+   nok8s container-launch spec.  This is NOT a Kubernetes object — it is an
+   authored manifest describing which containers step_06_nok8s_deploy.py must
+   launch (and step_06_nok8s_teardown.py must remove), plus the readiness
+   probes and the endpoint URL the run phase benchmarks against.  Rendering the
+   launch surface as data (rather than argv strings) keeps dry-run readable and
+   lets the step build docker vs podman commands correctly.
+   ============================================================================ #}
+runtime: {{ nok8s.runtime }}
+workspaceHostDir: "{{ nok8s.workspaceHostDir }}"
+hfTokenEnv: {{ nok8s.hfTokenEnv }}
+hfCacheDir: "{{ nok8s.vllm.hfCacheDir }}"
+model: {{ model.name }}
+endpoint: "http://localhost:{{ nok8s.envoy.listenPort }}"
+readiness:
+  vllmPorts: [{% for i in range(nok8s.vllm.replicas) %}{{ nok8s.vllm.hostPort + i }}{% if not loop.last %}, {% endif %}{% endfor %}]
+  envoyPort: {{ nok8s.envoy.listenPort }}
+containers:
+{% for i in range(nok8s.vllm.replicas) %}
+  - name: vllm-{{ i }}
+    kind: vllm
+    image: "{{ nok8s.vllm.image }}:{{ nok8s.vllm.tag }}"
+    hostPort: {{ nok8s.vllm.hostPort + i }}
+    containerPort: {{ nok8s.vllm.containerPort }}
+    accelerator: {{ nok8s.vllm.accelerator | default('nvidia') }}
+    gpus: "{{ nok8s.vllm.gpus }}"
+    deviceArgs: [{% for a in nok8s.vllm.deviceArgs | default([]) %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+    shmSize: "{{ nok8s.vllm.shmSize }}"
+    tensorParallel: {{ nok8s.vllm.tensorParallel }}
+    replicas: {{ nok8s.vllm.replicas }}
+    replicaIndex: {{ i }}
+    extraArgs: [{% for a in nok8s.vllm.extraArgs %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+{% endfor %}
+  - name: epp
+    kind: epp
+    image: "{{ nok8s.epp.image }}:{{ nok8s.epp.tag }}"
+    grpcPort: {{ nok8s.epp.grpcPort }}
+    grpcHealthPort: {{ nok8s.epp.grpcHealthPort }}
+    metricsPort: {{ nok8s.epp.metricsPort }}
+    poolName: {{ nok8s.epp.poolName }}
+    poolNamespace: {{ nok8s.epp.poolNamespace }}
+    configMountDir: {{ nok8s.epp.configMountDir }}
+  - name: envoy
+    kind: envoy
+    image: "{{ nok8s.envoy.image }}:{{ nok8s.envoy.tag }}"
+    listenPort: {{ nok8s.envoy.listenPort }}
+    configMountPath: {{ nok8s.envoy.configMountPath }}
+{% endif %}
