@@ -15,6 +15,9 @@ scenario:
       shortName: qwen-qwen3-8b
       path: models/Qwen/Qwen3-8B
       huggingfaceId: Qwen/Qwen3-8B
+      # Keeping it similar to FMA launcher's vLLM (24_fma-deployment.yaml.j2)
+      maxModelLen: 40960
+      blockSize: 16
 
     # Deployment method
     modelservice:
@@ -64,6 +67,13 @@ scenario:
 
     vllmCommon:
       priorityClassName: nightly-gpu-critical
+      flags:
+        # Disable enforce_eager so the standalone vLLM runs torch.compile +
+        # CUDA-graph capture -- otherwise Dynamo / Torch Compile / Memory
+        # Profiling metrics are all 0 (those phases are skipped under eager).
+        enforceEager: false
+        # FMA runs with prefix caching off (--no-enable-prefix-caching)
+        noPrefixCaching: true
 
     workDir: /tmp/llmdbenchcicd-ocp/
 
