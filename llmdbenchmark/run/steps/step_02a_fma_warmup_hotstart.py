@@ -106,13 +106,11 @@ class FMAWarmupHotStartStep(Step):
         # actually enforces the requester Deployment's replica count during the
         # benchmark. Scaling below it would just get bounced back up on the next
         # HPA sync, defeating the "sleep until the benchmark scales up" intent.
-        # variantAutoscaling.minReplicas only bounds what the WVA controller
-        # *computes*; fall back to it (then 1) when the HPA floor is unset.
+        # Falls back to 1 when the HPA floor is unset.
         min_replicas = int(
             self._resolve(
                 plan_config,
                 "wva.hpa.minReplicas",
-                "wva.variantAutoscaling.minReplicas",
                 default=1,
             )
         )
