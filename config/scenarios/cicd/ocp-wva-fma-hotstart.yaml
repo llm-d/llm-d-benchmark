@@ -135,8 +135,8 @@ scenario:
       repoRef: "main"
 
       image:
-        repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-        tag: v0.8.0
+        repository: quay.io/braulio/llm-d-wva
+        tag: keda
 
       replicaCount: 1
       controller:
