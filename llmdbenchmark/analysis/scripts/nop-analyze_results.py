@@ -189,9 +189,9 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
             "value"
         ]
         torch_compile = metrics_metadata["torch_compile"]["value"]
-        initial_free = metrics_metadata["memory_profiling"]["initial_free"]["value"]
-        after_free = metrics_metadata["memory_profiling"]["after_free"]["value"]
-        profiling_time = metrics_metadata["memory_profiling"]["time"]["value"]
+        available_kv_cache = metrics_metadata["memory_profiling"]["available_kv_cache"][
+            "value"
+        ]
         load_cached_compiled_graph = metrics_metadata.get("load_cached_compiled_graph")
         compile_graph = metrics_metadata.get("compile_graph")
 
@@ -216,11 +216,7 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
                     f"      Compile(secs)                 : {compile_graph['value']:7.3f}\n"
                 )
         file.write(f"    Torch Compile(secs)             : {torch_compile:7.2f}\n")
-        file.write("    Memory Profiling\n")
-        file.write(f"      Elapsed(secs)                 : {profiling_time:7.2f}\n")
-        file.write("      Free Memory GPU(GiB)\n")
-        file.write(f"        Initial                     : {initial_free:7.2f}\n")
-        file.write(f"        After                       : {after_free:7.2f}\n")
+        file.write(f"    Available KV Cache Memory(GiB)  : {available_kv_cache:7.2f}\n")
 
         metrics_sleep_wake = metrics_metadata.get("sleep_wake", [])
         if len(metrics_sleep_wake) > 0:

@@ -49,39 +49,44 @@ DEFINED_CATEGORIES = [
     },
     {
         "title": "Worker Initialization",
-        "start": "Waiting for init message",
-        "end": "Starting to load model",
+        # v0.24 dropped "Waiting for init message"/"Starting to load model";
+        # markers are regex, so "|" adds the v0.24 equivalents.
+        "start": "Waiting for init message|Initializing a V1 LLM engine",
+        "end": "Starting to load model|Loading model from scratch",
     },
     {
         "title": "Model Loading",
-        "start": "Starting to load model",
+        "start": "Starting to load model|Loading model from scratch",
         "end": "Model loading took",
     },
     {
         "title": "Pytorch Compilation",
-        "start": "Start compiling function|torch/_dynamo",
-        "end": "torch.compile takes",
+        # v0.24 no longer logs "Start compiling function"/"torch/_dynamo";
+        # "for vLLM's torch.compile" (Using cache dir line) is the v0.24 start.
+        "start": "Start compiling function|torch/_dynamo|for vLLM's torch.compile",
+        "end": "torch.compile took",
         "children": [
             {
                 "title": "Dynamo",
-                "start": "Start compiling function|torch/_dynamo",
+                "start": "Start compiling function|torch/_dynamo|for vLLM's torch.compile",
                 "end": "Dynamo bytecode transform",
             },
             {
                 "title": "Inductor",
                 "start": "Dynamo bytecode transform",
-                "end": "torch.compile takes",
+                "end": "torch.compile took",
             },
         ],
     },
     {
         "title": "CUDA Graph Capture",
-        "start": "torch.compile takes",
+        "start": "torch.compile took",
         "end": "init engine",
     },
     {
         "title": "API Server Starts",
-        "start": "Starting vLLM API server",
+        # v0.24 logs "Starting vLLM server" (no "API").
+        "start": "Starting vLLM API server|Starting vLLM server",
         "end": "Route: /metrics",
     },
 ]
@@ -659,11 +664,14 @@ class MetricsWake(MetricsSleepWake):
 
 @dataclass
 class MetricsMemoryProfiling:
-    """Memory Profiling metrics"""
+    """Memory Profiling metrics.
 
-    initial_free: float = 0.0
-    after_free: float = 0.0
-    time: float = 0.0
+    vLLM 0.24 removed the "Initial free memory"/"Free memory after profiling"/
+    "Memory profiling takes" log lines this used to parse. It still logs the
+    available KV cache size, so we report that instead.
+    """
+
+    available_kv_cache: float = 0.0
 
     def dump(self) -> dict[str, Any]:
         """Convert MetricsMemoryProfiling to dict.
@@ -1269,17 +1277,13 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
     # Compiling a graph for shape %s takes %.2f s
     compiled_graph = "Compiling a graph for "
 
-    # torch.compile takes 17.88 s in total
-    torch_compile = "torch.compile takes"
+    # torch.compile took 17.88 s in total
+    torch_compile = "torch.compile took"
 
-    # Initial free memory: 43.90 GiB; Requested memory: 0.95 (util), 42.17 GiB
-    initial_free_memory = "Initial free memory:"
-    # Free memory after profiling: 42.85 GiB (total), 41.12 GiB (within requested)
-    free_memory_after_profiling = "Free memory after profiling:"
-    # Memory profiling takes 26.21 seconds. Total non KV cache memory: 1.48GiB
-    # torch peak memory increase: 0.52GiB; non-torch forward increase memory: 0.04GiB;
-    # weights memory: 0.93GiB.
-    memory_profiling = "Memory profiling takes"
+    # vLLM 0.24 dropped the "Initial free memory"/"Free memory after profiling"/
+    # "Memory profiling takes" lines. It still logs the available KV cache:
+    #   Available KV cache memory: 58.44 GiB
+    available_kv_cache_memory = "Available KV cache memory:"
 
     # It took 0.001315 seconds to fall asleep.
     model_sleep_string = " seconds to fall asleep"
@@ -1375,22 +1379,10 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
                 metrics.torch_compile = floats[0]
                 continue
 
-        if metrics.memory_profiling.initial_free == 0:
-            floats = find_floats_in_line(initial_free_memory, line)
+        if metrics.memory_profiling.available_kv_cache == 0:
+            floats = find_floats_in_line(available_kv_cache_memory, line)
             if len(floats) > 0:
-                metrics.memory_profiling.initial_free = floats[0]
-                continue
-
-        if metrics.memory_profiling.after_free == 0:
-            floats = find_floats_in_line(free_memory_after_profiling, line)
-            if len(floats) > 0:
-                metrics.memory_profiling.after_free = floats[0]
-                continue
-
-        if metrics.memory_profiling.time == 0:
-            floats = find_floats_in_line(memory_profiling, line)
-            if len(floats) > 0:
-                metrics.memory_profiling.time = floats[0]
+                metrics.memory_profiling.available_kv_cache = floats[0]
                 continue
 
         floats = find_floats_in_line(model_gpu_freed, line)

@@ -2461,17 +2461,9 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
                 "value": vllm_metrics["torch_compile"],
             },
             "memory_profiling": {
-                "initial_free": {
+                "available_kv_cache": {
                     "units": Units.GIB,
-                    "value": vllm_metrics["memory_profiling"]["initial_free"],
-                },
-                "after_free": {
-                    "units": Units.GIB,
-                    "value": vllm_metrics["memory_profiling"]["after_free"],
-                },
-                "time": {
-                    "units": Units.S,
-                    "value": vllm_metrics["memory_profiling"]["time"],
+                    "value": vllm_metrics["memory_profiling"]["available_kv_cache"],
                 },
             },
             "sleep_wake": [],
