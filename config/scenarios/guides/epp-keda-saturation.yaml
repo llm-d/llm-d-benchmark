@@ -96,16 +96,38 @@ scenario:
     # =========================================================================
     # ROUTING / GAIE CONFIGURATION
     #
-    # EPP+KEDA queries inference_pool_average_kv_cache_utilization and
-    # inference_pool_average_queue_size directly from EPP's /metrics endpoint.
-    # These gauges are emitted by default; no special plugin config needed
-    # (unlike WVA's flowControl feature gate).
-    #
-    # Do NOT set router.epp.pluginsConfigFile — let it default to
-    # "default-plugins.yaml" which already includes metrics-data-source +
-    # core-metrics-extractor plugins required for these gauges.
+    # EPP+KEDA autoscaling is driven by EPP queue depth, so we enable the
+    # `flowControl` feature gate in the EPP's EndpointPickerConfig. That gate
+    # is not on by default, and toggling it requires shipping a custom
+    # EndpointPickerConfig (the default one the gaie chart ships has no
+    # `featureGates` block). We inline it here and point `pluginsConfigFile`
+    # at this filename so the chart mounts it as the active config.
     # =========================================================================
-    router: {}
+    router:
+      epp:
+        pluginsConfigFile: "epp-keda-optimized-baseline.yaml"
+        pluginsCustomConfig:
+          epp-keda-optimized-baseline.yaml: |
+            apiVersion: llm-d.ai/v1alpha1
+            kind: EndpointPickerConfig
+            featureGates:
+              - flowControl
+            plugins:
+              - type: queue-scorer
+              - type: kv-cache-utilization-scorer
+              - type: prefix-cache-scorer
+              - type: no-hit-lru-scorer
+            schedulingProfiles:
+              - name: default
+                plugins:
+                  - pluginRef: queue-scorer
+                    weight: 2
+                  - pluginRef: kv-cache-utilization-scorer
+                    weight: 2
+                  - pluginRef: prefix-cache-scorer
+                    weight: 3
+                  - pluginRef: no-hit-lru-scorer
+                    weight: 2
 
     # =========================================================================
     # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
