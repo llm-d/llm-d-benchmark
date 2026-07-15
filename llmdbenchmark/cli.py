@@ -1746,7 +1746,13 @@ def _extract_workspace_from_scenario(
 
         scenarios = scenario_data.get("scenario", [])
         if scenarios and isinstance(scenarios, list):
-            return scenarios[0].get("workDir")
+            first_stack = scenarios[0]
+            if not isinstance(first_stack, dict):
+                return None
+            common = first_stack.get("common")
+            if isinstance(common, dict) and common.get("workDir") is not None:
+                return common["workDir"]
+            return first_stack.get("workDir")
     except Exception:  # noqa: BLE001 -- best-effort; fall through to temp dir
         pass
     return None

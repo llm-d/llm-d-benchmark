@@ -9,81 +9,79 @@
 scenario:
   - name: "ocp-cicd"
 
-    # Model
-    model:
-      name: Qwen/Qwen3-8B
-      shortName: qwen-qwen3-8b
-      path: models/Qwen/Qwen3-8B
-      huggingfaceId: Qwen/Qwen3-8B
-      # Keeping it similar to FMA launcher's vLLM (24_fma-deployment.yaml.j2)
-      maxModelLen: 40960
-      blockSize: 16
+    common:
+      # Model
+      model:
+        name: Qwen/Qwen3-8B
+        shortName: qwen-qwen3-8b
+        path: models/Qwen/Qwen3-8B
+        huggingfaceId: Qwen/Qwen3-8B
+        # Keeping it similar to FMA launcher's vLLM (24_fma-deployment.yaml.j2)
+        maxModelLen: 40960
+        blockSize: 16
 
+      affinity:
+        enabled: true
+        nodeSelector:
+          # nvidia.com/gpu.product: NVIDIA-L40S
+          nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+      # storage:
+      #   modelPvc:
+      #     storageClassName: ocs-storagecluster-cephfs
+      #   workloadPvc:
+      #     storageClassName: ocs-storagecluster-cephfs
+
+      vllmCommon:
+        priorityClassName: nightly-gpu-critical
+        flags:
+          # Disable enforce_eager so the standalone vLLM runs torch.compile +
+          # CUDA-graph capture -- otherwise Dynamo / Torch Compile / Memory
+          # Profiling metrics are all 0 (those phases are skipped under eager).
+          enforceEager: false
+          # FMA runs with prefix caching off (--no-enable-prefix-caching)
+          noPrefixCaching: true
+
+      workDir: /tmp/llmdbenchcicd-ocp/
+
+      harness:
+        name: vllm-benchmark
+        experimentProfile: sanity_random.yaml
+        # executable: llm-d-benchmark.py
+
+      images:
+        benchmark:
+          repository: ghcr.io/llm-d/llm-d-benchmark
+          tag: nightly
     # Deployment method
     modelservice:
       enabled: true
+      # gateway:
+      #   className: istio
+
+      prefill:
+        enabled: true
+        replicas: 1
+        acceleratorType:
+          labelKey: nvidia.com/gpu.product
+          # labelValue: NVIDIA-L40S
+          labelValue: NVIDIA-H100-80GB-HBM3
+
+      decode:
+        enabled: true
+        replicas: 1
+        acceleratorType:
+          labelKey: nvidia.com/gpu.product
+          # labelValue: NVIDIA-L40S
+          labelValue: NVIDIA-H100-80GB-HBM3
+
     standalone:
       enabled: false
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        # labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
+
     fma:
       enabled: false
       iterations: 10
-
-#    gateway:
-#      className: istio
-
-    affinity:
-      enabled: true
-      nodeSelector:
-#        nvidia.com/gpu.product: NVIDIA-L40S
-        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
-
-    prefill:
-      enabled: true
-      replicas: 1
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-#        labelValue: NVIDIA-L40S
-        labelValue: NVIDIA-H100-80GB-HBM3
-
-    decode:
-      enabled: true
-      replicas: 1
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-#        labelValue: NVIDIA-L40S
-        labelValue: NVIDIA-H100-80GB-HBM3
-
-    standalone:
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-#        labelValue: NVIDIA-L40S
-        labelValue: NVIDIA-H100-80GB-HBM3
-
-#    storage:
-#      modelPvc:
-#        storageClassName: ocs-storagecluster-cephfs
-#      workloadPvc:
-#        storageClassName: ocs-storagecluster-cephfs
-
-    vllmCommon:
-      priorityClassName: nightly-gpu-critical
-      flags:
-        # Disable enforce_eager so the standalone vLLM runs torch.compile +
-        # CUDA-graph capture -- otherwise Dynamo / Torch Compile / Memory
-        # Profiling metrics are all 0 (those phases are skipped under eager).
-        enforceEager: false
-        # FMA runs with prefix caching off (--no-enable-prefix-caching)
-        noPrefixCaching: true
-
-    workDir: /tmp/llmdbenchcicd-ocp/
-
-    harness:
-      name: vllm-benchmark
-      experimentProfile: sanity_random.yaml
-#      executable: llm-d-benchmark.py
-
-    images:
-      benchmark:
-        repository: ghcr.io/llm-d/llm-d-benchmark
-        tag: nightly
-

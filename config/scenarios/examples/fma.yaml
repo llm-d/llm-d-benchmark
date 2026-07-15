@@ -12,11 +12,37 @@
 
 scenario:
   - name: "fma-example"
-    model:
-      name: meta-llama/Llama-3.1-8B-Instruct
-      shortName: llama-3.1-8b
-      path: models/meta-llama/Llama-3.1-8B-Instruct
-      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+    common:
+      model:
+        name: meta-llama/Llama-3.1-8B-Instruct
+        shortName: llama-3.1-8b
+        path: models/meta-llama/Llama-3.1-8B-Instruct
+        huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+      workDir: "~/data/fma"
+
+      harness:
+        name: nop
+        profile: nop.yaml
+        executable: llm-d-benchmark.py
+        experimentProfile: nop.yaml
+        condaEnvName: nop-env
+        waitTimeout: 3600
+        loadParallelism: 1
+        podLabel: llmdbench-harness-fma
+        debug: false
+        resources:
+          cpu: 16
+          memory: 32Gi
+        output: local
+        inferencePerf:
+          rayonNumThreads: 4
+
+      images:
+        benchmark:
+          repository: ghcr.io/llm-d/llm-d-benchmark
+          tag: nightly
 
     modelservice:
       enabled: false
@@ -26,28 +52,3 @@ scenario:
     fma:
       enabled: true
       iterations: 1
-
-    workDir: "~/data/fma"
-
-    harness:
-      name: nop
-      profile: nop.yaml
-      executable: llm-d-benchmark.py
-      experimentProfile: nop.yaml
-      condaEnvName: nop-env
-      waitTimeout: 3600
-      loadParallelism: 1
-      podLabel: llmdbench-harness-fma
-      debug: false
-      resources:
-        cpu: 16
-        memory: 32Gi
-      output: local
-      inferencePerf:
-        rayonNumThreads: 4
-
-    images:
-      benchmark:
-        repository: ghcr.io/llm-d/llm-d-benchmark
-        tag: nightly
-

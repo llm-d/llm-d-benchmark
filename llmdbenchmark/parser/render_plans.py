@@ -917,6 +917,28 @@ class RenderPlans:
             cur = cur[part]
         cur[path[-1]] = value
 
+    def _expand_stack_common(self, values: dict) -> dict:
+        """Expand a scenario layer's ``common`` section to the config root.
+
+        Scenario stacks group settings shared by every standup method under
+        ``common``.  The renderer and templates still consume one flattened
+        effective config, so expand that authoring structure before merging
+        the layer with defaults.  Expanding the scenario layer (rather than
+        the merged config) is important because defaults.yaml has its own
+        top-level ``common`` value that is passed to the modelservice chart.
+
+        A nested value wins over the legacy flat spelling when both are
+        present, matching the precedence used for modelservice-nested
+        sections.  The input is never mutated.
+        """
+        result = deepcopy(values)
+        common = result.pop("common", None)
+        if common is None:
+            return result
+        if not isinstance(common, dict):
+            raise TypeError("'common' must be a mapping when present")
+        return self.deep_merge(result, common)
+
     # Sections a scenario may nest under `modelservice:` for clarity. They
     # are consumed only on the modelservice path (see step_08_deploy_router
     # and the modelservice-guarded templates), but every template, resolver
@@ -924,10 +946,20 @@ class RenderPlans:
     # to the top level before any resolver runs. Nesting is purely a
     # scenario-authoring convenience; the flat top-level spelling keeps
     # working unchanged.
-    _MODELSERVICE_HOISTED = ("gateway", "router", "routing", "httpRoute")
+    _MODELSERVICE_HOISTED = (
+        "common",
+        "gateway",
+        "router",
+        "routing",
+        "httpRoute",
+        "inferenceExtension",
+        "prefill",
+        "decode",
+        "multinode",
+    )
 
     def _hoist_modelservice_sections(self, values: dict) -> dict:
-        """Lift ``modelservice.{gateway,router,routing,httpRoute}`` to the top level.
+        """Lift method-specific ``modelservice`` sections to the top level.
 
         Scenarios may nest these under ``modelservice:`` to document that
         they only apply on the modelservice deploy path. Templates,
@@ -1454,15 +1486,18 @@ class RenderPlans:
         deferring to template time keeps the label computation in exactly
         one place.
         """
-        shared_standalone = (shared or {}).get("standalone", {}).get("enabled")
+        normalized_shared = self._expand_stack_common(shared or {})
+        shared_standalone = (normalized_shared.get("standalone") or {}).get("enabled")
         siblings: list[dict] = []
         for stack in stacks:
             if not isinstance(stack, dict):
                 continue
-            model_name = (stack.get("model") or {}).get("name", "")
+            normalized_stack = self._expand_stack_common(stack)
+            sibling_config = self.deep_merge(normalized_shared, normalized_stack)
+            model_name = (sibling_config.get("model") or {}).get("name", "")
             # Stack-level standalone.enabled wins; otherwise shared-level;
             # otherwise None (undetermined -> treat as non-standalone).
-            stack_standalone = (stack.get("standalone") or {}).get("enabled")
+            stack_standalone = (normalized_stack.get("standalone") or {}).get("enabled")
             is_standalone = bool(
                 stack_standalone if stack_standalone is not None else shared_standalone
             )
@@ -1542,15 +1577,18 @@ class RenderPlans:
         stack_errors = StackErrors()
         result.stacks[stack_name] = stack_errors
 
-        stack_config = {k: v for k, v in stack.items() if k != "name"}
+        stack_config = self._expand_stack_common(
+            {k: v for k, v in stack.items() if k != "name"}
+        )
+        shared_config = self._expand_stack_common(shared or {})
         # Merge order: defaults -> shared (scenario-wide) -> stack -> CLI/setup
         # overrides. Per-stack always wins so a stack can opt out of any
         # shared value by setting it explicitly.
-        merged_values = self.deep_merge(defaults, shared or {})
+        merged_values = self.deep_merge(defaults, shared_config)
         merged_values = self.deep_merge(merged_values, stack_config)
 
-        # Hoist scenario-nested modelservice.{gateway,router,routing} to the
-        # top level BEFORE setup overrides are merged. Templates, resolvers
+        # Hoist scenario-nested modelservice-only sections to the top level
+        # BEFORE setup overrides are merged. Templates, resolvers
         # and standup steps read these as top-level keys, and DoE treatment /
         # CLI overrides target the top-level dotted paths (e.g.
         # `router.epp.pluginsConfigFile`). Hoisting first preserves the
@@ -1726,6 +1764,18 @@ class RenderPlans:
             result.global_errors.append(msg)
             return result
 
+        for index, stack in enumerate(stacks, 1):
+            if not isinstance(stack, dict):
+                msg = f"Stack {index} must be a mapping"
+                self.logger.log_error(msg)
+                result.global_errors.append(msg)
+                return result
+            if "common" in stack and not isinstance(stack["common"], dict):
+                msg = f"Stack {index} 'common' section must be a mapping"
+                self.logger.log_error(msg)
+                result.global_errors.append(msg)
+                return result
+
         # Validate --stack filter against known stack names BEFORE rendering
         # anything, so typos fail with a clear error at the start of the
         # pipeline rather than silently passing through render and dying
@@ -1753,6 +1803,11 @@ class RenderPlans:
         shared = scenario.get("shared") or {}
         if not isinstance(shared, dict):
             msg = "'shared' must be a mapping when present"
+            self.logger.log_error(msg)
+            result.global_errors.append(msg)
+            return result
+        if "common" in shared and not isinstance(shared["common"], dict):
+            msg = "'shared.common' must be a mapping when present"
             self.logger.log_error(msg)
             result.global_errors.append(msg)
             return result
