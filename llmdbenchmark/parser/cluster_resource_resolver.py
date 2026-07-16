@@ -88,6 +88,32 @@ class ClusterResourceResolver:
         "gpu.intel.com/xe",
     ]
 
+    # Runtime/profile identity derived from the device-plugin resource.  The
+    # resource name is what Kubernetes exposes; the profile is what the plan
+    # renderer uses to select image, security-context and command overrides.
+    ACCELERATOR_PROFILES = {
+        "nvidia.com/gpu": "nvidia",
+        "amd.com/gpu": "amd",
+        "habana.ai/gaudi": "intel-gaudi",
+        "google.com/tpu": "google",
+        "intel.com/gpu": "intel-i915",
+        "gpu.intel.com/i915": "intel-i915",
+        "gpu.intel.com/xe": "intel-xe",
+    }
+    PROFILE_RESOURCES = {
+        "nvidia": "nvidia.com/gpu",
+        "amd": "amd.com/gpu",
+        "intel-gaudi": "habana.ai/gaudi",
+        "google": "google.com/tpu",
+        "intel-i915": "gpu.intel.com/i915",
+        "intel-xe": "gpu.intel.com/xe",
+    }
+    INTEL_XPU_RESOURCE_PRIORITY = (
+        "gpu.intel.com/xe",
+        "gpu.intel.com/i915",
+        "intel.com/gpu",
+    )
+
     # Attribute names that mark a node label as a GPU SKU identifier (as
     # opposed to a count, memory size, or feature flag). The matcher pulls
     # the part after the LAST ``/`` or ``.``, so both naming conventions
@@ -142,9 +168,15 @@ class ClusterResourceResolver:
         "rdma/ib",
     ]
 
-    def __init__(self, logger: Any, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        logger: Any,
+        dry_run: bool = False,
+        kubeconfig: str | None = None,
+    ) -> None:
         self.logger = logger
         self.dry_run = dry_run
+        self.kubeconfig = kubeconfig
         self._node_resources: NodeResources | None = None
         self._api_client: Any = None
         self._connected = False
@@ -152,6 +184,18 @@ class ClusterResourceResolver:
     def resolve_all(self, values: dict) -> dict:
         """Resolve all ``"auto"`` cluster resource values. Returns a new dict."""
         result = deepcopy(values)
+
+        # An explicitly selected profile is also the chart accelerator type.
+        # Do this before the no-auto fast path so manual/offline selection has
+        # the same result as cluster detection.
+        accelerator = result.get("accelerator") or {}
+        explicit_profile = accelerator.get("profile")
+        if explicit_profile and explicit_profile != "auto":
+            accelerator["type"] = explicit_profile
+            if accelerator.get("resource") == "auto":
+                explicit_resource = self.PROFILE_RESOURCES.get(explicit_profile)
+                if explicit_resource:
+                    accelerator["resource"] = explicit_resource
 
         auto_fields = self.has_unresolved(result)
         if not auto_fields:
@@ -165,6 +209,7 @@ class ClusterResourceResolver:
 
         unresolved: list[str] = []
         self._resolve_accelerator_resource(result, unresolved)
+        self._resolve_accelerator_profile(result, unresolved)
         self._resolve_network_resource(result, unresolved)
         self._resolve_affinity_node_selector(result, unresolved)
         self._resolve_accelerator_type_labels(result, unresolved)
@@ -191,6 +236,8 @@ class ClusterResourceResolver:
 
         if values.get("accelerator", {}).get("resource") == "auto":
             unresolved.append("accelerator.resource")
+        if values.get("accelerator", {}).get("profile") == "auto":
+            unresolved.append("accelerator.profile")
 
         vllm = values.get("vllmCommon", {})
         if vllm.get("networkResource") == "auto":
@@ -234,7 +281,7 @@ class ClusterResourceResolver:
                     "Install with: pip install kubernetes"
                 )
 
-            self._api_client = kube_connect()
+            self._api_client = kube_connect(kubeconfig=self.kubeconfig)
             self._connected = True
             self.logger.log_info("Connected to cluster for resource auto-detection")
             return True
@@ -439,12 +486,71 @@ class ClusterResourceResolver:
 
         resources = self._node_resources or NodeResources()
 
-        if resources.accelerator_resources:
+        if len(resources.accelerator_resources) == 1:
             resolved = resources.accelerator_resources[0]
             accel["resource"] = resolved
             self.logger.log_info(f"Resolved accelerator.resource: {resolved}")
+        elif len(resources.accelerator_resources) > 1:
+            discovered_resources = set(resources.accelerator_resources)
+            intel_xpu_resources = set(self.INTEL_XPU_RESOURCE_PRIORITY)
+            if discovered_resources.issubset(intel_xpu_resources):
+                # Intel's device plugin may advertise both the legacy i915
+                # name and the Xe name for the same physical devices. Treat
+                # those as compatible aliases, preferring the modern Xe key.
+                resolved = next(
+                    resource
+                    for resource in self.INTEL_XPU_RESOURCE_PRIORITY
+                    if resource in discovered_resources
+                )
+                accel["resource"] = resolved
+                self.logger.log_info(
+                    "Discovered compatible Intel XPU resource aliases "
+                    f"({', '.join(resources.accelerator_resources)}); "
+                    f"selected {resolved}"
+                )
+                return
+            discovered = ", ".join(resources.accelerator_resources)
+            raise RuntimeError(
+                "Multiple accelerator resources were discovered "
+                f"({discovered}); set accelerator.resource or "
+                "accelerator.profile explicitly."
+            )
+        elif self.dry_run:
+            # A dry-run deliberately does not connect to the cluster. Keep its
+            # historical NVIDIA rendering behaviour while allowing real runs
+            # to auto-detect the accelerator.
+            accel["resource"] = "nvidia.com/gpu"
+            self.logger.log_info(
+                "[DRY RUN] Defaulting accelerator.resource to nvidia.com/gpu"
+            )
         else:
             unresolved.append("accelerator.resource")
+
+    def _resolve_accelerator_profile(
+        self,
+        values: dict,
+        unresolved: list[str],
+    ) -> None:
+        """Resolve ``accelerator.profile/type`` from the resource key.
+
+        ``profile`` is intentionally distinct from the Kubernetes resource:
+        it selects reusable runtime configuration and per-guide variants.
+        Explicit profiles are never overwritten.
+        """
+        accel = values.get("accelerator", {})
+        if accel.get("profile") != "auto":
+            return
+
+        resource = accel.get("resource")
+        profile = self.ACCELERATOR_PROFILES.get(resource)
+        if profile:
+            accel["profile"] = profile
+            accel["type"] = profile
+            self.logger.log_info(
+                f"Resolved accelerator.profile: {profile} (resource={resource})"
+            )
+        else:
+            unresolved.append("accelerator.profile")
 
     def _resolve_network_resource(
         self,

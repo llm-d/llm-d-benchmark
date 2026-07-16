@@ -107,8 +107,11 @@ class AcceleratorTypeConfig(BaseModel):
 
     model_config = STRICT_CONFIG
 
-    labelKey: str
-    labelValue: str
+    # The cluster resolver deliberately removes both fields when a device
+    # resource is available but no portable SKU label exists. In that case
+    # Kubernetes schedules from the accelerator resource request alone.
+    labelKey: str | None = None
+    labelValue: str | None = None
     labelValues: list[str] | None = None
 
 
@@ -207,6 +210,10 @@ class DeploymentBaseConfig(BaseModel):
 
     parallelism: ParallelismConfig
     resources: ResourcesConfig
+    # Pod-level securityContext (e.g. supplementalGroups for /dev/dri access on
+    # Intel XPU nodes). Distinct from the container-level securityContext under
+    # ``extraContainerConfig`` -- supplementalGroups is a Pod field.
+    podSecurityContext: dict[str, Any] | None = None
     shm: dict[str, str] | None = None
     probes: ProbesConfig
     vllm: VllmServeConfig

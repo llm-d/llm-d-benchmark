@@ -105,6 +105,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         cluster_resource_resolver = ClusterResourceResolver(
             logger=logger,
             dry_run=args.dry_run,
+            kubeconfig=getattr(args, "kubeconfig", None),
         )
 
         render_plan_errors = RenderPlans(
@@ -1282,6 +1283,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
     cluster_resource_resolver = ClusterResourceResolver(
         logger=logger,
         dry_run=args.dry_run,
+        kubeconfig=getattr(args, "kubeconfig", None),
     )
 
     render_plan_errors = RenderPlans(

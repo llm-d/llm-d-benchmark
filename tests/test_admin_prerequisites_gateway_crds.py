@@ -109,3 +109,23 @@ def test_modelservice_installs_missing_gateway_api_crds() -> None:
 
     assert ("apply", "--server-side", "-k") in [call[:3] for call in cmd.calls]
     assert errors
+
+
+def test_epponly_does_not_add_unused_istio_repo() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    errors: list[str] = []
+    plan = {
+        "gateway": {"className": "epponly"},
+        "helmRepositories": {
+            "istio": {"url": "https://istio.example/charts"},
+            "llmDInfra": {"url": "https://llm-d.example/charts"},
+        },
+    }
+
+    step._add_helm_repos(cmd, plan, errors)
+
+    helm_calls = [call for call in cmd.calls if call and call[0] == "helm"]
+    assert not any("istio" in call for call in helm_calls)
+    assert any("llmDInfra" in call for call in helm_calls)
+    assert errors == []

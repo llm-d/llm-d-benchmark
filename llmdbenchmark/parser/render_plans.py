@@ -301,6 +301,35 @@ class RenderPlans:
 
         return result
 
+    def _apply_accelerator_profile(self, values: dict) -> dict:
+        """Apply the auto-detected machine profile.
+
+        Machine profiles live next to defaults under ``overlays/<profile>.yaml``.
+        Guides consume the profile's runtime command fragments, so the same
+        guide definition is used unchanged on every accelerator.
+        """
+        result = deepcopy(values)
+        accelerator = result.get("accelerator") or {}
+        profile = accelerator.get("profile")
+
+        if profile and profile != "auto":
+            profile_names = [profile]
+            if profile.startswith("intel-") and profile != "intel-gaudi":
+                profile_names.append("intel-xpu")
+
+            for profile_name in reversed(profile_names):
+                profile_file = (
+                    self.defaults_file.parent / "overlays" / f"{profile_name}.yaml"
+                )
+                if not profile_file.exists():
+                    continue
+                self.logger.log_info(
+                    f"Applying auto-detected accelerator profile: {profile_name}"
+                )
+                result = self.deep_merge(result, self._load_yaml(profile_file))
+
+        return result
+
     def _apply_resource_preset(self, values: dict) -> dict:
         """Merge the named resource preset into decode/prefill configs if specified."""
         preset_name = values.get("resourcePreset")
@@ -1555,6 +1584,24 @@ class RenderPlans:
         if self.setup_overrides:
             merged_values = self.deep_merge(merged_values, self.setup_overrides)
 
+        # Raises RuntimeError if "auto" values are present but cluster is
+        # unreachable. Skipped for the no-Kubernetes (nok8s) method: there is no
+        # cluster to scan, and the accelerator auto-detection fields belong to
+        # the (disabled) k8s methods.
+        cli_nok8s = bool(self.cli_methods) and "nok8s" in [
+            m.strip() for m in self.cli_methods.split(",")
+        ]
+        is_nok8s = cli_nok8s or merged_values.get("nok8s", {}).get("enabled", False)
+        if self.cluster_resource_resolver and not is_nok8s:
+            merged_values = self.cluster_resource_resolver.resolve_all(merged_values)
+
+        merged_values = self._apply_accelerator_profile(merged_values)
+
+        # Detection/profile defaults must never beat an explicit experiment or
+        # CLI override. Reapply them after the selected profile/variant.
+        if self.setup_overrides:
+            merged_values = self.deep_merge(merged_values, self.setup_overrides)
+
         merged_values = self._apply_resource_preset(merged_values)
 
         self._log_image_overrides(merged_values)
@@ -1566,17 +1613,6 @@ class RenderPlans:
                 self.logger.log_warning(
                     f"Version resolution had issues for stack {stack_name}: {e}"
                 )
-
-        # Raises RuntimeError if "auto" values are present but cluster is
-        # unreachable. Skipped for the no-Kubernetes (nok8s) method: there is
-        # no cluster to scan, and the accelerator auto-detection fields belong
-        # to the (disabled) k8s methods.
-        cli_nok8s = bool(self.cli_methods) and "nok8s" in [
-            m.strip() for m in self.cli_methods.split(",")
-        ]
-        is_nok8s = cli_nok8s or merged_values.get("nok8s", {}).get("enabled", False)
-        if self.cluster_resource_resolver and not is_nok8s:
-            merged_values = self.cluster_resource_resolver.resolve_all(merged_values)
 
         merged_values = self._resolve_namespace(merged_values)
         merged_values = self._resolve_model(
@@ -1598,6 +1634,18 @@ class RenderPlans:
         merged_values = self._resolve_inference_pool_host(merged_values)
         merged_values = self._normalize_router_block(merged_values)
         merged_values = self._substitute_config_variables(merged_values)
+        # Runtime fragments are renderer-only source text. Commands reference
+        # them during substitution; they must not leak to chart values.
+        accelerator = merged_values.get("accelerator") or {}
+        for runtime_key in (
+            "runtimePreamble",
+            "dtypeArgs",
+            "executionArgs",
+            "blockSizeArgs",
+            "memoryUtilizationArgs",
+            "kvBufferDeviceJson",
+        ):
+            accelerator.pop(runtime_key, None)
 
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index

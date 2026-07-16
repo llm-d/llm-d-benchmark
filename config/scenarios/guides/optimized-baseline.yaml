@@ -8,6 +8,12 @@ scenario:
   # ============================================================================
   - name: "optimized-baseline"
 
+    # Detect the device-plugin resource and select the matching machine
+    # profile. Explicit accelerator settings supplied by the user still win.
+    accelerator:
+      profile: auto
+      resource: auto
+
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
     # -------------------------------------------------------------------------
@@ -252,18 +258,19 @@ scenario:
 #      replicas: 8
       vllm:
         customCommand: |
-          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
-          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          ${accelerator.runtimePreamble}
           vllm serve /model-cache/$MODEL_PATH \
           --host 0.0.0.0 \
           --served-model-name $MODEL_NAME \
           --port $VLLM_METRICS_PORT \
-          --block-size $VLLM_BLOCK_SIZE \
+          ${accelerator.blockSizeArgs} \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --max-num-seq $VLLM_MAX_NUM_SEQ \
           --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
           --tensor-parallel-size $TP_SIZE \
-          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          ${accelerator.memoryUtilizationArgs} \
+          ${accelerator.dtypeArgs} \
+          ${accelerator.executionArgs} \
           --no-enable-log-requests \
           --disable-uvicorn-access-log \
           --disable-access-log-for-endpoints=/health,/metrics,/v1/models \

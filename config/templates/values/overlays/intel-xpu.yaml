@@ -1,0 +1,115 @@
+# Shared Intel XPU machine profile. It is selected automatically for both the
+# classic i915 and Xe device-plugin resources; the resolver preserves the exact
+# resource/type as ``intel-i915`` or ``intel-xe``.
+
+accelerator:
+  # Avoid duplicating VLLM_WORKER_MULTIPROC_METHOD: llm-d-benchmark already
+  # injects it into the serving container.
+  env:
+    intel-i915: []
+    intel-xe: []
+  # B60 does not need a runtime compatibility preamble. Keep the empty value
+  # so accelerator-neutral guide commands can use the same substitution point
+  # as the CUDA profile.
+  runtimePreamble: ""
+  dtypeArgs: "--dtype bfloat16"
+  executionArgs: "--enforce-eager --disable-sliding-window"
+  # The XPU FMHA kernel in the v0.7.0 image selects its supported page size;
+  # passing the canonical CUDA value (16) fails on first inference with
+  # "Unsupported page size for fmha". The former working XPU guide likewise
+  # kept model.blockSize as metadata but omitted --block-size from vLLM.
+  blockSizeArgs: ""
+  # The Kind/B60 validation path may run two decode processes or a compact
+  # 2-decode/1-prefill P/D topology on one physical device. Leave headroom for
+  # three shared-device processes on the 22.7 GiB XPU.
+  memoryUtilizationArgs: "--gpu-memory-utilization 0.35"
+  kvBufferDeviceJson: ', "kv_buffer_device":"cpu"'
+
+images:
+  vllm:
+    repository: ghcr.io/llm-d/llm-d-xpu
+    tag: v0.7.0
+    pullPolicy: IfNotPresent
+    sourceRepo: https://github.com/llm-d/llm-d
+
+# Portable default for the Intel XPU guide path. Keep this in the shared
+# accelerator profile so every canonical guide selects the same fitting model
+# without per-guide copies. An explicit CLI/setup model override still wins.
+model:
+  name: Qwen/Qwen3-0.6B
+  shortName: qwen-qwen3-06b
+  path: models/Qwen/Qwen3-0.6B
+  huggingfaceId: Qwen/Qwen3-0.6B
+  size: 50Gi
+  maxModelLen: 16000
+  blockSize: 16
+  gpuMemoryUtilization: 0.9
+
+decode:
+  parallelism:
+    tensor: 1
+  resources:
+    limits:
+      memory: 24Gi
+      cpu: "8"
+    requests:
+      memory: 12Gi
+      cpu: "4"
+  extraContainerConfig:
+    securityContext:
+      capabilities:
+        add: []
+prefill:
+  resources:
+    limits:
+      memory: 24Gi
+      cpu: "8"
+    requests:
+      memory: 12Gi
+      cpu: "4"
+  extraContainerConfig:
+    securityContext:
+      capabilities:
+        add: []
+
+# Intel XPU NIXL transport uses host memory/TCP rather than CUDA IPC or GDR.
+vllmCommon:
+  ucxTls: tcp
+
+# The compact single-node XPU validation environment has 20 CPUs. The precise
+# prefix-cache guide otherwise requests 8 CPUs per EPP replica before model
+# servers are scheduled. The XPU profile uses a public model, so it also must
+# not require an optional Hugging Face token Secret.
+router:
+  epp:
+    env: []
+    resources:
+      requests:
+        cpu: "1"
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+  proxy:
+    resources:
+      requests:
+        cpu: "1"
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+
+# Preserve the storage and harness sizing from the previously working XPU
+# guide. These values allow the supported single-node Kind/B60 path to bind
+# local-path PVCs and leave enough node capacity for the serving stack.
+storage:
+  modelPvc:
+    size: 50Gi
+    accessModes:
+      - ReadWriteOnce
+  workloadPvc:
+    accessModes:
+      - ReadWriteOnce
+
+harness:
+  resources:
+    cpu: 2
+    memory: 8Gi

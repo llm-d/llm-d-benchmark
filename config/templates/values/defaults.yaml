@@ -512,6 +512,17 @@ accelerator:
   # Resource name for the accelerator used in limits/requests
   # Override for non-NVIDIA GPUs (e.g. habana.ai/gaudi, amd.com/gpu)
   resource: "nvidia.com/gpu"
+  # Runtime command fragments consumed by accelerator-neutral guide commands.
+  # Hardware profiles use these to avoid duplicating guides; a profile may
+  # additionally provide a fitting model, resource sizing, and storage defaults.
+  runtimePreamble: |
+    export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+    export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+  dtypeArgs: "--dtype bfloat16"
+  executionArgs: ""
+  blockSizeArgs: "--block-size $VLLM_BLOCK_SIZE"
+  memoryUtilizationArgs: "--gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL"
+  kvBufferDeviceJson: ""
   # Resource names for different accelerator types (optional override)
   # resources:
   #   nvidia: "nvidia.com/gpu"

@@ -210,9 +210,19 @@ class AdminPrerequisitesStep(Step):
     def _add_helm_repos(self, cmd: CommandExecutor, plan_config: dict, errors: list):
         """Add configured Helm repositories."""
         helm_repos = plan_config.get("helmRepositories", {})
+        gateway_class = plan_config.get("gateway", {}).get("className")
         added_classic_repo = False
 
         for repo_key, repo_info in helm_repos.items():
+            # The Istio repository is only required when Istio is the selected
+            # Gateway provider. epponly/agentgateway deployments otherwise gain
+            # an unnecessary network dependency during every standup.
+            if repo_key == "istio" and gateway_class != "istio":
+                cmd.logger.log_info(
+                    f"Skipping Istio Helm repo for gateway.className="
+                    f"{gateway_class or 'unset'}"
+                )
+                continue
             repo_name = repo_info.get("name", repo_key)
             repo_url = repo_info.get("url", "").strip()
             if not repo_url:

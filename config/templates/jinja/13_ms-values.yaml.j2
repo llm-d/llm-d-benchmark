@@ -351,7 +351,7 @@ decode:
 
 {% if decode.podSecurityContext is defined and decode.podSecurityContext %}
   podSecurityContext:
-{{ decode.podSecurityContext | toyaml | indent(4) }}
+{{ decode.podSecurityContext | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# LWS / Multinode specific options #}
@@ -771,7 +771,7 @@ prefill:
 
 {% if prefill.podSecurityContext is defined and prefill.podSecurityContext %}
   podSecurityContext:
-{{ prefill.podSecurityContext | toyaml | indent(4) }}
+{{ prefill.podSecurityContext | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# LWS / Multinode specific options #}
