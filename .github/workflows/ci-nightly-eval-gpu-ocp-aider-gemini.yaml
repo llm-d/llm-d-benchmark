@@ -36,7 +36,7 @@ on:
         required: false
         default: 'true'
   schedule:
-    - cron: '37 2 * * *'   # 02:37 UTC (offset from the gaia GPU caller at 02:17)
+    - cron: '37 2 * * *'   # 02:37 UTC (offset from the run-only eval callers at 01:20/01:40)
 
 jobs:
   eval-gpu:
