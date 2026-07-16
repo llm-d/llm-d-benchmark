@@ -45,6 +45,11 @@ MODELSERVICE_PATTERNS = [
     "inference-gateway-secret",
     "inference-gateway-params",
     "lmbenchmark",
+    # Catches the GAIE/EPP Deployment (named e.g. "<model>-router-epp" or
+    # the older "<model>-gaie-epp" convention) as a safety net independent
+    # of Helm release matching -- "endpoint-picker" above only matches the
+    # container image repo, not the Deployment's own object name.
+    "-epp",
 ]
 
 DEEP_RESOURCE_KINDS = [
