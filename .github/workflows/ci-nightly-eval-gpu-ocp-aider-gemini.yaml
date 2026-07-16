@@ -35,8 +35,8 @@ on:
         description: 'Teardown the vLLM model + harness pods afterward (frees the GPU)'
         required: false
         default: 'true'
-  schedule:
-    - cron: '37 2 * * *'   # 02:37 UTC (offset from the run-only eval callers at 01:20/01:40)
+  # workflow_dispatch-only: the nightly cron lives in the llm-d repo, which
+  # cross-dispatches into this workflow.
 
 jobs:
   eval-gpu:
