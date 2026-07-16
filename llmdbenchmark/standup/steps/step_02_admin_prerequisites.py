@@ -1,6 +1,8 @@
 """Step 02 -- Install cluster-level admin prerequisites (CRDs, gateways, LWS, SCCs)."""
 
 from pathlib import Path
+from collections.abc import Mapping
+import re
 
 import yaml
 
@@ -13,32 +15,11 @@ from llmdbenchmark.executor.command import CommandExecutor
 # and is rendered at plan time.
 _AGENTGATEWAY_SCC_NAME = "llmdbench-agentgateway"
 
-GATEWAY_API_CRDS = [
-    "backendtlspolicies.gateway.networking.k8s.io",
-    "gatewayclasses.gateway.networking.k8s.io",
-    "gateways.gateway.networking.k8s.io",
-    "grpcroutes.gateway.networking.k8s.io",
-    "httproutes.gateway.networking.k8s.io",
-    "listenersets.gateway.networking.k8s.io",
-    "referencegrants.gateway.networking.k8s.io",
-    "tlsroutes.gateway.networking.k8s.io",
-]
-
-# Inference extension CRDs may use the graduated (.k8s.io) or
-# experimental (.x-k8s.io) API group depending on the installed version.
-# We check for both variants.
-GATEWAY_API_EXTENSION_CRDS_K8S = [
-    "inferencemodelrewrites.inference.networking.k8s.io",
-    "inferenceobjectives.inference.networking.k8s.io",
-    "inferencepoolimports.inference.networking.k8s.io",
-    "inferencepools.inference.networking.k8s.io",
-]
-GATEWAY_API_EXTENSION_CRDS_XK8S = [
-    "inferencemodelrewrites.inference.networking.x-k8s.io",
-    "inferenceobjectives.inference.networking.x-k8s.io",
-    "inferencepoolimports.inference.networking.x-k8s.io",
-    "inferencepools.inference.networking.x-k8s.io",
-]
+GATEWAY_API_GROUPS = ("gateway.networking.k8s.io",)
+GATEWAY_API_EXTENSION_GROUPS = (
+    "inference.networking.k8s.io",
+    "inference.networking.x-k8s.io",
+)
 
 AGENTGATEWAY_CRDS = [
     "agentgatewaybackends.agentgateway.dev",
@@ -66,9 +47,110 @@ LWS_CRDS = [
 ]
 
 
-def _any_crds_missing(expected: list[str], existing: list[str]) -> bool:
+def _crd_names(existing: Mapping[str, str | None] | list[str]) -> set[str]:
+    """Return CRD names from either the version-aware or legacy inventory."""
+    if isinstance(existing, Mapping):
+        return set(existing)
+    return set(existing)
+
+
+def _crds_in_groups(
+    existing: Mapping[str, str | None] | list[str], groups: tuple[str, ...]
+) -> list[str]:
+    """Return installed CRDs whose resource names belong to API groups."""
+    suffixes = tuple(f".{group}" for group in groups)
+    return sorted(name for name in _crd_names(existing) if name.endswith(suffixes))
+
+
+def _normalize_crd_version(version: str | None) -> str | None:
+    """Normalize common CRD/chart version spellings for comparison."""
+    if not version:
+        return None
+    normalized = version.strip()
+    if normalized.startswith("v"):
+        normalized = normalized[1:]
+    # Helm chart annotations can look like ``chart-name-1.2.3``.
+    match = re.search(r"(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?)$", normalized)
+    return match.group(1) if match else normalized
+
+
+def _crd_version(metadata: Mapping[str, object]) -> str | None:
+    """Extract a release version from standard CRD annotations or labels."""
+    for field in ("annotations", "labels"):
+        values = metadata.get(field, {})
+        if not isinstance(values, Mapping):
+            continue
+        for key, value in values.items():
+            if not isinstance(value, str):
+                continue
+            if key.endswith("/bundle-version") or key in (
+                "app.kubernetes.io/version",
+                "helm.sh/chart",
+            ):
+                return value
+    return None
+
+
+def _crd_names_from_manifest(manifest: str) -> list[str]:
+    """Extract CRD names from a rendered YAML manifest or Kubernetes List."""
+    names: list[str] = []
+
+    def collect(document: object) -> None:
+        if not isinstance(document, Mapping):
+            return
+        if document.get("kind") == "List":
+            items = document.get("items", [])
+            if isinstance(items, list):
+                for item in items:
+                    collect(item)
+            return
+        if document.get("kind") != "CustomResourceDefinition":
+            return
+        metadata = document.get("metadata", {})
+        if not isinstance(metadata, Mapping):
+            return
+        name = metadata.get("name")
+        if isinstance(name, str) and name:
+            names.append(name)
+
+    try:
+        for document in yaml.safe_load_all(manifest):
+            collect(document)
+    except yaml.YAMLError:
+        return []
+    return list(dict.fromkeys(names))
+
+
+def _crds_match_version(
+    expected: list[str],
+    existing: Mapping[str, str | None] | list[str],
+    expected_version: str | None = None,
+) -> bool:
+    """Return whether required CRDs exist and, when known, match a version.
+
+    A legacy list of names is accepted for callers/tests that do not have
+    metadata. Missing version metadata remains compatible with the old
+    existence-only behavior; an explicitly observed mismatch is not treated
+    as installed.
+    """
+    names = _crd_names(existing)
+    if not set(expected).issubset(names):
+        return False
+    if not expected_version or not isinstance(existing, Mapping):
+        return True
+    target = _normalize_crd_version(expected_version)
+    for name in expected:
+        actual = _normalize_crd_version(existing.get(name))
+        if actual is not None and target is not None and actual != target:
+            return False
+    return True
+
+
+def _any_crds_missing(
+    expected: list[str], existing: Mapping[str, str | None] | list[str]
+) -> bool:
     """Return True if any of the expected CRDs are absent from the cluster."""
-    return not set(expected).issubset(existing)
+    return not _crds_match_version(expected, existing)
 
 
 class AdminPrerequisitesStep(Step):
@@ -192,19 +274,55 @@ class AdminPrerequisitesStep(Step):
 
     def _get_existing_crds(
         self, cmd: CommandExecutor, context: ExecutionContext
-    ) -> list[str]:
-        """Fetch all CRD names currently registered in the cluster."""
+    ) -> dict[str, str | None]:
+        """Fetch CRD names and release versions currently registered."""
         if context.dry_run:
-            return []
+            return {}
 
         result = cmd.kube(
             "get",
             "crd",
             "-o",
-            "jsonpath={.items[*].metadata.name}",
+            "json",
         )
+        if not result.success or not result.stdout.strip():
+            return {}
+        try:
+            items = yaml.safe_load(result.stdout).get("items", [])
+        except (yaml.YAMLError, AttributeError):
+            return {}
+        inventory: dict[str, str | None] = {}
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            metadata = item.get("metadata", {})
+            if not isinstance(metadata, Mapping):
+                continue
+            name = metadata.get("name")
+            if isinstance(name, str) and name:
+                inventory[name] = _crd_version(metadata)
+        return inventory
+
+    @staticmethod
+    def _discover_expected_crds(
+        cmd: CommandExecutor,
+        command_args: tuple[str, ...],
+        description: str,
+    ) -> list[str]:
+        """Render an install source and return the CRDs it contains."""
+        result = cmd.kube(*command_args, check=False)
         if result.success and result.stdout.strip():
-            return result.stdout.strip().split()
+            names = _crd_names_from_manifest(result.stdout)
+            if names:
+                cmd.logger.log_info(
+                    f"Discovered {len(names)} {description} CRD(s) from "
+                    "the configured revision"
+                )
+                return names
+        cmd.logger.log_warning(
+            f"Could not determine the expected {description} CRDs from the "
+            "configured revision"
+        )
         return []
 
     def _add_helm_repos(self, cmd: CommandExecutor, plan_config: dict, errors: list):
@@ -252,12 +370,50 @@ class AdminPrerequisitesStep(Step):
         if not gw_revision:
             return
 
-        if not _any_crds_missing(GATEWAY_API_CRDS, existing_crds):
-            cmd.logger.log_info(
-                "✅ Gateway API CRDs already installed "
-                "(*.gateway.networking.k8s.io found)"
-            )
-            return
+        crd_url_template = self._require_config(
+            plan_config,
+            "gatewayApiCrd",
+            "crdUrlTemplate",
+        )
+        crd_url = crd_url_template.format(revision=gw_revision)
+        expected_crds = self._discover_expected_crds(
+            cmd,
+            ("kustomize", crd_url),
+            "Gateway API",
+        )
+        installed_gateway_crds = _crds_in_groups(existing_crds, GATEWAY_API_GROUPS)
+
+        if not expected_crds:
+            if installed_gateway_crds:
+                cmd.logger.log_warning(
+                    "Gateway API CRD discovery was unavailable, but installed "
+                    "*.gateway.networking.k8s.io CRDs were found; leaving the "
+                    "existing cluster-scoped resources unchanged"
+                )
+                return
+        else:
+            missing_crds = sorted(set(expected_crds) - _crd_names(existing_crds))
+            if not missing_crds:
+                if _crds_match_version(expected_crds, existing_crds, gw_revision):
+                    cmd.logger.log_info(
+                        "✅ Gateway API CRDs already installed "
+                        f"(*.gateway.networking.k8s.io, revision {gw_revision})"
+                    )
+                else:
+                    cmd.logger.log_warning(
+                        "Gateway API CRDs are present, but their installed version "
+                        f"does not match configured revision {gw_revision}; leaving "
+                        "the existing cluster-scoped resources unchanged"
+                    )
+                return
+            if installed_gateway_crds:
+                cmd.logger.log_warning(
+                    "Gateway API CRDs are already managed on this cluster, but the "
+                    f"configured revision {gw_revision} also expects: "
+                    f"{', '.join(missing_crds)}. Leaving the existing "
+                    "cluster-scoped resources unchanged"
+                )
+                return
 
         cmd.logger.log_info(
             f"📦 Installing Gateway API CRDs (revision {gw_revision})..."
@@ -265,12 +421,6 @@ class AdminPrerequisitesStep(Step):
         # URL template lives in defaults.yaml so it has a single source of
         # truth (gatewayApiCrd.crdUrlTemplate). Fail loudly if missing -- we
         # don't want a stale hardcoded URL silently substituting in.
-        crd_url_template = self._require_config(
-            plan_config,
-            "gatewayApiCrd",
-            "crdUrlTemplate",
-        )
-        crd_url = crd_url_template.format(revision=gw_revision)
         result = cmd.kube("apply", "--server-side", "-k", crd_url)
         if not result.success:
             errors.append(f"Failed to install Gateway API CRDs: {result.stderr}")
@@ -295,20 +445,53 @@ class AdminPrerequisitesStep(Step):
         if not inf_ext_revision:
             return
 
-        # Accept either .k8s.io (graduated) or .x-k8s.io (experimental)
-        k8s_present = not _any_crds_missing(
-            GATEWAY_API_EXTENSION_CRDS_K8S, existing_crds
+        ext_url_template = self._require_config(
+            plan_config,
+            "gatewayApiCrd",
+            "inferenceExtensionUrlTemplate",
         )
-        xk8s_present = not _any_crds_missing(
-            GATEWAY_API_EXTENSION_CRDS_XK8S, existing_crds
+        ext_url = ext_url_template.format(revision=inf_ext_revision)
+        expected_crds = self._discover_expected_crds(
+            cmd,
+            ("apply", "--dry-run=client", "-f", ext_url, "-o", "yaml"),
+            "Gateway API inference extension",
         )
-        if k8s_present or xk8s_present:
-            variant = ".k8s.io" if k8s_present else ".x-k8s.io"
-            cmd.logger.log_info(
-                f"✅ Gateway API inference extension CRDs already installed "
-                f"(*.inference.networking{variant} found)"
-            )
-            return
+        installed_extension_crds = _crds_in_groups(
+            existing_crds, GATEWAY_API_EXTENSION_GROUPS
+        )
+
+        if not expected_crds:
+            if installed_extension_crds:
+                cmd.logger.log_warning(
+                    "Gateway API inference extension CRD discovery was unavailable, "
+                    "but installed inference.networking CRDs were found; leaving "
+                    "the existing cluster-scoped resources unchanged"
+                )
+                return
+        else:
+            missing_crds = sorted(set(expected_crds) - _crd_names(existing_crds))
+            if not missing_crds:
+                if _crds_match_version(expected_crds, existing_crds, inf_ext_revision):
+                    cmd.logger.log_info(
+                        "✅ Gateway API inference extension CRDs already installed "
+                        f"(revision {inf_ext_revision})"
+                    )
+                else:
+                    cmd.logger.log_warning(
+                        "Gateway API inference extension CRDs are present, but their "
+                        f"installed version does not match configured revision "
+                        f"{inf_ext_revision}; leaving the existing cluster-scoped "
+                        "resources unchanged"
+                    )
+                return
+            if installed_extension_crds:
+                cmd.logger.log_warning(
+                    "Gateway API inference extension CRDs are already managed on "
+                    f"this cluster, but revision {inf_ext_revision} also expects: "
+                    f"{', '.join(missing_crds)}. Leaving the existing "
+                    "cluster-scoped resources unchanged"
+                )
+                return
 
         cmd.logger.log_info(
             f"📦 Installing inference extension CRDs (revision {inf_ext_revision})..."
@@ -316,12 +499,6 @@ class AdminPrerequisitesStep(Step):
         # URL template lives in defaults.yaml so it has a single source of
         # truth (gatewayApiCrd.inferenceExtensionUrlTemplate). Fail loudly if
         # missing -- silent fallback would hide config drift.
-        ext_url_template = self._require_config(
-            plan_config,
-            "gatewayApiCrd",
-            "inferenceExtensionUrlTemplate",
-        )
-        ext_url = ext_url_template.format(revision=inf_ext_revision)
         result = cmd.kube("apply", "-f", ext_url)
         if not result.success:
             errors.append(
@@ -349,7 +526,8 @@ class AdminPrerequisitesStep(Step):
             return
 
         if gateway_class == "agentgateway":
-            if not _any_crds_missing(AGENTGATEWAY_CRDS, existing_crds):
+            expected_version = plan_config.get("chartVersions", {}).get("agentgateway")
+            if _crds_match_version(AGENTGATEWAY_CRDS, existing_crds, expected_version):
                 cmd.logger.log_info(
                     "✅ agentgateway already installed (*.agentgateway.dev CRDs found)"
                 )
@@ -357,7 +535,8 @@ class AdminPrerequisitesStep(Step):
             self._install_agentgateway(cmd, context, errors)
 
         elif gateway_class == "istio":
-            if not _any_crds_missing(ISTIO_CRDS, existing_crds):
+            expected_version = plan_config.get("chartVersions", {}).get("istioBase")
+            if _crds_match_version(ISTIO_CRDS, existing_crds, expected_version):
                 cmd.logger.log_info(
                     "✅ Istio already installed (*.istio.io CRDs found)"
                 )
@@ -394,7 +573,8 @@ class AdminPrerequisitesStep(Step):
         if not lws_config:
             return
 
-        if not _any_crds_missing(LWS_CRDS, existing_crds):
+        expected_version = plan_config.get("chartVersions", {}).get("lws")
+        if _crds_match_version(LWS_CRDS, existing_crds, expected_version):
             cmd.logger.log_info(
                 "✅ LeaderWorkerSet (LWS) controller already installed "
                 "(leaderworkersets.leaderworkerset.x-k8s.io CRD found)"
