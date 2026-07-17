@@ -269,6 +269,25 @@ When `epponly` is selected, standup automatically:
    smoketest and run phase resolve to the EPP service directly instead
    of a Gateway IP.
 
+By default the sidecar in this pod is Envoy. Set `inferenceExtension.proxyType: agentgateway`
+in the scenario to use agentgateway instead:
+
+```yaml
+scenario:
+  - name: "my-stack"
+    gateway:
+      className: epponly
+
+    inferenceExtension:
+      proxyType: agentgateway   # default is "envoy"
+    # ... rest of scenario config
+```
+
+`secure-serving` gets set to `false` on the EPP automatically when
+`proxyType: agentgateway` is picked (the chart requires it, agentgateway talks
+to EPP over plaintext grpc). If a scenario also sets `inferenceExtension.flags`
+explicitly, add `secure-serving: false` there yourself.
+
 #### Restrictions
 
 - **Single-stack only.** `epponly` cannot multiplex multiple models since

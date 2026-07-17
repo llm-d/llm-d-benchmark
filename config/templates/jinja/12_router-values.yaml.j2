@@ -24,6 +24,9 @@
                                                   hack is gone)
      inferenceExtension.envoySidecar          -> router.proxy.{args,resources}
                                                  (standalone-chart Envoy)
+     inferenceExtension.proxyType             -> router.proxy.proxyType
+                                                 (epponly only, envoy [default]
+                                                 or agentgateway)
      inferenceExtension.extraServicePorts     -> router.extraServicePorts
      inferenceExtension.extraContainerPorts   -> router.epp.extraContainerPorts
      inferenceExtension.monitoring            -> router.monitoring
@@ -55,6 +58,7 @@
                     else images.inferenceScheduler %}
 {% set registry = _epp_image.repository.split('/')[0] %}
 {% set _epponly = (gateway.className | default('') == 'epponly') %}
+{% set _proxy_type = (inferenceExtension.proxyType | default('envoy')) | lower %}
 router:
 {# UDS tokenizer is a first-class chart feature on the llm-d-router
    charts. Toggling `inferenceExtension.sidecar.enabled` in a scenario
@@ -124,6 +128,12 @@ router:
       {{ key }}: "{{ value }}"
 {% endfor %}
 {% else %}
+{# agentgateway standalone talks to EPP over plaintext grpc, so the chart
+   fails validation unless secure-serving is off. envoy doesn't care about
+   this flag so we only set it for agentgateway. #}
+{% if _epponly and _proxy_type == 'agentgateway' %}
+      secure-serving: "false"
+{% endif %}
 {% if monitoring is defined and monitoring.metricsScrapeEnabled is defined and monitoring.metricsScrapeEnabled %}
       v: "4"
 {% else %}
@@ -188,13 +198,17 @@ router:
         # the default per-stack to keep them disjoint.
         secretName: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
 
-{# Envoy sidecar config for the standalone chart (gateway.className=epponly).
-   The new chart surfaces the Envoy sidecar tunables under `router.proxy`
-   (the legacy chart used `inferenceExtension.sidecar`). #}
+{# Proxy sidecar config for the standalone chart (gateway.className=epponly).
+   The new chart surfaces this under `router.proxy`. proxyType picks envoy
+   (default, keeps old behavior) or agentgateway. envoySidecar's args/
+   resources are envoy-specific tunables and still apply on top, the
+   chart just ignores them when proxyType=agentgateway. #}
 {% if _epponly
-      and inferenceExtension.envoySidecar is defined
-      and inferenceExtension.envoySidecar %}
+      and (inferenceExtension.envoySidecar is defined and inferenceExtension.envoySidecar
+           or inferenceExtension.proxyType is defined) %}
   proxy:
+    proxyType: {{ _proxy_type }}
+{% if inferenceExtension.envoySidecar is defined and inferenceExtension.envoySidecar %}
 {% if inferenceExtension.envoySidecar.args is defined and inferenceExtension.envoySidecar.args %}
     args:
 {% for arg in inferenceExtension.envoySidecar.args %}
@@ -204,6 +218,7 @@ router:
 {% if inferenceExtension.envoySidecar.resources is defined and inferenceExtension.envoySidecar.resources %}
     resources:
 {{ inferenceExtension.envoySidecar.resources | toyaml | indent(6, true) }}
+{% endif %}
 {% endif %}
 {% endif %}
 
