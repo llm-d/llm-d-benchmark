@@ -344,6 +344,7 @@ class TestZmqPortExpansion:
 
 class TestEpponlyPort:
     def test_epponly_adds_http_service_port(self, normalize):
+        """Default (no proxyType, or proxyType=envoy) keeps the envoy port."""
         values = {"gateway": {"className": "epponly"}}
         out = normalize(values)
         service_ports = out["router"].get("extraServicePorts") or []
@@ -351,6 +352,32 @@ class TestEpponlyPort:
         assert len(http) == 1
         assert http[0]["port"] == 80
         assert http[0]["targetPort"] == 8081
+
+    def test_epponly_envoy_proxytype_keeps_8081(self, normalize):
+        values = {
+            "gateway": {"className": "epponly"},
+            "router": {"proxy": {"proxyType": "envoy"}},
+        }
+        out = normalize(values)
+        http = [
+            p for p in out["router"]["extraServicePorts"] if p.get("name") == "http"
+        ]
+        assert http[0]["targetPort"] == 8081
+
+    def test_epponly_agentgateway_proxytype_uses_http_targetport(self, normalize):
+        """agentgateway's chart validation rejects a raw port number here,
+        it only accepts targetPort omitted, 80, or the string "http"."""
+        values = {
+            "gateway": {"className": "epponly"},
+            "router": {"proxy": {"proxyType": "agentgateway"}},
+        }
+        out = normalize(values)
+        http = [
+            p for p in out["router"]["extraServicePorts"] if p.get("name") == "http"
+        ]
+        assert len(http) == 1
+        assert http[0]["port"] == 80
+        assert http[0]["targetPort"] == "http"
 
     def test_non_epponly_does_not_add_port(self, normalize):
         for cls in ("istio", "gke", "agentgateway"):

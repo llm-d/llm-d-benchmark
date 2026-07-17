@@ -1087,19 +1087,23 @@ class RenderPlans:
             elif verbosity is not None:
                 epp["flags"] = {"v": str(verbosity)}
 
-        # --- 5. epponly: add HTTP service port for the in-pod Envoy sidecar.
+        # --- 5. epponly: add HTTP service port for the in-pod proxy sidecar.
+        # envoy listens on 8081, agentgateway's chart validation only
+        # accepts targetPort omitted, 80, or "http" (not a raw port number).
         gw_class = (values.get("gateway") or {}).get("className", "")
         if gw_class == "epponly":
             service_ports = list(router.get("extraServicePorts") or [])
             if not any(
                 isinstance(p, dict) and p.get("name") == "http" for p in service_ports
             ):
+                proxy_type = (router.get("proxy") or {}).get("proxyType", "envoy")
+                http_target_port = "http" if proxy_type == "agentgateway" else 8081
                 service_ports.append(
                     {
                         "name": "http",
                         "port": 80,
                         "protocol": "TCP",
-                        "targetPort": 8081,
+                        "targetPort": http_target_port,
                     }
                 )
                 router["extraServicePorts"] = service_ports
