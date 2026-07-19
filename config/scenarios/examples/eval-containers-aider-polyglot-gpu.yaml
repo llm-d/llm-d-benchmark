@@ -139,6 +139,14 @@ scenario:
       resources:
         cpu: "2"
         memory: 6Gi
+      # Per-task agent wall-clock timeout (seconds), read by the exgentic image's
+      # run-agent (`timeout $TIMEOUT`). The image default of 300 was too tight for
+      # this verbose reasoning model — many tasks were killed mid-edit. A 100-task
+      # run capped at 1500 saw a max runtime of ~1020s (0 tasks hit the ceiling),
+      # so 1500 gives comfortable headroom without letting a stuck task run away.
+      extraEnvVars:
+        - name: EVAL_TIMEOUT
+          value: "1500"
 
     routing:
       proxy:
