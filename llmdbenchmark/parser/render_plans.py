@@ -1088,16 +1088,19 @@ class RenderPlans:
                 epp["flags"] = {"v": str(verbosity)}
 
         # --- 5. epponly: add HTTP service port for the in-pod proxy sidecar.
-        # envoy listens on 8081, agentgateway's chart validation only
-        # accepts targetPort omitted, 80, or "http" (not a raw port number).
+        # 8081 is envoy's listener port, the historical default here. Not
+        # every proxy wants that though -- e.g. agentgateway's chart
+        # validation only accepts targetPort omitted, 80, or "http", not a
+        # raw port number. Rather than special-casing proxy types, the
+        # target port is just a plain override: router.proxy.httpTargetPort.
         gw_class = (values.get("gateway") or {}).get("className", "")
         if gw_class == "epponly":
             service_ports = list(router.get("extraServicePorts") or [])
             if not any(
                 isinstance(p, dict) and p.get("name") == "http" for p in service_ports
             ):
-                proxy_type = (router.get("proxy") or {}).get("proxyType", "envoy")
-                http_target_port = "http" if proxy_type == "agentgateway" else 8081
+                proxy = router.get("proxy") or {}
+                http_target_port = proxy.get("httpTargetPort", 8081)
                 service_ports.append(
                     {
                         "name": "http",
