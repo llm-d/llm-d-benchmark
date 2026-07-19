@@ -2064,6 +2064,7 @@ def cli() -> None:
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
     """Recursively merge two dicts; override values win. Same logic as RenderPlans.deep_merge."""
     from copy import deepcopy
+
     result = deepcopy(base)
     for key, value in override.items():
         if value is None:
@@ -2102,7 +2103,9 @@ def _load_cluster_config(path: str | None, logger) -> dict | None:
         )
         return data
     except Exception as exc:
-        logger.log_error(f"Failed to load --cluster-config {cluster_config_path}: {exc}")
+        logger.log_error(
+            f"Failed to load --cluster-config {cluster_config_path}: {exc}"
+        )
         sys.exit(1)
 
 

@@ -6,10 +6,10 @@ generating and evaluating real agent workloads in real time.
 
 - **Concept & data flow** — below
 - **Quick start** — [Quick start](#quick-start)
-- **Verified scenarios** — [Verified benchmark × agent combinations](#verified-benchmark--agent-combinations)
+- **Verified scenarios** — [Verified benchmark × agent combinations](#verified-benchmark-agent-combinations)
 - **Write your own** — [Constructing a scenario](#constructing-a-scenario)
 - **Model config** — [Model serving](#model-serving)
-- **Debugging** — [Reading results](#reading-results) and [Troubleshooting](#troubleshooting)
+- **Debugging** — [Reading results](#reading-results) and [Debugging](#debugging)
 
 ---
 
@@ -48,7 +48,7 @@ alternatives).
 ### Run it
 
 ```bash
-export OPENAI_API_KEY="<your-key>"        # exported so -g forwards it by name
+export OPENAI_API_KEY="<your-key>"        # exported so -g forwards it by name  # pragma: allowlist secret
 
 llmdbenchmark --spec examples/eval-containers-gaia run \
   -U "https://<your-endpoint>" -m "<model-id>" -p <namespace> \

@@ -231,31 +231,53 @@ def wait_for_pods_by_label(
     # between polls. Polling phases is immune: "arrived" = Running or terminal;
     # "done" = all terminal OR gone. --natan (via claude)
     import time as _time
+
     def _phases():
-        r = cmd.kube("get", "pods", "-l", f"app={label}", "--namespace", namespace,
-                     "-o", "jsonpath={.items[*].status.phase}", check=False)
+        r = cmd.kube(
+            "get",
+            "pods",
+            "-l",
+            f"app={label}",
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.items[*].status.phase}",
+            check=False,
+        )
         return r.stdout.split() if r.success else []
+
     context.logger.log_info(
         f"Waiting for pods (label=app={label}) to start (timeout={timeout}s)..."
     )
-    ARRIVED=("Running","Succeeded","Failed"); TERMINAL=("Succeeded","Failed")
-    waited=0; poll=5; arrived=False
+    ARRIVED = ("Running", "Succeeded", "Failed")
+    TERMINAL = ("Succeeded", "Failed")
+    waited = 0
+    poll = 5
+    arrived = False
     while waited < timeout:
-        ph=_phases()
-        if ph and all(p in ARRIVED for p in ph): arrived=True; break
-        _time.sleep(poll); waited+=poll
+        ph = _phases()
+        if ph and all(p in ARRIVED for p in ph):
+            arrived = True
+            break
+        _time.sleep(poll)
+        waited += poll
     if not arrived:
-        errors.append(f"Pods failed to reach Running/terminal within {timeout}s (phases={_phases()})")
+        errors.append(
+            f"Pods failed to reach Running/terminal within {timeout}s (phases={_phases()})"
+        )
         return errors
     context.logger.log_info("All pods are running")
     context.logger.log_info(
         f"Waiting for pods (label=app={label}) to complete (timeout={timeout}s)..."
     )
-    done=False
+    done = False
     while waited < timeout:
-        ph=_phases()
-        if not ph or all(p in TERMINAL for p in ph): done=True; break
-        _time.sleep(poll); waited+=poll
+        ph = _phases()
+        if not ph or all(p in TERMINAL for p in ph):
+            done = True
+            break
+        _time.sleep(poll)
+        waited += poll
     if not done:
         errors.append(f"Pods did not complete within {timeout}s (phases={_phases()})")
         return errors

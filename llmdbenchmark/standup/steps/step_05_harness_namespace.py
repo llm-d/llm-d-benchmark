@@ -124,13 +124,21 @@ class HarnessNamespaceStep(Step):
         if pod_yaml:
             result = cmd.kube("apply", "-f", str(pod_yaml))
             if not result.success:
-                if "Forbidden" in result.stderr and "pod updates may not change" in result.stderr:
+                if (
+                    "Forbidden" in result.stderr
+                    and "pod updates may not change" in result.stderr
+                ):
                     context.logger.log_info(
                         "Data access pod spec changed — deleting stale pod and recreating..."
                     )
                     cmd.kube(
-                        "delete", "pod", "access-to-harness-data-workload-pvc",
-                        "--namespace", harness_ns, "--ignore-not-found", check=False,
+                        "delete",
+                        "pod",
+                        "access-to-harness-data-workload-pvc",
+                        "--namespace",
+                        harness_ns,
+                        "--ignore-not-found",
+                        check=False,
                     )
                     result = cmd.kube("apply", "-f", str(pod_yaml))
                 if not result.success:
