@@ -77,7 +77,12 @@ spec:
         {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if (standalone.parallelism.tensor | int) > 0
+  and standalone.acceleratorType is defined
+  and standalone.acceleratorType.labelKey is defined
+  and standalone.acceleratorType.labelKey
+  and ((standalone.acceleratorType.labelValues is defined and standalone.acceleratorType.labelValues)
+       or (standalone.acceleratorType.labelValue is defined and standalone.acceleratorType.labelValue)) %}
 {# GPU scenario — use acceleratorType-based nodeAffinity #}
       affinity:
         nodeAffinity:
@@ -246,7 +251,12 @@ spec:
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
           value: "{{ standalone.vllm.modelLoaderExtraConfig }}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if (standalone.parallelism.tensor | int) > 0
+  and standalone.acceleratorType is defined
+  and standalone.acceleratorType.labelKey is defined
+  and standalone.acceleratorType.labelKey
+  and standalone.acceleratorType.labelValue is defined
+  and standalone.acceleratorType.labelValue %}
           value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey }}:{{ standalone.acceleratorType.labelValue }}"
 {% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
 {% set ns_items = affinity.nodeSelector.items() | list %}
@@ -474,7 +484,12 @@ spec:
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
           value: "{{ standalone.vllm.modelLoaderExtraConfig }}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if (standalone.parallelism.tensor | int) > 0
+  and standalone.acceleratorType is defined
+  and standalone.acceleratorType.labelKey is defined
+  and standalone.acceleratorType.labelKey
+  and standalone.acceleratorType.labelValue is defined
+  and standalone.acceleratorType.labelValue %}
           value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey }}:{{ standalone.acceleratorType.labelValue }}"
 {% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
 {% set ns_items = affinity.nodeSelector.items() | list %}

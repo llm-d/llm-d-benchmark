@@ -302,7 +302,7 @@ scenario:
           ${accelerator.dtypeArgs} \
           ${accelerator.executionArgs} \
           --prefix-caching-hash-algo sha256_cbor \
-          --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(POD_PORT)@$(MODEL_NAME)"}' \
+          --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(VLLM_INFERENCE_PORT)@$(MODEL_NAME)"}' \
           --disable-uvicorn-access-log \
           --disable-access-log-for-endpoints=/health,/metrics,/v1/models
 

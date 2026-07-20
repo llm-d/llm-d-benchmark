@@ -32,15 +32,19 @@ def _render(
     profile: str,
     resource: str,
     guide: Path = GUIDE,
+    setup_overrides: dict | None = None,
 ) -> tuple[object, dict]:
     logger = MagicMock()
+    overrides = {"accelerator": {"profile": profile, "resource": resource}}
+    if setup_overrides:
+        overrides.update(setup_overrides)
     renderer = RenderPlans(
         template_dir=TEMPLATES,
         defaults_file=DEFAULTS,
         scenarios_file=guide,
         output_dir=tmp_path,
         logger=logger,
-        setup_overrides={"accelerator": {"profile": profile, "resource": resource}},
+        setup_overrides=overrides,
         version_resolver=VersionResolver(logger=logger, dry_run=True),
         cluster_resource_resolver=ClusterResourceResolver(logger=logger, dry_run=True),
     )
@@ -196,6 +200,35 @@ def test_xpu_profile_keeps_precise_router_compact_and_token_optional(tmp_path):
     assert merged["router"]["epp"]["env"] == []
     assert merged["router"]["epp"]["resources"]["requests"]["cpu"] == "1"
     assert merged["router"]["proxy"]["resources"]["requests"]["cpu"] == "1"
+    assert (
+        "$(POD_IP):$(VLLM_INFERENCE_PORT)" in merged["decode"]["vllm"]["customCommand"]
+    )
+    assert "POD_PORT" not in merged["decode"]["vllm"]["customCommand"]
+
+
+def test_standalone_without_accelerator_labels_uses_resource_scheduling(tmp_path):
+    result, _ = _render(
+        tmp_path,
+        "intel-xe",
+        "gpu.intel.com/xe",
+        PROJECT_ROOT / "config" / "scenarios" / "examples" / "gpu.yaml",
+        setup_overrides={
+            "modelservice": {"enabled": False},
+            "standalone": {
+                "enabled": True,
+                "acceleratorType": {"labelKey": "", "labelValue": ""},
+            },
+        },
+    )
+
+    assert not result.has_errors
+    deployment_path = result.rendered_paths[0] / "14_standalone-deployment_yaml.yaml"
+    deployment_text = deployment_path.read_text()
+    deployment = yaml.safe_load(deployment_text)
+    pod_spec = deployment["spec"]["template"]["spec"]
+    assert "affinity" not in pod_spec
+    assert "gpu.intel.com/xe" in deployment_text
+    assert "nvidia.com/gpu:None:None" not in deployment_text
 
 
 @pytest.mark.parametrize("guide_name", XPU_GUIDES)
