@@ -19,7 +19,10 @@ releases:
           sleeperLimit: {{ fma.dualPod.sleeperLimit }}
           debugAcceleratorMemory: {{ fma.dualPod.debugAcceleratorMemory | lower }}
         launcherPopulator:
-          enabled: true
+          # TEMP (do not merge): disabled to measure cold-start-with-launcher —
+          # no pre-warmed/sleeping launchers, so requesters get on-demand cold
+          # launchers (fresh model load). Re-enable (true) to restore pre-warm.
+          enabled: false
           pullPolicy: "IfNotPresent"
           replicaCount: 1
           resources:

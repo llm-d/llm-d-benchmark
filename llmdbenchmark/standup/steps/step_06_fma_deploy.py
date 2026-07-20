@@ -138,16 +138,40 @@ class FMADeployStep(Step):
                 "app.kubernetes.io/name=fma-controllers,"
                 "app.kubernetes.io/component=launcher-populator"
             )
-            wait_result = cmd.wait_for_pods(
-                label=label_selector,
-                namespace=namespace,
-                timeout=900,
-                poll_interval=10,
-                description="FMA Launcher Populator",
+            # The launcher-populator is optional: it can be disabled via
+            # launcherPopulator.enabled=false in the fma-controllers chart
+            # (e.g. cold-start experiments). Only wait for its pod when the
+            # chart actually deployed the populator Deployment -- otherwise
+            # this wait would spin the full timeout on a pod that will never
+            # exist. `get deployment -o name` is empty (and successful) when
+            # the populator is disabled, so it doubles as the presence check.
+            populator_check = cmd.kube(
+                "get",
+                "deployment",
+                "-l",
+                label_selector,
+                "--namespace",
+                namespace,
+                "-o",
+                "name",
+                check=False,
             )
-            if not wait_result.success:
-                errors.append(
-                    f"Standalone deployment pods not ready: {wait_result.stderr}"
+            if populator_check.success and (populator_check.stdout or "").strip():
+                wait_result = cmd.wait_for_pods(
+                    label=label_selector,
+                    namespace=namespace,
+                    timeout=900,
+                    poll_interval=10,
+                    description="FMA Launcher Populator",
+                )
+                if not wait_result.success:
+                    errors.append(
+                        f"FMA launcher-populator pod not ready: {wait_result.stderr}"
+                    )
+            else:
+                context.logger.log_info(
+                    "    | Launcher-populator Deployment not present "
+                    "(launcherPopulator.enabled=false); skipping populator wait"
                 )
 
         # Optionally pick a dedicated GPU node and label it, so the LPP and

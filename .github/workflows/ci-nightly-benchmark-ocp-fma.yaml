@@ -60,7 +60,9 @@ on:
 
 jobs:
   nightly:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    # TEMP (do not merge): use the LOCAL reusable (this branch = coldstart) instead of
+    # llm-d-infra@main, so the coldstart clone + launcher-populator-off change take effect.
+    uses: ./.github/workflows/reusable-ci-nightly-benchmark.yaml
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: ${{ inputs.standup_method || 'fma' }}
