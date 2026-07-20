@@ -45,9 +45,10 @@ def _render(
         cluster_resource_resolver=ClusterResourceResolver(logger=logger, dry_run=True),
     )
     result = renderer.eval()
-    configs = list(tmp_path.rglob("config.yaml"))
-    assert configs
-    return result, yaml.safe_load(configs[0].read_text())
+    assert len(result.rendered_paths) == 1
+    config_path = result.rendered_paths[0] / "config.yaml"
+    assert config_path.exists()
+    return result, yaml.safe_load(config_path.read_text())
 
 
 def test_intel_xe_resource_resolves_profile_and_type():
@@ -174,7 +175,7 @@ def test_same_guide_uses_intel_runtime_profile(tmp_path):
     assert "memoryUtilizationArgs" not in merged["accelerator"]
     assert "blockSizeArgs" not in merged["accelerator"]
 
-    modelservice_values = next(tmp_path.rglob("13_ms-values.yaml")).read_text()
+    modelservice_values = (result.rendered_paths[0] / "13_ms-values.yaml").read_text()
     assert "gpu.intel.com/xe" in modelservice_values
     assert "ghcr.io/llm-d/llm-d-xpu" in modelservice_values
     assert "supplementalGroups:" not in modelservice_values
