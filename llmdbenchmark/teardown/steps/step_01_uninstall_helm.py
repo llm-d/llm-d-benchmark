@@ -37,6 +37,12 @@ class UninstallHelmStep(Step):
         }
     )
 
+    # Chart name prefixes used exclusively by modelservice deployments this
+    # tool creates (llm-d-modelservice, llm-d-router-gateway/-standalone).
+    # Used as a fallback match on full-scenario teardowns -- see
+    # _release_matches.
+    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-")
+
     def __init__(self):
         super().__init__(
             number=1,
@@ -239,10 +245,17 @@ class UninstallHelmStep(Step):
         except ValueError:
             releases = []
 
+        # Full-scenario teardowns (no --stack filter) are allowed to match
+        # releases by chart identity alone -- see _release_matches. A
+        # --stack-filtered (partial) teardown must not, since sibling
+        # stacks of this scenario can share the namespace and must be
+        # preserved.
+        full_teardown = not context.stack_filter
+
         for rel in releases:
             release_name = rel.get("name", "")
             if not release_name or not self._release_matches(
-                release_name, release, model_labels
+                release_name, release, model_labels, rel.get("chart", ""), full_teardown
             ):
                 continue
 
@@ -278,12 +291,38 @@ class UninstallHelmStep(Step):
 
     @staticmethod
     def _release_matches(
-        release_name: str, release: str, model_labels: list[str]
+        release_name: str,
+        release: str,
+        model_labels: list[str],
+        chart: str,
+        full_teardown: bool,
     ) -> bool:
-        """Check if a helm release belongs to this deployment."""
+        """Check if a helm release belongs to this deployment.
+
+        ``model_labels`` is derived from a fresh render of the scenario at
+        teardown time, which depends on ``--models``/``LLMDBENCH_MODELS``
+        being re-supplied to match what was actually deployed at standup.
+        If it's omitted or doesn't match, a release can go unmatched here
+        even though it belongs to this deployment -- silently leaving it
+        (and everything it owns, e.g. the GAIE/EPP Deployment) behind with
+        teardown still reporting success.
+
+        On a full-scenario teardown (``full_teardown``, i.e. no --stack
+        filter), we also match by chart identity: any release using one of
+        our managed charts (llm-d-modelservice, llm-d-router-*) belongs to
+        this deployment regardless of model-label mismatches, since a full
+        teardown is meant to wipe everything this tool deployed in the
+        namespace anyway. A --stack-filtered (partial) teardown must not
+        use this broader match -- sibling stacks in the same namespace can
+        use the same charts and must be preserved.
+        """
         if release and release in release_name:
             return True
-        return any(label in release_name for label in model_labels)
+        if any(label in release_name for label in model_labels):
+            return True
+        return full_teardown and chart.startswith(
+            UninstallHelmStep._MANAGED_CHART_PREFIXES
+        )
 
     def _delete_openshift_routes(
         self,

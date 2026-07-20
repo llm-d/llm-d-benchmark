@@ -852,6 +852,7 @@ class DeployHarnessStep(Step):
         env.filters["is_empty"] = DeployHarnessStep._is_empty_filter
         env.filters["default_if_empty"] = DeployHarnessStep._default_if_empty_filter
         env.filters["b64encode"] = DeployHarnessStep._b64encode_filter
+        env.filters["tojson"] = lambda value: json.dumps(value, separators=(",", ":"))
 
         template = env.from_string(template_content)
         return template.render(**values)

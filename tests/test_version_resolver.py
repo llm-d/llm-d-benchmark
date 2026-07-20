@@ -6,6 +6,8 @@ These tests stub the registry resolution so they don't hit the network.
 
 from __future__ import annotations
 
+import json
+from subprocess import CompletedProcess
 from typing import Any
 
 import pytest
@@ -73,6 +75,28 @@ def _images() -> dict:
             "tag": "v1",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Registry tag ordering
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryTagOrdering:
+    def test_skopeo_selects_latest_tag_by_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tags = ["v0.20.1", "v0.9.2", "v0.10.0"]
+
+        def _run(*args: Any, **kwargs: Any) -> CompletedProcess[str]:
+            return CompletedProcess(args[0], 0, stdout=json.dumps({"Tags": tags}))
+
+        monkeypatch.setattr(
+            "llmdbenchmark.parser.version_resolver.subprocess.run", _run
+        )
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver._resolve_via_skopeo("docker.io/vllm/vllm-openai") == ("v0.20.1")
 
 
 # ---------------------------------------------------------------------------

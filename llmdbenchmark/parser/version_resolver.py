@@ -1,6 +1,7 @@
 """Resolve ``"auto"`` image tags and chart versions via skopeo/helm."""
 
 import json
+import re
 import subprocess
 from copy import deepcopy
 
@@ -19,6 +20,19 @@ class VersionResolver:
 
     def __init__(self, logger, dry_run: bool = False):
         self.logger = logger
+
+    @staticmethod
+    def _latest_version_tag(tags: list[str]) -> str | None:
+        """Select the greatest tag using natural version-aware ordering."""
+
+        def version_key(tag: str) -> tuple:
+            return tuple(
+                (1, int(part), len(part)) if part.isdigit() else (0, part.casefold())
+                for part in re.split(r"(\d+)", tag)
+                if part
+            )
+
+        return max(tags, key=version_key) if tags else None
 
     def resolve_image_tag(self, registry: str, repository: str) -> str:
         """Resolve the latest tag for an image via skopeo, falling back to podman."""
@@ -61,23 +75,22 @@ class VersionResolver:
                     for line in result.stdout.strip().split("\n")
                     if line.strip()
                 ]
-                if lines:
-                    return lines[-1]
+                return self._latest_version_tag(lines)
         except FileNotFoundError:
             pass
         return None
 
     def _resolve_via_skopeo(self, image_ref: str) -> str | None:
         """Resolve latest tag using skopeo list-tags."""
-        cmd = f"skopeo list-tags docker://{image_ref} | jq -r '.Tags[]' | sort -V"
+        cmd = ["skopeo", "list-tags", f"docker://{image_ref}"]
         try:
-            result = subprocess.run(
-                cmd.split(), capture_output=True, text=True, check=True
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             tags_data = json.loads(result.stdout)
             tags = tags_data.get("Tags", [])
-            if tags:
-                return tags[-1]
+            if isinstance(tags, list):
+                return self._latest_version_tag(
+                    [tag for tag in tags if isinstance(tag, str) and tag]
+                )
         except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
             pass
         return None
@@ -90,12 +103,12 @@ class VersionResolver:
                 cmd.split(), capture_output=True, text=True, check=False
             )
             if result.returncode == 0:
-                lines = result.stdout.strip().split("\n")
-                if lines:
-                    last_line = lines[-1]
-                    parts = last_line.split()
-                    if len(parts) >= 2:
-                        return parts[1]
+                tags = []
+                for line in result.stdout.strip().split("\n"):
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1].casefold() != "tag":
+                        tags.append(parts[1])
+                return self._latest_version_tag(tags)
         except FileNotFoundError:
             pass
         return None

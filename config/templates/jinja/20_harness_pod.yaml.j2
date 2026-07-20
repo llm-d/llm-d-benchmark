@@ -113,6 +113,11 @@ spec:
       value: "{{ monitoring.metricsPath }}"
     - name: LLMDBENCH_EPP_METRICS_SECRET
       value: "{{ router.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}"
+{% if monitoring.timeSeriesMetrics is defined %}
+    - name: LLMDBENCH_TIME_SERIES_METRICS
+      value: >-
+        {{ monitoring.timeSeriesMetrics | tojson }}
+{% endif %}
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED
       value: "{{ standalone.enabled | lower }}"

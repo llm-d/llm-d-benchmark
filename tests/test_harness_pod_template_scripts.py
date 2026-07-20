@@ -89,3 +89,35 @@ def test_harness_pod_copies_configmap_scripts_before_launch() -> None:
     assert launch_script.index("/workspace/harnesses") < launch_script.index(
         "llm-d-benchmark.sh"
     )
+
+
+def test_harness_pod_receives_configured_time_series_metrics() -> None:
+    template_path = (
+        Path(__file__).resolve().parent.parent
+        / "config"
+        / "templates"
+        / "jinja"
+        / "20_harness_pod.yaml.j2"
+    )
+    values = _template_values()
+    values.update(
+        {
+            "monitoring": {
+                "metricsScrapeEnabled": True,
+                "metricsPath": "/metrics",
+                "timeSeriesMetrics": ["vllm:custom_metric"],
+            },
+            "decode": {"vllm": {"port": 8000}},
+            "router": {"monitoring": {}},
+        }
+    )
+
+    rendered = DeployHarnessStep._render_template(
+        template_path.read_text(encoding="utf-8"), values
+    )
+    pod = yaml.safe_load(rendered)
+    env = {
+        item["name"]: item.get("value") for item in pod["spec"]["containers"][0]["env"]
+    }
+
+    assert env["LLMDBENCH_TIME_SERIES_METRICS"] == '["vllm:custom_metric"]'

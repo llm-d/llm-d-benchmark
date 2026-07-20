@@ -266,8 +266,8 @@ decode:
   priorityClassName: {{ decode_priority }}
 {% endif %}
 
-{# GPU count = accelerator.count if explicit, else tensor x dataLocal (each DP-local rank needs its own GPU) #}
-{% set decode_default_gpus = (decode.parallelism.tensor | int) * (decode.parallelism.dataLocal | int) %}
+{# GPU count precedence: decode.accelerator.count > accelerator.count (top-level default) > tensor x dataLocal (each DP-local rank needs its own GPU) #}
+{% set decode_default_gpus = (accelerator.count | int) if accelerator.count is defined else (decode.parallelism.tensor | int) * (decode.parallelism.dataLocal | int) %}
 {% set decode_accel_count = (decode.accelerator.count | default(decode_default_gpus) | int) if decode.accelerator is defined else decode_default_gpus %}
 {% if decode_accel_count > 0 %}
 {% set d_accel_type = decode.acceleratorType if decode.acceleratorType is defined else (standalone.acceleratorType if standalone.acceleratorType is defined else {}) %}
@@ -686,8 +686,8 @@ prefill:
   priorityClassName: {{ prefill_priority }}
 {% endif %}
 
-{# GPU count = accelerator.count if explicit, else tensor x dataLocal (each DP-local rank needs its own GPU) #}
-{% set prefill_default_gpus = (prefill.parallelism.tensor | int) * (prefill.parallelism.dataLocal | int) %}
+{# GPU count precedence: prefill.accelerator.count > accelerator.count (top-level default) > tensor x dataLocal (each DP-local rank needs its own GPU) #}
+{% set prefill_default_gpus = (accelerator.count | int) if accelerator.count is defined else (prefill.parallelism.tensor | int) * (prefill.parallelism.dataLocal | int) %}
 {% set prefill_accel_count = (prefill.accelerator.count | default(prefill_default_gpus) | int) if prefill.accelerator is defined else prefill_default_gpus %}
 {% if prefill_accel_count > 0 %}
 {% set p_accel_type = prefill.acceleratorType if prefill.acceleratorType is defined else (standalone.acceleratorType if standalone.acceleratorType is defined else {}) %}

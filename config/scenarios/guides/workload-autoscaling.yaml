@@ -169,8 +169,9 @@ scenario:
       # Controller container image.
       # Pin `tag` to a release version for reproducibility, or set to "auto"
       # to let the version-resolver pick latest at plan time.
-      # NOTE: image tags use a leading "v" (v0.6.0), distinct from the
-      # helm chart version pinned in chartVersions.wva (which is bare 0.6.0).
+      # NOTE: the WVA controller is installed from the upstream kustomize
+      # overlay (see wva.repoRef), not a helm chart -- there is no separate
+      # `chartVersions.wva` to keep in sync.
       # Available version tags can be listed with:
       #   curl -sL "https://ghcr.io/token?scope=repository:llm-d/llm-d-workload-variant-autoscaler:pull" \
       #     | jq -r .token | xargs -I{} curl -sH "Authorization: Bearer {}" \
@@ -285,17 +286,13 @@ scenario:
         enabled: false
 
     # =========================================================================
-    # WVA-RELATED CHART VERSIONS
+    # CHART VERSIONS
     #
-    # Pins for the helm charts that step_03 installs as part of the WVA
-    # pipeline. Bump these to track upstream releases; align with what the
-    # upstream WVA guide currently calls for so the rule format and chart
-    # values stay compatible.
-    #   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
+    # The WVA controller itself is installed from the upstream kustomize
+    # overlay (see wva.image.tag / wva.repoRef above), not a helm chart --
+    # this block only pins helm charts still installed by step_03.
     # =========================================================================
     chartVersions:
-      # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
-      wva: 0.6.0
       # prometheus-adapter chart (prometheus-community/prometheus-adapter).
       # Pinned because newer releases have broken external-metric
       # compatibility with the rule format the WVA chart emits.
