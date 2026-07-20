@@ -1396,6 +1396,15 @@ fma:
   enabled: false
   iterations: 1
 
+  # Pin FMA launchers + requester to a single GPU node. When enabled, standup
+  # (step_06) picks a GPU node with free GPUs and CPU (preferring a dedicated
+  # one), labels it <nodeLabel>=true, and sizes launchers/requesters to its free
+  # GPUs. Standup fails if no node qualifies. Off by default; opt in per-scenario
+  # (used by cicd/ocp-wva-fma-hotstart).
+  launcherNodeSelection:
+    enabled: false
+    nodeLabel: fma-hotstart
+
   # Deployment naming
   deployment:
     name: null  # Auto-generated if null: vllm-standalone-<model.shortName>

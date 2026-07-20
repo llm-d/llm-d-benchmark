@@ -104,6 +104,17 @@ scenario:
       enabled: true
       iterations: 1
 
+      # Pin the FMA launchers + requester to ONE GPU node. At standup (step_06)
+      # the harness picks a GPU node of a single GPU type with free GPUs and CPU
+      # (preferring a fully free/dedicated node, falling back to the most-free
+      # one), labels it `fma-hotstart=true`, and sizes launchers/requesters to
+      # its free GPUs; the LauncherPopulationPolicy + requester Deployment select
+      # only that node. Standup fails if no node qualifies. Kept hotstart-only
+      # via this flag (off by default elsewhere).
+      launcherNodeSelection:
+        enabled: true
+        nodeLabel: fma-hotstart
+
       # HOT-START CHANGE #1: Deploy all replicas at standup for parallel model loading
       # Initially set to maxReplicas so all launcher pods load models simultaneously
       # during standup. After model loading completes, the warmup step scales this

@@ -113,11 +113,11 @@ spec:
                 name: {{ huggingface.secretName }}
                 key:  {{ huggingface.tokenKey }}
 {% endif %}
-          resources:
-            limits:
-              nvidia.com/gpu: "1"
-            requests:
-              nvidia.com/gpu: "1"
+          # NOTE: the launcher deliberately does NOT request a GPU. In the FMA
+          # dual-pods model the requester reserves the GPU and the launcher
+          # binds onto it; if the launcher also requested nvidia.com/gpu it would
+          # double-book (N launchers + N requesters = 2N GPU requests on an
+          # N-GPU node), leaving requesters Pending with Insufficient nvidia.com/gpu.
           volumeMounts:
 {% if fma.mountModelVolume %}
           - name: model-cache
@@ -148,6 +148,10 @@ spec:
     labelSelector:
       matchLabels:
         nvidia.com/gpu.present: "true"
+{% if fma.launcherNodeSelection is defined and fma.launcherNodeSelection.enabled | default(false) %}
+        # Pin launchers to the single GPU node step_06 selected + labeled.
+        {{ fma.launcherNodeSelection.nodeLabel | default('fma-hotstart') }}: "true"
+{% endif %}
       # Skip unhealthy nodes
       matchExpressions:
         - key: nvidia.com/gpu.product
@@ -187,6 +191,12 @@ spec:
         dual-pods.llm-d.ai/admin-port: "8081"
         dual-pods.llm-d.ai/inference-server-config: fma-{{ model_id_label }}
     spec:
+{% if fma.launcherNodeSelection is defined and fma.launcherNodeSelection.enabled | default(false) %}
+      # Pin the requester to the single GPU node step_06 selected + labeled.
+      # ANDed with the nodeAffinity below (which stays load-bearing for WVA).
+      nodeSelector:
+        {{ fma.launcherNodeSelection.nodeLabel | default('fma-hotstart') }}: "true"
+{% endif %}
       {# Pick a resolved accelerator type from decode/prefill/standalone
          (cluster_resource_resolver.py rewrites `labelValue: auto` into the
          concrete value, e.g. NVIDIA-H100-80GB-HBM3, before this template

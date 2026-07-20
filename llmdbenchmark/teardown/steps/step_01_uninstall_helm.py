@@ -99,6 +99,10 @@ class UninstallHelmStep(Step):
         if is_fma_enabled:
             for ns in namespaces:
                 self._delete_fma_crs(cmd, context, ns)
+            # Remove any node label standup applied for launcher node selection
+            # (mirrors step_06's fma.launcherNodeSelection). No-op unless that
+            # feature was enabled for a stack.
+            self._unlabel_launcher_nodes(cmd, context)
 
         for ns in namespaces:
             self._uninstall_releases(cmd, context, ns, release, model_labels, errors)
@@ -198,6 +202,49 @@ class UninstallHelmStep(Step):
             wait_for_pods_deleted(cmd, selector, namespace, timeout, context)
             force_remove_finalizers_by_selector(cmd, selector, namespace, context)
             wait_for_pods_deleted(cmd, selector, namespace, 30, context)
+
+    def _unlabel_launcher_nodes(
+        self, cmd: CommandExecutor, context: ExecutionContext
+    ) -> None:
+        """Remove the node label standup applied for FMA launcher pinning.
+
+        step_06 labels a chosen GPU node ``<nodeLabel>=true`` when a stack sets
+        ``fma.launcherNodeSelection.enabled``. On teardown we strip it so the
+        (shared) node is left clean for the next run. No-op for stacks that did
+        not enable the feature; unlabel failures are warnings, not fatal.
+        """
+
+        # `or {}` at each level guards against a stack setting fma: null or
+        # launcherNodeSelection: null; `or "fma-hotstart"` guards an explicit
+        # null/empty nodeLabel (.get default only applies to a MISSING key).
+        def _lns(cfg):
+            return (cfg.get("fma", {}) or {}).get("launcherNodeSelection", {}) or {}
+
+        node_labels = {
+            (_lns(cfg).get("nodeLabel") or "fma-hotstart")
+            for cfg in map(self._load_stack_config, context.rendered_stacks or [])
+            if _lns(cfg).get("enabled", False)
+        }
+        for node_label in node_labels:
+            # `<key>-` removes the label; `-l <key>=true` restricts to nodes
+            # that carry it, so this is a no-op (not an error) when none do.
+            result = cmd.kube(
+                "label",
+                "nodes",
+                "-l",
+                f"{node_label}=true",
+                f"{node_label}-",
+                check=False,
+            )
+            if result.success:
+                context.logger.log_info(
+                    f"  Removed FMA launcher node label {node_label}=true",
+                    emoji="🗑️",
+                )
+            else:
+                context.logger.log_warning(
+                    f"  Could not remove node label {node_label}=true: {result.stderr}"
+                )
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:
         """Collect model ID labels used to match helm releases."""
