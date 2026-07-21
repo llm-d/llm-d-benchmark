@@ -10,29 +10,44 @@
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
 {% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
 ---
-{# EPP metrics ClusterRole — allows Prometheus to read /metrics #}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+{# Secret containing Prometheus ServiceAccount token for metrics scraping #}
+apiVersion: v1
+kind: Secret
 metadata:
-  name: epp-metrics-reader-{{ epp_ns }}
+  name: inference-gateway-sa-metrics-reader-secret
+  namespace: {{ epp_ns }}
+  annotations:
+    kubernetes.io/description: "Token for prometheus-user-workload to scrape EPP metrics"
+type: Opaque
+data:
+  token: {{ prometheus_sa_token | b64encode }}
+---
+{# Role allowing prometheus-user-workload to read the metrics token secret #}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: epp-metrics-secret-reader
+  namespace: {{ epp_ns }}
 rules:
-- nonResourceURLs:
-  - /metrics
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["inference-gateway-sa-metrics-reader-secret"]
   verbs: [get]
 ---
-{# Bind Prometheus ServiceAccount to the EPP metrics reader role #}
+{# RoleBinding: prometheus-user-workload → epp-metrics-secret-reader #}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: epp-metrics-reader-{{ epp_ns }}
+  name: epp-metrics-secret-reader
+  namespace: {{ epp_ns }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: epp-metrics-reader-{{ epp_ns }}
+  kind: Role
+  name: epp-metrics-secret-reader
 subjects:
 - kind: ServiceAccount
-  name: {{ eppKedaSaturation.epp.prometheusServiceAccount }}
-  namespace: {{ eppKedaSaturation.epp.prometheusServiceAccountNamespace }}
+  name: prometheus-user-workload
+  namespace: openshift-user-workload-monitoring
 ---
 {# ServiceMonitor for Prometheus operator to scrape EPP metrics #}
 apiVersion: monitoring.coreos.com/v1
@@ -54,5 +69,7 @@ spec:
       path: /metrics
       scheme: http
       interval: 15s
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      bearerTokenSecret:
+        name: inference-gateway-sa-metrics-reader-secret
+        key: token
 {% endif %}
