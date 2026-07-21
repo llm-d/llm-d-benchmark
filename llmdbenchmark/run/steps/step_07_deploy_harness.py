@@ -10,9 +10,10 @@ cluster resources.
 import base64
 import json
 import random
-import shlex
 import shutil
 import string
+import subprocess
+import tarfile
 import time
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from typing import Any
 import yaml
 from jinja2 import Environment
 
+from llmdbenchmark.executor.command import CommandResult
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
@@ -741,45 +743,28 @@ class DeployHarnessStep(Step):
 
             if FAST_COLLECT:
                 remote_dir = f"{results_dir_prefix}/{dir_name}"
-                # Build ``oc`` prefix matching CommandExecutor.kube() so kubeconfig
-                # / context / namespace are honored.
-                oc_prefix = ["oc"]
-                if cmd.kubeconfig:
-                    oc_prefix += ["--kubeconfig", shlex.quote(cmd.kubeconfig)]
-                if cmd.kube_context:
-                    oc_prefix += ["--context", shlex.quote(cmd.kube_context)]
-                oc_prefix += ["--namespace", shlex.quote(namespace)]
-                # gzip in-stream: fewer bytes cross the fragile apiserver exec
-                # tunnel, so the transfer finishes well before the stream's
-                # idle/size limits kick in. The JSON-heavy results tree
-                # compresses ~5-10x.
-                inner = (
-                    " ".join(
-                        oc_prefix
-                        + [
-                            "exec",
-                            shlex.quote(data_pod),
-                            "--",
-                            "tar",
-                            "cz",
-                            "-C",
-                            shlex.quote(remote_dir),
-                            ".",
-                        ]
-                    )
-                    + f" | tar xz -C {shlex.quote(str(local_path))}"
-                )
-                # ``pipefail`` makes a mid-stream oc exec failure surface as a
-                # non-zero exit even if ``tar x`` consumed partial data and
-                # exited 0. Stderr is left on its own fd so it lands in
-                # cp_result.stderr for the existing failure formatter.
-                bash_cmd = f"bash -c {shlex.quote('set -o pipefail; ' + inner)}"
-                # A dropped exec stream (`tar: Unexpected EOF`) is transient:
-                # retry the whole pipeline. `tar xz` overwrites into local_path,
+                # Auto-detected binary + kubeconfig/context/namespace flags.
+                kube_argv = [
+                    cmd._kube_bin,
+                    *cmd._kubeconfig_args(),
+                    "--namespace",
+                    namespace,
+                    "exec",
+                    data_pod,
+                    "--",
+                    "tar",
+                    "cz",
+                    "-C",
+                    remote_dir,
+                    ".",
+                ]
+                # Retry the whole stream: dropped apiserver exec streams
+                # (``tar: Unexpected EOF``) are transient; extractall overwrites
                 # so a partial extraction from a failed attempt is harmless.
                 max_attempts = 5
+                cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
                 for cp_attempt in range(1, max_attempts + 1):
-                    cp_result = cmd.execute(bash_cmd, check=False)
+                    cp_result = self._fast_collect_stream(kube_argv, local_path)
                     if cp_result.success:
                         break
                     context.logger.log_warning(
@@ -898,6 +883,41 @@ class DeployHarnessStep(Step):
                 errors.append(err_msg)
 
         return errors
+
+    @staticmethod
+    def _fast_collect_stream(kube_argv: list[str], local_path: Path) -> CommandResult:
+        """Stream ``<kube> exec ... -- tar cz`` stdout into local ``tarfile``.
+
+        Pure-Python replacement for a ``kube exec ... | tar xz -C`` shell pipe:
+        no shell, no local ``tar`` binary, no quoting. Returns a CommandResult
+        so the caller keeps its uniform success/stderr handling.
+        """
+        cmd_str = " ".join(kube_argv)
+        try:
+            with subprocess.Popen(
+                kube_argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            ) as proc:
+                # ``r|gz`` = streaming read; tarfile consumes bytes as they land
+                # on stdout without seeking, so it works on a live pipe.
+                try:
+                    with tarfile.open(fileobj=proc.stdout, mode="r|gz") as tar:
+                        # ``filter="data"`` rejects absolute paths, ``..`` and
+                        # device entries (default in Py 3.14+, safe elsewhere).
+                        tar.extractall(path=local_path, filter="data")
+                    stderr = proc.stderr.read().decode("utf-8", errors="replace")
+                    exit_code = proc.wait()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    proc.kill()
+                    stderr = proc.stderr.read().decode("utf-8", errors="replace")
+                    proc.wait()
+                    return CommandResult(
+                        command=cmd_str,
+                        exit_code=proc.returncode or 1,
+                        stderr=f"{exc}\n{stderr}",
+                    )
+        except OSError as exc:
+            return CommandResult(command=cmd_str, exit_code=1, stderr=str(exc))
+        return CommandResult(command=cmd_str, exit_code=exit_code, stderr=stderr)
 
     # ------------------------------------------------------------------
     # Template rendering and helpers
