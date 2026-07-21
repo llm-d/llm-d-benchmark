@@ -5,6 +5,8 @@ import shlex
 from pathlib import Path
 from datetime import datetime, timezone
 
+import yaml
+
 from llmdbenchmark import __version__
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
@@ -167,6 +169,7 @@ class FMADeployStep(Step):
                 model_id_label,
                 selected_gpu_count,
                 node_label,
+                stack_path,
                 errors,
             )
 
@@ -558,6 +561,7 @@ class FMADeployStep(Step):
         model_id_label: str,
         gpu_count: int,
         node_label: str,
+        stack_path: Path,
         errors: list[str],
     ) -> None:
         """Size FMA to the pinned node's GPU count: one launcher AND one
@@ -570,6 +574,12 @@ class FMADeployStep(Step):
         a launcher to bind to; more requesters than launchers leaves the extras
         unbindable, and more of either than GPUs leaves pods Pending with
         ``Insufficient nvidia.com/gpu``.
+
+        The effective count is also written back to the stack's rendered
+        ``config.yaml`` (``fma.requester.replicas``) so downstream run/smoketest
+        steps that read that value (e.g. the hot-start warmup's rollout wait and
+        scale-down/sleeping count) use the actual pinned-node count instead of
+        the placeholder.
 
         Launchers are created BEFORE requesters: the requester Deployment is
         scaled to 0 first, then the LPP launcherCount is set and launchers are
@@ -710,11 +720,44 @@ class FMADeployStep(Step):
                 f"maxReplicaCount to {gpu_count}: {patch.stderr}"
             )
 
+        # Persist the effective count so run-phase / smoketest steps that read
+        # fma.requester.replicas (e.g. the hot-start rollout wait and sleeping
+        # count) use it instead of the rendered placeholder.
+        self._persist_requester_replicas(context, stack_path, gpu_count)
+
         context.logger.log_info(
             f"    | Sized FMA to {gpu_count} launcher/requester pairs "
             f"(LauncherPopulationPolicy {lpp_name} launcherCount + "
             f"{deploy_name} replicas), one pair per GPU on the pinned node"
         )
+
+    @staticmethod
+    def _persist_requester_replicas(
+        context: ExecutionContext, stack_path: Path, replicas: int
+    ) -> None:
+        """Write fma.requester.replicas into the stack's config.yaml so later
+        steps (loaded via _load_stack_config) read the pinned-node count.
+
+        Best-effort: a write failure is a warning, not fatal -- the live
+        Deployment is already scaled correctly; only downstream config-derived
+        counts would be stale.
+        """
+        config_file = stack_path / "config.yaml"
+        try:
+            with open(config_file, encoding="utf-8") as fh:
+                cfg = yaml.safe_load(fh) or {}
+            cfg.setdefault("fma", {}).setdefault("requester", {})["replicas"] = replicas
+            with open(config_file, "w", encoding="utf-8") as fh:
+                yaml.safe_dump(cfg, fh, default_flow_style=False, sort_keys=False)
+            context.logger.log_info(
+                f"    | Updated fma.requester.replicas={replicas} in "
+                f"{config_file.name} (pinned-node GPU count)"
+            )
+        except (OSError, yaml.YAMLError) as exc:
+            context.logger.log_warning(
+                f"    | Could not persist fma.requester.replicas={replicas} to "
+                f"{config_file}: {exc}"
+            )
 
     def _install_fma_crds(
         self, context: ExecutionContext, plan_config: dict, errors: list[str]
