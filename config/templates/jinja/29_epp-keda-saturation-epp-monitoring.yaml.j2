@@ -2,27 +2,14 @@
    29_epp-keda-saturation-epp-monitoring.yaml.j2
 
    ServiceMonitor for Prometheus to scrape EPP metrics endpoint (port 9090).
-   Includes ClusterRole + ClusterRoleBinding to grant Prometheus read access
-   to EPP's protected /metrics endpoint (enforces TokenReview/SubjectAccessReview).
+   Includes Role + RoleBinding to grant Prometheus read access to EPP metrics.
 
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
 {% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
 ---
-{# Secret containing Prometheus ServiceAccount token for metrics scraping #}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: inference-gateway-sa-metrics-reader-secret
-  namespace: {{ epp_ns }}
-  annotations:
-    kubernetes.io/description: "Token for prometheus-user-workload to scrape EPP metrics"
-type: Opaque
-data:
-  token: {{ prometheus_sa_token | b64encode }}
----
-{# Role allowing prometheus-user-workload to read the metrics token secret #}
+{# Role allowing prometheus-user-workload to find and read the router's auto-created token secret #}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -31,8 +18,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
-  resourceNames: ["inference-gateway-sa-metrics-reader-secret"]
-  verbs: [get]
+  verbs: [get, list]
 ---
 {# RoleBinding: prometheus-user-workload → epp-metrics-secret-reader #}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -69,7 +55,8 @@ spec:
       path: /metrics
       scheme: http
       interval: 15s
-      bearerTokenSecret:
-        name: inference-gateway-sa-metrics-reader-secret
-        key: token
+      authorization:
+        credentials:
+          name: {{ model_id_label }}-router-epp-token
+          key: token
 {% endif %}
