@@ -764,7 +764,9 @@ class DeployHarnessStep(Step):
                 max_attempts = 5
                 cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
                 for cp_attempt in range(1, max_attempts + 1):
-                    cp_result = self._fast_collect_stream(kube_argv, local_path)
+                    cp_result = DeployHarnessStep._fast_collect_stream(
+                        kube_argv, local_path
+                    )
                     if cp_result.success:
                         break
                     context.logger.log_warning(
