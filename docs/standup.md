@@ -142,17 +142,21 @@ The scenario parameters can be roughly categorized in four groups:
 
 | Variable                                     | Meaning                                                                | Note                                                                                                     |
 | -------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Supported: `istio`, `agentgateway`, `gke`, `data-science-gateway-class`, `epponly`.     |
+| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Supported: `none`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`, `epponly`.     |
 
 Gateway class options (set via `gateway.className` in the scenario YAML):
 
 | `className`                  | What it deploys                                                                                                  | Use when                                                          |
 |------------------------------|------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `none`                       | ModelService decode pods plus a plain ClusterIP Service; **no** Gateway, HTTPRoute, EPP, Envoy, or routing proxy | Measuring direct model-server performance and routing overhead    |
 | `istio` (default)            | istio-base + istiod control plane, a Gateway + HTTPRoute, the `llm-d-router-gateway-dev` chart                       | Default; most flexible / production deployments                   |
 | `agentgateway`               | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `llm-d-router-gateway-dev` chart             | Want agentgateway's data plane instead of Envoy/Istio             |
 | `gke`                        | Uses GKE-managed Gateway controller; same `llm-d-router-gateway-dev` chart                                           | Running on GKE                                                    |
 | `data-science-gateway-class` | OpenDataHub / OpenShift AI managed Gateway                                                                           | Running on OpenShift AI                                           |
 | `epponly`                    | **No** Kubernetes Gateway, **no** HTTPRoute, the `llm-d-router-standalone-dev` chart (EPP with an Envoy sidecar serving HTTP) | You want llm-d's standalone router topology without any gateway   |
+
+`none` is a baseline lane, not a routing topology. It requires at least one
+decode replica and does not support P/D disaggregation.
 
 ### Overriding `gateway.className` from the CLI
 

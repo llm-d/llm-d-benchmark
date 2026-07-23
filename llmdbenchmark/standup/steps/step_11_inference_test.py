@@ -27,6 +27,7 @@ from llmdbenchmark.utilities.endpoint import (
     _ephemeral_label_args,
     find_standalone_endpoint,
     find_gateway_endpoint,
+    find_direct_modelservice_endpoint,
     find_epponly_endpoint,
 )
 
@@ -108,6 +109,13 @@ class InferenceTestStep(Step):
                 cmd,
                 namespace,
                 model_id_label,
+            )
+        elif gateway_class == "none":
+            service_ip, _, gateway_port = find_direct_modelservice_endpoint(
+                cmd,
+                namespace,
+                model_id_label,
+                str(plan_config.get("routing", {}).get("servicePort", "8000")),
             )
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(cmd, namespace, release)

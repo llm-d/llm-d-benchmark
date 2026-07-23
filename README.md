@@ -414,7 +414,7 @@ llmdbenchmark --version
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) to render into the plan |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model to render the plan for |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment method (`standalone`, `modelservice`) |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. Ignored (any value accepted, including `none`) when the active deploy method is `kustomize`, `standalone`, or `fma`. |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `none`, `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. `none` exposes decode vLLM directly through a plain Service with no Gateway, EPP, Envoy, or routing proxy. Ignored when the active deploy method is `kustomize`, `standalone`, or `fma`. |
 | `-f` / `--monitoring` | | Enable monitoring in rendered templates (PodMonitor, EPP verbosity) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path (used for cluster resource auto-detection) |
 

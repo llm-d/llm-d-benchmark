@@ -2,8 +2,9 @@
 {% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 {% set gw_class = gateway.className %}
 {# `epponly` renders no infra values: no Gateway is installed, the standalone
-   router chart provides HTTP service directly via the EPP Envoy sidecar. #}
-{% if gw_class == 'epponly' %}
+  router chart provides HTTP service directly via the EPP Envoy sidecar.
+  `none` also renders no infra values because clients use a plain Service. #}
+{% if gw_class in ['epponly', 'none'] %}
 {% elif gw_class == 'gke' %}
 {# ── GKE: managed gateway with destinationRule ── #}
 gateway:

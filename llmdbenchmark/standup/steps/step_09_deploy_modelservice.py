@@ -112,6 +112,21 @@ class DeployModelserviceStep(Step):
                 if not result.success:
                     errors.append(f"Failed to deploy modelservice: {result.stderr}")
 
+        gateway_class = self._require_config(plan_config, "gateway", "className")
+        direct_service_mode = gateway_class == "none"
+        if direct_service_mode:
+            direct_service_yaml = self._find_yaml(
+                stack_path, "13a_modelservice-direct-service"
+            )
+            if not direct_service_yaml or not self._has_yaml_content(
+                direct_service_yaml
+            ):
+                errors.append("Direct modelservice Service manifest was not rendered")
+            else:
+                result = cmd.kube("apply", "-f", str(direct_service_yaml))
+                if not result.success:
+                    errors.append(f"Failed to apply direct Service: {result.stderr}")
+
         httproute_yaml = self._find_yaml(stack_path, "08_httproute")
         if httproute_yaml and self._has_yaml_content(httproute_yaml):
             result = cmd.kube("apply", "-f", str(httproute_yaml))
@@ -225,39 +240,43 @@ class DeployModelserviceStep(Step):
             #
             # Probe both candidate labels once each so we discover which
             # the chart actually applied, then wait on that one.
-            release_epp = f"{model_id_label}-router-epp"
-            chosen_label = f"llm-d-router-gateway={release_epp}"  # default
-            for candidate_key in ("llm-d-router-gateway", "llm-d-router-standalone"):
-                probe_label = f"{candidate_key}={release_epp}"
-                probe = cmd.kube(
-                    "get",
-                    "pods",
-                    "-l",
-                    probe_label,
-                    "--namespace",
-                    namespace,
-                    "-o",
-                    "jsonpath={.items[*].metadata.name}",
-                    check=False,
-                )
-                if probe.success and probe.stdout.strip():
-                    chosen_label = probe_label
-                    break
-
-            pool_wait = cmd.wait_for_pods(
-                label=chosen_label,
-                namespace=namespace,
-                timeout=timeout,
-                poll_interval=10,
-                description="inference pool",
-            )
-            if not pool_wait.success:
-                stderr_lower = pool_wait.stderr.lower()
-                if (
-                    "no matching resources found" not in stderr_lower
-                    and "no pods found" not in stderr_lower
+            if not direct_service_mode:
+                release_epp = f"{model_id_label}-router-epp"
+                chosen_label = f"llm-d-router-gateway={release_epp}"  # default
+                for candidate_key in (
+                    "llm-d-router-gateway",
+                    "llm-d-router-standalone",
                 ):
-                    errors.append(f"Inference pool not ready: {pool_wait.stderr}")
+                    probe_label = f"{candidate_key}={release_epp}"
+                    probe = cmd.kube(
+                        "get",
+                        "pods",
+                        "-l",
+                        probe_label,
+                        "--namespace",
+                        namespace,
+                        "-o",
+                        "jsonpath={.items[*].metadata.name}",
+                        check=False,
+                    )
+                    if probe.success and probe.stdout.strip():
+                        chosen_label = probe_label
+                        break
+
+                pool_wait = cmd.wait_for_pods(
+                    label=chosen_label,
+                    namespace=namespace,
+                    timeout=timeout,
+                    poll_interval=10,
+                    description="inference pool",
+                )
+                if not pool_wait.success:
+                    stderr_lower = pool_wait.stderr.lower()
+                    if (
+                        "no matching resources found" not in stderr_lower
+                        and "no pods found" not in stderr_lower
+                    ):
+                        errors.append(f"Inference pool not ready: {pool_wait.stderr}")
 
         if not errors and not context.dry_run:
             self._collect_logs(cmd, context, namespace)
@@ -297,9 +316,9 @@ class DeployModelserviceStep(Step):
                     "PodMonitor skipped (template not rendered for this configuration)"
                 )
 
-        gateway_class = self._require_config(plan_config, "gateway", "className")
-
-        if gateway_class in ("kgateway", "agentgateway"):
+        if direct_service_mode:
+            service_name = f"{model_id_label}-direct"
+        elif gateway_class in ("kgateway", "agentgateway"):
             service_name = f"infra-{release}-inference-gateway"
         else:
             # Covers istio / gke / data-science-gateway-class / epponly.
@@ -312,7 +331,7 @@ class DeployModelserviceStep(Step):
         # In epponly mode there is no Gateway resource to label, and the
         # router chart's auto-generated route is to the EPP gRPC port which
         # we'd otherwise rewrite to point at the Gateway. Skip both.
-        if gateway_class != "epponly":
+        if gateway_class not in ("epponly", "none"):
             username = context.username or "unknown"
             cmd.kube(
                 "label",

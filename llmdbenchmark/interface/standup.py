@@ -52,7 +52,8 @@ def add_subcommands(
         default=env("LLMDBENCH_GATEWAY_CLASS"),
         help=(
             "Override the scenario's gateway.className. Supported values: "
-            "epponly, istio, agentgateway, gke, data-science-gateway-class. "
+            "none, epponly, istio, agentgateway, gke, "
+            "data-science-gateway-class. "
             "Only takes effect on the modelservice deploy path -- ignored "
             "by kustomize/standalone/fma."
         ),

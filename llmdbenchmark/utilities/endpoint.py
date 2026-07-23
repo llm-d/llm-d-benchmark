@@ -250,6 +250,54 @@ def find_epponly_endpoint(
     return ip, svc_name, port
 
 
+def find_direct_modelservice_endpoint(
+    cmd: CommandExecutor,
+    namespace: str,
+    model_id_label: str,
+    default_port: str = "8000",
+) -> tuple[str | None, str | None, str]:
+    """Find the plain Service used by ``gateway.className=none``.
+
+    The Service selects modelservice decode pods and targets vLLM directly;
+    no Gateway, EPP, Envoy, or routing proxy is in the request path.
+    """
+    if not model_id_label:
+        return None, None, default_port
+
+    svc_name = f"{model_id_label}-direct"
+    result = cmd.kube(
+        "get",
+        "service",
+        svc_name,
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
+        check=False,
+    )
+    if not (result.success and result.stdout.strip()):
+        return None, svc_name, default_port
+
+    try:
+        service = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None, svc_name, default_port
+
+    spec = service.get("spec", {}) or {}
+    service_ip = spec.get("clusterIP") or None
+    ports = spec.get("ports") or []
+    service_port = default_port
+    for port in ports:
+        if port.get("name") == "http":
+            service_port = str(port.get("port", default_port))
+            break
+    else:
+        if ports:
+            service_port = str(ports[0].get("port", default_port))
+
+    return service_ip, svc_name, service_port
+
+
 def find_gateway_endpoint(
     cmd: CommandExecutor, namespace: str, release: str
 ) -> tuple[str | None, str | None, str]:

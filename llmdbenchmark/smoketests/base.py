@@ -15,6 +15,7 @@ from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     compute_gateway_path_prefix,
     find_custom_endpoint,
+    find_direct_modelservice_endpoint,
     find_epponly_endpoint,
     find_gateway_endpoint,
     find_kustomize_endpoint,
@@ -143,6 +144,16 @@ class BaseSmoketest:
                 cmd,
                 namespace,
                 model_id_label,
+            )
+        elif gateway_class == "none":
+            direct_port = str(
+                _nested_get(plan_config, "routing", "servicePort") or "8000"
+            )
+            service_ip, _, gateway_port = find_direct_modelservice_endpoint(
+                cmd,
+                namespace,
+                model_id_label,
+                direct_port,
             )
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(cmd, namespace, release)

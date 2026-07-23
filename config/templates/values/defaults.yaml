@@ -641,6 +641,8 @@ gateway:
   #                                Kubernetes Gateway is deployed, the EPP
   #                                runs with an Envoy sidecar that serves
   #                                HTTP directly (single-stack only).
+  #   none                       - plain ClusterIP Service to decode vLLM;
+  #                                no Gateway, EPP, Envoy, or routing proxy.
   className: istio
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time

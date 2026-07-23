@@ -35,13 +35,15 @@
    `siblingStacks` and `stackIndex` are injected by
    llmdbenchmark.parser.render_plans._process_stack.
 #}
-{# Modelservice-only template. Two skip conditions:
+{# Modelservice-only template. Skip when:
      1. -t kustomize -- upstream guide manifests define their own routing.
      2. gateway.className == 'epponly' -- no Gateway exists, so an HTTPRoute
-        would be unresolvable; clients hit the EPP service directly. #}
+      would be unresolvable; clients hit the EPP service directly.
+    3. gateway.className == 'none' -- clients hit the model server's plain
+      Service directly; no Gateway, router, or HTTPRoute is deployed. #}
 {% if standalone.enabled is defined and not standalone.enabled
       and not (kustomize.enabled | default(false))
-      and gateway.className | default('') != 'epponly' %}
+    and gateway.className | default('') not in ['epponly', 'none'] %}
 {% set _mode = (httpRoute.mode if httpRoute is defined and httpRoute.mode is defined else 'per-stack') %}
 {% if _mode == 'shared' %}
 {% set _owner_index = sharedInfraStackIndex | default(1) | int %}
