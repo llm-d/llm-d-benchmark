@@ -190,6 +190,12 @@ class BaseSmoketest:
         if is_kustomize:
             if guide_name == "pd-disaggregation":
                 roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
+            elif guide_name == "fast-model-actuation":
+                # FMA has no decode/prefill Deployments: launcher pods host vLLM and
+                # are intentionally sleeping (not all Ready) and are not
+                # guide-labeled. The requester pods reserve GPUs, carry the guide
+                # label -- so assert *those* are Ready.
+                roles_to_check = [("requester", None)]
             else:
                 roles_to_check = [("decode", "decode")]
         elif is_standalone:
@@ -227,7 +233,9 @@ class BaseSmoketest:
         for pod_type, role_label in roles_to_check:
             if is_kustomize and guide_name:
                 role_selector = (
-                    f"llm-d.ai/guide={guide_name},llm-d.ai/role={role_label}"
+                    f"llm-d.ai/guide={guide_name}"
+                    if role_label is None
+                    else f"llm-d.ai/guide={guide_name},llm-d.ai/role={role_label}"
                 )
             else:
                 role_selector = (
@@ -469,25 +477,34 @@ class BaseSmoketest:
                     break
             else:
                 primary_role = roles_to_check[0]
-        if is_kustomize and guide_name:
-            primary_selector = (
-                f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
+        if primary_role[1] is None:
+            # No role-labeled serving pod to probe directly (e.g. FMA: launcher pods
+            # host vLLM but aren't guide-labeled, and the requester pods don't serve
+            # inference). The service_endpoint check above already proved serving.
+            context.logger.log_info(
+                "No role-labeled serving pod -- skipping direct pod-IP probe"
             )
+            pod_ips_result = None
         else:
-            primary_selector = (
-                f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
+            if is_kustomize and guide_name:
+                primary_selector = (
+                    f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
+                )
+            else:
+                primary_selector = (
+                    f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
+                )
+            pod_ips_result = cmd.kube(
+                "get",
+                "pods",
+                "-l",
+                primary_selector,
+                "--namespace",
+                namespace,
+                "-o",
+                "jsonpath={.items[*].status.podIP}",
+                check=False,
             )
-        pod_ips_result = cmd.kube(
-            "get",
-            "pods",
-            "-l",
-            primary_selector,
-            "--namespace",
-            namespace,
-            "-o",
-            "jsonpath={.items[*].status.podIP}",
-            check=False,
-        )
 
         if context.dry_run:
             test_model_serving(
@@ -499,7 +516,9 @@ class BaseSmoketest:
                 plan_config,
                 max_retries=1,
             )
-        elif pod_ips_result.success and pod_ips_result.stdout.strip():
+        elif (
+            pod_ips_result and pod_ips_result.success and pod_ips_result.stdout.strip()
+        ):
             pod_ips = pod_ips_result.stdout.strip().split()
             for i, pod_ip in enumerate(pod_ips, 1):
                 context.logger.log_info(

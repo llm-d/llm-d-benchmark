@@ -63,6 +63,8 @@ class UninstallHelmStep(Step):
             or "fma" in context.deployed_methods
         ):
             return False
+        if self._fma_guide_name(context):
+            return False
         return not self._any_stack_has_wva(context)
 
     @staticmethod
@@ -81,6 +83,26 @@ class UninstallHelmStep(Step):
                 return True
         return False
 
+    @staticmethod
+    def _fma_guide_name(context: ExecutionContext) -> str:
+        """Return the guide name if any rendered stack is a kustomize FMA guide,
+        else "".
+        """
+        for stack_path in context.rendered_stacks or []:
+            cfg_file = stack_path / "config.yaml"
+            if not cfg_file.exists():
+                continue
+            try:
+                with open(cfg_file, encoding="utf-8") as fh:
+                    cfg = yaml.safe_load(fh) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if (cfg.get("kustomize", {}) or {}).get("guideName", "") == (
+                "fast-model-actuation"
+            ):
+                return "fast-model-actuation"
+        return ""
+
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
@@ -92,13 +114,14 @@ class UninstallHelmStep(Step):
 
         model_labels = self._collect_model_labels(context)
 
-        is_fma_enabled = "fma" in context.deployed_methods
+        fma_guide_name = self._fma_guide_name(context)
+        is_fma_enabled = "fma" in context.deployed_methods or bool(fma_guide_name)
 
         # Delete FMA CRs before uninstalling the Helm chart so the
         # controller is still running and can remove pod finalizers.
         if is_fma_enabled:
             for ns in namespaces:
-                self._delete_fma_crs(cmd, context, ns)
+                self._delete_fma_crs(cmd, context, ns, fma_guide_name)
             # Remove any node label standup applied for launcher node selection
             # (mirrors step_06's fma.launcherNodeSelection). No-op unless that
             # feature was enabled for a stack.
@@ -138,20 +161,24 @@ class UninstallHelmStep(Step):
         cmd: CommandExecutor,
         context: ExecutionContext,
         namespace: str,
+        guide_name: str = "",
     ) -> None:
         """Delete FMA objects so the controller can remove pod finalizers
         before the Helm chart uninstall takes it down.
         """
-        # Delete requester to start the unbinding
+        # Delete the requester Deployment to start unbinding
+        dep_selector = (
+            f"llm-d.ai/guide={guide_name}" if guide_name else "stood-up-via=fma"
+        )
         context.logger.log_info(
-            f"  Deleting FMA requester Deployment in {namespace} "
+            f"  Deleting FMA requester Deployment ({dep_selector}) in {namespace} "
             "(before Helm uninstall)",
             emoji="🗑️",
         )
         cmd.kube(
             "delete",
             "deployment",
-            "--selector=stood-up-via=fma",
+            f"--selector={dep_selector}",
             "--namespace",
             namespace,
             "--ignore-not-found=true",
@@ -195,10 +222,14 @@ class UninstallHelmStep(Step):
         # Then force-remove any remaining finalizers and force-delete: this handles
         # pods left stuck from a previous teardown.
         timeout = context.fma_teardown_timeout
-        for selector in [
+        requester_selector = (
+            f"llm-d.ai/guide={guide_name}" if guide_name else "llm-d.ai/role=requester"
+        )
+        pod_selectors = [
             "app.kubernetes.io/component=launcher",
-            "llm-d.ai/role=requester",
-        ]:
+            requester_selector,
+        ]
+        for selector in pod_selectors:
             wait_for_pods_deleted(cmd, selector, namespace, timeout, context)
             force_remove_finalizers_by_selector(cmd, selector, namespace, context)
             wait_for_pods_deleted(cmd, selector, namespace, 30, context)
