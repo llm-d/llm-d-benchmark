@@ -12,16 +12,26 @@
    ============================================================================ #}
 {% if wva is defined and wva.enabled | default(false) %}
 {% set _wva_ns = wva.namespace | default(namespace.name, true) %}
-{# ClusterRoleBindings produced by the upstream overlay. Per-tenant uniqueness
-   is added by suffixing metadata.name with the WVA namespace; roleRef.name
-   stays at the upstream default because the ClusterRole is shared. #}
-{% set _cluster_role_bindings = [
-  'wva-epp-metrics-reader-role-binding',
+{# ClusterRoleBindings that reference OpenShift's built-in cluster-monitoring-view
+   ClusterRole. Only metadata.name is suffixed; roleRef stays as-is since that
+   ClusterRole is genuinely shared cluster infrastructure, not WVA-owned. #}
+{% set _builtin_role_bindings = [
   'wva-manager-cluster-monitoring-view',
-  'wva-manager-rolebinding',
-  'wva-metrics-auth-rolebinding',
-  'wva-metrics-reader-rolebinding',
   'wva-prometheus-cluster-monitoring-view',
+] %}
+{# ClusterRoleBindings that reference a WVA-owned ClusterRole. Both the
+   ClusterRole and its binding are suffixed with the WVA namespace, since the
+   upstream overlay leaves the ClusterRole name bare/shared — on a multi-tenant
+   cluster this means every namespace's install collides on the same
+   cluster-scoped ClusterRole name, and one tenant's teardown deletes the
+   RBAC that every other tenant's controller depends on (hit this in practice
+   on pokprod001: 7+ unrelated installs all bound to the same bare
+   `wva-manager-role`). #}
+{% set _wva_owned_role_bindings = [
+  {'binding': 'wva-epp-metrics-reader-role-binding', 'role': 'wva-epp-metrics-reader-role'},
+  {'binding': 'wva-manager-rolebinding', 'role': 'wva-manager-role'},
+  {'binding': 'wva-metrics-auth-rolebinding', 'role': 'wva-metrics-auth-role'},
+  {'binding': 'wva-metrics-reader-rolebinding', 'role': 'wva-metrics-reader'},
 ] %}
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -50,7 +60,7 @@ patches:
 # Suffix each ClusterRoleBinding's metadata.name with the WVA namespace so
 # concurrent WVA installs in different namespaces don't fight over these
 # cluster-scoped binding names
-{% for _crb in _cluster_role_bindings %}
+{% for _crb in _builtin_role_bindings %}
 - target:
     kind: ClusterRoleBinding
     name: {{ _crb }}
@@ -58,5 +68,28 @@ patches:
     - op: replace
       path: /metadata/name
       value: {{ _crb }}-{{ _wva_ns }}
+{% endfor %}
+
+# WVA-owned ClusterRoles + their bindings: suffix BOTH the ClusterRole and the
+# binding (and repoint roleRef.name at the suffixed ClusterRole) so this
+# install never shares cluster-scoped RBAC with any other tenant.
+{% for _pair in _wva_owned_role_bindings %}
+- target:
+    kind: ClusterRole
+    name: {{ _pair.role }}
+  patch: |-
+    - op: replace
+      path: /metadata/name
+      value: {{ _pair.role }}-{{ _wva_ns }}
+- target:
+    kind: ClusterRoleBinding
+    name: {{ _pair.binding }}
+  patch: |-
+    - op: replace
+      path: /metadata/name
+      value: {{ _pair.binding }}-{{ _wva_ns }}
+    - op: replace
+      path: /roleRef/name
+      value: {{ _pair.role }}-{{ _wva_ns }}
 {% endfor %}
 {% endif %}
