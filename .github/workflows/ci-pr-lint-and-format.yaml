@@ -16,7 +16,7 @@ jobs:
       - name: Run Ruff Lint Check
         uses: astral-sh/ruff-action@v3
         with:
-          args: "check --unsafe-fixes --output-format=full"
+          args: "check --output-format=full"
 
       # 2. Run Formatting Check (Fails if code isn't formatted, but won't modify any files)
       - name: Run Ruff Format Check
