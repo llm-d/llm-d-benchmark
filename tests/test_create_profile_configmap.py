@@ -49,6 +49,18 @@ class _StubContext:
         return self._run_dir
 
 
+class _StubLogger:
+    def log_info(self, _message: str) -> None:
+        pass
+
+
+class _ScriptContext(_StubContext):
+    def __init__(self, run_dir: Path, base_dir: Path) -> None:
+        super().__init__(run_dir)
+        self.base_dir = base_dir
+        self.logger = _StubLogger()
+
+
 def test_kubectl_create_configmap_uses_server_side_apply(tmp_path: Path) -> None:
     cmd = _StubCmd(
         [
@@ -140,3 +152,36 @@ def test_kubectl_create_configmap_returns_apply_error(tmp_path: Path) -> None:
     assert not ok
     assert msg == "Failed to apply ConfigMap 'profiles': annotation too long"
     assert len(cmd.kube_calls) == 2
+
+
+def test_harness_configmap_includes_repository_analyzers(tmp_path: Path) -> None:
+    base_dir = tmp_path / "repo"
+    harnesses_dir = base_dir / "workload" / "harnesses"
+    analyzers_dir = base_dir / "llmdbenchmark" / "analysis" / "scripts"
+    harnesses_dir.mkdir(parents=True)
+    analyzers_dir.mkdir(parents=True)
+    harness = harnesses_dir / "lm-eval-llm-d-benchmark.sh"
+    analyzer = analyzers_dir / "lm-eval-analyze_results.sh"
+    ignored = analyzers_dir / "helper.py"
+    harness.write_text("#!/bin/sh\n", encoding="utf-8")
+    analyzer.write_text("#!/bin/sh\n", encoding="utf-8")
+    ignored.write_text("", encoding="utf-8")
+
+    cmd = _StubCmd(
+        [
+            _Result(success=True, stdout="apiVersion: v1\nkind: ConfigMap\n"),
+            _Result(success=True),
+        ]
+    )
+    context = _ScriptContext(tmp_path / "run", base_dir)
+    context.run_dir().mkdir()
+
+    ok, _ = CreateProfileConfigmapStep()._create_harness_scripts_configmap(
+        context, cmd, "bench"
+    )
+
+    assert ok
+    create_args = cmd.kube_calls[0][0]
+    assert f"--from-file={harness.name}={harness}" in create_args
+    assert f"--from-file={analyzer.name}={analyzer}" in create_args
+    assert not any(str(ignored) in arg for arg in create_args)

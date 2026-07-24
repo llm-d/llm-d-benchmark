@@ -527,9 +527,10 @@ class WorkloadMonitoringStep(Step):
            (from rendered 23_wva-namespace).
         4. Per-namespace Prometheus bearer token Secret + TriggerAuthentication
            (minted dynamically via create_prometheus_auth_secret).
-        5. The WVA controller helm chart into each unique wva.namespace.
+        5. The WVA controller (upstream kustomize overlay) into each unique
+           wva.namespace.
 
-        The WVA chart itself brings its own RBAC (``templates/rbac/*``), CRD
+        The upstream overlay itself brings its own RBAC, CRD
         (``llmd.ai/variantautoscaling``), ServiceMonitor, and ConfigMaps.
         """
         pairs = wva_mod.stacks_enabling_wva(context.rendered_stacks or [])

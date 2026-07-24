@@ -2,37 +2,38 @@
    29_epp-keda-saturation-epp-monitoring.yaml.j2
 
    ServiceMonitor for Prometheus to scrape EPP metrics endpoint (port 9090).
-   Includes ClusterRole + ClusterRoleBinding to grant Prometheus read access
-   to EPP's protected /metrics endpoint (enforces TokenReview/SubjectAccessReview).
+   Includes Role + RoleBinding to grant Prometheus read access to EPP metrics.
 
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
 {% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
 ---
-{# EPP metrics ClusterRole — allows Prometheus to read /metrics #}
+{# Role allowing prometheus-user-workload to find and read the router's auto-created token secret #}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: epp-metrics-reader-{{ epp_ns }}
+  name: epp-metrics-secret-reader
+  namespace: {{ epp_ns }}
 rules:
-- nonResourceURLs:
-  - /metrics
-  verbs: [get]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: [get, list]
 ---
-{# Bind Prometheus ServiceAccount to the EPP metrics reader role #}
+{# RoleBinding: prometheus-user-workload → epp-metrics-secret-reader #}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: epp-metrics-reader-{{ epp_ns }}
+  name: epp-metrics-secret-reader
+  namespace: {{ epp_ns }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: epp-metrics-reader-{{ epp_ns }}
+  kind: Role
+  name: epp-metrics-secret-reader
 subjects:
 - kind: ServiceAccount
-  name: {{ eppKedaSaturation.epp.prometheusServiceAccount }}
-  namespace: {{ eppKedaSaturation.epp.prometheusServiceAccountNamespace }}
+  name: prometheus-user-workload
+  namespace: openshift-user-workload-monitoring
 ---
 {# ServiceMonitor for Prometheus operator to scrape EPP metrics #}
 apiVersion: monitoring.coreos.com/v1
@@ -54,5 +55,8 @@ spec:
       path: /metrics
       scheme: http
       interval: 15s
-      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      authorization:
+        credentials:
+          name: {{ model_id_label }}-router-epp-token
+          key: token
 {% endif %}

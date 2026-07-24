@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
+
+import yaml
 
 _STEP_PATH = (
     Path(__file__).resolve().parent.parent
@@ -23,6 +26,30 @@ _module = importlib.util.module_from_spec(_spec)
 sys.modules["step_02_admin_prerequisites_isolated"] = _module
 _spec.loader.exec_module(_module)
 AdminPrerequisitesStep = _module.AdminPrerequisitesStep
+_crd_names_from_manifest = _module._crd_names_from_manifest
+_crds_match_version = _module._crds_match_version
+
+GATEWAY_CRDS = [
+    "gatewayclasses.gateway.networking.k8s.io",
+    "httproutes.gateway.networking.k8s.io",
+]
+INFERENCE_EXTENSION_CRDS = [
+    "inferencepools.inference.networking.k8s.io",
+    "inferenceobjectives.inference.networking.k8s.io",
+]
+
+
+def _crd_manifest(names: list[str]) -> str:
+    return "\n---\n".join(
+        yaml.safe_dump(
+            {
+                "apiVersion": "apiextensions.k8s.io/v1",
+                "kind": "CustomResourceDefinition",
+                "metadata": {"name": name},
+            }
+        )
+        for name in names
+    )
 
 
 @dataclass
@@ -39,6 +66,10 @@ class _Cmd:
 
     def kube(self, *args: str, **_: Any) -> _Result:
         self.calls.append(tuple(args))
+        if args[0] == "kustomize":
+            return _Result(stdout=_crd_manifest(GATEWAY_CRDS))
+        if args[:2] == ("apply", "--dry-run=client"):
+            return _Result(stdout=_crd_manifest(INFERENCE_EXTENSION_CRDS))
         if args[:3] == ("apply", "--server-side", "-k"):
             return _Result(
                 success=False,
@@ -60,6 +91,10 @@ def _plan_config() -> dict[str, Any]:
             "revision": "v1.5.1",
             "crdUrlTemplate": (
                 "github.com/kubernetes-sigs/gateway-api/config/crd?ref={revision}"
+            ),
+            "inferenceExtensionRevision": "v1.5.0",
+            "inferenceExtensionUrlTemplate": (
+                "https://example.invalid/{revision}/manifests.yaml"
             ),
         },
         "helmRepositories": {},
@@ -104,8 +139,201 @@ def test_modelservice_installs_missing_gateway_api_crds() -> None:
         cmd,
         _plan_config(),
         errors,
-        existing_crds=["gatewayclasses.gateway.networking.k8s.io"],
+        existing_crds=[],
     )
 
     assert ("apply", "--server-side", "-k") in [call[:3] for call in cmd.calls]
     assert errors
+
+
+def test_get_existing_crds_includes_bundle_versions() -> None:
+    cmd = MagicMock()
+    cmd.kube.return_value = _Result(
+        stdout=json.dumps(
+            {
+                "items": [
+                    {
+                        "metadata": {
+                            "name": "gateways.gateway.networking.k8s.io",
+                            "annotations": {
+                                "gateway.networking.k8s.io/bundle-version": "v1.4.0"
+                            },
+                        }
+                    },
+                    {
+                        "metadata": {
+                            "name": "leaderworkersets.leaderworkerset.x-k8s.io",
+                            "labels": {"app.kubernetes.io/version": "0.7.0"},
+                        }
+                    },
+                ]
+            }
+        )
+    )
+    context = MagicMock(dry_run=False)
+
+    inventory = AdminPrerequisitesStep()._get_existing_crds(cmd, context)
+
+    assert inventory == {
+        "gateways.gateway.networking.k8s.io": "v1.4.0",
+        "leaderworkersets.leaderworkerset.x-k8s.io": "0.7.0",
+    }
+    cmd.kube.assert_called_once_with("get", "crd", "-o", "json")
+
+
+def test_matching_crd_bundle_version_skips_install() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    inventory = dict.fromkeys(GATEWAY_CRDS, "v1.5.1")
+    errors: list[str] = []
+
+    step._install_gateway_api_crds(cmd, _plan_config(), errors, inventory)
+
+    assert ("apply", "--server-side", "-k") not in [call[:3] for call in cmd.calls]
+    assert errors == []
+
+
+def test_outdated_crd_bundle_version_warns_without_reinstalling() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    inventory = dict.fromkeys(GATEWAY_CRDS, "v1.4.0")
+    errors: list[str] = []
+
+    step._install_gateway_api_crds(cmd, _plan_config(), errors, inventory)
+
+    assert ("apply", "--server-side", "-k") not in [call[:3] for call in cmd.calls]
+    assert errors == []
+    assert any(
+        "version does not match" in call.args[0]
+        for call in cmd.logger.log_warning.call_args_list
+    )
+
+
+def test_unknown_crd_version_preserves_existence_only_compatibility() -> None:
+    inventory = dict.fromkeys(GATEWAY_CRDS)
+
+    assert _crds_match_version(GATEWAY_CRDS, inventory, "v1.5.1")
+
+
+def test_helm_chart_version_is_normalized() -> None:
+    inventory = {"example.test": "agentgateway-crds-1.2.3"}
+
+    assert _crds_match_version(["example.test"], inventory, "v1.2.3")
+
+
+def test_crd_names_are_extracted_from_rendered_manifest() -> None:
+    manifest = _crd_manifest(GATEWAY_CRDS)
+    manifest += "\n---\napiVersion: v1\nkind: Service\nmetadata:\n  name: ignored\n"
+
+    assert _crd_names_from_manifest(manifest) == GATEWAY_CRDS
+
+
+def test_crd_names_are_extracted_from_kubernetes_list() -> None:
+    manifest = yaml.safe_dump(
+        {
+            "apiVersion": "v1",
+            "kind": "List",
+            "items": [
+                {
+                    "apiVersion": "apiextensions.k8s.io/v1",
+                    "kind": "CustomResourceDefinition",
+                    "metadata": {"name": name},
+                }
+                for name in INFERENCE_EXTENSION_CRDS
+            ],
+        }
+    )
+
+    assert _crd_names_from_manifest(manifest) == INFERENCE_EXTENSION_CRDS
+
+
+def test_new_crd_does_not_overwrite_existing_cluster_managed_crds() -> None:
+    new_crd = "grpcroutes.gateway.networking.k8s.io"
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    cmd.kube = MagicMock(
+        return_value=_Result(stdout=_crd_manifest([*GATEWAY_CRDS, new_crd]))
+    )
+    errors: list[str] = []
+
+    step._install_gateway_api_crds(
+        cmd,
+        _plan_config(),
+        errors,
+        dict.fromkeys(GATEWAY_CRDS, "v1.5.1"),
+    )
+
+    assert cmd.kube.call_args_list[0].args[0] == "kustomize"
+    assert cmd.kube.call_count == 1
+    assert any(
+        new_crd in call.args[0] for call in cmd.logger.log_warning.call_args_list
+    )
+    assert errors == []
+
+
+def test_gateway_crd_discovery_failure_preserves_installed_crds() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    cmd.kube = MagicMock(return_value=_Result(success=False))
+    errors: list[str] = []
+
+    step._install_gateway_api_crds(
+        cmd,
+        _plan_config(),
+        errors,
+        dict.fromkeys(GATEWAY_CRDS, "v1.5.1"),
+    )
+
+    assert cmd.kube.call_count == 1
+    assert "leaving" in cmd.logger.log_warning.call_args_list[-1].args[0]
+    assert errors == []
+
+
+def test_gateway_crd_discovery_failure_installs_when_group_is_absent() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    cmd.kube = MagicMock(side_effect=[_Result(success=False), _Result(success=True)])
+    errors: list[str] = []
+
+    step._install_gateway_api_crds(cmd, _plan_config(), errors, {})
+
+    assert cmd.kube.call_args_list[1].args[:3] == (
+        "apply",
+        "--server-side",
+        "-k",
+    )
+    assert errors == []
+
+
+def test_inference_extension_uses_discovered_crds() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    errors: list[str] = []
+
+    step._install_gateway_api_extension_crds(
+        cmd,
+        _plan_config(),
+        errors,
+        dict.fromkeys(INFERENCE_EXTENSION_CRDS, "v1.5.0"),
+    )
+
+    assert ("apply", "--dry-run=client") in [call[:2] for call in cmd.calls]
+    assert ("apply", "-f") not in [call[:2] for call in cmd.calls]
+    assert errors == []
+
+
+def test_inference_extension_discovery_failure_preserves_installed_group() -> None:
+    cmd = _Cmd()
+    step = AdminPrerequisitesStep()
+    cmd.kube = MagicMock(return_value=_Result(success=False))
+    errors: list[str] = []
+
+    step._install_gateway_api_extension_crds(
+        cmd,
+        _plan_config(),
+        errors,
+        {"inferencepools.inference.networking.x-k8s.io": None},
+    )
+
+    assert cmd.kube.call_count == 1
+    assert errors == []

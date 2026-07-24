@@ -34,8 +34,9 @@ AGGREGATE_METRICS = {
     "vllm:num_preemptions_total",
 }
 
-# Metrics to visualize: prometheus_name -> (title, ylabel)
-METRICS_TO_PLOT = {
+# Display metadata for known metrics. Metrics not present here still receive a
+# graph using a generated title and the Prometheus name as the Y-axis label.
+METRIC_DISPLAY = {
     "vllm:kv_cache_usage_perc": ("KV Cache Usage", "Usage (%)"),
     "vllm:gpu_cache_usage_perc": ("GPU Cache Usage", "Usage (%)"),
     "vllm:cpu_cache_usage_perc": ("CPU Cache Usage", "Usage (%)"),
@@ -91,6 +92,24 @@ RATIO_METRICS = [
         "vllm_external_prefix_cache_hit_rate",
     ),
 ]
+
+
+def _load_time_series_metrics(metrics_dir):
+    """Load the metric selection persisted by process_metrics.py."""
+    config_path = os.path.join(metrics_dir, "processed", "time_series_metrics.json")
+    try:
+        with open(config_path, "r") as config_file:
+            value = json.load(config_file)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return list(METRIC_DISPLAY)
+    if not isinstance(value, list):
+        return list(METRIC_DISPLAY)
+    return [name for name in value if isinstance(name, str) and name]
+
+
+def _metric_title(metric_name):
+    """Generate a readable title for a metric without display metadata."""
+    return metric_name.replace(":", " ").replace("_", " ").title()
 
 
 # ---------------------------------------------------------------------------
@@ -391,9 +410,13 @@ def generate_all_visualizations(metrics_dir, output_dir=None, context=None):
         return 0
 
     plot_count = 0
+    configured_metrics = _load_time_series_metrics(metrics_dir)
+    configured_metric_set = set(configured_metrics)
 
     # Ratio metrics (computed from pairs of counters)
     for numerator, denominator, title, ylabel, output_name in RATIO_METRICS:
+        if output_name not in configured_metric_set:
+            continue
         ratio_data = {}
         for pod_name, metrics in pod_data.items():
             if numerator in metrics and denominator in metrics:
@@ -422,10 +445,16 @@ def generate_all_visualizations(metrics_dir, output_dir=None, context=None):
             plot_count += 1
 
     # Standard time series plots
-    for metric_name, (title, ylabel) in METRICS_TO_PLOT.items():
+    ratio_output_names = {ratio[4] for ratio in RATIO_METRICS}
+    for metric_name in configured_metrics:
+        if metric_name in ratio_output_names:
+            continue
         has_metric = any(metric_name in m for m in pod_data.values())
         if has_metric:
-            safe_name = metric_name.replace(":", "_")
+            title, ylabel = METRIC_DISPLAY.get(
+                metric_name, (_metric_title(metric_name), metric_name)
+            )
+            safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", metric_name)
             plot_metric_time_series(
                 pod_data,
                 metric_name,

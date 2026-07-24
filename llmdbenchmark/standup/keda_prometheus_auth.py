@@ -115,6 +115,7 @@ def create_prometheus_auth_secret(
     sa_name: str = "wva-prometheus-auth",
     ta_template_stem: str = "21_keda-triggerauthentication",
     errors: list | None = None,
+    token_duration: str = "24h",
 ) -> None:
     """Create a per-namespace Prometheus bearer token Secret + TriggerAuthentication.
 
@@ -133,6 +134,8 @@ def create_prometheus_auth_secret(
         ta_template_stem: Template filename stem to locate the TA YAML
             (default: "21_keda-triggerauthentication").
         errors: List to append error messages to (optional).
+        token_duration: Requested lifetime of the issued token
+            (default: "24h"). Use Kubernetes duration format (e.g., "1h", "24h", "168h").
     """
     if errors is None:
         errors = []
@@ -150,6 +153,7 @@ def create_prometheus_auth_secret(
         sa_name,
         "-n",
         target_namespace,
+        f"--duration={token_duration}",
         check=False,
     )
     if not token_result.success:
