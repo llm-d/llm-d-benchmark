@@ -1,0 +1,64 @@
+# ============================================================================
+# P2P KV CACHE SHARING WELL LIT PATH
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/p2p-kv-cache-sharing/README.md
+#
+# Deploys via the upstream guide's own manifests (modelserver kustomize +
+# router helm chart): the guide is the source of truth for the stack, so
+# this scenario carries no modelservice mirror of it. The harness section
+# drives the guide's document Q&A workload against the deployed stack.
+# ============================================================================
+
+scenario:
+  - name: "p2p-kv-cache-sharing"
+
+    # Deploy by applying the upstream llm-d guide directly. Model,
+    # engine flags, EPP scheduling config, and sidecar wiring all come
+    # from guides/p2p-kv-cache-sharing in the llm-d repo; the kustomize.*
+    # keys below are the only way to modify that deployment. See
+    # docs/kustomize.md for the full reference.
+    kustomize:
+      enabled: true
+
+      guideName: "p2p-kv-cache-sharing"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}
+      patches: []
+
+    # -------------------------------------------------------------------------
+    # Model Configuration (harness-side metadata; the deployed model is
+    # defined by the guide's manifests)
+    # -------------------------------------------------------------------------
+    model:
+      name: openai/gpt-oss-120b
+      shortName: gpt-oss-120b
+      path: models/openai/gpt-oss-120b
+      huggingfaceId: openai/gpt-oss-120b
+      size: 1Ti
+      maxModelLen: 65536
+      blockSize: 64
+      gpuMemoryUtilization: 0.85
+
+    # The guide's manifests are the only deploy path for this scenario.
+    modelservice:
+      enabled: false
+    standalone:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+    workDir: "~/data/p2p_kv_cache_sharing"
+
+    harness:
+      name: inference-perf
+      experimentProfile: guide_p2p-kv-cache-sharing_1.yaml
