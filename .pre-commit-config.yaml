@@ -146,7 +146,7 @@ repos:
   # * Add the --all-files arg to lint/format all files in the repo.
   # ----------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.11
+    rev: v0.16.0
     hooks:
       # Run the linter
       - id: ruff-check

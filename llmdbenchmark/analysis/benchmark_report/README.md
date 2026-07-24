@@ -118,7 +118,7 @@ To generate a JSON or YAML string from a `BenchmarkReport` instance, use the `ge
 import benchmark_report
 
 # Instantiate a BenchmarkReport instance from a YAML file
-br=benchmark_report.import_benchmark_report("benchmark_report/br_v0_2_example.yaml")
+br = benchmark_report.import_benchmark_report("benchmark_report/br_v0_2_example.yaml")
 
 # Create a YAML string from the BenchmarkReport
 br_yaml_str = br.get_yaml_str()
@@ -135,68 +135,70 @@ An instance of `BenchmarkReport` may be created directly, for example:
 ```python
 import benchmark_report
 
-br = benchmark_report.BenchmarkReportV02(**{
-    "run": {
-        "uid": "38b1f169ca178b756f7483523b17de61",
-    },
-    "scenario": {
-        "stack": [
-            {
-                "metadata": {
-                    "schema_version": "0.0.1",
-                    "label": "vllm-svc-0",
-                    "cfg_id": "cc73fc6b51a1d3b8128f312d70476d7c",
-                },
-                "standardized": {
-                    "kind": "inference_engine",
-                    "tool": "llm-d",
-                    "tool_version": "ghcr.io/llm-d/llm-d-cuda:0.3.1",
-                    "role": "decode",
-                    "replicas": 2,
-                    "model": {
-                        "name": "Qwen/Qwen3-0.6B",
+br = benchmark_report.BenchmarkReportV02(
+    **{
+        "run": {
+            "uid": "38b1f169ca178b756f7483523b17de61",
+        },
+        "scenario": {
+            "stack": [
+                {
+                    "metadata": {
+                        "schema_version": "0.0.1",
+                        "label": "vllm-svc-0",
+                        "cfg_id": "cc73fc6b51a1d3b8128f312d70476d7c",
                     },
-                    "accelerator": {
-                        "model": "NVIDIA-H100-80GB-HBM3",
-                        "count": 8,
-                        "parallelism": {
-                            "tp": 8,
+                    "standardized": {
+                        "kind": "inference_engine",
+                        "tool": "llm-d",
+                        "tool_version": "ghcr.io/llm-d/llm-d-cuda:0.3.1",
+                        "role": "decode",
+                        "replicas": 2,
+                        "model": {
+                            "name": "Qwen/Qwen3-0.6B",
+                        },
+                        "accelerator": {
+                            "model": "NVIDIA-H100-80GB-HBM3",
+                            "count": 8,
+                            "parallelism": {
+                                "tp": 8,
+                            },
                         },
                     },
+                    "native": {},
+                },
+            ],
+            "load": {
+                "metadata": {
+                    "schema_version": "0.0.1",
+                    "cfg_id": "a4e18f265cc33786a42b8a3f7ac2edcb",
+                },
+                "standardized": {
+                    "tool": "inference-perf",
+                    "tool_version": "0.3.0",
+                    "input_seq_len": {
+                        "distribution": "fixed",
+                        "value": 2148,
+                    },
+                    "source": "sampled",
                 },
                 "native": {},
             },
-        ],
-        "load": {
-            "metadata": {
-                "schema_version": "0.0.1",
-                "cfg_id": "a4e18f265cc33786a42b8a3f7ac2edcb",
-            },
-            "standardized": {
-                "tool": "inference-perf",
-                "tool_version": "0.3.0",
-                "input_seq_len": {
-                    "distribution": "fixed",
-                    "value": 2148,
-                },
-                "source": "sampled",
-            },
-            "native": {},
         },
-    },
-    "results": {
-        "request_performance": {
-            "aggregate": {
-                "latency": {
-                    "request_latency": {
-                        "units": "s",
-                        "mean": 0.0368578234128654,
+        "results": {
+            "request_performance": {
+                "aggregate": {
+                    "latency": {
+                        "request_latency": {
+                            "units": "s",
+                            "mean": 0.0368578234128654,
+                        },
                     },
                 },
             },
         },
-    },
-})
+    }
+)
 
 print(br.get_yaml_str())
 ```

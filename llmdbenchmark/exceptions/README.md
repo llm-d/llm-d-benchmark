@@ -25,13 +25,19 @@ Base exception for all llmdbenchmark errors.
 
 ```python
 class LLMDBenchmarkError(Exception):
-    def __init__(self, message: str, step: str | None = None, context: dict | None = None):
+    def __init__(
+        self, message: str, step: str | None = None, context: dict | None = None
+    ):
         self.message = message
-        self.step = step            # Pipeline step where the error occurred
-        self.context = context      # Arbitrary key-value context
+        self.step = step  # Pipeline step where the error occurred
+        self.context = context  # Arbitrary key-value context
         self.timestamp = datetime.now()
 
-    def to_dict(self) -> dict: ...  # Serialize to {"error_type", "message", "step", "timestamp", "context"}
+    def to_dict(
+        self,
+    ) -> (
+        dict
+    ): ...  # Serialize to {"error_type", "message", "step", "timestamp", "context"}
 ```
 
 String representation: `[step] message (Context: key=value, ...)`
@@ -68,7 +74,9 @@ Raised on command or runtime execution failures.
 
 ```python
 class ExecutionError(LLMDBenchmarkError):
-    def __init__(self, message, command=None, exit_code=None, stdout=None, stderr=None, **kwargs): ...
+    def __init__(
+        self, message, command=None, exit_code=None, stdout=None, stderr=None, **kwargs
+    ): ...
 ```
 
 Additional context fields: `command`, `exit_code`, `stdout`, `stderr`.

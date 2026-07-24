@@ -171,12 +171,12 @@ class Step(ABC):
         description: str,
         phase: Phase,
         per_stack: bool = False,
-    ):
-        ...
+    ): ...
 
     @abstractmethod
-    def execute(self, context: ExecutionContext, stack_path: Path | None = None) -> StepResult:
-        ...
+    def execute(
+        self, context: ExecutionContext, stack_path: Path | None = None
+    ) -> StepResult: ...
 
     def should_skip(self, context: ExecutionContext) -> bool:
         return False
@@ -188,12 +188,16 @@ The method must return a `StepResult`. Collect errors into a list, then return
 success or failure:
 
 ```python
-def execute(self, context: ExecutionContext, stack_path: Path | None = None) -> StepResult:
+def execute(
+    self, context: ExecutionContext, stack_path: Path | None = None
+) -> StepResult:
     errors: list[str] = []
     cmd = context.require_cmd()
 
     # Do work...
-    result = cmd.kube("get", "pods", "--namespace", context.require_namespace(), check=False)
+    result = cmd.kube(
+        "get", "pods", "--namespace", context.require_namespace(), check=False
+    )
     if not result.success:
         errors.append(f"Failed to list pods: {result.stderr}")
 
@@ -241,6 +245,7 @@ Add the import and instantiation to the phase's `__init__.py`:
 ```python
 # In llmdbenchmark/standup/steps/__init__.py
 from llmdbenchmark.standup.steps.step_11_my_custom_step import MyCustomStep
+
 
 def get_standup_steps() -> list[Step]:
     return [
@@ -343,6 +348,7 @@ Register in `llmdbenchmark/standup/steps/__init__.py`:
 ```python
 from llmdbenchmark.standup.steps.step_11_deploy_custom_crd import DeployCustomCrdStep
 
+
 def get_standup_steps() -> list[Step]:
     return [
         # ... existing steps 00-09 ...
@@ -395,14 +401,23 @@ class WarmupModelStep(Step):
 
         # Run a curl pod to send warmup requests
         result = cmd.kube(
-            "run", "warmup-probe", "--rm", "--attach", "--quiet",
-            "--restart=Never", "--namespace", namespace,
+            "run",
+            "warmup-probe",
+            "--rm",
+            "--attach",
+            "--quiet",
+            "--restart=Never",
+            "--namespace",
+            namespace,
             "--image=curlimages/curl",
-            "--command", "--", "sh", "-c",
+            "--command",
+            "--",
+            "sh",
+            "-c",
             f"for i in $(seq 1 5); do "
             f"curl -s -X POST {endpoint}/v1/completions "
             f"-H 'Content-Type: application/json' "
-            f"-d '{{\"model\":\"{context.model_name}\",\"prompt\":\"warmup\",\"max_tokens\":1}}'; "
+            f'-d \'{{"model":"{context.model_name}","prompt":"warmup","max_tokens":1}}\'; '
             f"done",
             check=False,
         )
@@ -460,7 +475,9 @@ class ArchiveResultsStep(Step):
                 message="No results directory to archive",
             )
 
-        s3_dest = f"s3://my-benchmark-bucket/{context.cluster_name}/{context.namespace}/"
+        s3_dest = (
+            f"s3://my-benchmark-bucket/{context.cluster_name}/{context.namespace}/"
+        )
         context.logger.log_info(f"Archiving {results_dir} to {s3_dest}")
 
         result = cmd.execute(
@@ -649,8 +666,9 @@ stack_config = self._load_stack_config(stack_path)
 model_name = self._require_config(plan_config, "model", "name")
 
 # Resolve with three-tier fallback: context value > plan config > default
-port = self._resolve(plan_config, "vllmCommon.inferencePort",
-                     context_value=None, default=8000)
+port = self._resolve(
+    plan_config, "vllmCommon.inferencePort", context_value=None, default=8000
+)
 ```
 
 ### Logging
@@ -723,6 +741,7 @@ def generate_my_plots(
     """Generate custom plots. Returns the number of plots generated."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
@@ -743,6 +762,7 @@ def generate_my_plots(
 ```python
 # --- 6. Generate custom plots ---
 from llmdbenchmark.analysis.my_custom_plots import generate_my_plots
+
 try:
     count = generate_my_plots(results_dir, context=context)
     if count:
@@ -759,7 +779,10 @@ entry is a tuple of `(dotted_path_in_br_v0.2, csv_column_name)`:
 ```python
 METRICS_OF_INTEREST = [
     # ... existing metrics ...
-    ("results.request_performance.aggregate.latency.time_to_first_token.mean", "ttft_mean_s"),
+    (
+        "results.request_performance.aggregate.latency.time_to_first_token.mean",
+        "ttft_mean_s",
+    ),
     # Add your new metric:
     ("results.custom_section.my_metric.value", "my_metric_value"),
 ]
@@ -824,8 +847,8 @@ one requires files in three areas.
    Register the harness in the module-level dictionaries:
 
    ```python
-   _RESULT_PATTERNS["my-harness"] = "*.json"          # Glob for result files
-   _WRITER_NAMES["my-harness"] = "my-harness"          # benchmark_report writer name
+   _RESULT_PATTERNS["my-harness"] = "*.json"  # Glob for result files
+   _WRITER_NAMES["my-harness"] = "my-harness"  # benchmark_report writer name
    _SUMMARY_MARKERS["my-harness"] = "Results Summary"  # Log marker for summary extraction
    ```
 
@@ -1160,8 +1183,11 @@ class MyScenarioValidator(ScenarioValidator):
 
         self.validate_role_pods(pods, expected_count=1, role="server")
         self.assert_env_equals(pods[0], "MODEL_NAME", config["model"]["name"])
-        self.assert_arg_contains(pods[0], "--tensor-parallel-size",
-                                 str(config["vllmCommon"]["tensorParallelism"]))
+        self.assert_arg_contains(
+            pods[0],
+            "--tensor-parallel-size",
+            str(config["vllmCommon"]["tensorParallelism"]),
+        )
 ```
 
 ### Available Helper Methods

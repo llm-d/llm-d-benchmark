@@ -10,7 +10,9 @@ Render the specification Jinja2 template (`.yaml.j2`), parse the resulting YAML,
 
 ```python
 class RenderSpecification:
-    def __init__(self, specification_file: Path, base_dir: Path | None = None, logger=None): ...
+    def __init__(
+        self, specification_file: Path, base_dir: Path | None = None, logger=None
+    ): ...
     def eval(self) -> dict[str, Any]: ...  # Render, parse, validate, return config dict
 ```
 
@@ -22,11 +24,22 @@ For each stack in the scenario, merge defaults with scenario overrides, apply th
 
 ```python
 class RenderPlans:
-    def __init__(self, template_dir, defaults_file, scenarios_file, output_dir,
-                 logger=None, version_resolver=None, cluster_resource_resolver=None,
-                 cli_namespace=None, cli_model=None, cli_methods=None,
-                 cli_monitoring=False, setup_overrides=None): ...
-    def eval(self) -> RenderResult: ...    # Run full rendering pipeline
+    def __init__(
+        self,
+        template_dir,
+        defaults_file,
+        scenarios_file,
+        output_dir,
+        logger=None,
+        version_resolver=None,
+        cluster_resource_resolver=None,
+        cli_namespace=None,
+        cli_model=None,
+        cli_methods=None,
+        cli_monitoring=False,
+        setup_overrides=None,
+    ): ...
+    def eval(self) -> RenderResult: ...  # Run full rendering pipeline
     def deep_merge(self, base, override) -> dict: ...  # Recursive dict merge
 ```
 
@@ -188,16 +201,17 @@ In dry-run mode, unresolved fields produce warnings instead of errors.
 ```python
 @dataclass
 class StackErrors:
-    render_errors: list[str]       # Jinja2 template errors
-    yaml_errors: list[str]         # YAML validation errors
-    missing_fields: list[str]      # Missing required fields
-    validation_warnings: list[str] # Config schema warnings
+    render_errors: list[str]  # Jinja2 template errors
+    yaml_errors: list[str]  # YAML validation errors
+    missing_fields: list[str]  # Missing required fields
+    validation_warnings: list[str]  # Config schema warnings
+
 
 @dataclass
 class RenderResult:
-    global_errors: list[str]       # Errors not tied to a specific stack
-    stacks: dict[str, StackErrors] # Per-stack error accumulators
-    rendered_paths: list[Path]     # Successfully rendered stack directories
+    global_errors: list[str]  # Errors not tied to a specific stack
+    stacks: dict[str, StackErrors]  # Per-stack error accumulators
+    rendered_paths: list[Path]  # Successfully rendered stack directories
 ```
 
 ## Files
