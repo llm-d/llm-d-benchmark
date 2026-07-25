@@ -25,10 +25,11 @@ data:
     num_conversations: 192
     shared_system_prompt_len: 256
     # Each conversation carries a private ~48K-token "document" prefix;
-    # 6 short questions with short answers make TTFT dominate. The corpus
-    # (192 x 48K ~= 9.5M tokens) must oversubscribe the fleet's aggregate
-    # GPU KV so placement decides hit-vs-miss; scale num_conversations to
-    # your fleet if your aggregate cache differs.
+    # 6 short questions with short answers make TTFT dominate. What drives
+    # hit-vs-miss here is request placement under concurrency (128
+    # sessions against a limited set of owner pods), not corpus size
+    # versus aggregate GPU KV - scale num_conversations and concurrency_level
+    # relative to your fleet's pod count, not its aggregate cache.
     dynamic_system_prompt_len:
       type: lognormal
       min: 49152
