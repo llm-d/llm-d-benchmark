@@ -1,0 +1,20 @@
+# Full-accuracy profile for common lm-evaluation-harness tasks.
+#
+# Usage (run-only against an existing endpoint):
+#   llmdbenchmark --spec guides/optimized-baseline run \
+#     --endpoint-url http://<gateway>:80 \
+#     --model Qwen/Qwen3-0.6B \
+#     -l lm-eval -w accuracy_default.yaml -p <namespace>
+#
+# Override individual values via env without editing this file, e.g.:
+#   TASKS=gsm8k NUM_FEWSHOT=8 LIMIT=20 llmdbenchmark ... run -l lm-eval \
+#     -g TASKS,NUM_FEWSHOT,LIMIT ...
+
+evaluation:
+  tasks:
+    - hellaswag
+    - mmlu
+    - piqa
+  num_fewshot: 0
+  limit: null       # null = full run; use LIMIT=<n> plus `-g LIMIT` for a smoke test
+  num_concurrent: 4

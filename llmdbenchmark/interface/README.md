@@ -37,8 +37,10 @@ Each subcommand module provides an `add_subcommands(parser)` function that regis
 def env(name: str, default=None):
     """Return env var value or default. For use as argparse default=."""
 
+
 def env_bool(name: str, default: bool = False) -> bool:
     """Return env var as boolean. Truthy: '1', 'true', 'yes' (case-insensitive)."""
+
 
 def env_int(name: str, default: int | None = None) -> int | None:
     """Return env var as int, or default if not set / not parseable."""

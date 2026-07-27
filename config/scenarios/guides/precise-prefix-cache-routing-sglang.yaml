@@ -1,0 +1,93 @@
+# PRECISE PREFIX CACHE ROUTING WELL LIT PATH -- SGLang backend (pre-set, trimmed)
+#
+# SGLang-backed variant of the `precise-prefix-cache-routing` guide. This is a TRIMMED scenario:
+# it keeps only the keys the kustomize deploy method actually consumes
+# (kustomize.*, model.*, harness/workDir). The kustomize deploy applies the
+# upstream llm-d guide's SGLang overlay directly, so the modelservice/
+# standalone/decode/prefill/vllm blocks (present in the un-trimmed guide
+# scenarios) are inert here and have been omitted. Anything not set falls
+# back to config/templates/values/defaults.yaml.
+#
+# SGLang is ONLY supported under the kustomize deploy method. The actual
+# engine command comes from guides/precise-prefix-cache-routing/modelserver/gpu/sglang in the
+# llm-d repo (`python3 -m sglang.launch_server ...`), NOT from this file.
+# See docs/sglang.md.
+#
+# Exercises prefix-cache-aware routing with the SGLang engine.
+#
+# Run with:
+#   llmdbenchmark --spec guides/precise-prefix-cache-routing-sglang standup   -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/precise-prefix-cache-routing-sglang smoketest -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/precise-prefix-cache-routing-sglang run       -t kustomize -p "$NS" \
+#       -l inference-perf -w shared_prefix_synthetic.yaml
+#   llmdbenchmark --spec guides/precise-prefix-cache-routing-sglang teardown  -t kustomize -p "$NS"
+# ===========================================================================
+
+scenario:
+  - name: "precise-prefix-cache-routing-sglang"
+
+    # =======================================================================
+    # KUSTOMIZE DEPLOY METHOD -- pre-enabled, pinned to the SGLang overlay.
+    # This block defines the ENTIRE deployment (the upstream guide's
+    # manifests + the gpu/sglang model-server overlay). See docs/kustomize.md
+    # and docs/sglang.md.
+    # =======================================================================
+    kustomize:
+      enabled: true
+
+      guideName: "precise-prefix-cache-routing"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      # Selects guides/precise-prefix-cache-routing/modelserver/gpu/sglang in place of the
+      # default gpu/vllm overlay. Use "amd/sglang" for AMD accelerators.
+      acceleratorBackend: "gpu/sglang"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      # NOTE: unlike the other guides, this guide's SGLang overlay is FLAT --
+      # it lives at modelserver/gpu/sglang/ with NO base/gke sub-overlay
+      # (the vLLM overlay does have base/gke). The README composes the path as
+      # modelserver/gpu/<engine>/${INFRA_PROVIDER}, so INFRA_PROVIDER must be
+      # EMPTY here to resolve to the flat gpu/sglang/ dir (base/gke would 404).
+      # There is no GKE-specific variant for this guide's SGLang path.
+      guideVariableOverrides:
+        INFRA_PROVIDER: ""
+
+      # Strategic-merge patches on the SGLang modelserver pods. Empty by
+      # default (upstream injects HF_TOKEN from the auto-created
+      # llm-d-hf-token Secret). Use this to tune SGLang -- e.g. replica
+      # count or SGLang server flags (memory knob: --mem-fraction-static):
+      #
+      #   patches:
+      #     - patch: |
+      #         apiVersion: apps/v1
+      #         kind: Deployment
+      #         metadata: { name: decode }
+      #         spec: { replicas: 4 }
+      patches: []
+
+    # -----------------------------------------------------------------------
+    # Model metadata. Under kustomize the deployed model is fixed by the
+    # guide's manifests; model.name is recorded as metadata and used by the
+    # harness to target the served model. Keep in sync with the guide.
+    # -----------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # =======================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =======================================================================
+    workDir: "~/data/precise_prefix_cache_aware-sglang"
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml

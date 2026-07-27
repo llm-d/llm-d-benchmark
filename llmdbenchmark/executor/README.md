@@ -43,11 +43,11 @@ class Phase(Enum):
 
 ```python
 class Step(ABC):
-    number: int          # Determines execution order
-    name: str            # Machine-readable identifier
-    description: str     # Human-readable description (logged during execution)
-    phase: Phase         # Which lifecycle phase this step belongs to
-    per_stack: bool      # False = global, True = runs once per rendered stack
+    number: int  # Determines execution order
+    name: str  # Machine-readable identifier
+    description: str  # Human-readable description (logged during execution)
+    phase: Phase  # Which lifecycle phase this step belongs to
+    per_stack: bool  # False = global, True = runs once per rendered stack
 ```
 
 Key methods:
@@ -96,8 +96,16 @@ Shell command executor with dry-run, retry, logging, and output capture. Uses `o
 
 ```python
 class CommandExecutor:
-    def __init__(self, work_dir, dry_run, verbose, logger=None,
-                 kubeconfig=None, kube_context=None, openshift=False): ...
+    def __init__(
+        self,
+        work_dir,
+        dry_run,
+        verbose,
+        logger=None,
+        kubeconfig=None,
+        kube_context=None,
+        openshift=False,
+    ): ...
 ```
 
 ### Core Methods
@@ -243,7 +251,10 @@ Checks for required and optional CLI tools on `$PATH`.
 REQUIRED_TOOLS = ["kubectl", "helm", "helmfile", "jq", "yq"]
 OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "rsync", "make"]
 
-def check_system_dependencies(required_only=False, extra_required=None) -> DependencyCheckResult: ...
+
+def check_system_dependencies(
+    required_only=False, extra_required=None
+) -> DependencyCheckResult: ...
 def check_python_version() -> tuple[bool, str]: ...  # Requires Python >= 3.11
 ```
 
@@ -262,6 +273,7 @@ Example:
 ```python
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+
 
 class MyStep(Step):
     def __init__(self):

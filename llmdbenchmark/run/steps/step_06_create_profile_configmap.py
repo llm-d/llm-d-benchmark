@@ -166,6 +166,7 @@ class CreateProfileConfigmapStep(Step):
         """Create the llmdbench-harness-scripts ConfigMap from workload/harnesses/."""
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]
         harnesses_dir = base_dir / "workload" / "harnesses"
+        analyzers_dir = base_dir / "llmdbenchmark" / "analysis" / "scripts"
 
         if not harnesses_dir.is_dir():
             return False, (f"Harness scripts directory not found: {harnesses_dir}")
@@ -178,6 +179,22 @@ class CreateProfileConfigmapStep(Step):
                     f"--from-file={script_file.name}={script_file}",
                 )
                 script_count += 1
+
+        # Harness scripts are intentionally supplied from the checked-out
+        # repository so a run can use a new/updated harness with an older
+        # benchmark image. Keep its matching analyzers on the same update path;
+        # otherwise the launcher finds the new harness but fails when the
+        # analyzer is absent from the image (for example, lm-eval on v0.7.0).
+        if analyzers_dir.is_dir():
+            for analyzer_file in sorted(analyzers_dir.iterdir()):
+                if analyzer_file.is_file() and (
+                    analyzer_file.name.endswith("-analyze_results.sh")
+                    or analyzer_file.name.endswith("-analyze_results.py")
+                ):
+                    from_file_args.append(
+                        f"--from-file={analyzer_file.name}={analyzer_file}",
+                    )
+                    script_count += 1
 
         if script_count == 0:
             return False, f"No harness scripts found in {harnesses_dir}"

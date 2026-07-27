@@ -12,6 +12,8 @@ import json
 import random
 import shutil
 import string
+import subprocess
+import tarfile
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,7 @@ from typing import Any
 import yaml
 from jinja2 import Environment
 
+from llmdbenchmark.executor.command import CommandResult
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
@@ -726,19 +729,74 @@ class DeployHarnessStep(Step):
             f"{', '.join(matching_dirs)}"
         )
 
+        # Opt-in via --fast-collect / LLMDBENCH_FAST_COLLECT. When off (the
+        # default) results are collected with the original ``oc cp`` path
+        # (slow: ~95 min/dir because the ~1.5 GB per_request_lifecycle_metrics.json
+        # tunnels through the apiserver exec stream at ~0.3 MB/s). The fast path
+        # copies the exact same files -- it only swaps ``oc cp`` for a gzip'd
+        # ``oc exec | tar`` stream, which crosses the tunnel far faster.
+        FAST_COLLECT = context.harness_fast_collect
+
         for dir_name in matching_dirs:
-            remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
             local_path = local_results_dir / dir_name
             local_path.mkdir(parents=True, exist_ok=True)
 
-            cp_result = cmd.kube(
-                "cp",
-                "--retries=5",
-                remote_path,
-                str(local_path),
-                namespace=namespace,
-                check=False,
-            )
+            if FAST_COLLECT:
+                remote_dir = f"{results_dir_prefix}/{dir_name}"
+                # Auto-detected binary + kubeconfig/context/namespace flags.
+                kube_argv = [
+                    cmd._kube_bin,
+                    *cmd._kubeconfig_args(),
+                    "--namespace",
+                    namespace,
+                    "exec",
+                    data_pod,
+                    "--",
+                    "tar",
+                    "cz",
+                    "-C",
+                    remote_dir,
+                    ".",
+                ]
+                # Retry the whole stream: dropped apiserver exec streams
+                # (``tar: Unexpected EOF``) are transient; extractall overwrites
+                # so a partial extraction from a failed attempt is harmless.
+                max_attempts = 5
+                cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
+                for cp_attempt in range(1, max_attempts + 1):
+                    cp_result = DeployHarnessStep._fast_collect_stream(
+                        kube_argv, local_path
+                    )
+                    if cp_result.success:
+                        break
+                    context.logger.log_warning(
+                        f"FAST_COLLECT pipeline attempt {cp_attempt}/{max_attempts} "
+                        f"failed for {dir_name} (exit={cp_result.exit_code}): "
+                        f"{(cp_result.stderr or cp_result.stdout)[:300]}"
+                    )
+                    if cp_attempt < max_attempts:
+                        time.sleep(min(5 * cp_attempt, 30))
+                if not cp_result.success:
+                    context.logger.log_error(
+                        f"FAST_COLLECT pipeline failed for {dir_name} after "
+                        f"{max_attempts} attempt(s) "
+                        f"(exit={cp_result.exit_code}): "
+                        f"{(cp_result.stderr or cp_result.stdout)[:500]}"
+                    )
+                else:
+                    context.logger.log_info(
+                        f"FAST Collected {remote_dir} to {local_path}"
+                    )
+            else:
+                remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
+                cp_result = cmd.kube(
+                    "cp",
+                    "--retries=5",
+                    remote_path,
+                    str(local_path),
+                    namespace=namespace,
+                    check=False,
+                )
 
             if cp_result.success:
                 file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
@@ -827,6 +885,41 @@ class DeployHarnessStep(Step):
                 errors.append(err_msg)
 
         return errors
+
+    @staticmethod
+    def _fast_collect_stream(kube_argv: list[str], local_path: Path) -> CommandResult:
+        """Stream ``<kube> exec ... -- tar cz`` stdout into local ``tarfile``.
+
+        Pure-Python replacement for a ``kube exec ... | tar xz -C`` shell pipe:
+        no shell, no local ``tar`` binary, no quoting. Returns a CommandResult
+        so the caller keeps its uniform success/stderr handling.
+        """
+        cmd_str = " ".join(kube_argv)
+        try:
+            with subprocess.Popen(
+                kube_argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            ) as proc:
+                # ``r|gz`` = streaming read; tarfile consumes bytes as they land
+                # on stdout without seeking, so it works on a live pipe.
+                try:
+                    with tarfile.open(fileobj=proc.stdout, mode="r|gz") as tar:
+                        # ``filter="data"`` rejects absolute paths, ``..`` and
+                        # device entries (default in Py 3.14+, safe elsewhere).
+                        tar.extractall(path=local_path, filter="data")
+                    stderr = proc.stderr.read().decode("utf-8", errors="replace")
+                    exit_code = proc.wait()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    proc.kill()
+                    stderr = proc.stderr.read().decode("utf-8", errors="replace")
+                    proc.wait()
+                    return CommandResult(
+                        command=cmd_str,
+                        exit_code=proc.returncode or 1,
+                        stderr=f"{exc}\n{stderr}",
+                    )
+        except OSError as exc:
+            return CommandResult(command=cmd_str, exit_code=1, stderr=str(exc))
+        return CommandResult(command=cmd_str, exit_code=exit_code, stderr=stderr)
 
     # ------------------------------------------------------------------
     # Template rendering and helpers

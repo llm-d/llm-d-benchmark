@@ -16,7 +16,7 @@ from llmdbenchmark.parser.render_plans import RenderPlans
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = REPO_ROOT / "config" / "templates" / "jinja"
 DEFAULTS_FILE = REPO_ROOT / "config" / "templates" / "values" / "defaults.yaml"
-NOK8S_SCENARIO = REPO_ROOT / "config" / "scenarios" / "nok8s.yaml"
+NOK8S_SCENARIO = REPO_ROOT / "config" / "scenarios" / "guides" / "nok8s.yaml"
 
 
 class _Logger:

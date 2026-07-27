@@ -71,18 +71,18 @@ Checks performed:
 ```python
 @dataclass
 class ValidationParams:
-    models: list[str]         # HuggingFace model IDs
-    hf_token: str | None      # For gated model access
+    models: list[str]  # HuggingFace model IDs
+    hf_token: str | None  # For gated model access
     replicas: int
-    gpu_memory: int            # Per-GPU memory in GB (0 = skip GPU checks)
-    tp: int                    # Tensor parallelism
-    pp: int                    # Pipeline parallelism
-    dp: int                    # Data parallelism
-    accelerator_nr: int        # GPUs requested per pod
-    gpu_memory_util: float     # 0.0 to 1.0
+    gpu_memory: int  # Per-GPU memory in GB (0 = skip GPU checks)
+    tp: int  # Tensor parallelism
+    pp: int  # Pipeline parallelism
+    dp: int  # Data parallelism
+    accelerator_nr: int  # GPUs requested per pod
+    gpu_memory_util: float  # 0.0 to 1.0
     max_model_len: int
     ignore_failures: bool
-    label: str                 # e.g. "standalone", "decode", "prefill"
+    label: str  # e.g. "standalone", "decode", "prefill"
 ```
 
 ## endpoint.py -- Endpoint Discovery and Model Verification
@@ -152,10 +152,12 @@ class GatedStatus(Enum):
     GATED = "gated"
     ERROR = "error"
 
+
 class AccessStatus(Enum):
     AUTHORIZED = "authorized"
     UNAUTHORIZED = "unauthorized"
     ERROR = "error"
+
 
 @dataclass
 class ModelAccessResult:
@@ -178,10 +180,14 @@ Replaces `REPLACE_ENV_*` tokens in `.yaml.in` profile templates with runtime val
 
 ```python
 PROFILE_TOKENS: dict[str, TokenDef] = {
-    "LLMDBENCH_DEPLOY_CURRENT_MODEL":        TokenDef("model.name", "Model name being served"),
-    "LLMDBENCH_DEPLOY_CURRENT_TOKENIZER":    TokenDef("model.name", "Tokenizer model name"),
-    "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL":  TokenDef(None, "Endpoint URL (runtime-detected)"),
-    "LLMDBENCH_RUN_DATASET_DIR":             TokenDef("experiment.datasetDir", "Dataset directory"),
+    "LLMDBENCH_DEPLOY_CURRENT_MODEL": TokenDef("model.name", "Model name being served"),
+    "LLMDBENCH_DEPLOY_CURRENT_TOKENIZER": TokenDef(
+        "model.name", "Tokenizer model name"
+    ),
+    "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL": TokenDef(
+        None, "Endpoint URL (runtime-detected)"
+    ),
+    "LLMDBENCH_RUN_DATASET_DIR": TokenDef("experiment.datasetDir", "Dataset directory"),
 }
 ```
 
@@ -210,10 +216,11 @@ PROFILE_TOKENS: dict[str, TokenDef] = {
 ```python
 @dataclass(frozen=True)
 class PlatformInfo:
-    system: str     # e.g. "darwin", "linux"
-    machine: str    # e.g. "x86_64", "arm64"
-    is_mac: bool    # property
+    system: str  # e.g. "darwin", "linux"
+    machine: str  # e.g. "x86_64", "arm64"
+    is_mac: bool  # property
     is_linux: bool  # property
+
 
 def get_platform_info() -> PlatformInfo: ...
 def get_user_id() -> str: ...  # OS username via getpass.getuser()

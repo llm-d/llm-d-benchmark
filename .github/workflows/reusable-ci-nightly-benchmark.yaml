@@ -621,7 +621,10 @@ jobs:
             echo "### llm-d code NOT found, will clone now"
             git clone https://github.com/llm-d/llm-d.git
           else
-            echo "### llm-d code is already present. Will then delete llm-d-benchmark"
+            echo "### llm-d code is already present. Refreshing to origin/main and deleting llm-d-benchmark"
+            # Refresh the persistent checkout so it doesn't run against stale guide config.
+            git -C ~/work/llm-d/llm-d fetch --prune origin
+            git -C ~/work/llm-d/llm-d reset --hard origin/main
             pip uninstall -y llmdbenchmark || true
             rm -rf ~/work/llm-d-benchmark/
           fi

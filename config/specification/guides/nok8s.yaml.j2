@@ -1,6 +1,6 @@
 # No-Kubernetes (nok8s) Specification
 # Runs the llm-d stack + benchmark harness as local containers, no cluster.
-# See config/scenarios/nok8s.yaml for the scenario details.
+# See config/scenarios/guides/nok8s.yaml for the scenario details.
 
 # [REQUIRED]
 {% set base_dir = base_dir | default('../') -%}
@@ -16,4 +16,4 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/nok8s.yaml
+  path: {{ base_dir }}/config/scenarios/guides/nok8s.yaml

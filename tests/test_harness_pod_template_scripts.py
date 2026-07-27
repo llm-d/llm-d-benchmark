@@ -82,6 +82,8 @@ def test_harness_pod_copies_configmap_scripts_before_launch() -> None:
     launch_script = pod["spec"]["containers"][0]["args"][0]
 
     assert "/workspace/harnesses" in launch_script
+    assert "for script in /workspace/harnesses/*" in launch_script
+    assert '[ -f "$script" ]' in launch_script
     assert 'cp "$script" /usr/local/bin/' in launch_script
     assert 'chmod +x "/usr/local/bin/$(basename "$script")"' in launch_script
     assert "/usr/local/bin" in launch_script

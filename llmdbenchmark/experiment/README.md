@@ -120,7 +120,9 @@ class ExperimentSummary:
 @dataclass
 class TreatmentResult:
     setup_treatment: str
-    status: str                # "pending", "success", "failed_standup", "failed_run", "failed_teardown"
+    status: (
+        str  # "pending", "success", "failed_standup", "failed_run", "failed_teardown"
+    )
     run_treatments_completed: int
     run_treatments_total: int
     error_message: str | None

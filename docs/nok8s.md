@@ -52,13 +52,13 @@ docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 export HUGGING_FACE_HUB_TOKEN=hf_...     # for gated models
 
 # Bring up vLLM + EPP + Envoy as local containers (step 00 runs the preflight).
-llmdbenchmark --spec config/specification/nok8s.yaml.j2 --base-dir . standup --methods nok8s
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . standup --methods nok8s
 
 # Benchmark it — the harness runs as a local container against http://localhost:8081.
-llmdbenchmark --spec config/specification/nok8s.yaml.j2 --base-dir . run
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . run
 
 # Remove the containers.
-llmdbenchmark --spec config/specification/nok8s.yaml.j2 --base-dir . teardown --methods nok8s
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . teardown --methods nok8s
 ```
 
 `--methods nok8s` is optional when the scenario sets `nok8s.enabled: true`
@@ -74,7 +74,7 @@ curl -s http://localhost:8081/v1/completions -H 'Content-Type: application/json'
 
 Selected by `nok8s.enabled: true` in a scenario (mutually exclusive with
 `modelservice`/`standalone`/`fma`/`kustomize`). See
-[`config/scenarios/nok8s.yaml`](../config/scenarios/nok8s.yaml) for a complete
+[`config/scenarios/guides/nok8s.yaml`](../config/scenarios/guides/nok8s.yaml) for a complete
 single-GPU example. Key fields (full defaults in
 `config/templates/values/defaults.yaml`):
 
