@@ -1,12 +1,12 @@
 # OpenShift CI/CD Scenario - EPP+KEDA baseline (no FMA)
 #
-# EPP-only (direct KEDA saturation autoscaling) baseline for the WVA+FMA-style
+# EPP-only (direct KEDA saturation autoscaling) baseline for the EPP+KEDA+FMA
 # nightly's KEDA path. Derived from guides/epp-keda-saturation.yaml (all its
 # settings preserved) with cicd conventions layered on: epponly gateway,
 # enforceEager:false (matched to the FMA launcher for fair comparison),
-# decode.replicas:1 (= KEDA minReplicas, matched to the WVA baseline), a /tmp
-# workDir, and the heavy load profile. No WVA controller / VariantAutoscaling /
-# prometheus-adapter. `eppKedaSaturation.enabled: true` drives the KEDA path.
+# decode.replicas:1 (= KEDA minReplicas), a /tmp workDir, and the heavy load
+# profile. `eppKedaSaturation.enabled: true` drives the KEDA saturation path
+# directly via the KEDA ScaledObject.
 
 scenario:
   # =========================================================================
@@ -92,8 +92,7 @@ scenario:
     #
     # EPP+KEDA queries inference_pool_average_kv_cache_utilization and
     # inference_pool_average_queue_size directly from EPP's /metrics endpoint.
-    # These gauges are emitted by default; no special plugin config needed
-    # (unlike WVA's flowControl feature gate).
+    # These gauges are emitted by default; no special plugin config needed.
     #
     # Do NOT set router.epp.pluginsConfigFile — let it default to
     # "default-plugins.yaml" which already includes metrics-data-source +
@@ -228,6 +227,6 @@ scenario:
 
     harness:
       name: inference-perf
-      # Heavy variant -- matched RPS with the WVA baseline and the FMA passes.
+      # Heavy variant -- matched RPS across the baseline and FMA passes.
       experimentProfile: shared_prefix_synthetic_heavy.yaml
       waitTimeout: 5400

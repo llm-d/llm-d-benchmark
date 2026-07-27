@@ -1,9 +1,8 @@
 name: CI - Run Benchmark on OCP ("EPP+KEDA+FMA" autoscaling path)
 
-# Mirrors ci-benchmark-ocp-fma-wva.yaml but drives the EPP+KEDA
-# saturation autoscaling path instead of WVA: KEDA scales on EPP pool metrics
-# (inference_pool_average_kv_cache_utilization / _average_queue_size) with NO
-# WVA controller. Enabled purely via `eppKedaSaturation.enabled: true`.
+# Drives the EPP+KEDA saturation autoscaling path: KEDA scales on EPP pool
+# metrics (inference_pool_average_kv_cache_utilization / _average_queue_size).
+# Enabled purely via `eppKedaSaturation.enabled: true`.
 #
 # Three passes for direct comparison, under inference-perf load
 # (shared_prefix_synthetic_heavy.yaml, sized to push the EPP KV-cache / queue
@@ -246,8 +245,8 @@ jobs:
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
       LLMDBENCH_CICD_TARGET: ${{ inputs.infra_provider || 'ocp' }}
       BASELINE_SCENARIO: ${{ inputs.baseline_scenario || 'ocp-keda' }}
-      FMA_WVA_WARMSTART_SCENARIO: ${{ inputs.standup_scenario || 'ocp-keda-fma-warmstart' }}
-      FMA_WVA_HOTSTART_SCENARIO: ${{ inputs.hotstart_scenario || 'ocp-keda-fma-hotstart' }}
+      FMA_KEDA_WARMSTART_SCENARIO: ${{ inputs.standup_scenario || 'ocp-keda-fma-warmstart' }}
+      FMA_KEDA_HOTSTART_SCENARIO: ${{ inputs.hotstart_scenario || 'ocp-keda-fma-hotstart' }}
     steps:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
@@ -263,9 +262,9 @@ jobs:
         run: |
           set +e
           BASELINE_DIR="/tmp/baseline-results"
-          FMA_WVA_WARMSTART_DIR="/tmp/fma-wva-warmstart-results"
-          FMA_WVA_HOTSTART_DIR="/tmp/fma-wva-hotstart-results"
-          mkdir -p "$BASELINE_DIR" "$FMA_WVA_WARMSTART_DIR" "$FMA_WVA_HOTSTART_DIR"
+          FMA_KEDA_WARMSTART_DIR="/tmp/fma-keda-warmstart-results"
+          FMA_KEDA_HOTSTART_DIR="/tmp/fma-keda-hotstart-results"
+          mkdir -p "$BASELINE_DIR" "$FMA_KEDA_WARMSTART_DIR" "$FMA_KEDA_HOTSTART_DIR"
 
           # Pick the most recent <date> subdir that actually has data
           latest_date_under() {
@@ -276,8 +275,8 @@ jobs:
               | sort | tail -1
           }
           BL_PREFIX="gs://${GCS_PATH}/${BASELINE_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice/"
-          FW_WARMSTART_PREFIX="gs://${GCS_PATH}/${FMA_WVA_WARMSTART_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
-          FW_HOTSTART_PREFIX="gs://${GCS_PATH}/${FMA_WVA_HOTSTART_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
+          FW_WARMSTART_PREFIX="gs://${GCS_PATH}/${FMA_KEDA_WARMSTART_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
+          FW_HOTSTART_PREFIX="gs://${GCS_PATH}/${FMA_KEDA_HOTSTART_SCENARIO}/${LLMDBENCH_CICD_TARGET}/modelservice,fma/"
           BL_DATE=$(latest_date_under "$BL_PREFIX")
           FW_WARMSTART_DATE=$(latest_date_under "$FW_WARMSTART_PREFIX")
           FW_HOTSTART_DATE=$(latest_date_under "$FW_HOTSTART_PREFIX")
@@ -286,8 +285,8 @@ jobs:
           echo "FMA+KEDA Hot-Start data date:  ${FW_HOTSTART_DATE:-none found}"
 
           [ -n "$BL_DATE" ] && gcloud storage cp -r "${BL_PREFIX}${BL_DATE}" "$BASELINE_DIR/" || true
-          [ -n "$FW_WARMSTART_DATE" ] && gcloud storage cp -r "${FW_WARMSTART_PREFIX}${FW_WARMSTART_DATE}" "$FMA_WVA_WARMSTART_DIR/" || true
-          [ -n "$FW_HOTSTART_DATE" ] && gcloud storage cp -r "${FW_HOTSTART_PREFIX}${FW_HOTSTART_DATE}" "$FMA_WVA_HOTSTART_DIR/" || true
+          [ -n "$FW_WARMSTART_DATE" ] && gcloud storage cp -r "${FW_WARMSTART_PREFIX}${FW_WARMSTART_DATE}" "$FMA_KEDA_WARMSTART_DIR/" || true
+          [ -n "$FW_HOTSTART_DATE" ] && gcloud storage cp -r "${FW_HOTSTART_PREFIX}${FW_HOTSTART_DATE}" "$FMA_KEDA_HOTSTART_DIR/" || true
 
           # PyYAML for cluster-state parsing in the timing-row computation
           # below; ubuntu-latest doesn't have it pre-installed in the user
@@ -296,26 +295,26 @@ jobs:
 
           # Locate, per pass:
           #   - summary_lifecycle_metrics.json   (harness output, has latency)
-          #   - <exp_id>/wva-controller.log      (step_09a, has scale-up timestamp)
+          #   - <exp_id>/keda-controller.log      (step_09a; absent for the KEDA path)
           #   - <exp_id>/resources.yaml          (step_09a, has Pod Ready timestamps)
           find_in_results() {
             # $1 = pass dir, $2 = filename
             find "$1" -path "*/results/*" -name "$2" 2>/dev/null | sort | tail -1
           }
           BL_SUM=$(find_in_results "$BASELINE_DIR"            "summary_lifecycle_metrics.json")
-          FW_WARMSTART_SUM=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "summary_lifecycle_metrics.json")
-          FW_HOTSTART_SUM=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "summary_lifecycle_metrics.json")
-          BL_WVA=$(find_in_results "$BASELINE_DIR"            "wva-controller.log")
-          FW_WARMSTART_WVA=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "wva-controller.log")
-          FW_HOTSTART_WVA=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "wva-controller.log")
+          FW_WARMSTART_SUM=$(find_in_results "$FMA_KEDA_WARMSTART_DIR" "summary_lifecycle_metrics.json")
+          FW_HOTSTART_SUM=$(find_in_results "$FMA_KEDA_HOTSTART_DIR"   "summary_lifecycle_metrics.json")
+          BL_KEDA=$(find_in_results "$BASELINE_DIR"            "keda-controller.log")
+          FW_WARMSTART_KEDA=$(find_in_results "$FMA_KEDA_WARMSTART_DIR" "keda-controller.log")
+          FW_HOTSTART_KEDA=$(find_in_results "$FMA_KEDA_HOTSTART_DIR"   "keda-controller.log")
           BL_RES=$(find_in_results "$BASELINE_DIR"            "resources.yaml")
-          FW_WARMSTART_RES=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "resources.yaml")
-          FW_HOTSTART_RES=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "resources.yaml")
+          FW_WARMSTART_RES=$(find_in_results "$FMA_KEDA_WARMSTART_DIR" "resources.yaml")
+          FW_HOTSTART_RES=$(find_in_results "$FMA_KEDA_HOTSTART_DIR"   "resources.yaml")
           BL_EVENTS=$(find_in_results "$BASELINE_DIR"            "events.json")
-          FW_WARMSTART_EVENTS=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "events.json")
-          FW_HOTSTART_EVENTS=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "events.json")
+          FW_WARMSTART_EVENTS=$(find_in_results "$FMA_KEDA_WARMSTART_DIR" "events.json")
+          FW_HOTSTART_EVENTS=$(find_in_results "$FMA_KEDA_HOTSTART_DIR"   "events.json")
 
-          python3 - "$BL_SUM" "$FW_WARMSTART_SUM" "$FW_HOTSTART_SUM" "$BL_WVA" "$FW_WARMSTART_WVA" "$FW_HOTSTART_WVA" "$BL_RES" "$FW_WARMSTART_RES" "$FW_HOTSTART_RES" "$BL_EVENTS" "$FW_WARMSTART_EVENTS" "$FW_HOTSTART_EVENTS" \
+          python3 - "$BL_SUM" "$FW_WARMSTART_SUM" "$FW_HOTSTART_SUM" "$BL_KEDA" "$FW_WARMSTART_KEDA" "$FW_HOTSTART_KEDA" "$BL_RES" "$FW_WARMSTART_RES" "$FW_HOTSTART_RES" "$BL_EVENTS" "$FW_WARMSTART_EVENTS" "$FW_HOTSTART_EVENTS" \
             >> "$GITHUB_STEP_SUMMARY" <<'PY'
           import json, sys, os, re, datetime
           try:
@@ -325,7 +324,7 @@ jobs:
               HAVE_YAML = False
 
           (bl_sum, fw_ws_sum, fw_hs_sum,
-           bl_wva, fw_ws_wva, fw_hs_wva,
+           bl_keda, fw_ws_keda, fw_hs_keda,
            bl_res, fw_ws_res, fw_hs_res,
            bl_events, fw_ws_events, fw_hs_events) = sys.argv[1:13]
 
@@ -421,8 +420,8 @@ jobs:
           # t1 = that replica's Ready. Only scale-UPs count, so it's robust to
           # the end-of-run scale-down that overwrites HPA.lastScaleTime. Reads
           # events.json (absolute timestamps) + resources.yaml (pod Ready) --
-          # identical for WVA & EPP-KEDA (both drive a KEDA-managed HPA that
-          # emits SuccessfulRescale). Returns None if no scale-up event is found
+          # all passes drive a KEDA-managed HPA that emits SuccessfulRescale.
+          # Returns None if no scale-up event is found
           # or the scaled-up pods were already deleted by capture time.
           def t_scale_up_mean(events_path, resources_path):
               if not HAVE_YAML or not events_path or not os.path.isfile(events_path):
@@ -548,11 +547,11 @@ jobs:
         id: cs
         run: |
           set +e
-          for label in baseline fma_wva_warmstart fma_wva_hotstart; do
+          for label in baseline fma_keda_warmstart fma_keda_hotstart; do
             case $label in
               baseline)          base=/tmp/baseline-results ;;
-              fma_wva_warmstart) base=/tmp/fma-wva-warmstart-results ;;
-              fma_wva_hotstart)  base=/tmp/fma-wva-hotstart-results ;;
+              fma_keda_warmstart) base=/tmp/fma-keda-warmstart-results ;;
+              fma_keda_hotstart)  base=/tmp/fma-keda-hotstart-results ;;
             esac
             latest=$(find "$base" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
             exp=""
@@ -610,43 +609,43 @@ jobs:
       - name: Dump HPA — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa.txt"
+          f="${{ steps.cs.outputs.fma_keda_warmstart_exp }}/hpa.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa.txt for warm-start"
 
       - name: Dump HPA describe — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa-describe.txt"
+          f="${{ steps.cs.outputs.fma_keda_warmstart_exp }}/hpa-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for warm-start"
 
       - name: Dump ScaledObject — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/scaledobject.txt"
+          f="${{ steps.cs.outputs.fma_keda_warmstart_exp }}/scaledobject.txt"
           [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for warm-start"
 
       - name: Dump ScaledObject describe — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/scaledobject-describe.txt"
+          f="${{ steps.cs.outputs.fma_keda_warmstart_exp }}/scaledobject-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for warm-start"
 
       - name: Dump FMA launcher-populator log tail — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f=$(find "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
+          f=$(find "${{ steps.cs.outputs.fma_keda_warmstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
           [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log for warm-start"
 
       - name: Dump events — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/events.log"
+          f="${{ steps.cs.outputs.fma_keda_warmstart_exp }}/events.log"
           [ -f "$f" ] && cat "$f" || echo "no events.log for warm-start"
 
       - name: Dump pods — EPP+KEDA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/pods.txt"
+          f="${{ steps.cs.outputs.fma_keda_warmstart_exp }}/pods.txt"
           [ -f "$f" ] && cat "$f" || echo "no pods.txt for warm-start"
 
       # ---------------- EPP+KEDA with FMA (Hot-Start) dumps ---------------------
@@ -654,41 +653,41 @@ jobs:
       - name: Dump HPA — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa.txt"
+          f="${{ steps.cs.outputs.fma_keda_hotstart_exp }}/hpa.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa.txt for hot-start"
 
       - name: Dump HPA describe — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa-describe.txt"
+          f="${{ steps.cs.outputs.fma_keda_hotstart_exp }}/hpa-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for hot-start"
 
       - name: Dump ScaledObject — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/scaledobject.txt"
+          f="${{ steps.cs.outputs.fma_keda_hotstart_exp }}/scaledobject.txt"
           [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for hot-start"
 
       - name: Dump ScaledObject describe — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/scaledobject-describe.txt"
+          f="${{ steps.cs.outputs.fma_keda_hotstart_exp }}/scaledobject-describe.txt"
           [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for hot-start"
 
       - name: Dump FMA launcher-populator log tail — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f=$(find "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
+          f=$(find "${{ steps.cs.outputs.fma_keda_hotstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
           [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log for hot-start"
 
       - name: Dump events — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/events.log"
+          f="${{ steps.cs.outputs.fma_keda_hotstart_exp }}/events.log"
           [ -f "$f" ] && cat "$f" || echo "no events.log for hot-start"
 
       - name: Dump pods — EPP+KEDA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/pods.txt"
+          f="${{ steps.cs.outputs.fma_keda_hotstart_exp }}/pods.txt"
           [ -f "$f" ] && cat "$f" || echo "no pods.txt for hot-start"
