@@ -6,14 +6,14 @@ from pathlib import Path
 
 import yaml
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
-from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
+from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.standup.keda_saturation import (
     stacks_enabling_epp_keda_saturation,
     unique_epp_keda_saturation_namespaces,
 )
+from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
 from llmdbenchmark.utilities.kube_helpers import (
     force_remove_finalizers_by_selector,
     wait_for_pods_deleted,
@@ -267,20 +267,31 @@ class UninstallHelmStep(Step):
     ):
         """Find and uninstall Helm releases matching the release name or model labels.
 
-        Uses ``helm list --all`` so releases stuck in a transitional state
-        (``uninstalling`` / ``pending-*`` / ``failed``) are visible -- the
-        default ``helm list`` hides them. A release left ``uninstalling`` by
-        a previously interrupted teardown is otherwise never cleaned: it
-        blocks the next standup's ``helmfile apply`` (which no-ops on an
-        already-present release) so the EPP/InferencePool never redeploy.
-        For such wedged releases ``helm uninstall`` does not reliably clear
-        the release, so we delete the backing release secret directly.
+        Enumerates every release status explicitly so releases stuck in a
+        transitional state (``uninstalling`` / ``pending-*`` / ``failed``)
+        are visible -- Helm v3's default ``helm list`` hides them. A release
+        left ``uninstalling`` by a previously interrupted teardown is
+        otherwise never cleaned: it blocks the next standup's
+        ``helmfile apply`` (which no-ops on an already-present release) so
+        the EPP/InferencePool never redeploy. For such wedged releases
+        ``helm uninstall`` does not reliably clear the release, so we delete
+        the backing release secret directly.
+
+        Combining the status filters (rather than passing ``--all``) keeps
+        this working across both Helm v3 (pinned by ``install.sh``) and
+        Helm v4, which dropped the ``--all`` flag in favor of listing every
+        status by default.
         """
         result = cmd.helm(
             "list",
             "--namespace",
             namespace,
-            "--all",
+            "--deployed",
+            "--failed",
+            "--pending",
+            "--uninstalled",
+            "--uninstalling",
+            "--superseded",
             "-o",
             "json",
         )

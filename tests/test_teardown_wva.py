@@ -19,7 +19,6 @@ import yaml
 
 from llmdbenchmark.teardown.steps.step_01_uninstall_helm import UninstallHelmStep
 
-
 # ---------------------------------------------------------------------------
 # Stubs / fixtures
 # ---------------------------------------------------------------------------
@@ -372,9 +371,20 @@ class TestUninstallReleasesWedged:
             cmd, ctx, "ns1", release="", model_labels=["mymodel"], errors=errors
         )
 
-        # list issued with --all so transitional releases are visible
+        # list enumerates every status so transitional releases are visible
+        # (replaces the v3-only `--all` flag with the individual filters
+        # accepted by both Helm v3 and v4).
         list_calls = [a for a in cmd.helm_calls if a and a[0] == "list"]
-        assert list_calls and "--all" in list_calls[0]
+        assert list_calls
+        for status in (
+            "--deployed",
+            "--failed",
+            "--pending",
+            "--uninstalled",
+            "--uninstalling",
+            "--superseded",
+        ):
+            assert status in list_calls[0]
 
         deletes = _secret_delete_calls(cmd)
         assert len(deletes) == 1
