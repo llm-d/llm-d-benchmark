@@ -2,7 +2,7 @@
 
 import argparse
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.interface.env import env, env_int
+from llmdbenchmark.interface.env import env, env_bool, env_int
 
 
 def add_subcommands(
@@ -239,6 +239,14 @@ def add_subcommands(
         action="store_true",
         default=env("LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY") == "1",
         help="Run local analysis on collected results (env: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1).",
+    )
+    run_parser.add_argument(
+        "--fast-collect",
+        action="store_true",
+        default=env_bool("LLMDBENCH_FAST_COLLECT"),
+        help="Collect results via a gzip'd 'oc exec | tar' stream instead of "
+        "'oc cp'. Copies the same files, just much faster for large result "
+        "trees (env: LLMDBENCH_FAST_COLLECT). Default: off.",
     )
 
     # Run-only / existing-stack mode

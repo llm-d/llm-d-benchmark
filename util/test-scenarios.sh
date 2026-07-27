@@ -18,15 +18,22 @@ set -o pipefail
 # Options:
 #   --stable       Run stable scenarios only (default)
 #   --trouble      Run known-trouble scenarios only (wide-ep-lws, spyre)
-#   --all          Run all scenario groups
-#   --ms-only      Only test modelservice (skip standalone)
-#   --sa-only      Only test standalone (skip modelservice)
+#   --all          Run all vLLM scenario groups (stable + trouble)
+#   --sglang       Run the SGLang guide presets via the kustomize deploy method
+#   --ms-only      Only test modelservice (skip standalone); no effect on --sglang
+#   --sa-only      Only test standalone (skip modelservice); no effect on --sglang
 #
 # Examples:
 #   ./util/test-scenarios.sh llm-d-vezio-ang
 #   ./util/test-scenarios.sh --trouble llm-d-vezio-ang
 #   ./util/test-scenarios.sh --all --ms-only llm-d-vezio-ang
 #   ./util/test-scenarios.sh --stable --trouble llm-d-vezio-ang
+#   ./util/test-scenarios.sh --sglang llm-d-vezio-ang
+#
+# Note: --sglang is a distinct backend/method group. SGLang is only supported
+# under the kustomize deploy method, so those presets are always deployed with
+# `-t kustomize` and the --ms-only/--sa-only method filters do not apply to
+# them. --sglang is opt-in and is NOT included in --all.
 #
 # Note: CICD scenarios (cks, gke-h100, kind-sim, ocp) are not included.
 # They require specific cluster infrastructure and are tested via GitHub Actions.
@@ -34,6 +41,7 @@ set -o pipefail
 # Parse arguments
 RUN_STABLE=false
 RUN_TROUBLE=false
+RUN_SGLANG=false
 METHOD_FILTER=""  # empty = both, "ms" = modelservice only, "sa" = standalone only
 NS=""
 
@@ -42,6 +50,7 @@ for arg in "$@"; do
     --stable)  RUN_STABLE=true ;;
     --trouble) RUN_TROUBLE=true ;;
     --all)     RUN_STABLE=true; RUN_TROUBLE=true ;;
+    --sglang)  RUN_SGLANG=true ;;
     --ms-only) METHOD_FILTER="ms" ;;
     --sa-only) METHOD_FILTER="sa" ;;
     --help|-h)
@@ -59,7 +68,7 @@ for arg in "$@"; do
 done
 
 # Default to stable if nothing selected
-if ! $RUN_STABLE && ! $RUN_TROUBLE; then
+if ! $RUN_STABLE && ! $RUN_TROUBLE && ! $RUN_SGLANG; then
   RUN_STABLE=true
 fi
 
@@ -99,6 +108,14 @@ TROUBLE_MS_ONLY=(
   guides/wide-ep-lws
 )
 
+# SGLang: guide presets deployed via the kustomize method (backend gpu/sglang).
+# These are the *-sglang scenarios in config/scenarios/guides/. See docs/sglang.md.
+SGLANG_KUSTOMIZE=(
+  guides/optimized-baseline-sglang
+  guides/precise-prefix-cache-routing-sglang
+  guides/tiered-prefix-cache-sglang
+)
+
 # -----------------------------------------------------------------------
 # Test runner
 # -----------------------------------------------------------------------
@@ -122,6 +139,9 @@ run_test() {
   if [ "$method" = "standalone" ]; then
     llmdbenchmark --spec "$spec" standup -p "$NS" -t standalone 2>&1 | tee "$standup_log"
     STANDUP_EXIT=${PIPESTATUS[0]}
+  elif [ "$method" = "kustomize" ]; then
+    llmdbenchmark --spec "$spec" standup -p "$NS" -t kustomize 2>&1 | tee "$standup_log"
+    STANDUP_EXIT=${PIPESTATUS[0]}
   else
     llmdbenchmark --spec "$spec" standup -p "$NS" 2>&1 | tee "$standup_log"
     STANDUP_EXIT=${PIPESTATUS[0]}
@@ -138,6 +158,9 @@ run_test() {
   # Teardown (always run to clean up)
   if [ "$method" = "standalone" ]; then
     llmdbenchmark --spec "$spec" teardown -p "$NS" -t standalone 2>&1 | tee "$teardown_log"
+    TEARDOWN_EXIT=${PIPESTATUS[0]}
+  elif [ "$method" = "kustomize" ]; then
+    llmdbenchmark --spec "$spec" teardown -p "$NS" -t kustomize 2>&1 | tee "$teardown_log"
     TEARDOWN_EXIT=${PIPESTATUS[0]}
   else
     llmdbenchmark --spec "$spec" teardown -p "$NS" 2>&1 | tee "$teardown_log"
@@ -175,6 +198,13 @@ run_ms_only() {
   run_test "$spec" "modelservice" "$group"
 }
 
+run_sglang() {
+  # SGLang presets are kustomize-only; the ms/sa method filters do not apply.
+  local spec="$1"
+  local group="$2"
+  run_test "$spec" "kustomize" "$group"
+}
+
 # -----------------------------------------------------------------------
 # Execution
 # -----------------------------------------------------------------------
@@ -183,6 +213,7 @@ run_ms_only() {
 groups=""
 $RUN_STABLE && groups="${groups}stable "
 $RUN_TROUBLE && groups="${groups}trouble "
+$RUN_SGLANG && groups="${groups}sglang "
 
 echo "=========================================="
 echo "Test Suite: Standup/Teardown Validation"
@@ -203,6 +234,11 @@ if $RUN_TROUBLE; then
   echo "--- TROUBLE scenarios (known issues) ---"
   for spec in "${TROUBLE_BOTH[@]}"; do run_both "$spec" "trouble"; done
   for spec in "${TROUBLE_MS_ONLY[@]}"; do run_ms_only "$spec" "trouble"; done
+fi
+
+if $RUN_SGLANG; then
+  echo "--- SGLANG scenarios (kustomize deploy method) ---"
+  for spec in "${SGLANG_KUSTOMIZE[@]}"; do run_sglang "$spec" "sglang"; done
 fi
 
 # -----------------------------------------------------------------------

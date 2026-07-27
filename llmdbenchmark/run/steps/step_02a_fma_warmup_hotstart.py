@@ -25,8 +25,8 @@ Used by workload-autoscaling-hotstart scenario.
 import time
 from pathlib import Path
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 
 
 class FMAWarmupHotStartStep(Step):
@@ -101,6 +101,34 @@ class FMAWarmupHotStartStep(Step):
         # generic label if unset.
         model_name = self._resolve(plan_config, "model.name", default="the model")
         deploy_name = f"fma-requester-{model_id_label}"
+
+        # When launcher node-pinning is enabled, step_06 scales the requester to
+        # the pinned node's GPU count. step_06 persists that to config.yaml, but
+        # the run phase RE-RENDERS the plan from the scenario, so the persisted
+        # value is gone by the time we get here
+        live = cmd.kube(
+            "get",
+            f"deployment/{deploy_name}",
+            "-o",
+            "jsonpath={.spec.replicas}",
+            "--namespace",
+            namespace,
+            check=False,
+        )
+        live_replicas = 0
+        if live.success:
+            try:
+                live_replicas = int((live.stdout or "").strip() or 0)
+            except ValueError:
+                live_replicas = 0
+        if live_replicas > 0 and live_replicas != replicas:
+            context.logger.log_info(
+                f"    | Using Deployment/{deploy_name} spec.replicas="
+                f"{live_replicas} for the warmup gate (rendered config placeholder "
+                f"was {replicas}; node-pinning resized it)"
+            )
+            replicas = live_replicas
+
         timeout = int(self._resolve(plan_config, "fma.warmupTimeout", default=1200))
         # Scale-down floor: read the HPA's minReplicas, since the HPA is what
         # actually enforces the requester Deployment's replica count during the

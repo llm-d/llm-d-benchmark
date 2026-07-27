@@ -1,9 +1,9 @@
-"""Step 09a -- Capture WVA + FMA cluster state right after results are collected.
+"""Step 09a -- Capture WVA/KEDA + FMA cluster state right after results are collected.
 
-Snapshots HPA/VA/Deployment YAML, events, WVA controller logs, and the
+Snapshots HPA/ScaledObject/Deployment YAML, events, controller logs, and the
 logs of every pod in the deploy and WVA namespaces to ``results/<exp_id>/``
-— alongside the harness's benchmark output. Skipped when ``wva.enabled``
-is false.
+— alongside the harness's benchmark output. Skipped only when neither
++``wva.enabled`` nor ``eppKedaSaturation.enabled`` is set.
 
 Runs AFTER step_09_collect_results so the local results dir already exists
 and won't trip step_09's "skip if results dir non-empty" gate.
@@ -12,9 +12,8 @@ and won't trip step_09's "skip if results dir non-empty" gate.
 import time
 from pathlib import Path
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
-
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 
 # Kubelet/API-server transient errors when the
 # pod-log symlink path is being rotated mid-call.
@@ -48,13 +47,13 @@ def _kube_logs_with_retry(cmd, *args, attempts: int = 3, backoff: float = 2.0):
 
 
 class CaptureClusterStateStep(Step):
-    """Snapshot HPA/VA/Deployment/events + WVA controller logs to workspace."""
+    """Snapshot HPA/ScaledObject/Deployment/events + WVA controller logs to workspace."""
 
     def __init__(self):
         super().__init__(
             number=9,
             name="capture_cluster_state",
-            description="Capture WVA HPA/VA/Deployment state and controller logs",
+            description="Capture WVA HPA/ScaledObject/Deployment state and controller logs",
             phase=Phase.RUN,
             per_stack=True,
         )
@@ -80,12 +79,20 @@ class CaptureClusterStateStep(Step):
         cmd = context.require_cmd()
 
         plan_config = self._load_stack_config(stack_path)
-        if not self._resolve(plan_config, "wva.enabled", default=False):
+        # Capture for any KEDA-driven autoscaling path.
+        wva_enabled = self._resolve(plan_config, "wva.enabled", default=False)
+        epp_keda_enabled = self._resolve(
+            plan_config, "eppKedaSaturation.enabled", default=False
+        )
+        if not (wva_enabled or epp_keda_enabled):
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
-                message="wva.enabled is false; skipping cluster-state capture",
+                message=(
+                    "wva.enabled and eppKedaSaturation.enabled both false; "
+                    "skipping cluster-state capture"
+                ),
                 stack_name=stack_name,
             )
 
@@ -109,10 +116,12 @@ class CaptureClusterStateStep(Step):
         captured: list[str] = []
         warnings: list[str] = []
 
-        # 1. Full YAML of WVA-relevant resources in the deploy namespace.
+        # 1. Full YAML of WVA/KEDA-relevant resources in the deploy namespace.
+
         result = cmd.kube(
             "get",
-            "pods,hpa,variantautoscaling,deployments,replicasets",
+            "pods,hpa,scaledobjects.keda.sh,triggerauthentications.keda.sh,"
+            "deployments,replicasets",
             "--namespace",
             deploy_ns,
             "-o",
@@ -146,6 +155,37 @@ class CaptureClusterStateStep(Step):
         else:
             warnings.append(f"get hpa failed: {result.stderr[:200]}")
 
+        # 3b. ScaledObject (KEDA) state -- READY / ACTIVE / TRIGGERS columns
+        result = cmd.kube(
+            "get",
+            "scaledobjects.keda.sh",
+            "--namespace",
+            deploy_ns,
+            "-o",
+            "wide",
+            check=False,
+        )
+        if result.success:
+            (out_dir / "scaledobject.txt").write_text(result.stdout, encoding="utf-8")
+            captured.append("scaledobject.txt")
+        else:
+            warnings.append(f"get scaledobject failed: {result.stderr[:200]}")
+
+        result = cmd.kube(
+            "describe",
+            "scaledobjects.keda.sh",
+            "--namespace",
+            deploy_ns,
+            check=False,
+        )
+        if result.success:
+            (out_dir / "scaledobject-describe.txt").write_text(
+                result.stdout, encoding="utf-8"
+            )
+            captured.append("scaledobject-describe.txt")
+        else:
+            warnings.append(f"describe scaledobject failed: {result.stderr[:200]}")
+
         # 4. Events — sorted by time so a HPA scale-up event is easy to spot.
         result = cmd.kube(
             "get",
@@ -160,6 +200,19 @@ class CaptureClusterStateStep(Step):
             captured.append("events.log")
         else:
             warnings.append(f"get events failed: {result.stderr[:200]}")
+
+        # 4b. Events as JSON — the table above uses relative "LAST SEEN" ages,
+        # which can't be parsed for timing. JSON carries absolute timestamps so
+        # the display job can measure T_scale_up from each HPA SuccessfulRescale
+        # scale-up event to the new replica's Ready.
+        result = cmd.kube(
+            "get", "events", "--namespace", deploy_ns, "-o", "json", check=False
+        )
+        if result.success:
+            (out_dir / "events.json").write_text(result.stdout, encoding="utf-8")
+            captured.append("events.json")
+        else:
+            warnings.append(f"get events json failed: {result.stderr[:200]}")
 
         # 5. WVA controller logs — every reconcile loop logs the OPTIMIZED
         # replica count it computed. Capped to keep the upload reasonable;
@@ -200,28 +253,7 @@ class CaptureClusterStateStep(Step):
         else:
             warnings.append(f"get pods failed: {result.stderr[:200]}")
 
-        # 7. External metrics API — what HPA actually reads. If this returns
-        # the metric, prometheus-adapter is healthy and the WVA→Prom→adapter
-        # →HPA chain works; if not, the chain is broken between those stages.
-        result = cmd.kube(
-            "get",
-            "--raw",
-            f"/apis/external.metrics.k8s.io/v1beta1/namespaces/{deploy_ns}/wva_desired_replicas",
-            check=False,
-        )
-        if result.success:
-            (out_dir / "external-metric.json").write_text(
-                result.stdout, encoding="utf-8"
-            )
-            captured.append("external-metric.json")
-        else:
-            (out_dir / "external-metric.error").write_text(
-                result.stderr, encoding="utf-8"
-            )
-            captured.append("external-metric.error")
-            warnings.append(f"external-metric query failed: {result.stderr[:200]}")
-
-        # 7a. Thanos diagnostic queries — proves whether vLLM saturation
+        # 7. Thanos diagnostic queries — proves whether vLLM saturation
         # series in Thanos actually carry the `llm_d_ai_variant` label our
         # PodMonitor relabel is supposed to lift. WVA's saturation engine
         # joins on this label; missing-or-empty means the engine emits
@@ -239,6 +271,11 @@ class CaptureClusterStateStep(Step):
             ),
             ("vllm-cache-no-variant", 'vllm:gpu_cache_usage_perc{llm_d_ai_variant=""}'),
             ("vllm-cache-all", "vllm:gpu_cache_usage_perc"),
+            (
+                "epp-pool-kv-cache",
+                "inference_pool_average_kv_cache_utilization",
+            ),
+            ("epp-pool-queue-size", "inference_pool_average_queue_size"),
         ]
         for label, query in thanos_queries:
             result = cmd.kube(
@@ -299,67 +336,6 @@ class CaptureClusterStateStep(Step):
 
         if pod_log_count > 0:
             captured.append(f"{pod_log_count} pod log(s)")
-
-        # 10. prometheus-adapter — cluster-scoped install.
-        adapter_pods = cmd.kube(
-            "get",
-            "pods",
-            "--all-namespaces",
-            "-l",
-            "app.kubernetes.io/name=prometheus-adapter",
-            "--no-headers",
-            check=False,
-        )
-        adapter_count = 0
-        if adapter_pods.success:
-            for line in adapter_pods.stdout.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split()
-                if len(parts) < 2:
-                    continue
-                ns, pod_name = parts[0], parts[1]
-                log_result = _kube_logs_with_retry(
-                    cmd,
-                    pod_name,
-                    "--namespace",
-                    ns,
-                    "--all-containers=true",
-                    "--tail=5000",
-                )
-                if log_result.success and log_result.stdout:
-                    is_kubelet_error = _is_kubelet_log_sentinel(log_result.stdout)
-                    suffix = ".kubelet-error" if is_kubelet_error else ".log"
-                    log_path = out_dir / f"{ns}__{pod_name}{suffix}"
-                    log_path.write_text(log_result.stdout, encoding="utf-8")
-                    if not is_kubelet_error:
-                        adapter_count += 1
-        else:
-            warnings.append(
-                f"list prometheus-adapter pods failed: {adapter_pods.stderr[:200]}"
-            )
-
-        if adapter_count > 0:
-            captured.append(f"prometheus-adapter logs ({adapter_count} pod(s))")
-
-        # 11. external-metrics discovery — lists what prometheus-adapter is
-        # actually advertising. If wva_desired_replicas is not in this list,
-        # the adapter rule format doesn't match what the WVA controller emits
-        # and HPA will never see the metric.
-        result = cmd.kube(
-            "get",
-            "--raw",
-            "/apis/external.metrics.k8s.io/v1beta1",
-            check=False,
-        )
-        if result.success:
-            (out_dir / "external-metric-discovery.json").write_text(
-                result.stdout, encoding="utf-8"
-            )
-            captured.append("external-metric-discovery.json")
-        else:
-            warnings.append(f"external-metric discovery failed: {result.stderr[:200]}")
 
         for w in warnings:
             context.logger.log_warning(f"cluster-state: {w}")

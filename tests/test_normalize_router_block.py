@@ -344,6 +344,7 @@ class TestZmqPortExpansion:
 
 class TestEpponlyPort:
     def test_epponly_adds_http_service_port(self, normalize):
+        """Default (no override) keeps the historical envoy port."""
         values = {"gateway": {"className": "epponly"}}
         out = normalize(values)
         service_ports = out["router"].get("extraServicePorts") or []
@@ -351,6 +352,37 @@ class TestEpponlyPort:
         assert len(http) == 1
         assert http[0]["port"] == 80
         assert http[0]["targetPort"] == 8081
+
+    def test_httpTargetPort_override_is_used(self, normalize):
+        """agentgateway's chart validation rejects a raw port number here,
+        it only accepts targetPort omitted, 80, or the string "http". Rather
+        than the code knowing about proxy types, this is just a plain
+        override a scenario sets alongside proxyType."""
+        values = {
+            "gateway": {"className": "epponly"},
+            "router": {
+                "proxy": {"proxyType": "agentgateway", "httpTargetPort": "http"}
+            },
+        }
+        out = normalize(values)
+        http = [
+            p for p in out["router"]["extraServicePorts"] if p.get("name") == "http"
+        ]
+        assert len(http) == 1
+        assert http[0]["port"] == 80
+        assert http[0]["targetPort"] == "http"
+
+    def test_httpTargetPort_override_works_regardless_of_proxytype(self, normalize):
+        """The override isn't tied to proxyType at all, it's just a value."""
+        values = {
+            "gateway": {"className": "epponly"},
+            "router": {"proxy": {"httpTargetPort": 9999}},
+        }
+        out = normalize(values)
+        http = [
+            p for p in out["router"]["extraServicePorts"] if p.get("name") == "http"
+        ]
+        assert http[0]["targetPort"] == 9999
 
     def test_non_epponly_does_not_add_port(self, normalize):
         for cls in ("istio", "gke", "agentgateway"):

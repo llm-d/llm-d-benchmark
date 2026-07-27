@@ -1,0 +1,232 @@
+# OpenShift CI/CD Scenario - EPP+KEDA baseline (no FMA)
+#
+# EPP-only (direct KEDA saturation autoscaling) baseline for the EPP+KEDA+FMA
+# nightly's KEDA path. Derived from guides/epp-keda-saturation.yaml (all its
+# settings preserved) with cicd conventions layered on: epponly gateway,
+# enforceEager:false (matched to the FMA launcher for fair comparison),
+# decode.replicas:1 (= KEDA minReplicas), a /tmp workDir, and the heavy load
+# profile. `eppKedaSaturation.enabled: true` drives the KEDA saturation path
+# directly via the KEDA ScaledObject.
+
+scenario:
+  # =========================================================================
+  # EPP+KEDA SATURATION AUTOSCALING - Qwen3-32B with 2 decode pods
+  # =========================================================================
+  - name: "ocp-keda-cicd"
+
+    # =========================================================================
+    # MODEL CONFIGURATION
+    # =========================================================================
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    gateway:
+      className: epponly
+
+    # =========================================================================
+    # EPP+KEDA SATURATION CONFIGURATION
+    #
+    # Direct KEDA autoscaling using EPP pool metrics. All thresholds and
+    # behavior parameters are spelled out below so users can tweak them
+    # per-experiment without editing defaults.yaml.
+    # =========================================================================
+    eppKedaSaturation:
+      enabled: true
+
+      namespace: ""              # defaults to deploy namespace (first slot of `-p`)
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      epp:
+        poolName: ""             # defaults to model_id_label at render time
+        metricsPortName: http-metrics
+        metricsPort: 9090
+        prometheusServiceAccount: thanos-querier
+        prometheusServiceAccountNamespace: openshift-monitoring
+
+      scaledObject:
+        minReplicas: 1
+        maxReplicas: 10
+        pollingInterval: 15
+        kvCacheThreshold: "0.7"  # scale up when pool-avg KV cache > 70%
+        queueSizeThreshold: "2"  # scale up when pool-avg queue > 2 requests
+        activationThreshold: "0"
+        unsafeSsl: true
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              # Adjust periodSeconds to match actual pod startup time.
+              # GPU hardware (H100/A100): 180 seconds
+              # Simulator / kind cluster (fast startup): 30 seconds
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 300
+
+    # =========================================================================
+    # ROUTING / GAIE CONFIGURATION
+    #
+    # EPP+KEDA queries inference_pool_average_kv_cache_utilization and
+    # inference_pool_average_queue_size directly from EPP's /metrics endpoint.
+    # These gauges are emitted by default; no special plugin config needed.
+    #
+    # Do NOT set router.epp.pluginsConfigFile — let it default to
+    # "default-plugins.yaml" which already includes metrics-data-source +
+    # core-metrics-extractor plugins required for these gauges.
+    # =========================================================================
+    router: {}
+
+    # =========================================================================
+    # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+    # =========================================================================
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 1
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "16"
+        requests:
+          memory: 64Gi
+          cpu: "16"
+
+      extraEnvVars: []
+
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557
+            protocol: TCP
+          - containerPort: 8200
+            name: metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 60
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+      monitoring:
+        podmonitor:
+          enabled: true
+          portName: metrics
+          path: /metrics
+          interval: 30s
+          labels:
+            release: llmd
+
+    # =========================================================================
+    # VLLM COMMON CONFIGURATION
+    # =========================================================================
+    vllmCommon:
+      kvTransfer:
+        enabled: true
+        connector: NixlConnector
+        role: kv_both
+
+      flags:
+        enforceEager: false  # match FMA launcher (never --enforce-eager); fair comparison
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # =========================================================================
+    # STORAGE
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 1Ti
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "/tmp/llmdbenchcicd-ocp-keda/"
+
+    harness:
+      name: inference-perf
+      # Heavy variant -- matched RPS across the baseline and FMA passes.
+      experimentProfile: shared_prefix_synthetic_heavy.yaml
+      waitTimeout: 5400

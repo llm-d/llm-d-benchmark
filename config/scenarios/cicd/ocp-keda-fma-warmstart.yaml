@@ -1,0 +1,310 @@
+# CI/CD EPP+KEDA + FMA benchmark scenario (OpenShift).
+#
+# The EPP+KEDA+FMA arm of the FMA-vs-baseline comparison nightly. Its no-FMA
+# baseline is cicd/ocp-keda; the two are kept apples-to-apples (same model, KEDA
+# config, and heavy workload profile, both with vLLM prefix caching off) so the
+# comparison measures the scaling path, not the prefix cache.
+#
+# All KEDA ScaledObject knobs are listed below even when they match
+# defaults.yaml, so the full surface area is visible in one place.
+#
+# Note: FMA owns the elastic vLLM tier here, so the modelservice decode and
+# prefill Deployments are explicitly disabled below (decode.enabled: false,
+# prefill.enabled: false). modelservice still renders the gateway / EPP /
+# InferencePool that route to the FMA launcher pods.
+#
+# KEDA scales an FMA-served model deployment. Topology:
+#
+#   modelservice (decode.enabled: false) provides gateway / EPP / InferencePool
+#     / PodMonitor; its decode Deployment is disabled — FMA owns the
+#     elastic vLLM tier instead.
+#
+#   FMA (fma.enabled: true)           launcher pods host vLLM and serve
+#     inference traffic; the requester Deployment holds the GPU lease
+#     that KEDA scales.
+#
+#   KEDA (eppKedaSaturation.enabled: true)  scales the FMA requester Deployment
+#     on EPP pool saturation metrics; FMA's launcher-populator reconciles
+#     launcher pods to match.
+#
+# How EPP reaches FMA: 12_router-values.yaml.j2 emits a router.modelServers
+# selector matching `llm-d.ai/inferenceServing=true, llm-d.ai/model=<id>`.
+# 24_fma-deployment.yaml.j2 puts those labels on the InferenceServerConfig's
+# `modelServerConfig.labels` (NOT on the LauncherConfig pod template) — the
+# dual-pods controller propagates them to the launcher pod at BIND time, so
+# only launchers actually serving traffic show up in the InferencePool.
+#
+# How KEDA scales FMA: the KEDA ScaledObject (30_epp-keda-saturation-scaledobject.yaml.j2)
+# targets the FMA requester Deployment (`fma-requester-<id>`) and scales it on EPP
+# pool saturation metrics (pool-average KV-cache utilization and queue size)
+# scraped from the EPP via Prometheus/Thanos.
+#
+# Running:
+#
+#   llmdbenchmark --spec cicd/ocp-keda-fma-warmstart standup -p <namespace>
+#
+# `eppKedaSaturation.enabled: true` and `fma.enabled: true` are already set below,
+# so no CLI flag is needed to enable them for this scenario.
+
+scenario:
+  # ============================================================================
+  # CI/CD EPP+KEDA + FMA - Qwen3-32B served by FMA launchers, autoscaled by KEDA
+  # ============================================================================
+  - name: "ocp-keda-fma-warmstart-cicd"
+
+    # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
+    # -------------------------------------------------------------------------
+    # When kustomize.enabled is true (or `-t kustomize` is passed) this
+    # scenario is deployed by applying the UPSTREAM llm-d guide directly
+    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
+    # defined ENTIRELY by the guide's own manifests:
+    #
+    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
+    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
+    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
+    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
+    #     (only run/workload treatments still apply).
+    #
+    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
+    # below:
+    #   patches / overlayPath           -> modelserver (the workload pods)
+    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
+    #   guideVariableOverrides          -> override the guide README's ${VAR}
+    # See docs/kustomize.md for the full reference and worked examples.
+    #
+    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
+    # (the deploy is keyed on guideName with no per-stack uniquification --
+    # stacks would collide). Use the modelservice method for multi-model.
+    #
+    # When kustomize.enabled is false (the DEFAULT) this whole block is
+    # inert and the scenario deploys via modelservice/standalone as
+    # configured further below.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      guideName: "workload-autoscaling"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+      # Inline kustomize strategic merge patches applied on top of the
+      # guide's modelserver base.  For gated models, add an HF_TOKEN
+      # env var patch (the secret is auto-created from HF_TOKEN env):
+      # Default is empty -- upstream guide already injects HF_TOKEN from
+      # the `llm-d-hf-token` Secret (auto-created by standup). Add entries
+      # here only for non-token overrides (e.g. bump replicas, pin a
+      # priorityClassName) -- see optimized-baseline.yaml for an example.
+      patches: []
+
+    # =========================================================================
+    # MODEL CONFIGURATION
+    # =========================================================================
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    gateway:
+      className: epponly
+    fma:
+      enabled: true                    # launcher pods host vLLM and serve traffic;
+                                       # KEDA scales the requester Deployment
+      iterations: 1                    # only matters for nop-harness actuation timing
+                                       # runs; with inference-perf the requester pods
+                                       # are created once at standup and KEDA drives
+                                       # scale during the run.
+
+      requester:
+        replicas: 1
+
+      # Warmup: a deliberate wait inserted in the run phase before the
+      # benchmark fires.
+      warmupTimeout: 1200               # Qwen3-32B fresh vLLM load (warm start)
+                                        # is a 10-20 min op; 600s timed out. Match
+                                        # the hotstart arm's 1200s
+
+    # =========================================================================
+    # EPP + KEDA SATURATION CONFIGURATION
+    #
+    # Edit any field below to change KEDA scaling behavior for this scenario.
+    # Remove a field to fall back to its default.
+    # =========================================================================
+    eppKedaSaturation:
+      enabled: true
+
+      namespace: ""              # defaults to deploy namespace (first slot of `-p`)
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      epp:
+        poolName: ""             # defaults to model_id_label at render time
+        metricsPortName: http-metrics
+        metricsPort: 9090
+        prometheusServiceAccount: thanos-querier
+        prometheusServiceAccountNamespace: openshift-monitoring
+
+      scaledObject:
+        minReplicas: 1
+        maxReplicas: 10
+        pollingInterval: 15
+        kvCacheThreshold: "0.7"  # scale up when pool-avg KV cache > 70%
+        queueSizeThreshold: "2"  # scale up when pool-avg queue > 2 requests
+        activationThreshold: "0"
+        unsafeSsl: true
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 300
+
+    # =========================================================================
+    # CHART VERSIONS
+    #
+    # Pins for the helm charts that step_03 installs. Bump these to track
+    # upstream releases.
+    # =========================================================================
+    chartVersions:
+      # prometheus-adapter chart (prometheus-community/prometheus-adapter).
+      # Pinned because newer releases have broken external-metric compatibility.
+      prometheusAdapter: 5.2.0
+
+    # =========================================================================
+    # ROUTING / GAIE CONFIGURATION
+    # =========================================================================
+    # EPP+KEDA queries inference_pool_average_kv_cache_utilization and
+    # inference_pool_average_queue_size directly from EPP's /metrics endpoint.
+    # These gauges are emitted by default; no special plugin config needed, so
+    # router.epp.pluginsConfigFile is left at its default.
+    router: {}
+
+    # =========================================================================
+    # PREFILL / DECODE CONFIGURATION
+    #
+    # FMA owns the elastic vLLM tier under this topology, so the modelservice
+    # decode and prefill Deployments are disabled here (enabled: false ->
+    # 13_ms-values.yaml.j2 sets create: false). The router chart still renders
+    # gateway, EPP, and InferencePool independently.
+    # =========================================================================
+    prefill:
+      enabled: false
+
+    decode:
+      enabled: false                   # FMA launcher pods serve traffic, not decode
+      replicas: 0
+      # The FMA requester's nodeAffinity borrows decode.acceleratorType.labelValue
+      # (24_fma-deployment.yaml.j2). The cluster resolver skips auto-detection for
+      # disabled sections, so pin the product explicitly here (pokprod = H100) —
+      # otherwise the requester's affinity stays "auto" and it never schedules.
+      # Non-"auto" values are left untouched by the resolver.
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
+
+    # =========================================================================
+    # EPP METRICS MONITORING (REQUIRED for KEDA)
+    #
+    # KEDA scales on EPP pool saturation metrics (inference_pool_average_kv_cache_
+    # utilization / inference_pool_average_queue_size). The EPP-monitoring template
+    # (29_epp-keda-saturation-epp-monitoring.yaml.j2) scrapes those into
+    # user-workload-monitoring / Thanos, which the ScaledObject's Prometheus
+    # trigger then queries. Without it the ScaledObject has no metric source and
+    # never scales.
+    # =========================================================================
+
+    # =========================================================================
+    # VLLM COMMON CONFIGURATION
+    # =========================================================================
+    vllmCommon:
+#      priorityClassName: nightly-gpu-critical
+      kvTransfer:
+        enabled: true
+        connector: NixlConnector
+        role: kv_both
+
+      flags:
+        # enforceEager: false (overrides the defaults.yaml default of true).
+        # Cosmetic for the FMA path itself — FMA's launcher options are
+        # hard-coded in 24_fma-deployment.yaml.j2 and don't read this flag —
+        # but kept here to mirror the baseline scenario and to document intent
+        # if FMA's template ever starts honoring vllmCommon.flags.
+        enforceEager: false
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # =========================================================================
+    # STORAGE
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 1Ti
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "/tmp/llmdbenchcicd-ocp-keda-fma-warmstart/"
+
+    harness:
+      name: inference-perf
+      # Use the heavy variant of shared_prefix_synthetic (8 parallel workers,
+      # ~200 RPS aggregate, larger prompts) calibrated to drive the EPP pool
+      # saturation metrics (KV cache / queue) past the ScaledObject thresholds
+      # so KEDA scales the requester Deployment above 1 on this small model.
+      experimentProfile: shared_prefix_synthetic_heavy.yaml
+      # The heavy profile drives high RPS against Qwen3-32B; the infra
+      # reusable does not pass --wait-timeout on the CLI so the CLI falls
+      # back to this field (see cli.py harness_wait_timeout resolution).
+      waitTimeout: 5400
+
+    images:
+      benchmark:
+        tag: nightly
