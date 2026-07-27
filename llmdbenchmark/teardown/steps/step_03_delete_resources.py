@@ -3,10 +3,9 @@
 import json
 from pathlib import Path
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
-
+from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 
 NORMAL_RESOURCE_LIST = (
     "daemonset,leaderworkerset,deployment,statefulset,httproute,service,"
@@ -23,6 +22,10 @@ SYSTEM_EXCLUDES = {
     "odh-trusted-ca-bundle",
     "openshift-service-ca.crt",
 }
+
+# llm-d-prism persists across normal teardown; deep clean still removes it.
+PRISM_PERSIST_LABEL = "llm-d-benchmark.ai/persist=true"
+PRISM_NAME_MATCH = "llm-d-prism"
 
 STANDALONE_PATTERNS = [
     "standalone",
@@ -325,6 +328,22 @@ class DeleteResourcesStep(Step):
                 except (json.JSONDecodeError, KeyError):
                     pass
 
+            # Preserve persistent llm-d-prism resources (skipped on deep clean).
+            if not context.deep_clean:
+                protected = self._prism_protected_names(cmd, resource_list, ns)
+                before = len(filtered)
+                filtered = [
+                    r
+                    for r in filtered
+                    if r not in protected and PRISM_NAME_MATCH not in r.lower()
+                ]
+                skipped = before - len(filtered)
+                if skipped:
+                    context.logger.log_info(
+                        f"  Preserving {skipped} persistent llm-d-prism "
+                        f"resource(s) in {ns} (removed only by `teardown -d`)"
+                    )
+
             if not filtered:
                 context.logger.log_info(f"  No matching resources found in {ns}")
                 continue
@@ -395,6 +414,27 @@ class DeleteResourcesStep(Step):
             if result.success or "No resources found" in result.stderr:
                 supported.append(resource_type)
         return ",".join(supported)
+
+    @staticmethod
+    def _prism_protected_names(
+        cmd: CommandExecutor, resource_list: str, namespace: str
+    ) -> set[str]:
+        """Return `name/...` strings of persistent llm-d-prism resources."""
+        result = cmd.kube(
+            "get",
+            resource_list,
+            "--namespace",
+            namespace,
+            "-l",
+            PRISM_PERSIST_LABEL,
+            "-o",
+            "name",
+            "--ignore-not-found",
+            check=False,
+        )
+        if result.success and result.stdout.strip():
+            return set(result.stdout.strip().splitlines())
+        return set()
 
     @staticmethod
     def _is_system_resource(resource: str, hf_secret: str) -> bool:
