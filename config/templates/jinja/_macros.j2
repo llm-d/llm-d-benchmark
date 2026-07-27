@@ -228,6 +228,8 @@
   value: "{{ config.vllm.workerMultiprocMethod | default(vllmCommon.workerMultiprocMethod | default('spawn')) }}"
 - name: VLLM_LOGGING_LEVEL
   value: "{{ config.vllm.loggingLevel | default(vllmCommon.loggingLevel | default('INFO')) }}"
+- name: VLLM_HTTP_TIMEOUT_KEEP_ALIVE
+  value: "{{ config.vllm.httpTimeoutKeepAlive | default(120) }}"
 {% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen -%}
 - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
   value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
