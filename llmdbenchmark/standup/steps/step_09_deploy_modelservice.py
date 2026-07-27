@@ -819,6 +819,20 @@ class DeployModelserviceStep(Step):
             params["prefill_replicas"] = str(
                 self._require_config(plan_config, "prefill", "replicas")
             )
+
+            # Accelerator model + per-role parallelism, so the benchmark report
+            # can identify the hardware and topology instead of assuming.
+            accel = plan_config.get("decode", {}).get("acceleratorType", {}) or {}
+            params["accelerator_model"] = accel.get("labelValue", "")
+            for role in ("prefill", "decode"):
+                par = plan_config.get(role, {}).get("parallelism", {}) or {}
+                for cm_key, cfg_key in (
+                    ("tensor", "tensor"),
+                    ("data", "data"),
+                    ("data_local", "dataLocal"),
+                    ("workers", "workers"),
+                ):
+                    params[f"{role}_{cm_key}_parallelism"] = str(par.get(cfg_key, 1))
             chart_versions = plan_config.get("chartVersions", {})
             if chart_versions:
                 params["chart_version_modelservice"] = chart_versions.get(
