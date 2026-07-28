@@ -3,6 +3,28 @@
 echo Using experiment result dir: "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
+
+# Guard: an unsupported/unavailable "profile" value (e.g. "replay", which is
+# only on guidellm main and not yet in a PyPI release) is rejected by
+# guidellm's own CLI validation, but that error gets swallowed during argument
+# parsing and resurfaces as a misleading "Missing field '--target': Field
+# required", sending operators off to debug the wrong thing. Check the
+# requested profile against what the installed guidellm actually supports
+# before invoking it, so the real cause is reported up front.
+requested_profile=$(yq -r '.profile' ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})
+if [[ -n "$requested_profile" ]] && [[ "$requested_profile" != "null" ]]; then
+  supported_profiles=$(python3 -c "
+from guidellm.benchmark import ProfileType
+from guidellm.scheduler import StrategyType
+from guidellm.utils.typing import get_literal_vals
+print(' '.join(sorted(get_literal_vals(ProfileType | StrategyType))))
+" 2>/dev/null)
+  if [[ -n "$supported_profiles" ]] && [[ " $supported_profiles " != *" $requested_profile "* ]]; then
+    echo "ERROR: workload profile '${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}' requests profile '${requested_profile}', which the installed guidellm ($(guidellm --version 2>/dev/null)) does not support. Supported profiles: ${supported_profiles}. If '${requested_profile}' is a newer guidellm feature (e.g. 'replay'), the benchmark image's guidellm pin needs to be updated to a version/commit that supports it." >&2
+    exit 1
+  fi
+fi
+
 export LLMDBENCH_HARNESS_ARGS="--target $(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | yq -r .target) --scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} --output-path ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/results.json --disable-progress"
 
 # Start metrics collection in background if enabled
