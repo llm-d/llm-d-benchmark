@@ -87,12 +87,7 @@ class RenderPlans:
         # ``--non-admin`` propagates into the Jinja render context as
         # ``nonAdmin`` so templates can gate cluster-scoped resources
         # (ClusterRole, ClusterRoleBinding, etc.) the namespaced user
-        # can't create. Currently consumed by
-        # ``05_namespace_sa_rbac_secret.yaml.j2`` to skip the
-        # ``inference-perf-service-viewer`` pair -- those are only
-        # required by the ``nop`` harness's cluster-wide service
-        # discovery, so dropping them is safe for the mainstream
-        # harnesses (inference-perf, guidellm, vllm-benchmark).
+        # can't create.
         self.cli_non_admin: bool = bool(cli_non_admin)
 
         self.logger = logger or get_logger(
