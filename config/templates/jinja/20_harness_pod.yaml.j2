@@ -63,6 +63,14 @@ spec:
       value: "{{ experiment_id }}"
     - name: RAYON_NUM_THREADS
       value: "{{ harness.inferencePerf.rayonNumThreads }}"
+    - name: HOME
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.home"
+    - name: HF_HOME
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache/huggingface"
+    - name: XDG_CACHE_HOME
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache"
+    - name: MPLCONFIGDIR
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache/matplotlib"
 {% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
