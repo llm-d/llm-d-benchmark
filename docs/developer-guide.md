@@ -46,11 +46,11 @@ accurate to the current codebase.
   - [Custom Jinja2 Templates](#custom-jinja2-templates)
 - [8. How to Add a Smoketest Validator](#8-how-to-add-a-smoketest-validator)
 - [9. How to Add a New Experiment](#9-how-to-add-a-new-experiment)
-- [10. Agent Core](#10-agent-core)
   - [Experiment YAML Format](#experiment-yaml-format)
   - [Setup Treatments vs Run Treatments](#setup-treatments-vs-run-treatments)
   - [How to Reference Scenario Overrides](#how-to-reference-scenario-overrides)
   - [Running an Experiment](#running-an-experiment)
+- [10. Agent Core](#10-agent-core)
 
 ---
 
