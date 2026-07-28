@@ -833,6 +833,13 @@ class DeployModelserviceStep(Step):
                     ("workers", "workers"),
                 ):
                     params[f"{role}_{cm_key}_parallelism"] = str(par.get(cfg_key, 1))
+            # Gateway/LWS topology, so the report can list those components.
+            params["gateway_class"] = plan_config.get("gateway", {}).get(
+                "className", ""
+            )
+            params["multinode_enabled"] = str(
+                plan_config.get("multinode", {}).get("enabled", False)
+            ).lower()
             chart_versions = plan_config.get("chartVersions", {})
             if chart_versions:
                 params["chart_version_modelservice"] = chart_versions.get(

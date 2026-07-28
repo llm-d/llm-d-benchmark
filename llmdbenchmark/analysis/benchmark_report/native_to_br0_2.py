@@ -520,19 +520,16 @@ def _add_inference_scheduler_component(br_dict: dict, ev_dict: dict) -> None:
         ev_dict (dict): Environment variable values.
     """
     epp_config_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
-    if not epp_config_str:
-        return
-
-    epp_config = yaml.safe_load(epp_config_str)
-    # Inference scheduler component
+    epp_config = yaml.safe_load(epp_config_str) if epp_config_str else {}
+    # "scheduler" in the label is what prism keys off to show the component.
     epp = {
         "metadata": {
-            "label": "EPP",  # TODO
+            "label": "Inference Scheduler (EPP)",
             "cfg_id": config_hash(epp_config),
         },
         "standardized": {
             "kind": "generic",
-            "tool": "request_router",
+            "tool": "inference_scheduler",
             "tool_version": "",  # TODO get version somehow
         },
         "native": {
@@ -542,6 +539,40 @@ def _add_inference_scheduler_component(br_dict: dict, ev_dict: dict) -> None:
 
     stack: list[Component] = br_dict["scenario"]["stack"]
     stack.append(epp)
+
+
+def _add_gateway_component(br_dict: dict, ev_dict: dict) -> None:
+    """Add an inference gateway component unless the topology has none."""
+    gateway_class = ev_dict.get("gateway_class", "")
+    # epponly deploys no Kubernetes Gateway (EPP serves HTTP directly).
+    if not gateway_class or gateway_class == "epponly":
+        return
+    gateway = {
+        "metadata": {"label": "Inference Gateway", "cfg_id": config_hash({})},
+        "standardized": {
+            "kind": "generic",
+            "tool": f"inference_gateway ({gateway_class})",
+            "tool_version": "",
+        },
+        "native": {"config": {"className": gateway_class}},
+    }
+    br_dict["scenario"]["stack"].append(gateway)
+
+
+def _add_leaderworkerset_component(br_dict: dict, ev_dict: dict) -> None:
+    """Add a LeaderWorkerSet component when multinode serving is enabled."""
+    if str(ev_dict.get("multinode_enabled", "")).lower() != "true":
+        return
+    lws = {
+        "metadata": {"label": "LeaderWorkerSet", "cfg_id": config_hash({})},
+        "standardized": {
+            "kind": "generic",
+            "tool": "leaderworkerset",
+            "tool_version": "",
+        },
+        "native": {"config": {}},
+    }
+    br_dict["scenario"]["stack"].append(lws)
 
 
 def _populate_disaggregate_stack(ev_dict: dict) -> dict:
@@ -701,6 +732,8 @@ def _populate_disaggregate_stack(ev_dict: dict) -> dict:
 
     # Add inference scheduler component to stack
     _add_inference_scheduler_component(br_dict, ev_dict)
+    _add_gateway_component(br_dict, ev_dict)
+    _add_leaderworkerset_component(br_dict, ev_dict)
     return br_dict
 
 
@@ -775,6 +808,8 @@ def _ev_dict_from_params(data: dict) -> dict:
         "vllm_common_replicas": data.get("decode_replicas", 1),
         "vllm_modelservice_prefill_replicas": data.get("prefill_replicas", 0),
         "vllm_modelservice_decode_replicas": data.get("decode_replicas", 1),
+        "gateway_class": data.get("gateway_class", ""),
+        "multinode_enabled": data.get("multinode_enabled", ""),
     }
     for role in ("prefill", "decode"):
         for short, key in (
