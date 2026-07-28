@@ -16,6 +16,7 @@ Validates that:
 from __future__ import annotations
 
 import inspect
+import subprocess
 import sys
 from pathlib import Path
 
@@ -185,6 +186,15 @@ class TestExecutionFactsValidation:
         with pytest.raises(ValidationError):
             ExecutionFacts(**self._kwargs(benchmark_session_id="a" * 52))
 
+    def test_47_char_session_id_allowed_and_yields_legal_job_name(self):
+        # 16-char "llmdbench-agent-" prefix + 47 == 63, the RFC1123 cap.
+        facts = ExecutionFacts(**self._kwargs(benchmark_session_id="a" * 47))
+        assert len(f"llmdbench-agent-{facts.benchmark_session_id}") == 63
+
+    def test_48_char_session_id_raises(self):
+        with pytest.raises(ValidationError):
+            ExecutionFacts(**self._kwargs(benchmark_session_id="a" * 48))
+
 
 def test_secret_reference_with_raw_value_raises():
     with pytest.raises(ValidationError):
@@ -215,6 +225,53 @@ def test_batch_throughput_falls_back_when_primary_profile_missing(tmp_path):
     assert result.recommendation_confidence == "low"
 
 
+def test_prefix_reuse_on_an_intent_without_a_dedicated_row_falls_back():
+    """Long-Context Generation and Batch Throughput have no
+    prefix_reuse=true row; setting prefix_reuse=True globally must not
+    crash the sole entry point on an otherwise-legal input."""
+    result = recommend(
+        RecommendationFacts(
+            workload_intent=WorkloadIntent.LONG_CONTEXT_GENERATION, prefix_reuse=True
+        )
+    )
+    assert result.selected.workload_profile == "summarization_synthetic.yaml"
+    assert any(d.code == "prefix_reuse_not_supported" for d in result.diagnostics)
+
+
+def test_bogus_overrides_are_validated_not_bypassed():
+    """Agent Static Validation must check the post-override selection, not
+    the raw Recommendation Map row: a bogus override must surface as a
+    diagnostic, never as an empty diagnostics list."""
+    result = recommend(
+        RecommendationFacts(workload_intent=WorkloadIntent.INTERACTIVE_CHAT),
+        RecommendationOverrides(
+            specification="does/not-exist",
+            harness="nope",
+            workload_profile="ghost.yaml",
+        ),
+    )
+    codes = {d.code for d in result.diagnostics}
+    assert "specification_not_found" in codes
+    assert "harness_not_found" in codes
+    assert result.selected.specification == "does/not-exist"
+    assert result.selected.harness == "nope"
+
+
 def test_importing_agent_leaves_no_planner_or_kubernetes_in_sys_modules():
-    assert "planner" not in sys.modules
-    assert "kubernetes" not in sys.modules
+    """A process-global ``sys.modules`` assertion cannot run in-process:
+    pytest collection imports every test module up front, and sibling
+    modules (test_smoketest_inference.py, test_cluster_resource_resolver.py)
+    install a ``planner`` stub / import ``kubernetes`` before this test
+    body ever runs. Check it in a fresh subprocess instead."""
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import llmdbenchmark.agent; "
+            "assert 'planner' not in sys.modules; "
+            "assert 'kubernetes' not in sys.modules",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr

@@ -239,6 +239,55 @@ def test_missing_throughput_yields_diagnostic(tmp_path):
     assert any(d.code == "missing_throughput" for d in result.slo_scoring_diagnostics)
 
 
+def test_v01_report_yields_diagnostic_not_exception():
+    v01_report = (
+        PROJECT_ROOT
+        / "llmdbenchmark"
+        / "analysis"
+        / "benchmark_report"
+        / "br_v0_1_example.yaml"
+    )
+    gate = SloGate(metric=SloMetric.TIME_TO_FIRST_TOKEN, threshold=0.1, units="s")
+    result = score_slo_goodput([v01_report], [gate])
+    assert result.reports[0].verdict == "indeterminate"
+    assert any(
+        d.code == "unsupported_report_version" for d in result.slo_scoring_diagnostics
+    )
+
+
+def test_missing_path_yields_diagnostic_not_exception(tmp_path):
+    gate = SloGate(metric=SloMetric.TIME_TO_FIRST_TOKEN, threshold=0.1, units="s")
+    result = score_slo_goodput([tmp_path / "does-not-exist.yaml"], [gate])
+    assert result.reports[0].verdict == "indeterminate"
+    assert any(d.code == "unreadable_report" for d in result.slo_scoring_diagnostics)
+
+
+def test_directory_path_yields_diagnostic_not_exception(tmp_path):
+    gate = SloGate(metric=SloMetric.TIME_TO_FIRST_TOKEN, threshold=0.1, units="s")
+    result = score_slo_goodput([tmp_path], [gate])
+    assert result.reports[0].verdict == "indeterminate"
+    assert any(d.code == "unreadable_report" for d in result.slo_scoring_diagnostics)
+
+
+def test_scalar_yaml_document_yields_diagnostic_not_exception(tmp_path):
+    path = tmp_path / "scalar.yaml"
+    path.write_text("just a string\n")
+    gate = SloGate(metric=SloMetric.TIME_TO_FIRST_TOKEN, threshold=0.1, units="s")
+    result = score_slo_goodput([path], [gate])
+    assert result.reports[0].verdict == "indeterminate"
+    assert any(d.code == "unreadable_report" for d in result.slo_scoring_diagnostics)
+
+
+def test_empty_gates_is_indeterminate_not_pass():
+    """The out-of-the-box, no-gates-supplied state must never stamp a
+    report 'pass' -- that would publish an SLO Goodput number with zero
+    SLO evaluated."""
+    result = score_slo_goodput([EXAMPLE_REPORT], [])
+    assert result.reports[0].verdict == "indeterminate"
+    assert any(d.code == "no_gates_supplied" for d in result.slo_scoring_diagnostics)
+    assert result.slo_goodput_output_token_rate is None
+
+
 def test_discover_agent_analysis_input_ignores_v01_sibling(tmp_path):
     treatment_dir = tmp_path / "treatment_0"
     treatment_dir.mkdir()

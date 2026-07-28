@@ -45,14 +45,26 @@ class RecommendationMap:
             data = yaml.safe_load(handle)
         return cls(version=data["recommendation_map_version"], rules=data["rules"])
 
-    def find(self, facts: RecommendationFacts) -> dict | None:
+    def find(self, facts: RecommendationFacts) -> tuple[dict | None, bool]:
+        """Return the matching row and whether ``prefix_reuse`` had to be
+        ignored to find it. Only Interactive Chat carries a dedicated
+        ``prefix_reuse: true`` row; a caller who sets ``prefix_reuse=True``
+        globally for another intent falls back to that intent's
+        ``prefix_reuse: false`` row rather than getting a ``ValueError``
+        from an otherwise diagnostics-not-exceptions function."""
         for rule in self.rules:
             if (
                 rule["workload_intent"] == str(facts.workload_intent)
                 and rule.get("prefix_reuse", False) == facts.prefix_reuse
             ):
-                return rule
-        return None
+                return rule, False
+        if facts.prefix_reuse:
+            for rule in self.rules:
+                if rule["workload_intent"] == str(
+                    facts.workload_intent
+                ) and not rule.get("prefix_reuse", False):
+                    return rule, True
+        return None, False
 
 
 def _recommendation_id(
@@ -82,15 +94,21 @@ def _profile_exists(profiles_dir: Path, profile: str) -> bool:
 
 
 def _validate(
-    rule: dict,
+    specification: str,
+    harness: str,
+    profile: str,
+    fallback_profile: str | None,
     base_dir: Path,
 ) -> tuple[list[Diagnostic], str, bool]:
     """Agent Static Validation: local filesystem only, zero Kubernetes
-    calls. Returns diagnostics, the selected workload profile (after any
-    Batch Throughput fallback), and whether the fallback fired."""
+    calls. Validates the specification/harness/workload_profile that were
+    actually selected -- after Recommendation Overrides are folded in, not
+    the raw Recommendation Map row -- so a bogus override is caught rather
+    than silently passed through to the rendered run command. Returns
+    diagnostics, the selected workload profile (after any Batch Throughput
+    fallback), and whether the fallback fired."""
     diagnostics: list[Diagnostic] = []
 
-    specification = rule["specification"]
     try:
         resolve_specification_file(specification, base_dir=base_dir)
     except (FileNotFoundError, ValueError) as exc:
@@ -103,7 +121,6 @@ def _validate(
             )
         )
 
-    harness = rule["harness"]
     harness_dir = base_dir / "workload" / "profiles" / harness
     if not harness_dir.is_dir():
         diagnostics.append(
@@ -115,8 +132,6 @@ def _validate(
             )
         )
 
-    profile = rule["workload_profile"]
-    fallback_profile = rule.get("fallback_workload_profile")
     fallback_used = False
     if harness_dir.is_dir() and not _profile_exists(harness_dir, profile):
         if fallback_profile and _profile_exists(harness_dir, fallback_profile):
@@ -163,14 +178,26 @@ def recommend(
     resolved_base_dir = base_dir or _DEFAULT_BASE_DIR
 
     recommendation_map = RecommendationMap.load(map_path)
-    rule = recommendation_map.find(facts)
+    rule, prefix_reuse_ignored = recommendation_map.find(facts)
     if rule is None:
         raise ValueError(
             f"No Recommendation Map rule for workload_intent="
             f"{facts.workload_intent!r}, prefix_reuse={facts.prefix_reuse!r}"
         )
 
-    diagnostics, profile, fallback_used = _validate(rule, resolved_base_dir)
+    diagnostics: list[Diagnostic] = []
+    if prefix_reuse_ignored:
+        diagnostics.append(
+            Diagnostic(
+                severity="info",
+                code="prefix_reuse_not_supported",
+                message=(
+                    f"No Recommendation Map rule distinguishes prefix_reuse "
+                    f"for {facts.workload_intent!r}; scored as prefix_reuse=False."
+                ),
+                subject="prefix_reuse",
+            )
+        )
 
     confidence = RecommendationConfidence(rule["recommendation_confidence"])
     degraded = False
@@ -189,7 +216,16 @@ def recommend(
 
     if overrides.workload_profile is not None:
         profile = overrides.workload_profile
+        fallback_profile = None
         degraded = True
+    else:
+        profile = rule["workload_profile"]
+        fallback_profile = rule.get("fallback_workload_profile")
+
+    validation_diagnostics, profile, fallback_used = _validate(
+        specification, harness, profile, fallback_profile, resolved_base_dir
+    )
+    diagnostics.extend(validation_diagnostics)
 
     slo_gate_percentile = overrides.slo_gate_percentile or GatePercentile.P95
     if overrides.slo_gate_percentile is not None:
