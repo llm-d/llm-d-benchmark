@@ -21,6 +21,17 @@ EPHEMERAL_POD_LABEL = "llm-d-benchmark/ephemeral=true"
 """Label applied to all ephemeral curl/smoketest pods for cleanup."""
 
 
+def resolve_direct_service_namespace(
+    plan_config: dict | None, fallback_namespace: str
+) -> str:
+    """Return the namespace containing the direct ModelService Service."""
+    gateway = (plan_config or {}).get("gateway") or {}
+    gateway_namespace = gateway.get("namespace")
+    if gateway_namespace in (None, "", "auto"):
+        return fallback_namespace
+    return str(gateway_namespace)
+
+
 def _normalize_url_prefix(prefix: str | None) -> str:
     """Normalize a URL path prefix for safe concatenation with ``/v1/models``.
 

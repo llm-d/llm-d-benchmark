@@ -15,6 +15,7 @@ from llmdbenchmark.utilities.endpoint import (
     discover_hf_token_secret,
     extract_hf_token_from_secret,
     compute_gateway_path_prefix,
+    resolve_direct_service_namespace,
 )
 
 
@@ -149,6 +150,9 @@ class DetectEndpointStep(Step):
                 )
             elif gateway_class == "none":
                 model_id_label = plan_config.get("model_id_label", "")
+                direct_service_namespace = resolve_direct_service_namespace(
+                    plan_config, namespace
+                )
                 direct_port = str(
                     self._resolve(
                         plan_config,
@@ -159,7 +163,7 @@ class DetectEndpointStep(Step):
                 service_ip, service_name, gateway_port = (
                     find_direct_modelservice_endpoint(
                         cmd,
-                        namespace,
+                        direct_service_namespace,
                         model_id_label,
                         direct_port,
                     )

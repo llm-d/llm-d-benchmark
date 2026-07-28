@@ -29,6 +29,7 @@ from llmdbenchmark.utilities.endpoint import (
     find_gateway_endpoint,
     find_direct_modelservice_endpoint,
     find_epponly_endpoint,
+    resolve_direct_service_namespace,
 )
 
 # Transient HTTP status codes / error substrings that warrant a retry.
@@ -99,6 +100,8 @@ class InferenceTestStep(Step):
 
         # Discover endpoint (same logic as smoketest)
         gateway_class = plan_config.get("gateway", {}).get("className", "")
+        if gateway_class == "none" and not is_standalone:
+            namespace = resolve_direct_service_namespace(plan_config, namespace)
         model_id_label = plan_config.get("model_id_label", "")
         if is_standalone:
             service_ip, _, gateway_port = find_standalone_endpoint(

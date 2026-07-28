@@ -12,8 +12,12 @@ import yaml
 from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolver
 from llmdbenchmark.parser.render_plans import RenderPlans
 from llmdbenchmark.parser.version_resolver import VersionResolver
+from llmdbenchmark.smoketests.base import BaseSmoketest
 from llmdbenchmark.standup.steps.step_08_deploy_router import DeployRouterStep
-from llmdbenchmark.utilities.endpoint import find_direct_modelservice_endpoint
+from llmdbenchmark.utilities.endpoint import (
+    find_direct_modelservice_endpoint,
+    resolve_direct_service_namespace,
+)
 
 _REPO = Path(__file__).resolve().parents[1]
 
@@ -119,6 +123,51 @@ def test_direct_endpoint_prefers_named_http_port() -> None:
     )
 
 
+def test_direct_service_namespace_prefers_explicit_gateway_namespace() -> None:
+    plan_config = {"gateway": {"namespace": "model-serving"}}
+
+    assert resolve_direct_service_namespace(plan_config, "benchmark") == "model-serving"
+    assert resolve_direct_service_namespace({}, "benchmark") == "benchmark"
+    assert (
+        resolve_direct_service_namespace(
+            {"gateway": {"namespace": "auto"}}, "benchmark"
+        )
+        == "benchmark"
+    )
+
+
+def test_direct_smoketest_discovers_service_in_gateway_namespace() -> None:
+    service = {"spec": {"clusterIP": "10.0.0.42", "ports": [{"port": 8000}]}}
+    cmd = MagicMock()
+    cmd.kube.return_value = SimpleNamespace(
+        success=True,
+        stdout=json.dumps(service),
+    )
+    context = MagicMock()
+    context.deployed_methods = ["modelservice"]
+    context.require_namespace.return_value = "benchmark"
+    context.dry_run = False
+    plan_config = {
+        "gateway": {"className": "none", "namespace": "model-serving"},
+        "model_id_label": "model-id",
+        "routing": {"servicePort": 8000},
+    }
+
+    endpoint = BaseSmoketest.discover_endpoint(cmd, context, plan_config)
+
+    assert endpoint == ("10.0.0.42", "8000", False)
+    cmd.kube.assert_called_once_with(
+        "get",
+        "service",
+        "model-id-direct",
+        "--namespace",
+        "model-serving",
+        "-o",
+        "json",
+        check=False,
+    )
+
+
 def test_direct_mode_skips_router_deployment(tmp_path: Path) -> None:
     (tmp_path / "config.yaml").write_text(
         yaml.safe_dump({"gateway": {"className": "none"}}),
@@ -176,6 +225,7 @@ def test_gpu_example_renders_plain_service_without_router(tmp_path: Path) -> Non
     )
     assert direct_service["kind"] == "Service"
     assert direct_service["metadata"]["name"] == f"{config['model_id_label']}-direct"
+    assert direct_service["metadata"]["namespace"] == config["gateway"]["namespace"]
     assert direct_service["spec"]["selector"] == {
         "llm-d.ai/model": config["model_id_label"],
         "llm-d.ai/role": "decode",
@@ -192,3 +242,51 @@ def test_gpu_example_renders_plain_service_without_router(tmp_path: Path) -> Non
     command = modelservice_values["decode"]["containers"][0]["args"][0]
     assert "--port $VLLM_INFERENCE_PORT" in command
     assert "$VLLM_METRICS_PORT" not in command
+
+
+def test_direct_service_uses_gateway_namespace_and_decode_target_port(
+    tmp_path: Path,
+) -> None:
+    scenario_file = tmp_path / "scenario.yaml"
+    scenario_file.write_text(
+        (_REPO / "config/scenarios/examples/gpu.yaml")
+        .read_text(encoding="utf-8")
+        .replace(
+            "gateway:\n      className: epponly",
+            "gateway:\n      className: none\n      namespace: model-serving",
+        )
+        .replace(
+            "    decode:\n      # replicas: 1",
+            "    decode:\n      vllm:\n        servicePort: 8100\n      # replicas: 1",
+        )
+        .replace(
+            "    # Decode Configuration",
+            "    routing:\n      servicePort: 8000\n\n    # Decode Configuration",
+        ),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "rendered"
+    logger = MagicMock()
+
+    result = RenderPlans(
+        template_dir=_REPO / "config/templates/jinja",
+        defaults_file=_REPO / "config/templates/values/defaults.yaml",
+        scenarios_file=scenario_file,
+        output_dir=output_dir,
+        logger=logger,
+        version_resolver=VersionResolver(logger=logger, dry_run=True),
+        cluster_resource_resolver=ClusterResourceResolver(logger=logger, dry_run=True),
+    ).eval()
+
+    assert not result.has_errors, result.to_dict()
+    stack_dir = next(path.parent for path in output_dir.rglob("config.yaml"))
+    config = yaml.safe_load((stack_dir / "config.yaml").read_text(encoding="utf-8"))
+    direct_service = yaml.safe_load(
+        (stack_dir / "13a_modelservice-direct-service.yaml").read_text(encoding="utf-8")
+    )
+
+    assert config["namespace"]["name"] != "model-serving"
+    assert config["gateway"]["namespace"] == "model-serving"
+    assert direct_service["metadata"]["namespace"] == "model-serving"
+    assert direct_service["spec"]["ports"][0]["port"] == 8000
+    assert direct_service["spec"]["ports"][0]["targetPort"] == 8100

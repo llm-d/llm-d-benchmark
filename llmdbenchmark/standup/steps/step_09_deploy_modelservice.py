@@ -7,6 +7,7 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
 
 
 class DeployModelserviceStep(Step):
@@ -51,6 +52,10 @@ class DeployModelserviceStep(Step):
         timeout = (
             context.modelservice_deploy_timeout
         )  # Generic timeout for all pods in step 9
+        gateway_class = self._require_config(plan_config, "gateway", "className")
+        direct_service_mode = gateway_class == "none"
+        if direct_service_mode:
+            namespace = resolve_direct_service_namespace(plan_config, namespace)
 
         if not context.dry_run:
             pc_error = self._check_priority_class(cmd, plan_config, context)
@@ -112,8 +117,6 @@ class DeployModelserviceStep(Step):
                 if not result.success:
                     errors.append(f"Failed to deploy modelservice: {result.stderr}")
 
-        gateway_class = self._require_config(plan_config, "gateway", "className")
-        direct_service_mode = gateway_class == "none"
         if direct_service_mode:
             direct_service_yaml = self._find_yaml(
                 stack_path, "13a_modelservice-direct-service"
@@ -397,9 +400,11 @@ class DeployModelserviceStep(Step):
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if not errors:
-            resource_types = "deployment,service,pods,gateway,httproute"
-            if context.is_openshift:
-                resource_types += ",route"
+            resource_types = "deployment,service,pods"
+            if not direct_service_mode:
+                resource_types += ",gateway,httproute"
+                if context.is_openshift:
+                    resource_types += ",route"
             cmd.kube(
                 "get",
                 resource_types,
