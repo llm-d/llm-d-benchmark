@@ -13,6 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+from pydantic import ValidationError
+
 from llmdbenchmark.agent.facts import (
     Diagnostic,
     GatePercentile,
@@ -21,8 +23,6 @@ from llmdbenchmark.agent.facts import (
     SloGoodput,
     SloGoodputReport,
 )
-from pydantic import ValidationError
-
 from llmdbenchmark.analysis.benchmark_report import import_benchmark_report
 from llmdbenchmark.analysis.benchmark_report.base import UNITS_GEN_LATENCY, UNITS_TIME
 
@@ -160,6 +160,34 @@ def _score_report(
 
     try:
         report = import_benchmark_report(report_str)
+    except (OSError, AttributeError) as exc:
+        # A missing/unreadable path (FileNotFoundError, IsADirectoryError,
+        # PermissionError -- all OSError) or a YAML document whose top
+        # level isn't a mapping (AttributeError from core.py's dict-style
+        # access): routine on a stale or mid-write artifact, never a
+        # reason to kill the whole scoring run.
+        message = str(exc) or repr(exc)
+        diagnostics.append(
+            Diagnostic(
+                severity="error",
+                code="unreadable_report",
+                message=f"{report_str}: {message}",
+                subject=report_str,
+            )
+        )
+        return (
+            SloGoodputReport(
+                report_path=report_str,
+                stage=None,
+                rate_qps=None,
+                concurrency=None,
+                verdict="indeterminate",
+                gate_results=[],
+                output_token_rate_mean=None,
+                request_rate_mean=None,
+            ),
+            diagnostics,
+        )
     except ValidationError as exc:
         # ValidationError is a ValueError subclass, so it must be caught
         # ahead of the plain-ValueError version-dispatch branch below.
@@ -205,6 +233,38 @@ def _score_report(
             diagnostics,
         )
 
+    if getattr(report, "version", None) not in ("0.2", "0.2.1"):
+        # load_benchmark_report happily loads a v0.1 report (it predates
+        # the "standardized"/"aggregate" shape this module reads); a v0.1
+        # file sitting next to its v0.2 sibling on disk must yield the
+        # same diagnostic as any other unsupported version, not an
+        # AttributeError three lines down.
+        message = (
+            f"{report_str}: unsupported report version "
+            f"{getattr(report, 'version', None)!r} (only 0.2/0.2.1 are scored)"
+        )
+        diagnostics.append(
+            Diagnostic(
+                severity="error",
+                code="unsupported_report_version",
+                message=message,
+                subject=report_str,
+            )
+        )
+        return (
+            SloGoodputReport(
+                report_path=report_str,
+                stage=None,
+                rate_qps=None,
+                concurrency=None,
+                verdict="indeterminate",
+                gate_results=[],
+                output_token_rate_mean=None,
+                request_rate_mean=None,
+            ),
+            diagnostics,
+        )
+
     if getattr(report, "version", None) == "0.2.1":
         diagnostics.append(
             Diagnostic(
@@ -230,7 +290,7 @@ def _score_report(
         diagnostics.append(
             Diagnostic(
                 severity="warning",
-                code="missing_percentile",
+                code="missing_aggregate",
                 message=f"{report_str}: results.request_performance.aggregate is absent",
                 subject=report_str,
             )
@@ -241,11 +301,26 @@ def _score_report(
         for gate in gates
     ]
 
-    verdict = "pass"
-    if any(g.passed is False for g in gate_results):
+    if not gates:
+        # No SLO Gates supplied is the documented out-of-the-box state (the
+        # map ships no thresholds), but "pass" with nothing evaluated is
+        # the worst failure mode for a gating tool: it reads as every SLO
+        # having been met. Score as indeterminate instead.
+        verdict = "indeterminate"
+        diagnostics.append(
+            Diagnostic(
+                severity="info",
+                code="no_gates_supplied",
+                message=f"{report_str}: no SLO Gates supplied; SLO Goodput not evaluated",
+                subject=report_str,
+            )
+        )
+    elif any(g.passed is False for g in gate_results):
         verdict = "fail"
     elif any(g.passed is None for g in gate_results):
         verdict = "indeterminate"
+    else:
+        verdict = "pass"
 
     requests = getattr(aggregate, "requests", None) if aggregate else None
     if max_failure_ratio is not None:
@@ -257,7 +332,7 @@ def _score_report(
             diagnostics.append(
                 Diagnostic(
                     severity="warning",
-                    code="missing_percentile",
+                    code="missing_failure_ratio",
                     message=(
                         f"{report_str}: cannot evaluate max_failure_ratio, "
                         f"requests.{{total,failures}} missing"

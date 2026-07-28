@@ -14,7 +14,14 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, field_validator
+
+from llmdbenchmark.analysis.benchmark_report.base import UNITS_GEN_LATENCY, UNITS_TIME
+
+# The only units score.py's normalization table (score.py:_SECONDS_PER_UNIT,
+# _SECONDS_PER_TOKEN_PER_UNIT) knows how to compare against an observed
+# aggregate value.
+_SLO_GATE_UNITS = {str(u) for u in (*UNITS_TIME, *UNITS_GEN_LATENCY)}
 
 # Mirrors llmdbenchmark/parser/config_schema.py:29-33 STRICT_CONFIG.
 STRICT = ConfigDict(
@@ -30,9 +37,10 @@ READER = ConfigDict(
     str_strip_whitespace=True,
 )
 
-# 51 chars max so "llmdbench-agent-<id>" (17 chars of prefix) stays inside
-# the 63-char RFC1123 limit.
-_SESSION_ID_PATTERN = r"^[a-z0-9]([-a-z0-9]{0,49}[a-z0-9])?$"
+# 47 chars max so "llmdbench-agent-<id>" (16 chars of prefix, see
+# render.py's render_benchmark_job_manifest) stays inside the 63-char
+# RFC1123 limit: 16 + 47 = 63.
+_SESSION_ID_PATTERN = r"^[a-z0-9]([-a-z0-9]{0,45}[a-z0-9])?$"
 
 
 ###############################################################################
@@ -254,6 +262,13 @@ class SloGate(BaseModel):
     metric: SloMetric
     threshold: float
     units: str
+
+    @field_validator("units")
+    @classmethod
+    def _units_must_be_scorable(cls, value: str) -> str:
+        if value not in _SLO_GATE_UNITS:
+            raise ValueError(f"units {value!r} is not one of {sorted(_SLO_GATE_UNITS)}")
+        return value
 
 
 class GateResult(BaseModel):

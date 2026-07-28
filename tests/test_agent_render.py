@@ -150,6 +150,14 @@ class TestBenchmarkJobManifest:
         assert len(name) <= 63
         assert re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", name)
 
+    def test_name_is_legal_rfc1123_at_max_session_id_length(self):
+        # The longest benchmark_session_id ExecutionFacts allows must not
+        # push metadata.name past the 63-char RFC1123 limit.
+        _, _, _, manifest = self._manifest(benchmark_session_id="a" * 47)
+        name = manifest["metadata"]["name"]
+        assert len(name) == 63
+        assert re.match(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", name)
+
     def test_both_identities_present_and_distinct(self):
         recommendation, _, _, manifest = self._manifest()
         labels = manifest["metadata"]["labels"]
