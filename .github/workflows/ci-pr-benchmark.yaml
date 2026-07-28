@@ -24,10 +24,10 @@ jobs:
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
-          pip install pytest
+          pip install pytest pytest-xdist
 
       - name: Run unit tests
-        run: python -m pytest tests/ -x -q
+        run: python -m pytest tests/ -x -q -n2
 
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:
