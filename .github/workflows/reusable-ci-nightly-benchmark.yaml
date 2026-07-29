@@ -642,7 +642,9 @@ jobs:
             mkdir -p ~/work/llm-d-benchmark/
             cd ~/work/llm-d-benchmark/
             echo "### llm-d-benchmark code NOT found, will clone now"
-            git clone https://github.com/llm-d/llm-d-benchmark.git
+            # TEMP HACK (revert before merge): clone the dispatched repo/branch
+            # (e.g. fma_keda) so standup runs the branch's scenarios, not main.
+            git clone -b "${{ github.ref_name }}" "https://github.com/${{ github.repository }}.git"
           fi
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
           if [[ ! -f install.sh ]]; then

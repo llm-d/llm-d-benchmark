@@ -378,6 +378,41 @@ def aggregate_pod_startup_stats():
     )
 
 
+def aggregate_requester_startup_stats():
+    """Aggregate creation->Ready for runtime FMA requester pods.
+
+    FMA requester pod goes Ready only when its bound vLLM is serving, so this is
+    FMA's "Avg pod startup" (time to serving)."""
+    startup_file = os.path.join(processed_dir, "pod_startup_times.json")
+    data = _load_json(startup_file) or {}
+    if not data.get("pods"):
+        return
+    ts_data = _load_json(os.path.join(processed_dir, "replica_status_timeseries.json"))
+    snaps = (ts_data or {}).get("snapshots", [])
+    run_start = snaps[0].get("timestamp") if snaps else None
+
+    values = []
+    for p in data.get("pods", []):
+        if p.get("role") != "requester":
+            continue
+        s = p.get("startup_seconds")
+        if not isinstance(s, (int, float)):
+            continue
+        ready = p.get("ready_timestamp")
+        if run_start and ready and ready < run_start:
+            continue  # standup requester -- ignore
+        values.append(s)
+    if not values:
+        return
+
+    data["requester_runtime_aggregate"] = _compute_stats(values, "s")
+    _save_json(startup_file, data)
+    print(
+        f"Requester run-time startup: {len(values)} pods, "
+        f"mean={data['requester_runtime_aggregate']['mean']:.1f}s"
+    )
+
+
 def aggregate_replica_stats():
     """Compute aggregate statistics from replica status time series."""
     ts_data = _load_json(os.path.join(processed_dir, "replica_status_timeseries.json"))
@@ -406,4 +441,5 @@ def aggregate_replica_stats():
 if __name__ == "__main__":
     aggregate_metrics()
     aggregate_pod_startup_stats()
+    aggregate_requester_startup_stats()
     aggregate_replica_stats()

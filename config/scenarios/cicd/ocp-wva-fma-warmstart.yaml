@@ -438,6 +438,12 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS
     # =========================================================================
+    # Enable metrics scraping (collect_metrics.sh in the harness):
+    # captures requester replica counts + EPP KV-cache/queue-depth gauges into
+    # results/metrics/..
+    monitoring:
+      metricsScrapeEnabled: true
+
     workDir: "/tmp/llmdbenchcicd-ocp-wva-fma-warmstart/"
 
     harness:

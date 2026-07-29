@@ -139,6 +139,13 @@ scenario:
       requester:
         replicas: 1
 
+      # Standup (step 06) bound-launcher wait: how long to wait for the
+      # dual-pods-controller to bind a launcher and its vLLM to start serving
+      # (the inferenceServing/model labels appear only once serving). Raised
+      # above the 600s default because Qwen3-32B off shared storage can exceed
+      # 10 min to load and serve, tripping a CI standup timeout.
+      boundLauncherTimeout: 1800
+
       # Warmup: a deliberate wait inserted in the run phase before the
       # benchmark fires.
       warmupTimeout: 1200               # Qwen3-32B fresh vLLM load (warm start)
@@ -169,7 +176,7 @@ scenario:
 
       scaledObject:
         minReplicas: 1
-        maxReplicas: 10
+        maxReplicas: 6
         pollingInterval: 15
         kvCacheThreshold: "0.7"  # scale up when pool-avg KV cache > 70%
         queueSizeThreshold: "2"  # scale up when pool-avg queue > 2 requests
@@ -313,6 +320,12 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS
     # =========================================================================
+    # Enable metrics scraping (collect_metrics.sh in the harness):
+    # captures requester replica counts + EPP KV-cache/queue-depth gauges into
+    # results/metrics/..
+    monitoring:
+      metricsScrapeEnabled: true
+
     workDir: "/tmp/llmdbenchcicd-ocp-keda-fma-warmstart/"
 
     harness:
@@ -327,6 +340,8 @@ scenario:
       # back to this field (see cli.py harness_wait_timeout resolution).
       waitTimeout: 5400
 
+    # TEMP HACK (revert to nightly before merge): branch-built image so the
+    # in-pod collect_metrics.sh carries the requester replica-counting fix.
     images:
       benchmark:
-        tag: nightly
+        tag: fma_keda
