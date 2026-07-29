@@ -667,6 +667,7 @@ class RenderPlans:
     # at render time so a typo doesn't silently produce a broken Gateway /
     # InferencePool chart configuration.
     _SUPPORTED_GATEWAY_CLASSES: tuple[str, ...] = (
+        "none",
         "epponly",
         "istio",
         "agentgateway",
@@ -789,6 +790,71 @@ class RenderPlans:
                 "Gateway that epponly does not deploy)."
             )
 
+        return errors
+
+    @staticmethod
+    def _normalize_direct_service_mode(values: dict) -> dict:
+        """Make ``gateway.className=none`` a true direct-vLLM baseline.
+
+        The modelservice chart enables its per-pod routing proxy by default.
+        A plain Service pointing at that port would still put the proxy in the
+        request path, defeating the baseline.  Disable it before templates are
+        rendered so the chart makes vLLM bind directly to ``servicePort``.
+        """
+        gateway_class = (values.get("gateway") or {}).get("className", "")
+        modelservice_enabled = (values.get("modelservice") or {}).get("enabled", True)
+        if gateway_class == "none" and modelservice_enabled:
+            routing = values.setdefault("routing", {})
+            routing.setdefault("proxy", {})["enabled"] = False
+
+            # Accelerator-neutral guides may provide a custom command that
+            # binds decode vLLM to the proxy backend port. Direct mode has no
+            # proxy, so make the custom command follow the chart's normal
+            # proxy-disabled behavior and listen on the Service port instead.
+            decode_vllm = values.setdefault("decode", {}).get("vllm") or {}
+            custom_command = decode_vllm.get("customCommand")
+            if isinstance(custom_command, str):
+                decode_vllm["customCommand"] = custom_command.replace(
+                    "$VLLM_METRICS_PORT",
+                    "$VLLM_INFERENCE_PORT",
+                )
+                values["decode"]["vllm"] = decode_vllm
+        return values
+
+    @staticmethod
+    def _validate_direct_service_constraints(
+        values: dict,
+        stack_name: str,
+    ) -> list[str]:
+        """Reject configurations that require routing in direct mode."""
+        gateway_class = (values.get("gateway") or {}).get("className", "")
+        modelservice_enabled = (values.get("modelservice") or {}).get("enabled", True)
+        if gateway_class != "none" or not modelservice_enabled:
+            return []
+
+        errors: list[str] = []
+        http_route_mode = (values.get("httpRoute") or {}).get("mode")
+        if http_route_mode == "shared":
+            errors.append(
+                f"[{stack_name}] gateway.className=none cannot be used with "
+                "httpRoute.mode=shared (direct mode deploys no Gateway or "
+                "HTTPRoute)."
+            )
+
+        prefill = values.get("prefill") or {}
+        if prefill.get("enabled") and int(prefill.get("replicas", 0) or 0) > 0:
+            errors.append(
+                f"[{stack_name}] gateway.className=none cannot be used with "
+                "prefill replicas (direct mode bypasses P/D routing)."
+            )
+
+        decode = values.get("decode") or {}
+        decode_enabled = decode.get("enabled", int(decode.get("replicas", 0) or 0) > 0)
+        if not decode_enabled or int(decode.get("replicas", 0) or 0) < 1:
+            errors.append(
+                f"[{stack_name}] gateway.className=none requires at least one "
+                "decode replica to back the direct Service."
+            )
         return errors
 
     def _log_image_overrides(self, values: dict) -> None:
@@ -1603,6 +1669,7 @@ class RenderPlans:
             merged_values, total_stacks=total_stacks
         )
         merged_values = self._resolve_inference_pool_host(merged_values)
+        merged_values = self._normalize_direct_service_mode(merged_values)
         merged_values = self._normalize_router_block(merged_values)
         merged_values = self._substitute_config_variables(merged_values)
 
@@ -1618,6 +1685,14 @@ class RenderPlans:
             stack_name=stack_name,
         )
         for msg in epponly_errors:
+            self.logger.log_error(msg)
+            stack_errors.render_errors.append(msg)
+
+        direct_service_errors = self._validate_direct_service_constraints(
+            merged_values,
+            stack_name=stack_name,
+        )
+        for msg in direct_service_errors:
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 

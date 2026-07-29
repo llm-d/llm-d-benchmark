@@ -50,6 +50,8 @@ MODELSERVICE_PATTERNS = [
     # of Helm release matching -- "endpoint-picker" above only matches the
     # container image repo, not the Deployment's own object name.
     "-epp",
+    # Plain-Service baseline created for gateway.className=none.
+    "-direct",
 ]
 
 DEEP_RESOURCE_KINDS = [

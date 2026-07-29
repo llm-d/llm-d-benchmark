@@ -39,6 +39,17 @@ class DeployRouterStep(Step):
         errors = []
         cmd = context.require_cmd()
 
+        plan_config = self._load_stack_config(stack_path)
+        gateway_class = self._require_config(plan_config, "gateway", "className")
+        if gateway_class == "none":
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=True,
+                message="Direct Service mode does not deploy a router",
+                stack_name=stack_path.name,
+            )
+
         router_values = self._find_yaml(stack_path, "12_router-values")
 
         if not router_values:
@@ -50,7 +61,6 @@ class DeployRouterStep(Step):
                 stack_name=stack_path.name,
             )
 
-        plan_config = self._load_stack_config(stack_path)
         release = self._require_config(plan_config, "release")
         namespace = context.require_namespace()
         stack_name = stack_path.name
@@ -107,7 +117,6 @@ class DeployRouterStep(Step):
 
         # Wait for gateway pod only (not EPP -- it stays NOT_SERVING until step 09)
         if not errors and not context.dry_run:
-            gateway_class = self._require_config(plan_config, "gateway", "className")
             if gateway_class == "epponly":
                 # No Gateway resource is deployed in epponly mode; the EPP
                 # pod itself is the data-plane proxy and is waited on by

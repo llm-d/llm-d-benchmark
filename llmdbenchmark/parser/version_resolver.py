@@ -20,6 +20,7 @@ class VersionResolver:
 
     def __init__(self, logger, dry_run: bool = False):
         self.logger = logger
+        self.dry_run = dry_run
 
     @staticmethod
     def _latest_version_tag(tags: list[str]) -> str | None:
@@ -336,6 +337,16 @@ class VersionResolver:
     def resolve_all(self, values: dict) -> dict:
         """Resolve all ``"auto"`` image tags and chart versions in the values dict."""
         result = deepcopy(values)
+
+        if self.dry_run:
+            unresolved = self.has_unresolved(result)
+            if unresolved:
+                self.logger.log_warning(
+                    f"[DRY RUN] Skipping registry/helm resolution; "
+                    f"{len(unresolved)} version(s) remain 'auto': "
+                    f"{', '.join(unresolved)}"
+                )
+            return result
 
         unresolved = []
         self._resolve_image_tags(result, unresolved)

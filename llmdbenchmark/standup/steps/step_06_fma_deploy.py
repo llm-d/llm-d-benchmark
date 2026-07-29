@@ -2,15 +2,15 @@
 
 import json
 import shlex
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 import yaml
 
 from llmdbenchmark import __version__
-from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 
 
 class FMADeployStep(Step):
@@ -153,22 +153,17 @@ class FMADeployStep(Step):
             if not result.success:
                 errors.append(f"Failed to apply fma deployment: {result.stderr}")
 
-        # Size FMA to the selected node's GPU count: LauncherPopulationPolicy
-        # launcherCount + requester replicas + KEDA ScaledObject ceiling. The
-        # rendered values are placeholders that may exceed one node's capacity;
-        # a bound launcher/requester pair shares one GPU, so we want exactly
-        # gpu_count launchers AND gpu_count requesters. Only when node selection
-        # ran and yielded a count.
+        # Resize the rendered placeholders (launcherCount + requester replicas +
+        # ScaledObject ceiling) to the pinned node's GPU count -- one
+        # launcher/requester pair per GPU. Only when node selection yielded one.
         if len(errors) == 0 and selected_gpu_count:
             model_id_label = plan_config.get("model_id_label", "")
-            node_label = self._node_label(plan_config)
             self._size_fma_to_gpu_count(
                 context,
                 cmd,
                 namespace,
                 model_id_label,
                 selected_gpu_count,
-                node_label,
                 stack_path,
                 errors,
             )
@@ -209,10 +204,22 @@ class FMADeployStep(Step):
                 label_selector = (
                     f"llm-d.ai/inferenceServing=true,llm-d.ai/model={model_id_label}"
                 )
+                # How long to wait for the dual-pods-controller to bind a
+                # launcher and for its vLLM to start serving (labels appear
+                # only once serving). Configurable per-scenario via
+                # fma.boundLauncherTimeout; large models on slow storage can
+                # take well over the historical 600s default.
+                bound_launcher_timeout = int(
+                    self._resolve(
+                        plan_config,
+                        "fma.boundLauncherTimeout",
+                        default=600,
+                    )
+                )
                 wait_result = cmd.wait_for_pods(
                     label=label_selector,
                     namespace=namespace,
-                    timeout=600,
+                    timeout=bound_launcher_timeout,
                     poll_interval=10,
                     description=f"FMA bound launcher (model={model_id_label})",
                 )
@@ -498,61 +505,6 @@ class FMADeployStep(Step):
                     pass
         return committed
 
-    def _free_gpu_on_labeled_node(
-        self, cmd: CommandExecutor, node_label: str, errors: list[str]
-    ) -> int | None:
-        """Return currently-free GPUs on the node(s) carrying ``<node_label>=true``.
-
-        Free = allocatable minus GPUs already requested by pods on the node.
-        Returns the minimum across matching nodes (normally exactly one), or
-        ``None`` (with a fatal error appended) if the node/pod state can't be
-        read. Used as a TOCTOU re-check before scaling requesters up.
-        """
-        gpu_resource = "nvidia.com/gpu"
-        node_result = cmd.kube(
-            "get",
-            "nodes",
-            "-l",
-            f"{node_label}=true",
-            "-o",
-            "json",
-            check=False,
-            force=True,
-        )
-        if not node_result.success or not (node_result.stdout or "").strip():
-            errors.append(
-                f"Could not re-read labeled node ({node_label}=true) to verify "
-                f"free GPUs before scaling requesters: {node_result.stderr}"
-            )
-            return None
-        try:
-            labeled_nodes = json.loads(node_result.stdout).get("items", [])
-        except (ValueError, json.JSONDecodeError) as exc:
-            errors.append(f"Failed to parse labeled `get nodes -o json`: {exc}")
-            return None
-        if not labeled_nodes:
-            errors.append(
-                f"No node found with label {node_label}=true when re-verifying "
-                "free GPUs (was it unlabeled?)."
-            )
-            return None
-
-        committed = self._committed_resources_by_node(cmd, errors)
-        if committed is None:
-            return None
-
-        free_counts = []
-        for node in labeled_nodes:
-            name = (node.get("metadata", {}) or {}).get("name", "")
-            allocatable = (node.get("status", {}) or {}).get("allocatable", {}) or {}
-            try:
-                alloc_gpu = int(allocatable.get(gpu_resource, 0))
-            except (TypeError, ValueError):
-                alloc_gpu = 0
-            used = committed.get(name, {"gpu": 0})["gpu"]
-            free_counts.append(alloc_gpu - used)
-        return min(free_counts) if free_counts else 0
-
     def _size_fma_to_gpu_count(
         self,
         context: ExecutionContext,
@@ -560,34 +512,18 @@ class FMADeployStep(Step):
         namespace: str,
         model_id_label: str,
         gpu_count: int,
-        node_label: str,
         stack_path: Path,
         errors: list[str],
     ) -> None:
-        """Size FMA to the pinned node's GPU count: one launcher AND one
-        requester per GPU (a bound launcher/requester pair shares one GPU).
+        """Size FMA to the pinned node's GPU count (one launcher + one requester
+        per GPU) and persist that count to config.yaml for downstream steps.
 
-        The LauncherPopulationPolicy ``launcherCount`` and the requester
-        Deployment ``replicas`` are rendered into 24_fma-deployment.yaml as
-        placeholders. Once everything is pinned to a single node we must create
-        exactly ``gpu_count`` launchers so the ``gpu_count`` requesters each have
-        a launcher to bind to; more requesters than launchers leaves the extras
-        unbindable, and more of either than GPUs leaves pods Pending with
-        ``Insufficient nvidia.com/gpu``.
-
-        The effective count is also written back to the stack's rendered
-        ``config.yaml`` (``fma.requester.replicas``) so downstream run/smoketest
-        steps that read that value (e.g. the hot-start warmup's rollout wait and
-        scale-down/sleeping count) use the actual pinned-node count instead of
-        the placeholder.
-
-        Launchers are created BEFORE requesters: the requester Deployment is
-        scaled to 0 first, then the LPP launcherCount is set and launchers are
-        waited on, then -- after RE-VERIFYING the labeled node still has enough
-        free GPUs (another tenant may have claimed some since selection) --
-        requesters are scaled up to bind to ready launchers. Also lowers the KEDA
-        ScaledObject ceiling to match. Applies only when node selection ran
-        (hotstart flag).
+        Requesters are scaled up FIRST so they reserve the node's GPUs before the
+        slow launcher model load -- closing the window in which another tenant
+        could claim them (the contention the old TOCTOU re-check guarded against).
+        The LPP launcherCount is then set 1:1 so the populator binds one launcher
+        per requester. Also caps the KEDA ScaledObject at gpu_count. Hotstart-only
+        (runs only when node selection did).
         """
         if not model_id_label:
             errors.append("Cannot size FMA to GPU count: model_id_label missing.")
@@ -595,30 +531,27 @@ class FMADeployStep(Step):
 
         deploy_name = f"fma-requester-{model_id_label}"
         lpp_name = f"fma-{model_id_label}"
-        scaledobject_name = f"{model_id_label}-fma"
 
-        # (1) Hold requesters at 0 first, so the launchers (created next) come up
-        # before any requester tries to bind. The requester Deployment was
-        # applied with a placeholder replicas>0, so it is already creating pods;
-        # scale it down before populating launchers.
-        scale_down = cmd.kube(
+        # (1) Scale requesters up FIRST: each requests a GPU + carries the node's
+        # nodeSelector, so they reserve all its GPUs now -- before the slow
+        # launcher load -- leaving no window for another tenant to grab them.
+        scale = cmd.kube(
             "scale",
             f"deployment/{deploy_name}",
-            "--replicas=0",
+            f"--replicas={gpu_count}",
             "--namespace",
             namespace,
             check=False,
         )
-        if not scale_down.success:
+        if not scale.success:
             errors.append(
-                f"Failed to scale {deploy_name} to 0 before launcher population: "
-                f"{scale_down.stderr}"
+                f"Failed to scale {deploy_name} to {gpu_count} replicas "
+                f"(node GPU count): {scale.stderr}"
             )
             return
 
-        # (2) Create one launcher per GPU (LauncherPopulationPolicy.countForLauncher
-        # is a single-entry list, so patch index 0's launcherCount). Requesters
-        # bind 1:1 to launchers, so this must match the requester replica count.
+        # (2) Set launcherCount to gpu_count (countForLauncher is a single-entry
+        # list, so patch index 0) -- one launcher per requester scheduled above.
         lpp_patch_body = json.dumps(
             [
                 {
@@ -649,8 +582,8 @@ class FMADeployStep(Step):
             )
             return
 
-        # (3) Wait for the launcher pods to be Ready before creating requesters,
-        # so requesters have launchers to bind to as soon as they come up.
+        # (3) Wait for launchers to be Ready (the slow vLLM model load); the
+        # requesters already hold the GPUs, so nothing can be lost here.
         launcher_wait = cmd.wait_for_pods(
             label="app.kubernetes.io/component=launcher",
             namespace=namespace,
@@ -660,65 +593,14 @@ class FMADeployStep(Step):
         )
         if not launcher_wait.success:
             errors.append(
-                f"FMA launcher pods did not become Ready in ns/{namespace} "
-                f"before requester creation: {launcher_wait.stderr}"
+                f"FMA launcher pods did not become Ready in ns/{namespace}: "
+                f"{launcher_wait.stderr}"
             )
             return
 
-        # (3b) TOCTOU guard: re-verify the labeled node still has >= gpu_count
-        # free GPUs right before creating requesters. Another tenant may have
-        # claimed GPUs on it since selection; scheduling gpu_count requesters
-        # (each 1 GPU) into fewer free GPUs would leave the excess Pending with
-        # Insufficient nvidia.com/gpu. Launchers hold no GPU, so this reflects
-        # only other workloads (requesters are still at 0 here).
-        free_gpu = self._free_gpu_on_labeled_node(cmd, node_label, errors)
-        if free_gpu is None:
-            return  # error already appended
-        if free_gpu < gpu_count:
-            errors.append(
-                f"FMA launcher node selection: the labeled node ({node_label}"
-                f"=true) now has only {free_gpu} free GPU(s) but {gpu_count} "
-                "requesters are needed -- another workload claimed GPUs after "
-                "node selection. Aborting to avoid Pending requesters."
-            )
-            return
-
-        # (4) Now scale requesters up to one pod per GPU (1:1 with launchers).
-        scale = cmd.kube(
-            "scale",
-            f"deployment/{deploy_name}",
-            f"--replicas={gpu_count}",
-            "--namespace",
-            namespace,
-            check=False,
-        )
-        if not scale.success:
-            errors.append(
-                f"Failed to scale {deploy_name} to {gpu_count} replicas "
-                f"(node GPU count): {scale.stderr}"
-            )
-            return
-
-        # Lower/raise the KEDA ScaledObject ceiling to match so WVA cannot scale
-        # the requester beyond the node's GPU capacity. Best-effort: the
-        # ScaledObject may not exist yet (rendered/applied separately); a
-        # missing object is not fatal to standup.
-        patch = cmd.kube(
-            "patch",
-            f"scaledobject.keda.sh/{scaledobject_name}",
-            "--namespace",
-            namespace,
-            "--type",
-            "merge",
-            "-p",
-            shlex.quote(json.dumps({"spec": {"maxReplicaCount": gpu_count}})),
-            check=False,
-        )
-        if not patch.success and "not found" not in (patch.stderr or "").lower():
-            context.logger.log_warning(
-                f"    | Could not patch ScaledObject {scaledobject_name} "
-                f"maxReplicaCount to {gpu_count}: {patch.stderr}"
-            )
+        # Cap the ScaledObject at gpu_count so KEDA's HPA can't exceed the node's
+        # GPUs. It's applied later (step_09), so edit the rendered manifest here.
+        self._cap_scaledobject_max_replicas(context, stack_path, gpu_count)
 
         # Persist the effective count so run-phase / smoketest steps that read
         # fma.requester.replicas (e.g. the hot-start rollout wait and sleeping
@@ -730,6 +612,41 @@ class FMADeployStep(Step):
             f"(LauncherPopulationPolicy {lpp_name} launcherCount + "
             f"{deploy_name} replicas), one pair per GPU on the pinned node"
         )
+
+    @staticmethod
+    def _cap_scaledobject_max_replicas(
+        context: ExecutionContext, stack_path: Path, gpu_count: int
+    ) -> None:
+        """Lower maxReplicaCount to min(rendered, gpu_count) in the rendered
+        28_wva-scaledobject manifest (clamping minReplicaCount to match) so
+        step_09 applies an object capped to node GPU capacity. Best-effort.
+        """
+        so_file = next(stack_path.glob("28_wva-scaledobject*"), None)
+        if so_file is None:
+            return
+        try:
+            with open(so_file, encoding="utf-8") as fh:
+                doc = yaml.safe_load(fh) or {}
+            spec = doc.get("spec")
+            if not isinstance(spec, dict):
+                return
+            # Lower-only: never raise the scenario's configured ceiling.
+            rendered_max = int(spec.get("maxReplicaCount", gpu_count) or gpu_count)
+            spec["maxReplicaCount"] = min(rendered_max, gpu_count)
+            if int(spec.get("minReplicaCount", 1) or 1) > spec["maxReplicaCount"]:
+                spec["minReplicaCount"] = spec["maxReplicaCount"]
+            with open(so_file, "w", encoding="utf-8") as fh:
+                yaml.safe_dump(doc, fh, default_flow_style=False, sort_keys=False)
+            context.logger.log_info(
+                f"    | Capped {so_file.name} maxReplicaCount="
+                f"{spec['maxReplicaCount']} (min of rendered {rendered_max} and "
+                f"pinned-node GPU count {gpu_count})"
+            )
+        except (OSError, yaml.YAMLError, ValueError) as exc:
+            context.logger.log_warning(
+                f"    | Could not cap ScaledObject maxReplicaCount to {gpu_count} "
+                f"in {so_file}: {exc}"
+            )
 
     @staticmethod
     def _persist_requester_replicas(
@@ -846,7 +763,7 @@ class FMADeployStep(Step):
             "tool_name": "llm-d-benchmark",
             "tool_version": __version__,
             "deployed_by": context.username or "unknown",
-            "deployed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "deployed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "cluster_name": context.cluster_name or "",
             "platform_type": context.platform_type,
             "namespace": context.namespace or "",

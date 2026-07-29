@@ -108,6 +108,11 @@ chain runs, then pops the nested copy so `config.yaml` has a single home per
 section. Templates, resolvers and standup steps always read the **top-level**
 keys, so the two spellings render identically -- pick one per section.
 
+Set `gateway.className: none` to skip Gateway and router resources and expose
+decode vLLM directly through a plain Service. The renderer also disables the
+modelservice routing proxy so the resulting lane measures the model server
+without Gateway, EPP, or Envoy overhead.
+
 The hoist runs **before** setup overrides so the precedence stays
 `defaults < scenario < treatment/CLI`: DoE experiment treatments and CLI
 overrides target the **top-level** dotted path (e.g.

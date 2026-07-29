@@ -67,8 +67,8 @@ scenario:
 
       # Controller container image.
       image:
-        repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-        tag: v0.8.0
+        repository: quay.io/braulio/llm-d-wva
+        tag: keda3
 
       replicaCount: 1                # WVA controller pod replicas (1 is the chart default)
 
@@ -132,7 +132,7 @@ scenario:
         minReplicas: 1               # ScaledObject minReplicaCount — never scale
                                      # below this; must be >= 1 (KEDA/HPA refuse
                                      # to manage targets at 0)
-        maxReplicas: 10              # ScaledObject maxReplicaCount — safety
+        maxReplicas: 6               # ScaledObject maxReplicaCount — safety
                                      # ceiling regardless of what the controller
                                      # computes
         targetAvgValue: 1            # Prometheus trigger threshold for

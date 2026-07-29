@@ -237,6 +237,9 @@ class Step(ABC):
             if cfg:
                 _add(cfg.get("namespace", {}).get("name"))
                 _add(cfg.get("harness", {}).get("namespace"))
+                gateway = cfg.get("gateway", {})
+                if gateway.get("className") == "none":
+                    _add(gateway.get("namespace"))
 
         _add(context.namespace)
         _add(context.harness_namespace)

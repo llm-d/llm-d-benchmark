@@ -44,7 +44,8 @@ def add_subcommands(
         help=(
             "Override the scenario's gateway.className when the run phase "
             "re-renders templates for setup overrides. Supported values: "
-            "epponly, istio, agentgateway, gke, data-science-gateway-class."
+            "none, epponly, istio, agentgateway, gke, "
+            "data-science-gateway-class."
         ),
     )
     run_parser.add_argument(

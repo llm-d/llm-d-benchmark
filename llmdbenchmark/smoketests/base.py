@@ -15,10 +15,12 @@ from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     compute_gateway_path_prefix,
     find_custom_endpoint,
+    find_direct_modelservice_endpoint,
     find_epponly_endpoint,
     find_gateway_endpoint,
     find_kustomize_endpoint,
     find_standalone_endpoint,
+    resolve_direct_service_namespace,
     test_model_serving,
 )
 
@@ -144,6 +146,19 @@ class BaseSmoketest:
                 namespace,
                 model_id_label,
             )
+        elif gateway_class == "none":
+            direct_service_namespace = resolve_direct_service_namespace(
+                plan_config, namespace
+            )
+            direct_port = str(
+                _nested_get(plan_config, "routing", "servicePort") or "8000"
+            )
+            service_ip, _, gateway_port = find_direct_modelservice_endpoint(
+                cmd,
+                direct_service_namespace,
+                model_id_label,
+                direct_port,
+            )
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(cmd, namespace, release)
 
@@ -185,6 +200,12 @@ class BaseSmoketest:
             context,
             plan_config,
         )
+        if (
+            not is_standalone
+            and not is_kustomize
+            and _nested_get(plan_config, "gateway", "className") == "none"
+        ):
+            namespace = resolve_direct_service_namespace(plan_config, namespace)
 
         # 1. Check pods running for each configured role
         if is_kustomize:

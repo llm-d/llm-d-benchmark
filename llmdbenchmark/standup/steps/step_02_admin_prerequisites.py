@@ -201,27 +201,35 @@ class AdminPrerequisitesStep(Step):
 
         deploy_methods = context.deployed_methods or []
         modelservice_active = "modelservice" in deploy_methods
+        gateway_class = (plan_config.get("gateway") or {}).get("className", "")
+        direct_service_mode = modelservice_active and gateway_class == "none"
 
         if modelservice_active:
-            self._install_gateway_api_crds(
-                cmd,
-                plan_config,
-                errors,
-                existing_crds,
-            )
-            self._install_gateway_api_extension_crds(
-                cmd,
-                plan_config,
-                errors,
-                existing_crds,
-            )
-            self._install_gateway_provider(
-                cmd,
-                context,
-                plan_config,
-                errors,
-                existing_crds,
-            )
+            if direct_service_mode:
+                context.logger.log_info(
+                    "✅ gateway.className=none -- skipping Gateway API, "
+                    "inference extension, and gateway provider prerequisites"
+                )
+            else:
+                self._install_gateway_api_crds(
+                    cmd,
+                    plan_config,
+                    errors,
+                    existing_crds,
+                )
+                self._install_gateway_api_extension_crds(
+                    cmd,
+                    plan_config,
+                    errors,
+                    existing_crds,
+                )
+                self._install_gateway_provider(
+                    cmd,
+                    context,
+                    plan_config,
+                    errors,
+                    existing_crds,
+                )
             self._install_lws_if_needed(
                 cmd,
                 plan_config,

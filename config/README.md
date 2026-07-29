@@ -814,12 +814,12 @@ When no `customCommand` is set, the command is built from:
 
 Two ports are involved in the vLLM serving configuration:
 
-- **Port 8000** (`decode.vllm.servicePort` / `prefill.vllm.servicePort`) -- the inference/service port. Kubernetes probes (startup, liveness, readiness) always check this port. When routing proxy is enabled, the proxy listens on 8000. When routing proxy is disabled, vLLM binds directly to 8000.
-- **Port 8200** (`decode.vllm.port`) -- the vLLM backend port. Only used in the `--port` flag of the vLLM command when routing proxy is enabled (proxy on 8000 forwards to vLLM on 8200). Not used for probes.
+- **Port 8000** (`decode.vllm.servicePort` / `prefill.vllm.servicePort`) -- the inference/service port. When routing proxy is enabled, the proxy listens on 8000. When routing proxy is disabled, vLLM binds directly to 8000.
+- **Port 8200** (`decode.vllm.port`) -- the vLLM backend port. Used in the decode `--port` flag when routing proxy is enabled (proxy on 8000 forwards to vLLM on 8200).
 
-Probe port is overrideable via `decode.vllm.servicePort` or `prefill.vllm.servicePort` in the scenario YAML. Individual per-probe port overrides are not supported (matches the original bash implementation).
+Decode probe ports default to the vLLM bind port: `decode.vllm.port` when routing proxy is enabled, or `decode.vllm.servicePort` when routing proxy is disabled. Prefill pods do not have the routing proxy and continue to probe `prefill.vllm.servicePort`.
 
-When routing proxy is **enabled** (modelservice only), vLLM binds to `decode.vllm.port` (default 8200) and the proxy handles `servicePort` (8000) to `vllmPort` (8200) forwarding. When routing proxy is **disabled**, vLLM binds directly to `decode.vllm.servicePort` (8000). In both cases, probes target the `servicePort` (8000).
+Probe ports can be overridden with `decode.probes.startup.port`, `decode.probes.liveness.port`, `decode.probes.readiness.port`, or the corresponding `prefill.probes.*.port` fields.
 
 ### Custom command
 
