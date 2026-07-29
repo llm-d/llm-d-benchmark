@@ -11,7 +11,6 @@ import yaml
 
 from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolver
 from llmdbenchmark.parser.render_plans import RenderPlans
-from llmdbenchmark.parser.version_resolver import VersionResolver
 from llmdbenchmark.smoketests.base import BaseSmoketest
 from llmdbenchmark.standup.steps.step_08_deploy_router import DeployRouterStep
 from llmdbenchmark.utilities.endpoint import (
@@ -26,6 +25,13 @@ def _renderer() -> RenderPlans:
     renderer = RenderPlans.__new__(RenderPlans)
     renderer.logger = MagicMock()
     return renderer
+
+
+def _passthrough_version_resolver() -> MagicMock:
+    """Keep render tests deterministic and independent of image registries."""
+    resolver = MagicMock()
+    resolver.resolve_all.side_effect = lambda values: values
+    return resolver
 
 
 def test_direct_mode_disables_per_pod_routing_proxy() -> None:
@@ -193,7 +199,7 @@ def test_gpu_example_renders_plain_service_without_router(tmp_path: Path) -> Non
         scenarios_file=_REPO / "config/scenarios/examples/gpu.yaml",
         output_dir=tmp_path,
         logger=logger,
-        version_resolver=VersionResolver(logger=logger, dry_run=True),
+        version_resolver=_passthrough_version_resolver(),
         cluster_resource_resolver=ClusterResourceResolver(logger=logger, dry_run=True),
         cli_gateway_class="none",
     ).eval()
@@ -274,7 +280,7 @@ def test_direct_service_uses_gateway_namespace_and_decode_target_port(
         scenarios_file=scenario_file,
         output_dir=output_dir,
         logger=logger,
-        version_resolver=VersionResolver(logger=logger, dry_run=True),
+        version_resolver=_passthrough_version_resolver(),
         cluster_resource_resolver=ClusterResourceResolver(logger=logger, dry_run=True),
     ).eval()
 
