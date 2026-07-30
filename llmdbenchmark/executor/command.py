@@ -518,6 +518,91 @@ class CommandExecutor:
 
             time.sleep(poll_interval)
 
+    def wait_for_daemonset(
+        self,
+        ds_name: str,
+        namespace: str,
+        timeout: int = 3600,
+        poll_interval: int = 15,
+        description: str = "",
+    ) -> CommandResult:
+        """Poll a DaemonSet until all pods are ready, showing live progress.
+
+        Succeeds when status.numberReady >= status.desiredNumberScheduled
+        and desiredNumberScheduled > 0.
+        """
+        desc = description or f"daemonset/{ds_name}"
+        kc_args = " ".join(self._kubeconfig_args())
+        cmd_repr = (
+            f"{self._kube_bin} {kc_args} rollout status daemonset/{ds_name} "
+            f"--namespace {namespace} --timeout={timeout}s"
+        ).replace("  ", " ")
+
+        if self.dry_run:
+            return self._handle_dry_run(cmd_repr, int(time.time() * 1e9))
+
+        start = time.time()
+        last_status_line = ""
+
+        while True:
+            elapsed = time.time() - start
+
+            if elapsed > timeout:
+                self._clear_progress_line(last_status_line)
+                self.logger.log_error(
+                    f"⏱️  Timed out waiting for {desc} after {timeout}s"
+                )
+                return CommandResult(
+                    command=cmd_repr,
+                    exit_code=1,
+                    stderr=f"Timed out after {timeout}s waiting for {desc}",
+                )
+
+            ds_status = self._get_daemonset_status(ds_name, namespace)
+
+            if ds_status is None:
+                status_line = self._format_progress(
+                    desc,
+                    elapsed,
+                    timeout,
+                    "daemonset not found -- waiting...",
+                    0,
+                    1,
+                )
+                self._print_progress(status_line, last_status_line)
+                last_status_line = status_line
+                time.sleep(poll_interval)
+                continue
+
+            desired = ds_status.get("desiredNumberScheduled", 0)
+            ready = ds_status.get("numberReady", 0)
+            available = ds_status.get("numberAvailable", 0)
+            updated = ds_status.get("updatedNumberScheduled", 0)
+
+            if desired > 0 and ready >= desired:
+                self._clear_progress_line(last_status_line)
+                self.logger.log_info(
+                    f"✅ {desc}: {ready}/{desired} Ready ({self._fmt_elapsed(elapsed)})"
+                )
+                return CommandResult(command=cmd_repr, exit_code=0)
+
+            parts = (
+                f"desired={desired} ready={ready} "
+                f"available={available} updated={updated}"
+            )
+            status_line = self._format_progress(
+                desc,
+                elapsed,
+                timeout,
+                parts,
+                ready,
+                max(1, desired),
+            )
+            self._print_progress(status_line, last_status_line)
+            last_status_line = status_line
+
+            time.sleep(poll_interval)
+
     def wait_for_pvc(
         self,
         pvc_name: str,
@@ -767,6 +852,37 @@ class CommandExecutor:
                 "get",
                 "job",
                 job_name,
+                "--namespace",
+                namespace,
+                "-o",
+                "json",
+            ]
+        )
+        try:
+            result = subprocess.run(
+                " ".join(parts),
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False,
+                executable="/bin/bash",
+            )
+            if result.returncode != 0:
+                return None
+            data = json.loads(result.stdout)
+            return data.get("status", {})
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _get_daemonset_status(self, ds_name: str, namespace: str) -> dict | None:
+        """Query DaemonSet status via kubectl/oc get daemonset -o json."""
+        parts = [self._kube_bin]
+        parts.extend(self._kubeconfig_args())
+        parts.extend(
+            [
+                "get",
+                "daemonset",
+                ds_name,
                 "--namespace",
                 namespace,
                 "-o",
