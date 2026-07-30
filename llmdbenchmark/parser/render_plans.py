@@ -1028,7 +1028,7 @@ class RenderPlans:
 
         Host ports are NOT derived here: binding a port the author never
         wrote is worse than refusing to render. See
-        ``_validate_nok8s_host_ports``.
+        ``_validate_nok8s_host_claims``.
         """
         if total_stacks < 2 or not values.get("nok8s", {}).get("enabled"):
             return values
