@@ -85,7 +85,8 @@ single-GPU example. Key fields (full defaults in
 | `nok8s.workspaceHostDir` | Host dir where EPP/Envoy configs are staged + bind-mounted |
 | `nok8s.vllm.{image,tag,hostPort,tensorParallel,accelerator,gpus,deviceArgs,shmSize,replicas,extraArgs}` | vLLM worker(s); worker *i* is published on `hostPort + i` (see Accelerators for `accelerator`/`deviceArgs`) |
 | `nok8s.epp.{image,tag,grpcPort,grpcHealthPort,metricsPort}` | Endpoint Picker |
-| `nok8s.envoy.{image,tag,listenPort}` | Envoy front door (the run target) |
+| `nok8s.envoy.{image,tag,listenPort,adminPort}` | Envoy front door (the run target); `adminPort` is the admin interface, bound on the host (`--network host`) |
+| `nok8s.nameSuffix` | Appended to every container name. Filled automatically with `-<stack>` in a multi-stack scenario (see below); leave empty for one stack |
 | `model.{name,huggingfaceId}` | Set both; standup uses `name`, run reads `huggingfaceId` |
 
 Sizing (fp16, single GPU): ~16 GB → 7–8B · ~24 GB → 8B · ~40 GB → 14B ·
@@ -125,6 +126,60 @@ nok8s:
 Step 00 probes the accelerator when it can (`nvidia-smi`/`rocm-smi`/`xpu-smi`/
 `hl-smi`); `cpu`/`spyre`/custom are not probed (a note is logged) — ensure the
 device and image match yourself.
+
+## Several stacks on one host
+
+A scenario with more than one stack runs every stack's containers on the same
+host, with no namespace to keep them apart, so each stack needs its own
+identity. Two things are automatic and one is on you:
+
+- **Container names** get a `-<stack name>` suffix, e.g. `vllm-0-chat`,
+  `epp-chat`, `envoy-chat`. Without this, stack B's idempotency sweep
+  (`docker rm -f epp`) deletes stack A's running router.
+- **`nok8s.workspaceHostDir`** gains a per-stack sub-directory, so the staged
+  EPP/Envoy configs never overwrite each other.
+- **Host ports are yours to assign.** They are never derived, because guessing
+  would silently bind ports you did not ask for. Two nok8s stacks claiming the
+  same port is a render error that names the port and the owning stack, and
+  standup stops before any container starts.
+
+A single-stack scenario is unaffected: names stay `vllm-0` / `epp` / `envoy`
+and the workspace stays `~/.llmdbench/nok8s`.
+
+Give every stack after the first a distinct set of six ports (more, with
+`replicas > 1`: worker *i* takes `hostPort + i`):
+
+```yaml
+scenario:
+  - name: chat
+    nok8s:
+      enabled: true
+      # ... first stack keeps the defaults: 8000, 8081, 19000, 9002/9003/9090
+
+  - name: code
+    nok8s:
+      enabled: true
+      vllm:
+        hostPort: 8100
+      epp:
+        grpcPort: 9102
+        grpcHealthPort: 9103
+        metricsPort: 9190
+      envoy:
+        listenPort: 8181
+        adminPort: 19100
+```
+
+Each stack gets its own Envoy front door, so benchmark them one at a time and
+point the run phase at that stack's `listenPort`:
+
+```bash
+llmdbenchmark --spec my-scenario.yaml run --stack chat --endpoint-url http://localhost:8081
+llmdbenchmark --spec my-scenario.yaml run --stack code --endpoint-url http://localhost:8181
+```
+
+`--endpoint-url` is required here: without it the run phase uses the first
+stack's endpoint for every stack.
 
 ## How it maps to the pipeline
 
@@ -175,7 +230,8 @@ auto-pinning and puts you in control).
 
 - **Preflight fails on runtime** — install docker/podman or set `nok8s.runtime`.
 - **vLLM container exits at load** — usually a too-large model for VRAM or a bad
-  HF token; check `docker logs vllm-0`. Lower the model size or add
+  HF token; check `docker logs vllm-0` (`docker logs vllm-0-<stack>` in a
+  multi-stack scenario). Lower the model size or add
   `--max-model-len`/`--gpu-memory-utilization` via `nok8s.vllm.extraArgs`.
 - **Envoy 503** — a worker isn't up; confirm `curl http://localhost:8000/v1/models`.
 - **podman + GPU** — ensure the CDI spec exists: `nvidia-ctk cdi list` should show
