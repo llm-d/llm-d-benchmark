@@ -4,7 +4,7 @@ load:
   worker_max_concurrency: 1000
   request_timeout: 180
   stages:
-  # 192 conversations x 6 turns; 128 concurrent conversations in flight.
+  # 192 session blueprints x 6 turns; 128 requests in flight.
   - num_requests: 1152
     concurrency_level: 128
 api:
@@ -27,9 +27,10 @@ data:
     # Each conversation carries a private ~48K-token "document" prefix;
     # 6 short questions with short answers make TTFT dominate. What drives
     # hit-vs-miss here is request placement under concurrency (128
-    # sessions against a limited set of owner pods), not corpus size
-    # versus aggregate GPU KV - scale num_conversations and concurrency_level
-    # relative to your fleet's pod count, not its aggregate cache.
+    # requests in flight across 192 session blueprints against a limited
+    # set of owner pods), not corpus size versus aggregate GPU KV - scale
+    # num_conversations and concurrency_level relative to your fleet's pod
+    # count, not its aggregate cache.
     dynamic_system_prompt_len:
       type: lognormal
       min: 49152
