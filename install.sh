@@ -155,8 +155,9 @@ DESCRIPTION
 
     1. Validates Python 3.11+ and pip
     2. Checks for required system tools  (curl, git, kubectl, helm, helmfile,
-                                          skopeo, kustomize, jq, yq, crane)
-    3. Checks for optional system tools   (oc)
+                                          jq, yq)
+    3. Checks optional system tools       (oc); best-effort installs the rest
+                                          (kustomize, skopeo, crane)
     4. Installs llmdbenchmark             (editable: pip install -e .)
     5. Installs planner (llm-d-planner)  (pip install git+https://...)
     6. Verifies that all Python packages are importable
@@ -431,7 +432,13 @@ fi
 echo ""
 echo "=== System tools ==="
 
-tools="curl git helm helmfile skopeo kustomize jq yq crane"
+# curl and git stay required: install.sh itself uses them to fetch the pinned
+# binaries and to clone the planner. skopeo/crane are optional because
+# version_resolver only needs ANY ONE of skopeo/crane/podman, and only to
+# resolve `:auto` image tags. kustomize is optional because nothing shells out
+# to the binary -- the kustomize deploy path runs `kubectl apply -k`, and
+# kubectl embeds kustomize.
+tools="curl git helm helmfile jq yq"
 
 kube_tool=""
 if command -v kubectl &>/dev/null; then
@@ -446,7 +453,15 @@ else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
 
-optional_tools="oc"
+optional_tools="oc kustomize skopeo crane"
+
+# Demoted from `tools=` above, so install.sh has to keep provisioning them,
+# only without the power to abort the install. `oc` stays report-only, as on
+# every previous release: install_oc_linux unpacks the OpenShift client tarball
+# and moves ITS kubectl into /usr/local/bin, which would replace a kubectl the
+# user already has. CI installs oc itself where it needs it (see the "Install
+# oc" step in .github/workflows/reusable-ci-nightly-benchmark.yaml).
+autoinstall_optional="kustomize skopeo crane"
 
 # ---------------------------------------------------------------------------
 # Version helper
@@ -508,12 +523,18 @@ _pin_not_enforced() {
 
 # --------------------------------------------------------------------------------
 # Per-tool Linux install helpers - — all now arch-aware via $ARCH_GO / $ARCH_UNAME
+#
+# Callers invoke these through a guarded eval (`... || <handler>`), and an
+# AND-OR list turns `set -e` off for the whole function body. So every step
+# whose failure would otherwise fall through to a `cp`/`mv` returns explicitly:
+# without that, a failed fetch installs whatever stale /tmp file is left over.
+# `curl -f` is part of the same contract, since a 404 body is a 0 exit status.
 # ---------------------------------------------------------------------------------
 
 install_yq_linux() {
     local version=$(tool_version_for yq)
     local binary="yq_linux_${ARCH_GO}"
-    curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
+    curl -fsSL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}" || return 1
     chmod +x "/tmp/${binary}"
     sudo cp -f "/tmp/${binary}" /usr/local/bin/yq
 }
@@ -532,18 +553,20 @@ install_helmfile_linux() {
 		   echo "helmfile — v$current_version below pinned $version; attempting install/upgrade..."
 		fi
 		rm -rf /tmp/helmfile
-	    git clone  https://github.com/helmfile/helmfile.git /tmp/helmfile
+	    git clone  https://github.com/helmfile/helmfile.git /tmp/helmfile || return 1
 	    cd /tmp/helmfile || exit 1
 	    git fetch --tags
-		git checkout "v${version}"
-	    GOARCH=s390x GOOS=linux go build -o helmfile
+		# Without this guard a failed checkout builds master, i.e. an
+		# unpinned helmfile that the version gate below happily accepts.
+		git checkout "v${version}" || return 1
+	    GOARCH=s390x GOOS=linux go build -o helmfile || return 1
 	    sudo mv helmfile /usr/local/bin/
 	    sudo chmod +x /usr/local/bin/helmfile
     else
     	local pkg="helmfile_${version}_linux_${ARCH_GO}"
-    	curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" \
-        	-o "/tmp/${pkg}.tar.gz"
-    	tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
+    	curl -fsSL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" \
+        	-o "/tmp/${pkg}.tar.gz" || return 1
+    	tar xzf "/tmp/${pkg}.tar.gz" -C /tmp || return 1
     	sudo cp -f /tmp/helmfile /usr/local/bin/helmfile
     fi
 }
@@ -579,9 +602,9 @@ install_oc_linux() {
     local oc_file="openshift-client-linux"
     [[ "$oc_arch" == "aarch64" ]] && oc_file="${oc_file}-arm64-rhel9"
     oc_file="${oc_file}.tar.gz"
-    curl -sL "https://mirror.openshift.com/pub/openshift-v4/${oc_arch}/clients/ocp/stable/${oc_file}" \
-        -o "/tmp/${oc_file}"
-    tar xzf "/tmp/${oc_file}" -C /tmp
+    curl -fsSL "https://mirror.openshift.com/pub/openshift-v4/${oc_arch}/clients/ocp/stable/${oc_file}" \
+        -o "/tmp/${oc_file}" || return 1
+    tar xzf "/tmp/${oc_file}" -C /tmp || return 1
     sudo mv /tmp/kubectl /usr/local/bin/
     sudo mv /tmp/oc /usr/local/bin/
     sudo chmod +x /usr/local/bin/oc
@@ -594,9 +617,9 @@ install_kustomize_linux() {
     arch=$(uname -m)
     local go_arch="amd64"
     [[ "$arch" == "aarch64" ]] && go_arch="arm64"
-    curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${version}/kustomize_${version}_linux_${go_arch}.tar.gz" \
-        -o "/tmp/kustomize.tar.gz"
-    tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
+    curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${version}/kustomize_${version}_linux_${go_arch}.tar.gz" \
+        -o "/tmp/kustomize.tar.gz" || return 1
+    tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize || return 1
     sudo mv /tmp/kustomize /usr/local/bin/
     sudo chmod +x /usr/local/bin/kustomize
 }
@@ -615,9 +638,9 @@ install_crane_linux() {
         *)       go_arch_cap="x86_64" ;;
     esac
     local pkg="go-containerregistry_Linux_${go_arch_cap}"
-    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
-        -o "/tmp/${pkg}.tar.gz"
-    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
+    curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
+        -o "/tmp/${pkg}.tar.gz" || return 1
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane || return 1
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
 }
@@ -729,7 +752,13 @@ for tool in $tools; do
             echo "  ${tool} — ${current_ver} below pinned ${expected_ver}; attempting install/upgrade..."
             install_func="install_${tool}_${target_os}"
             if declare -F "$install_func" &>/dev/null; then
-                eval "$install_func"
+                # Best-effort, like the `${PKG_MGR} "$tool" || true` sibling
+                # below: under `set -e` an unguarded eval kills the script
+                # before the `command -v` re-check below gets to decide
+                # whether the failure is actually fatal. Report the failure
+                # here, so a broken installer is never explained away as the
+                # deliberate "pin not enforced" case further down.
+                eval "$install_func" || echo "  WARNING: the install/upgrade command for ${tool} failed"
                 if ! command -v "$tool" &>/dev/null; then
                     echo "ERROR: Failed to upgrade ${tool}"
                     exit 1
@@ -774,7 +803,7 @@ for tool in $tools; do
         expected_ver=$(tool_version_for "$tool")
         install_func="install_${tool}_${target_os}"
         if declare -F "$install_func" &>/dev/null; then
-            eval "$install_func"
+            eval "$install_func" || true
         else
             ${PKG_MGR} "$tool" || true
         fi
@@ -860,7 +889,7 @@ for tool in $optional_tools; do
             echo "  ${tool} — ${current_ver} below pinned ${expected_ver}; attempting install/upgrade..."
             install_func="install_${tool}_${target_os}"
             if declare -F "$install_func" &>/dev/null; then
-                eval "$install_func"
+                eval "$install_func" || echo "  WARNING: the install/upgrade command for ${tool} failed"
                 if command -v "$tool" &>/dev/null; then
                     new_ver=$(tool_version "$tool")
                     # Optional tools never hard-fail. Re-verify so we don't
@@ -886,8 +915,39 @@ for tool in $optional_tools; do
             printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
             echo "${tool} already installed." >> "$dependencies_checked_file"
         fi
-    else
+    elif [[ " $autoinstall_optional " != *" $tool "* ]]; then
         printf "  %-14s %-20s %s\n" "$tool" "—" "(optional, not found)"
+    else
+        # For the tools demoted out of `tools=`, optional still means "try to
+        # install it", same as the required loop, only never fatal: skopeo and
+        # crane are the pinned static binaries the render-validation hooks
+        # expect (util/setup_precommit.sh), and kustomize keeps its installer
+        # for parity with the required behaviour it had before, even though
+        # nothing shells out to the binary.
+        echo "  ${tool} — NOT FOUND, attempting optional install..."
+        expected_ver=$(tool_version_for "$tool")
+        install_func="install_${tool}_${target_os}"
+        if declare -F "$install_func" &>/dev/null; then
+            eval "$install_func" || true
+        else
+            ${PKG_MGR} "$tool" || true
+        fi
+        if command -v "$tool" &>/dev/null; then
+            new_ver=$(tool_version "$tool")
+            # Same pin check the required loop does, since these tools used to
+            # get it: a package-manager fallback (install_skopeo_linux) can
+            # land well below the pin, and the cache line written below means
+            # no later run would look again.
+            if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                echo "  WARNING: ${tool} is ${new_ver}; pinned ${expected_ver}"
+                echo "           not applied (continuing -- optional tool)."
+            fi
+            printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(newly installed)"
+            echo "${tool} already installed." >> "$dependencies_checked_file"
+        else
+            # No cache line on failure, so a later run retries.
+            printf "  %-14s %-20s %s\n" "$tool" "—" "(optional, install failed -- continuing)"
+        fi
     fi
 done
 
