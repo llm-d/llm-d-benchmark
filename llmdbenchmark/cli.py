@@ -519,8 +519,10 @@ def _execute_standup(args, logger, render_plan_errors):
     _print_standup_summary(context, result, logger)
 
     # Auto-chain smoketest after standup unless --skip-smoketest.
-    # The nok8s deploy step already curls /v1/models for readiness, so skip
-    # the chained smoketest.
+    # nok8s stays opt-out here: its deploy step already curls /v1/models for
+    # readiness, so the chained run would only add the inference probe. Run
+    # `llmdbenchmark ... smoketest` (or `experiment`, which chains it) to get
+    # that probe; it no longer needs a cluster.
     skip_smoketest = getattr(args, "skip_smoketest", False) or (
         "nok8s" in (context.deployed_methods or [])
     )

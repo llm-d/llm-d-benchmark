@@ -12,12 +12,37 @@ from pathlib import Path
 
 import requests
 import yaml
+from requests.adapters import HTTPAdapter, Retry
 
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 
 _SPEC_PREFIX = "34_nok8s-containers"
-_TIMEOUT = 15
+_MODELS_TIMEOUT = 15
+# A first generation on a cold or CPU-served model is not always quick; match
+# the cluster path, whose BaseSmoketest._curl_post defaults to 120s.
+_COMPLETION_TIMEOUT = 120
+# Envoy answers 502/503/504 while EPP has not yet picked an endpoint, the same
+# transient window BaseSmoketest._try_completions retries on.
+_RETRY_TOTAL = 3
+_RETRY_BACKOFF = 2
+
+
+def _session() -> requests.Session:
+    """A session that retries the transient statuses the cluster path retries."""
+    adapter = HTTPAdapter(
+        max_retries=Retry(
+            total=_RETRY_TOTAL,
+            backoff_factor=_RETRY_BACKOFF,
+            status_forcelist=(502, 503, 504),
+            allowed_methods=frozenset({"GET", "POST"}),
+            raise_on_status=False,
+        )
+    )
+    session = requests.Session()
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 def _read_spec(stack_path: Path) -> tuple[str, str, str]:
@@ -52,7 +77,8 @@ def health_check(context: ExecutionContext, stack_path: Path) -> SmoketestReport
 
     context.logger.log_info(f"Checking {url}...")
     try:
-        resp = requests.get(url, timeout=_TIMEOUT)
+        with _session() as session:
+            resp = session.get(url, timeout=_MODELS_TIMEOUT)
     except requests.RequestException as e:
         report.add(
             CheckResult(
@@ -78,11 +104,13 @@ def health_check(context: ExecutionContext, stack_path: Path) -> SmoketestReport
     try:
         body = resp.json()
     except ValueError:
+        body = None
+    if not isinstance(body, dict):
         report.add(
             CheckResult(
                 "nok8s_models_endpoint",
                 False,
-                message=f"{url} returned a non-JSON body: {resp.text[:200]}",
+                message=f"{url} did not return a JSON object: {resp.text[:200]}",
             )
         )
         return report
@@ -91,7 +119,12 @@ def health_check(context: ExecutionContext, stack_path: Path) -> SmoketestReport
         CheckResult("nok8s_models_endpoint", True, message=f"{url} returned 200")
     )
 
-    served = [d.get("id") for d in body.get("data", []) if isinstance(d, dict)]
+    data = body.get("data")
+    served = (
+        [d.get("id") for d in data if isinstance(d, dict)]
+        if isinstance(data, list)
+        else []
+    )
     if model in served:
         report.add(
             CheckResult("nok8s_model_served", True, message=f"{model} is served")
@@ -124,7 +157,8 @@ def inference_test(context: ExecutionContext, stack_path: Path) -> SmoketestRepo
 
     context.logger.log_info(f"Running sample inference against {url}...")
     try:
-        resp = requests.post(url, json=payload, timeout=_TIMEOUT)
+        with _session() as session:
+            resp = session.post(url, json=payload, timeout=_COMPLETION_TIMEOUT)
     except requests.RequestException as e:
         report.add(
             CheckResult("nok8s_inference", False, message=f"{url} unreachable: {e}")
@@ -144,19 +178,23 @@ def inference_test(context: ExecutionContext, stack_path: Path) -> SmoketestRepo
         return report
 
     try:
-        choices = resp.json().get("choices") or []
+        body = resp.json()
     except ValueError:
+        body = None
+    if not isinstance(body, dict):
         report.add(
             CheckResult(
                 "nok8s_inference",
                 False,
-                message=f"{url} returned a non-JSON body: {resp.text[:200]}",
+                message=f"{url} did not return a JSON object: {resp.text[:200]}",
             )
         )
         return report
 
-    text = choices[0].get("text", "") if choices else ""
-    if not text:
+    choices = body.get("choices")
+    first = choices[0] if isinstance(choices, list) and choices else None
+    text = first.get("text") if isinstance(first, dict) else None
+    if not isinstance(text, str) or not text:
         report.add(
             CheckResult(
                 "nok8s_inference",

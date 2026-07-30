@@ -50,6 +50,9 @@ class _Responses:
     def __init__(self):
         self.models = (200, {"data": [{"id": MODEL}]})
         self.completions = (200, {"choices": [{"text": " world"}]})
+        # One-shot reply served before `models`, for the retry test.
+        self.models_once = None
+        self.model_hits = 0
 
 
 def _make_handler(responses: _Responses):
@@ -66,7 +69,9 @@ def _make_handler(responses: _Responses):
 
         def do_GET(self):  # noqa: N802 - BaseHTTPRequestHandler API
             if self.path == "/v1/models":
-                self._reply(*responses.models)
+                responses.model_hits += 1
+                once, responses.models_once = responses.models_once, None
+                self._reply(*(once or responses.models))
             else:
                 self._reply(404, {"error": "not found"})
 
@@ -84,12 +89,20 @@ def _make_handler(responses: _Responses):
     return Handler
 
 
+@pytest.fixture(autouse=True)
+def _no_retry_backoff(monkeypatch):
+    """Keep the suite quick; the retry budget has its own explicit test."""
+    monkeypatch.setattr(nok8s, "_RETRY_TOTAL", 0)
+    monkeypatch.setattr(nok8s, "_RETRY_BACKOFF", 0)
+
+
 @pytest.fixture
 def server():
     """A running stub server; yields (responses, port)."""
     responses = _Responses()
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(responses))
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    # Short poll interval: shutdown() otherwise costs 0.5s per test.
+    thread = threading.Thread(target=httpd.serve_forever, args=(0.02,), daemon=True)
     thread.start()
     try:
         yield responses, httpd.server_address[1]
@@ -159,12 +172,25 @@ class TestHealthCheck:
         errors = "".join(report.errors())
         assert MODEL in errors and "some/other-model" in errors
 
-    def test_non_json_body_fails(self, server, tmp_path):
+    @pytest.mark.parametrize(
+        "body",
+        [b"<html>gateway</html>", b"null", b'["a"]'],
+        ids=["html", "null", "list"],
+    )
+    def test_body_that_is_not_a_json_object_fails(self, server, tmp_path, body):
         responses, port = server
-        responses.models = (200, b"<html>gateway</html>")
+        responses.models = (200, body)
         report = nok8s.health_check(_context(), _stack_dir(tmp_path, port))
         assert not report.passed
-        assert "non-JSON" in "".join(report.errors())
+        assert "did not return a JSON object" in "".join(report.errors())
+
+    def test_transient_503_is_retried(self, server, tmp_path, monkeypatch):
+        responses, port = server
+        monkeypatch.setattr(nok8s, "_RETRY_TOTAL", 2)
+        responses.models_once = (503, {"error": "warming up"})
+        report = nok8s.health_check(_context(), _stack_dir(tmp_path, port))
+        assert report.passed, report.errors()
+        assert responses.model_hits == 2
 
     def test_missing_spec_file_fails(self, tmp_path):
         empty = tmp_path / "nok8s-single"
@@ -199,12 +225,25 @@ class TestInferenceTest:
         assert not report.passed
         assert "500" in "".join(report.errors())
 
-    def test_empty_choices_fails(self, server, tmp_path):
+    @pytest.mark.parametrize(
+        "body",
+        [{"choices": []}, {"choices": ["abc"]}, {"choices": [{"text": ""}]}, {}],
+        ids=["empty", "strings", "blank-text", "no-choices"],
+    )
+    def test_missing_generated_text_fails(self, server, tmp_path, body):
         responses, port = server
-        responses.completions = (200, {"choices": []})
+        responses.completions = (200, body)
         report = nok8s.inference_test(_context(), _stack_dir(tmp_path, port))
         assert not report.passed
         assert "no generated text" in "".join(report.errors())
+
+    @pytest.mark.parametrize("body", [b"null", b'["a"]'], ids=["null", "list"])
+    def test_body_that_is_not_a_json_object_fails(self, server, tmp_path, body):
+        responses, port = server
+        responses.completions = (200, body)
+        report = nok8s.inference_test(_context(), _stack_dir(tmp_path, port))
+        assert not report.passed
+        assert "did not return a JSON object" in "".join(report.errors())
 
     def test_unreachable_endpoint_fails(self, tmp_path):
         report = nok8s.inference_test(_context(), _stack_dir(tmp_path, _closed_port()))
@@ -281,5 +320,15 @@ def test_do_smoketest_sets_container_only(monkeypatch, tmp_path):
     cli._do_smoketest(args, MagicMock(), types.SimpleNamespace(rendered_paths=[]))
 
     assert captured["context"].container_only is True
-    # resolve_cluster() short-circuits on container_only, so no kubeconfig.
-    assert captured["context"].resolve_cluster() is None
+
+    # resolve_cluster() must short-circuit on container_only instead of
+    # reaching the kubeconfig-loading resolver (which is what issue #1698
+    # tripped over). Fail loudly if it ever gets there.
+    import llmdbenchmark.utilities.cluster as cluster_mod
+
+    monkeypatch.setattr(
+        cluster_mod,
+        "resolve_cluster",
+        lambda ctx: pytest.fail("smoketest must not resolve a cluster for nok8s"),
+    )
+    captured["context"].resolve_cluster()
