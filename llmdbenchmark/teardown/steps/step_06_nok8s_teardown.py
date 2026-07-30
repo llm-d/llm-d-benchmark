@@ -43,9 +43,25 @@ class NoK8sTeardownStep(Step):
             runtime = spec.get("runtime", runtime)
             names = [c["name"] for c in spec.get("containers", [])]
 
-        # Fallback to the well-known names if the spec is unavailable.
-        if not names:
+        # Fallback to the well-known names if the spec is unavailable, but
+        # only for a single-stack plan. With siblings around, those names
+        # belong to whichever stack rendered without a suffix, so removing
+        # them here would tear down another stack's containers.
+        if not names and len(context.rendered_stacks or []) <= 1:
             names = ["envoy", "epp", "vllm-0"]
+
+        if not names:
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=True,
+                message=(
+                    "No nok8s container spec for this stack and the plan has "
+                    "sibling stacks; removed nothing to avoid deleting their "
+                    "containers"
+                ),
+                stack_name=stack_path.name if stack_path else None,
+            )
 
         for name in names:
             cmd.execute(f"{runtime} rm -f {name}", check=False)

@@ -83,6 +83,9 @@ class RenderPlans:
         # _resolve_model fires once per RenderPlans instance, not N times
         # in a multi-stack scenario.
         self._cli_model_multi_stack_warned: bool = False
+        # host port -> stack that claimed it, accumulated across the
+        # sequentially rendered nok8s stacks. See _validate_nok8s_host_ports.
+        self._nok8s_port_claims: dict[int, str] = {}
 
         # ``--non-admin`` propagates into the Jinja render context as
         # ``nonAdmin`` so templates can gate cluster-scoped resources
@@ -992,6 +995,87 @@ class RenderPlans:
 
         return values
 
+    # nok8s host ports that must be unique across every nok8s stack on the
+    # host: config path -> whether the value is a base for `vllm.replicas`
+    # consecutive ports.
+    _NOK8S_HOST_PORTS: tuple[tuple[tuple[str, ...], bool], ...] = (
+        (("nok8s", "vllm", "hostPort"), True),
+        (("nok8s", "envoy", "listenPort"), False),
+        (("nok8s", "envoy", "adminPort"), False),
+        (("nok8s", "epp", "grpcPort"), False),
+        (("nok8s", "epp", "grpcHealthPort"), False),
+        (("nok8s", "epp", "metricsPort"), False),
+    )
+
+    def _resolve_nok8s_stack_scope(
+        self, values: dict, stack_name: str, total_stacks: int = 1
+    ) -> dict:
+        """Scope nok8s container names and the staged config dir to the stack.
+
+        nok8s containers live on one host with no namespace to separate
+        them, so every identity that a sibling stack also uses has to be
+        qualified. The stack name is unique by construction (it is the plan
+        sub-directory), so it is the qualifier: container names get a
+        ``-<stack>`` suffix and ``workspaceHostDir`` gets a ``/<stack>``
+        sub-directory.
+
+        Skipped for single-stack scenarios (matching
+        ``_resolve_per_stack_identity``) so the shipped names ``vllm-0`` /
+        ``epp`` / ``envoy`` and ``~/.llmdbench/nok8s`` stay stable.
+
+        Host ports are NOT derived here: binding a port the author never
+        wrote is worse than refusing to render. See
+        ``_validate_nok8s_host_ports``.
+        """
+        if total_stacks < 2 or not values.get("nok8s", {}).get("enabled"):
+            return values
+
+        # docker/podman container names allow [a-zA-Z0-9_.-] only.
+        slug = re.sub(r"[^A-Za-z0-9_.-]", "-", stack_name)
+        if not slug:
+            return values
+
+        nok8s = values["nok8s"]
+        if not nok8s.get("nameSuffix"):
+            nok8s["nameSuffix"] = f"-{slug}"
+        # Unconditional: an explicitly shared workspace dir still has to be
+        # partitioned, otherwise stack B overwrites stack A's staged configs.
+        workspace = str(nok8s.get("workspaceHostDir") or "~/.llmdbench/nok8s")
+        nok8s["workspaceHostDir"] = f"{workspace.rstrip('/')}/{slug}"
+
+        return values
+
+    def _validate_nok8s_host_ports(self, values: dict, stack_name: str) -> list[str]:
+        """Reject two nok8s stacks claiming the same host port.
+
+        Every nok8s container publishes on (or, for EPP/Envoy, binds with
+        ``--network host``) a fixed host port, so sibling stacks silently
+        fight over them. Claims are accumulated across stacks, which render
+        sequentially, and a clash is a render error: the CLI aborts before
+        any container is launched.
+        """
+        if not values.get("nok8s", {}).get("enabled"):
+            return []
+
+        errors: list[str] = []
+        replicas = int(values.get("nok8s", {}).get("vllm", {}).get("replicas", 1) or 1)
+        for path, is_base in self._NOK8S_HOST_PORTS:
+            base = self._get_nested(values, path)
+            if not isinstance(base, int):
+                continue
+            key = ".".join(path)
+            for port in range(base, base + (replicas if is_base else 1)):
+                owner = self._nok8s_port_claims.setdefault(port, stack_name)
+                if owner != stack_name:
+                    errors.append(
+                        f"[{stack_name}] nok8s host port {port} ({key}) is already "
+                        f"used by stack '{owner}'. Every nok8s stack on a host needs "
+                        f"its own ports; give this stack distinct "
+                        f"nok8s.vllm.hostPort, nok8s.envoy.listenPort, "
+                        f"nok8s.envoy.adminPort and nok8s.epp.* values."
+                    )
+        return errors
+
     @staticmethod
     def _get_nested(root: dict, path: tuple[str, ...]) -> Any:
         """Walk ``root`` along ``path``; return the leaf value or ``None``."""
@@ -1704,6 +1788,9 @@ class RenderPlans:
         merged_values = self._resolve_per_stack_identity(
             merged_values, total_stacks=total_stacks
         )
+        merged_values = self._resolve_nok8s_stack_scope(
+            merged_values, stack_name=stack_name, total_stacks=total_stacks
+        )
         merged_values = self._resolve_inference_pool_host(merged_values)
         merged_values = self._normalize_direct_service_mode(merged_values)
         merged_values = self._normalize_router_block(merged_values)
@@ -1749,6 +1836,10 @@ class RenderPlans:
             stack_name=stack_name,
         )
         for msg in kustomize_errors:
+            self.logger.log_error(msg)
+            stack_errors.render_errors.append(msg)
+
+        for msg in self._validate_nok8s_host_ports(merged_values, stack_name):
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 
@@ -1913,6 +2004,7 @@ class RenderPlans:
             sibling_stacks
         )
 
+        self._nok8s_port_claims = {}
         for i, stack in enumerate(stacks, 1):
             self._process_stack(
                 stack=stack,

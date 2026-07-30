@@ -1344,8 +1344,16 @@ nok8s:
   # can pull gated models from Hugging Face.
   hfTokenEnv: HUGGING_FACE_HUB_TOKEN
   # Host directory where rendered EPP/Envoy configs are staged and bind-mounted
-  # from (avoids sudo writes to /etc).
+  # from (avoids sudo writes to /etc). A scenario with more than one stack
+  # gets a per-stack subdirectory appended so stacks never overwrite each
+  # other's staged configs.
   workspaceHostDir: "~/.llmdbench/nok8s"
+  # Appended to every container name (vllm-N, epp, envoy). Filled in
+  # automatically with "-<stack>" when a scenario has more than one stack, so
+  # sibling stacks on one host don't share (and delete) each other's
+  # containers. An explicit value is preserved; single-stack scenarios keep
+  # the bare names.
+  nameSuffix: ""
 
   # vLLM inference worker(s)
   vllm:
@@ -1389,6 +1397,9 @@ nok8s:
     image: docker.io/envoyproxy/envoy
     tag: distroless-v1.33.2
     listenPort: 8081
+    # Envoy admin interface. Envoy runs with --network host, so two stacks on
+    # one host need distinct admin ports as well as distinct listenPorts.
+    adminPort: 19000
     configMountPath: /etc/envoy/envoy.yaml
 
 # ============================================================================
