@@ -64,7 +64,7 @@ jobs:
       # Forwarded to the model download job for gated models; harmless if empty.
       HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Auth to OCP (pok-prod)
         run: |
