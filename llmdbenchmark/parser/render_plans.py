@@ -83,9 +83,11 @@ class RenderPlans:
         # _resolve_model fires once per RenderPlans instance, not N times
         # in a multi-stack scenario.
         self._cli_model_multi_stack_warned: bool = False
-        # host port -> stack that claimed it, accumulated across the
-        # sequentially rendered nok8s stacks. See _validate_nok8s_host_ports.
-        self._nok8s_port_claims: dict[int, str] = {}
+        # host port -> (stack, config key) and container name -> stack that
+        # claimed them, accumulated across the sequentially rendered nok8s
+        # stacks. See _validate_nok8s_host_claims.
+        self._nok8s_port_claims: dict[int, tuple[str, str]] = {}
+        self._nok8s_name_claims: dict[str, str] = {}
 
         # ``--non-admin`` propagates into the Jinja render context as
         # ``nonAdmin`` so templates can gate cluster-scoped resources
@@ -1014,10 +1016,11 @@ class RenderPlans:
 
         nok8s containers live on one host with no namespace to separate
         them, so every identity that a sibling stack also uses has to be
-        qualified. The stack name is unique by construction (it is the plan
-        sub-directory), so it is the qualifier: container names get a
+        qualified. The stack name is the qualifier: container names get a
         ``-<stack>`` suffix and ``workspaceHostDir`` gets a ``/<stack>``
-        sub-directory.
+        sub-directory. The suffix is only a default (two names can slug to
+        one string, and an explicit ``nameSuffix`` wins), so the resolved
+        names are checked in ``_validate_nok8s_host_claims``.
 
         Skipped for single-stack scenarios (matching
         ``_resolve_per_stack_identity``) so the shipped names ``vllm-0`` /
@@ -1045,12 +1048,14 @@ class RenderPlans:
 
         return values
 
-    def _validate_nok8s_host_ports(self, values: dict, stack_name: str) -> list[str]:
-        """Reject two nok8s stacks claiming the same host port.
+    def _validate_nok8s_host_claims(self, values: dict, stack_name: str) -> list[str]:
+        """Reject two nok8s stacks claiming the same container name or host port.
 
-        Every nok8s container publishes on (or, for EPP/Envoy, binds with
-        ``--network host``) a fixed host port, so sibling stacks silently
-        fight over them. Claims are accumulated across stacks, which render
+        The host has one flat container namespace and one set of ports, so
+        sibling stacks silently fight over both: a shared name means one
+        stack's idempotency sweep (``rm -f``) deletes the other's running
+        containers, a shared port means whichever container starts second
+        dies. Claims are accumulated across stacks, which render
         sequentially, and a clash is a render error: the CLI aborts before
         any container is launched.
         """
@@ -1058,14 +1063,43 @@ class RenderPlans:
             return []
 
         errors: list[str] = []
-        replicas = int(values.get("nok8s", {}).get("vllm", {}).get("replicas", 1) or 1)
+        nok8s = values["nok8s"]
+        replicas = nok8s.get("vllm", {}).get("replicas", 1)
+        if not isinstance(replicas, int) or replicas < 1:
+            # A bad value is already reported by the template render; this
+            # validator only has to not crash on it.
+            replicas = 1
+
+        # Names exactly as 34_nok8s-containers.yaml.j2 builds them. The
+        # suffix is normally derived from the stack name, but two stack
+        # names can slug to the same string and an explicit
+        # ``nok8s.nameSuffix`` can be shared outright, so the resolved name
+        # is what gets checked.
+        suffix = str(nok8s.get("nameSuffix") or "")
+        names = [f"vllm-{i}{suffix}" for i in range(replicas)]
+        names += [f"epp{suffix}", f"envoy{suffix}"]
+        for name in names:
+            owner = self._nok8s_name_claims.setdefault(name, stack_name)
+            if owner != stack_name:
+                errors.append(
+                    f"[{stack_name}] nok8s container name '{name}' is already "
+                    f"used by stack '{owner}'. Standing up this stack would "
+                    f"delete that stack's containers; give the stacks names "
+                    f"that differ by more than punctuation, or set a distinct "
+                    f"nok8s.nameSuffix on each."
+                )
+
         for path, is_base in self._NOK8S_HOST_PORTS:
             base = self._get_nested(values, path)
+            if isinstance(base, str) and base.isdigit():
+                base = int(base)
             if not isinstance(base, int):
                 continue
             key = ".".join(path)
             for port in range(base, base + (replicas if is_base else 1)):
-                owner = self._nok8s_port_claims.setdefault(port, stack_name)
+                owner, owner_key = self._nok8s_port_claims.setdefault(
+                    port, (stack_name, key)
+                )
                 if owner != stack_name:
                     errors.append(
                         f"[{stack_name}] nok8s host port {port} ({key}) is already "
@@ -1073,6 +1107,12 @@ class RenderPlans:
                         f"its own ports; give this stack distinct "
                         f"nok8s.vllm.hostPort, nok8s.envoy.listenPort, "
                         f"nok8s.envoy.adminPort and nok8s.epp.* values."
+                    )
+                elif owner_key != key:
+                    errors.append(
+                        f"[{stack_name}] nok8s host port {port} is claimed by both "
+                        f"{owner_key} and {key}. Each nok8s container binds its own "
+                        f"host port; the second one to start would fail to bind."
                     )
         return errors
 
@@ -1839,7 +1879,7 @@ class RenderPlans:
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 
-        for msg in self._validate_nok8s_host_ports(merged_values, stack_name):
+        for msg in self._validate_nok8s_host_claims(merged_values, stack_name):
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 
@@ -2005,6 +2045,7 @@ class RenderPlans:
         )
 
         self._nok8s_port_claims = {}
+        self._nok8s_name_claims = {}
         for i, stack in enumerate(stacks, 1):
             self._process_stack(
                 stack=stack,

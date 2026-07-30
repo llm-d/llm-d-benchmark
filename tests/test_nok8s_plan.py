@@ -257,17 +257,24 @@ SECOND_STACK_PORTS = {
 }
 
 
-def _two_stack_scenario(tmp_path: Path, distinct_ports: bool) -> Path:
+def _two_stack_scenario(
+    tmp_path: Path,
+    distinct_ports: bool,
+    names: tuple[str, str] = ("nok8s-single", "nok8s-second"),
+    both_nok8s: dict | None = None,
+) -> Path:
     """Duplicate the shipped single-stack nok8s scenario into a two-stack one."""
     import copy
 
     doc = yaml.safe_load(NOK8S_SCENARIO.read_text(encoding="utf-8"))
     first = doc["scenario"][0]
     second = copy.deepcopy(first)
-    second["name"] = "nok8s-second"
+    first["name"], second["name"] = names
     if distinct_ports:
         for (section, key), port in SECOND_STACK_PORTS.items():
             second["nok8s"].setdefault(section, {})[key] = port
+    for stack in (first, second):
+        stack["nok8s"].update(copy.deepcopy(both_nok8s or {}))
     doc["scenario"] = [first, second]
 
     path = tmp_path / f"two-stack-{'ok' if distinct_ports else 'clash'}.yaml"
@@ -341,6 +348,93 @@ def test_nok8s_port_collision_is_a_render_error(tmp_path: Path) -> None:
     ), errors
     # The clashing stack is not rendered, so nothing downstream can launch it.
     assert [Path(p).name for p in result.rendered_paths] == ["nok8s-single"]
+
+
+def test_nok8s_container_name_collision_is_a_render_error(tmp_path: Path) -> None:
+    """Stack names that differ only by punctuation slug to one container name."""
+    result = _render_scenario(
+        tmp_path, _two_stack_scenario(tmp_path, True, names=("chat one", "chat-one"))
+    )
+    assert result.has_errors
+
+    errors = result.stacks["chat-one"].render_errors
+    assert any("epp-chat-one" in e and "chat one" in e for e in errors), errors
+    assert [Path(p).name for p in result.rendered_paths] == ["chat one"]
+
+
+def test_shared_nok8s_name_suffix_is_a_render_error(tmp_path: Path) -> None:
+    """An explicit nameSuffix on both stacks puts them back on one identity."""
+    result = _render_scenario(
+        tmp_path,
+        _two_stack_scenario(tmp_path, True, both_nok8s={"nameSuffix": "-shared"}),
+    )
+    assert result.has_errors
+
+    errors = result.stacks["nok8s-second"].render_errors
+    assert any("envoy-shared" in e and "nok8s-single" in e for e in errors), errors
+
+
+def _validator() -> RenderPlans:
+    return RenderPlans(
+        template_dir=TEMPLATE_DIR,
+        defaults_file=DEFAULTS_FILE,
+        scenarios_file=NOK8S_SCENARIO,
+        output_dir=Path("/tmp/unused-nok8s-plan"),
+        logger=_Logger(),
+    )
+
+
+def test_nok8s_one_stack_claiming_a_port_twice_is_a_render_error() -> None:
+    """Envoy on the worker's port would fail to bind, silently, at standup."""
+    errors = _validator()._validate_nok8s_host_claims(
+        {
+            "nok8s": {
+                "enabled": True,
+                "vllm": {"hostPort": 8000},
+                "envoy": {"listenPort": 8000},
+            }
+        },
+        "solo",
+    )
+    assert any(
+        "8000" in e and "nok8s.vllm.hostPort" in e and "nok8s.envoy.listenPort" in e
+        for e in errors
+    ), errors
+
+
+def test_nok8s_claims_validator_survives_a_non_int_replicas() -> None:
+    """A bad replicas value is the template's error to report, not a traceback."""
+    assert (
+        _validator()._validate_nok8s_host_claims(
+            {
+                "nok8s": {
+                    "enabled": True,
+                    "vllm": {"replicas": "auto", "hostPort": 8000},
+                }
+            },
+            "solo",
+        )
+        == []
+    )
+
+
+def test_nok8s_run_endpoint_needs_one_stack() -> None:
+    """The run phase refuses to benchmark every stack through stack 1's Envoy."""
+    from llmdbenchmark.cli import PhaseError, _nok8s_endpoint_url
+
+    stacks = [
+        {"stack_name": "chat", "nok8s_enabled": True, "nok8s_listen_port": 8081},
+        {"stack_name": "code", "nok8s_enabled": True, "nok8s_listen_port": 8181},
+    ]
+
+    assert _nok8s_endpoint_url(stacks[:1]) == "http://localhost:8081"
+    assert _nok8s_endpoint_url(stacks, ["code"]) == "http://localhost:8181"
+    try:
+        _nok8s_endpoint_url(stacks)
+    except PhaseError as e:
+        assert "--stack" in str(e) and "8181" in str(e)
+    else:
+        raise AssertionError("expected a PhaseError for a multi-stack nok8s run")
 
 
 class _RecordingCmd:

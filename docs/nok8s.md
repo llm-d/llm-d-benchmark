@@ -131,36 +131,50 @@ device and image match yourself.
 
 A scenario with more than one stack runs every stack's containers on the same
 host, with no namespace to keep them apart, so each stack needs its own
-identity. Two things are automatic and one is on you:
+identity. Two things are automatic and two are on you:
 
 - **Container names** get a `-<stack name>` suffix, e.g. `vllm-0-chat`,
   `epp-chat`, `envoy-chat`. Without this, stack B's idempotency sweep
-  (`docker rm -f epp`) deletes stack A's running router.
+  (`docker rm -f epp`) deletes stack A's running router. Two stacks that
+  still end up with the same container name (names differing only by
+  punctuation, or a shared explicit `nok8s.nameSuffix`) are a render error.
 - **`nok8s.workspaceHostDir`** gains a per-stack sub-directory, so the staged
   EPP/Envoy configs never overwrite each other.
 - **Host ports are yours to assign.** They are never derived, because guessing
   would silently bind ports you did not ask for. Two nok8s stacks claiming the
   same port is a render error that names the port and the owning stack, and
   standup stops before any container starts.
+- **Accelerators are yours to divide.** A worker with `replicas: 1` gets
+  `--gpus all`, so two such stacks both claim every device and the second one
+  runs out of memory. Give each stack its own devices (preflight warns when
+  more than one stack is left unpinned). Total demand is the sum of
+  `replicas x tensorParallel` over all stacks.
 
 A single-stack scenario is unaffected: names stay `vllm-0` / `epp` / `envoy`
-and the workspace stays `~/.llmdbench/nok8s`.
+and the workspace stays `~/.llmdbench/nok8s`. Converting an existing one? Run
+`teardown` first (or `docker rm -f vllm-0 epp envoy`): the unsuffixed
+containers from the single-stack run are no longer matched by the suffixed
+names, so teardown will not remove them and they keep holding their ports and
+device memory.
 
 Give every stack after the first a distinct set of six ports (more, with
-`replicas > 1`: worker *i* takes `hostPort + i`):
+`replicas > 1`: worker *i* takes `hostPort + i`) and its own devices:
 
 ```yaml
 scenario:
   - name: chat
     nok8s:
       enabled: true
-      # ... first stack keeps the defaults: 8000, 8081, 19000, 9002/9003/9090
+      vllm:
+        gpus: "device=0"        # podman: nok8s.vllm.deviceArgs
+      # ... first stack keeps the default ports: 8000, 8081, 19000, 9002/9003/9090
 
   - name: code
     nok8s:
       enabled: true
       vllm:
         hostPort: 8100
+        gpus: "device=1"
       epp:
         grpcPort: 9102
         grpcHealthPort: 9103
@@ -170,16 +184,18 @@ scenario:
         adminPort: 19100
 ```
 
-Each stack gets its own Envoy front door, so benchmark them one at a time and
-point the run phase at that stack's `listenPort`:
+Each stack gets its own Envoy front door, so there is no scenario-wide
+endpoint: benchmark them one at a time with `--stack`, which resolves that
+stack's `listenPort`.
 
 ```bash
-llmdbenchmark --spec my-scenario.yaml run --stack chat --endpoint-url http://localhost:8081
-llmdbenchmark --spec my-scenario.yaml run --stack code --endpoint-url http://localhost:8181
+llmdbenchmark --spec my-scenario.yaml run --stack chat   # -> http://localhost:8081
+llmdbenchmark --spec my-scenario.yaml run --stack code   # -> http://localhost:8181
 ```
 
-`--endpoint-url` is required here: without it the run phase uses the first
-stack's endpoint for every stack.
+`run` without `--stack` (or an explicit `--endpoint-url`) fails on a
+multi-stack nok8s scenario rather than benchmarking the first stack's Envoy
+and filing the results under every stack's name.
 
 ## How it maps to the pipeline
 
