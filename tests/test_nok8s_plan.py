@@ -242,3 +242,162 @@ def test_resolve_deploy_method_forces_nok8s() -> None:
     assert out["nok8s"]["enabled"] is True
     assert out["standalone"]["enabled"] is False
     assert out["modelservice"]["enabled"] is False
+
+
+# ---------------------------------------------------------------------- #
+# Multiple nok8s stacks on one host (issue #1699)
+# ---------------------------------------------------------------------- #
+SECOND_STACK_PORTS = {
+    ("vllm", "hostPort"): 8100,
+    ("epp", "grpcPort"): 9102,
+    ("epp", "grpcHealthPort"): 9103,
+    ("epp", "metricsPort"): 9190,
+    ("envoy", "listenPort"): 8181,
+    ("envoy", "adminPort"): 19100,
+}
+
+
+def _two_stack_scenario(tmp_path: Path, distinct_ports: bool) -> Path:
+    """Duplicate the shipped single-stack nok8s scenario into a two-stack one."""
+    import copy
+
+    doc = yaml.safe_load(NOK8S_SCENARIO.read_text(encoding="utf-8"))
+    first = doc["scenario"][0]
+    second = copy.deepcopy(first)
+    second["name"] = "nok8s-second"
+    if distinct_ports:
+        for (section, key), port in SECOND_STACK_PORTS.items():
+            second["nok8s"].setdefault(section, {})[key] = port
+    doc["scenario"] = [first, second]
+
+    path = tmp_path / f"two-stack-{'ok' if distinct_ports else 'clash'}.yaml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return path
+
+
+def _render_scenario(tmp_path: Path, scenario_file: Path, out_name: str = "plan"):
+    return RenderPlans(
+        template_dir=TEMPLATE_DIR,
+        defaults_file=DEFAULTS_FILE,
+        scenarios_file=scenario_file,
+        output_dir=tmp_path / out_name,
+        logger=_Logger(),
+    ).eval()
+
+
+def _spec_of(stack_dir: Path) -> dict:
+    return yaml.safe_load(
+        next(stack_dir.glob("34_nok8s-containers*")).read_text(encoding="utf-8")
+    )
+
+
+def test_multi_stack_nok8s_identities_are_disjoint(tmp_path: Path) -> None:
+    """Two nok8s stacks must not share names, workspace, endpoint or admin port."""
+    result = _render_scenario(tmp_path, _two_stack_scenario(tmp_path, True))
+    assert not result.has_errors, result.to_dict()
+    first, second = (Path(p) for p in result.rendered_paths)
+
+    spec_a, spec_b = _spec_of(first), _spec_of(second)
+
+    names_a = {c["name"] for c in spec_a["containers"]}
+    names_b = {c["name"] for c in spec_b["containers"]}
+    assert names_a == {"vllm-0-nok8s-single", "epp-nok8s-single", "envoy-nok8s-single"}
+    assert names_b == {"vllm-0-nok8s-second", "epp-nok8s-second", "envoy-nok8s-second"}
+    assert not names_a & names_b
+
+    assert spec_a["workspaceHostDir"] != spec_b["workspaceHostDir"]
+    assert spec_a["workspaceHostDir"].endswith("/nok8s-single")
+    assert spec_b["workspaceHostDir"].endswith("/nok8s-second")
+
+    assert spec_a["endpoint"] == "http://localhost:8081"
+    assert spec_b["endpoint"] == "http://localhost:8181"
+
+    # Envoy runs --network host: the admin ports must differ too.
+    admin_a = yaml.safe_load(
+        next(first.glob("33_nok8s-envoy*")).read_text(encoding="utf-8")
+    )["admin"]["address"]["socket_address"]["port_value"]
+    admin_b = yaml.safe_load(
+        next(second.glob("33_nok8s-envoy*")).read_text(encoding="utf-8")
+    )["admin"]["address"]["socket_address"]["port_value"]
+    assert (admin_a, admin_b) == (19000, 19100)
+
+
+def test_single_stack_nok8s_names_stay_unsuffixed(tmp_path: Path) -> None:
+    """Back-compat: one stack keeps vllm-0 / epp / envoy and the shared workspace."""
+    spec = _spec_of(_stack_dir(_render(tmp_path)))
+    assert {c["name"] for c in spec["containers"]} == {"vllm-0", "epp", "envoy"}
+    assert spec["workspaceHostDir"] == "~/.llmdbench/nok8s"
+
+
+def test_nok8s_port_collision_is_a_render_error(tmp_path: Path) -> None:
+    """Two nok8s stacks on the same host ports fail the render, not the standup."""
+    result = _render_scenario(tmp_path, _two_stack_scenario(tmp_path, False))
+    assert result.has_errors
+
+    errors = result.stacks["nok8s-second"].render_errors
+    assert any(
+        "8081" in e and "nok8s.envoy.listenPort" in e and "nok8s-single" in e
+        for e in errors
+    ), errors
+    # The clashing stack is not rendered, so nothing downstream can launch it.
+    assert [Path(p).name for p in result.rendered_paths] == ["nok8s-single"]
+
+
+class _RecordingCmd:
+    """CommandExecutor stand-in that records every command it is handed."""
+
+    def __init__(self) -> None:
+        self.commands: list[str] = []
+
+    def execute(self, cmd, *_: Any, **__: Any):
+        self.commands.append(cmd)
+        return _FakeResult(True)
+
+    def removed(self) -> set[str]:
+        return {c.split()[-1] for c in self.commands if " rm -f " in c}
+
+    def launched(self) -> set[str]:
+        return {
+            c.split("--name ")[1].split()[0] for c in self.commands if "--name " in c
+        }
+
+
+def test_nok8s_deploy_never_removes_a_sibling_stacks_containers(
+    tmp_path: Path,
+) -> None:
+    """Stack B's idempotency sweep must not delete the containers stack A launched."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    result = _render_scenario(tmp_path, _two_stack_scenario(tmp_path, True))
+    first, second = (Path(p) for p in result.rendered_paths)
+
+    cmd_a, cmd_b = _RecordingCmd(), _RecordingCmd()
+    for stack, cmd in ((first, cmd_a), (second, cmd_b)):
+        ctx = _nok8s_ctx(tmp_path, cmd)
+        ctx.dry_run = True
+        ctx.rendered_stacks = [first, second]
+        assert NoK8sDeployStep().execute(ctx, stack).success is True
+
+    assert cmd_a.launched() and cmd_b.launched()
+    assert not cmd_b.removed() & cmd_a.launched()
+    assert not cmd_a.removed() & cmd_b.launched()
+
+
+def test_nok8s_teardown_leaves_siblings_alone_without_a_spec(tmp_path: Path) -> None:
+    """No spec + sibling stacks -> remove nothing, rather than the well-known names."""
+    from llmdbenchmark.teardown.steps.step_06_nok8s_teardown import NoK8sTeardownStep
+
+    specless = tmp_path / "modelservice-stack"
+    specless.mkdir()
+    cmd = _RecordingCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+    ctx.rendered_stacks = [specless, tmp_path / "nok8s-stack"]
+
+    assert NoK8sTeardownStep().execute(ctx, specless).success is True
+    assert cmd.removed() == set()
+
+    # Single-stack plan keeps the well-known-names fallback.
+    solo = _nok8s_ctx(tmp_path, _RecordingCmd())
+    solo.rendered_stacks = [specless]
+    NoK8sTeardownStep().execute(solo, specless)
+    assert solo.cmd.removed() == {"envoy", "epp", "vllm-0"}
