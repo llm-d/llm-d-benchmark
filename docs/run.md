@@ -218,6 +218,7 @@ names fail loudly with a list of valid ones. Available via
 | `-j / --parallelism` | Applies to every stack - each stack launches N parallel harness pods. |
 | `--endpoint-url` | Single endpoint for run-only mode; bypasses auto-detect. In multi-stack, only meaningful when combined with `--stack` (otherwise every stack targets the same endpoint, which is rarely desired). |
 | `--stack NAME[,NAME...]` | Scopes every per-stack step to the named subset. |
+| **`--set KEY=VALUE`** (scenario overrides; `-o` on `standup`) | **Applies to every stack unless the key carries a `stack:` or glob prefix** - e.g. `--set 'llama-31-8b:decode.replicas=4'`. Unlike `-m`, an unprefixed `--set` still applies to every stack when `--stack` narrows the deployment: `--stack` picks what is *deployed*, the prefix picks what is *modified*. A selector matching no stack is a hard error. See [standup.md](standup.md#scoping-overrides-in-multi-stack-scenarios). |
 | **`-m / --models`** | **Scopes to the filter when `--stack NAME` names exactly one stack** - only that stack's model is overridden; siblings keep their scenario-defined models. Without `--stack` (or with a broader filter), `-m` applies to every stack and emits a warning - that collapses a multi-model scenario into N copies of one model, which is almost never desired. |
 
 So the clean pattern for "rerun pool A against a different model":

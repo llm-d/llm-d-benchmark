@@ -99,45 +99,49 @@ llmdbenchmark --spec guides/optimized-baseline-sglang teardown  -t kustomize -p 
 
 ### Option B — flip the backend on any guide scenario
 
-Benchmark the `optimized-baseline` guide with SGLang by editing the backend
-in place:
+Any guide scenario can be run with SGLang without a second scenario file, by
+overriding `kustomize.acceleratorBackend` from the CLI. `-t kustomize`
+already flips `kustomize.enabled`, so the backend is the only value left to
+set:
 
 ```bash
 export NS=llmdbench
 export HF_TOKEN=hf_...     # if the model is gated
+export SGLANG='kustomize.acceleratorBackend=gpu/sglang'
 
-# 1. Point the guide scenario at the SGLang overlay.
-#    Either edit config/scenarios/guides/optimized-baseline.yaml so that
-#    scenario[0].kustomize.acceleratorBackend is "gpu/sglang", or do it in
-#    place with yq (this is exactly what nightly CI does):
-yq -i '.scenario[0].kustomize.acceleratorBackend = "gpu/sglang"' \
-    config/scenarios/guides/optimized-baseline.yaml
+# 1. Stand up the SGLang stack (kustomize deploy method).
+llmdbenchmark --spec guides/optimized-baseline standup -t kustomize -p "$NS" -o "$SGLANG"
 
-# 2. Stand up the SGLang stack (kustomize deploy method).
-llmdbenchmark --spec guides/optimized-baseline standup -t kustomize -p "$NS"
+# 2. Smoketest: send real requests through the gateway and validate responses.
+llmdbenchmark --spec guides/optimized-baseline smoketest -t kustomize -p "$NS" --set "$SGLANG"
 
-# 3. Smoketest: send real requests through the gateway and validate responses.
-llmdbenchmark --spec guides/optimized-baseline smoketest -t kustomize -p "$NS"
-
-# 4. Run a workload and collect + analyze results.
-llmdbenchmark --spec guides/optimized-baseline run -t kustomize -p "$NS" \
+# 3. Run a workload and collect + analyze results.
+llmdbenchmark --spec guides/optimized-baseline run -t kustomize -p "$NS" --set "$SGLANG" \
     -l inference-perf -w shared_prefix_synthetic.yaml
 
-# 5. Tear down.
-llmdbenchmark --spec guides/optimized-baseline teardown -t kustomize -p "$NS"
+# 4. Tear down.
+llmdbenchmark --spec guides/optimized-baseline teardown -t kustomize -p "$NS" --set "$SGLANG"
 ```
 
+Pass the override to **every** phase: each one re-renders the plan, and a
+phase that misses it renders a vLLM plan for an SGLang deployment. On
+`standup` the flag is spelled `-o`/`--set` interchangeably; elsewhere use
+`--set`, because `run`'s `-o` means workload-profile overrides. See
+[standup.md](standup.md#overriding-scenario-values-from-the-cli---set--standup--o).
+
 To benchmark a different guide, swap the `--spec` (e.g.
-`guides/tiered-prefix-cache`) and set `acceleratorBackend` on that scenario. For
-AMD accelerators on `optimized-baseline`, use `acceleratorBackend: "amd/sglang"`.
+`guides/tiered-prefix-cache`). For AMD accelerators on `optimized-baseline`,
+use `kustomize.acceleratorBackend=amd/sglang`.
 
 ### Setting the backend without editing the file
 
 The `acceleratorBackend` value lives in the scenario's `kustomize` block. There
 is no dedicated CLI flag; set it one of these ways:
 
+- `--set kustomize.acceleratorBackend=gpu/sglang` (`-o` on `standup`), as in
+  Option B above -- no file is modified. `LLMDBENCH_SET` carries the same
+  value through the environment.
 - Edit `config/scenarios/guides/<guide>.yaml` directly (`kustomize.acceleratorBackend`).
-- Patch it in place with `yq` as shown above (CI-style, keeps the edit scriptable).
 - Keep your own copy of the scenario under `config/scenarios/` and point `--spec` at it.
 
 ## Comparing SGLang vs vLLM

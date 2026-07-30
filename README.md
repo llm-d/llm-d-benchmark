@@ -405,6 +405,8 @@ llmdbenchmark --version
 | `--non-admin` / `-i` | `LLMDBENCH_NON_ADMIN` | Skip admin-only steps |
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
+| `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
+| `--set KEY=VALUE` / `--override` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. On `standup` this is also spelled `-o`. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set--standup--o). |
 | `--version` | | Show version |
 
 ### Plan Options
@@ -438,6 +440,7 @@ llmdbenchmark --version
 | `--annotations` | `LLMDBENCH_ANNOTATIONS` | Extra annotations for deployed resources |
 | `--wva` | `LLMDBENCH_WVA` | Workload Variant Autoscaler config |
 | `--epp-keda-saturation` | `LLMDBENCH_EPP_KEDA_SATURATION` | Direct EPP+KEDA saturation autoscaling (controller-free) |
+| `-o KEY=VALUE` / `--overrides` | `LLMDBENCH_SET` | Scenario override(s) -- alias for the global `--set`. `standup` has no workload profile, so `-o` is unambiguous here. E.g. `-o kustomize.acceleratorBackend=gpu/sglang` or `-o 'llama-31-8b:decode.replicas=4'`. See [Global Options](#global-options). |
 
 ### Teardown Options
 
@@ -467,7 +470,7 @@ llmdbenchmark --version
 | `-f` / `--monitoring` | | Enable monitoring during standup and run phases |
 | `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name |
 | `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile |
-| `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | Workload parameter overrides |
+| `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | **Workload profile** parameter overrides (`param=value,...`). For *scenario* overrides use the global `--set`; a `setup.treatments` value beats `--set` on the same key. |
 | `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination (local, gs://, s3://) |
 | `-j N` | `LLMDBENCH_PARALLELISM` | Parallel harness pods |
 | `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion |
@@ -490,7 +493,7 @@ llmdbenchmark --version
 | `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile YAML |
 | `--workload-file-path FILE` | `LLMDBENCH_WORKLOAD_FILE_PATH` | Local workload profile file path |
 | `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment treatments YAML for parameter sweeping |
-| `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | Workload parameter overrides (param=value,...) |
+| `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | **Workload profile** parameter overrides (`param=value,...`). For *scenario* overrides use the global `--set` -- on `run` the two are separate flags. |
 | `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination (local, gs://, s3://) |
 | `-j N` | `LLMDBENCH_PARALLELISM` | Parallel harness pods |
 | `-U URL` | `LLMDBENCH_ENDPOINT_URL` | Explicit endpoint URL (run-only mode) |

@@ -18,6 +18,14 @@ from jinja2 import Environment, TemplateSyntaxError, UndefinedError
 
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
+from llmdbenchmark.parser.cli_overrides import (
+    MISSING,
+    dotted_leaves,
+    find_broken_parent_paths,
+    resolve_dotted,
+    selectors_for_stack,
+    validate_selectors,
+)
 from llmdbenchmark.parser.config_schema import validate_config
 from llmdbenchmark.parser.render_result import StackErrors, RenderResult
 
@@ -52,6 +60,7 @@ class RenderPlans:
         cli_epp_keda_saturation: bool = False,
         cli_gateway_class: str | None = None,
         setup_overrides: dict | None = None,
+        setup_overrides_by_stack: dict[str, dict] | None = None,
         cli_stack_filter: list[str] | None = None,
         cli_non_admin: bool = False,
     ):
@@ -72,7 +81,17 @@ class RenderPlans:
         # so the validator sees the post-override value. Only affects
         # rendering on the modelservice path; ignored by kustomize/standalone/fma.
         self.cli_gateway_class = cli_gateway_class
+        # Unscoped overrides applied LAST, so they win over everything below:
+        # DoE ``setup.treatments`` values ride here, and a treatment is the
+        # deliberate sweep factor -- it must beat a CLI ``--set``.
         self.setup_overrides = setup_overrides
+        # Scenario overrides keyed by stack selector ("*", an exact stack
+        # name, or an fnmatch glob). Carries ``--cluster-config`` (folded
+        # into "*") and ``--set`` / ``standup -o``. Resolved per stack by
+        # specificity in ``_effective_setup_overrides``.
+        self.setup_overrides_by_stack: dict[str, dict] = dict(
+            setup_overrides_by_stack or {}
+        )
         # When --stack selects exactly one stack, -m/--models scopes to
         # that stack only (sibling stacks keep their scenario-defined
         # models). When --stack isn't set or selects multiple stacks and
@@ -1609,6 +1628,77 @@ class RenderPlans:
                 return i
         return 1
 
+    def _effective_setup_overrides(self, stack_name: str) -> dict:
+        """Resolve the scenario overrides that apply to one stack.
+
+        Selector buckets are merged least-specific first (global, then
+        globs, then exact stack names), and the unscoped ``setup_overrides``
+        -- DoE treatment values -- goes on top of all of them.
+        """
+        resolved: dict = {}
+
+        for selector in selectors_for_stack(self.setup_overrides_by_stack, stack_name):
+            resolved = self.deep_merge(
+                resolved, self.setup_overrides_by_stack[selector]
+            )
+
+        if self.setup_overrides:
+            resolved = self.deep_merge(resolved, self.setup_overrides)
+
+        return resolved
+
+    def _log_setup_overrides(
+        self,
+        overrides: dict,
+        base_values: dict,
+        stack_name: str,
+    ) -> None:
+        """Log every scenario override applied to this stack, old -> new.
+
+        Mirrors ``_log_image_overrides``: the point is that a plan rendered
+        with CLI overrides is auditable from the log alone, without diffing
+        the rendered config against the scenario file.
+        """
+        for path, new_value in dotted_leaves(overrides):
+            old_value = resolve_dotted(base_values, path)
+            previous = "<unset>" if old_value is MISSING else repr(old_value)
+            self.logger.log_info(
+                f"[{stack_name}] Scenario override: {path}: {previous} -> {new_value!r}"
+            )
+
+    def _check_override_paths(
+        self,
+        overrides: dict,
+        base_values: dict,
+        stack_name: str,
+    ) -> list[str]:
+        """Validate override paths against the pre-override config.
+
+        Warns (non-fatally) when a parent key is absent -- usually a typo,
+        but legitimate for free-form blocks. Returns fatal errors for paths
+        that descend into a list or scalar: dotted paths cannot index into a
+        list here, so the merge would silently replace the whole value.
+        """
+        unknown, clobbered = find_broken_parent_paths(overrides, base_values)
+
+        for path in unknown:
+            self.logger.log_warning(
+                f"[{stack_name}] override path '{path}' does not exist in "
+                "defaults + scenario -- it will be created as a new block. "
+                "Check for a typo if you meant to change an existing value."
+            )
+
+        errors: list[str] = []
+        for path, kind in clobbered:
+            errors.append(
+                f"[{stack_name}] override path '{path}' descends into a "
+                f"{kind}, which would silently replace it. Dotted overrides "
+                f"cannot index into a list -- assign the whole value instead "
+                f'(e.g. "{path}=[{{...}}, {{...}}]"), or set it in the '
+                f"scenario file."
+            )
+        return errors
+
     def _process_stack(
         self,
         stack: dict,
@@ -1654,8 +1744,23 @@ class RenderPlans:
         # wins, instead of the nested scenario block clobbering it.
         merged_values = self._hoist_modelservice_sections(merged_values)
 
-        if self.setup_overrides:
-            merged_values = self.deep_merge(merged_values, self.setup_overrides)
+        # Scenario overrides for THIS stack: --cluster-config and --set
+        # (resolved by selector specificity), then unscoped setup overrides
+        # (DoE treatments) on top. Computed once and applied at both merge
+        # points below so the two stay in lockstep.
+        stack_overrides = self._effective_setup_overrides(stack_name)
+        if stack_overrides:
+            self._log_setup_overrides(stack_overrides, merged_values, stack_name)
+            override_errors = self._check_override_paths(
+                stack_overrides, merged_values, stack_name
+            )
+            if override_errors:
+                for msg in override_errors:
+                    self.logger.log_error(msg)
+                    stack_errors.render_errors.append(msg)
+                    result.global_errors.append(msg)
+                return
+            merged_values = self.deep_merge(merged_values, stack_overrides)
 
         # Raises RuntimeError if "auto" values are present but cluster is
         # unreachable. Skipped for the no-Kubernetes (nok8s) method: there is no
@@ -1672,8 +1777,8 @@ class RenderPlans:
 
         # Detection/profile defaults must never beat an explicit experiment or
         # CLI override. Reapply them after the selected profile/variant.
-        if self.setup_overrides:
-            merged_values = self.deep_merge(merged_values, self.setup_overrides)
+        if stack_overrides:
+            merged_values = self.deep_merge(merged_values, stack_overrides)
 
         merged_values = self._apply_resource_preset(merged_values)
 
@@ -1868,6 +1973,24 @@ class RenderPlans:
                 )
                 self.logger.log_error(msg)
                 result.global_errors.append(msg)
+                return result
+
+        # Same fail-fast treatment for `--set stack:key=value` selectors. A
+        # mistyped stack name would otherwise be a silent no-op: the render
+        # succeeds and deploys a stack the user believes they modified.
+        if self.setup_overrides_by_stack:
+            selector_errors = validate_selectors(
+                self.setup_overrides_by_stack,
+                [
+                    s.get("name")
+                    for s in stacks
+                    if isinstance(s, dict) and s.get("name")
+                ],
+            )
+            if selector_errors:
+                for msg in selector_errors:
+                    self.logger.log_error(msg)
+                    result.global_errors.append(msg)
                 return result
 
         # Scenario-wide settings. Merged into every stack between `defaults`

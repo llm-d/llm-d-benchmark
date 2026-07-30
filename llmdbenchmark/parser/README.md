@@ -37,7 +37,8 @@ class RenderPlans:
         cli_model=None,
         cli_methods=None,
         cli_monitoring=False,
-        setup_overrides=None,
+        setup_overrides=None,           # unscoped; applied last (DoE treatments)
+        setup_overrides_by_stack=None,  # {selector: overrides}; --cluster-config + --set
     ): ...
     def eval(self) -> RenderResult: ...  # Run full rendering pipeline
     def deep_merge(self, base, override) -> dict: ...  # Recursive dict merge
@@ -72,7 +73,14 @@ For each stack in the scenario:
    `defaults -> shared -> stack`.
 2. Hoist scenario-nested modelservice sections to the top level (see
    [Modelservice-nested sections](#modelservice-nested-sections)).
-3. Apply setup overrides (from DoE experiment treatments) if present.
+3. Apply scenario overrides if present, resolved once per stack by
+   `_effective_setup_overrides`: the `setup_overrides_by_stack` selector
+   buckets least-specific first (`*`, then fnmatch globs, then exact stack
+   names -- carrying `--cluster-config` and `--set`/`standup -o`), then the
+   unscoped `setup_overrides` (DoE experiment treatments) on top. Each
+   applied value is logged as `old -> new`, and an override whose parent
+   path is absent from the merged config warns as a probable typo.
+   Selectors matching no stack in the scenario fail the render in `eval()`.
 4. Apply resource preset (if `resourcePreset` is set in the config).
 5. Run the resolver chain (see below).
 6. Validate against the Pydantic config schema.

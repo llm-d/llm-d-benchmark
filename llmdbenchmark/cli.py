@@ -34,6 +34,12 @@ from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
+from llmdbenchmark.parser.cli_overrides import (
+    GLOBAL_SELECTOR,
+    OverrideParseError,
+    dotted_leaves,
+    parse_cli_overrides,
+)
 from llmdbenchmark.parser.render_specification import RenderSpecification
 from llmdbenchmark.exceptions.exceptions import TemplateError
 from llmdbenchmark.parser.render_plans import RenderPlans
@@ -129,7 +135,11 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_gateway_class=getattr(args, "gateway_class", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
             cli_non_admin=getattr(args, "non_admin", False),
-            setup_overrides=getattr(args, "cluster_config_overrides", None),
+            # --cluster-config is folded into the global bucket of
+            # setup_overrides_by_stack (under any --set pairs), so it is
+            # deliberately NOT passed as setup_overrides here -- that slot
+            # is reserved for DoE treatments, which must win over --set.
+            setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         ).eval()
 
         try:
@@ -1277,12 +1287,11 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
 def _render_plans_for_experiment(args, logger, setup_overrides=None):
     """Render plans with optional setup overrides. Raises PhaseError on failure.
 
-    ``setup_overrides`` from a treatment is deep-merged on top of any
-    ``--cluster-config`` overrides so that treatment values take precedence.
+    ``setup_overrides`` from a treatment is applied last -- on top of the
+    ``--cluster-config`` file and any ``--set`` overrides, both of which ride
+    in ``setup_overrides_by_stack`` -- so a treatment value (the deliberate
+    sweep factor) always takes precedence.
     """
-    cluster_overrides = getattr(args, "cluster_config_overrides", None)
-    if cluster_overrides:
-        setup_overrides = _deep_merge_dicts(cluster_overrides, setup_overrides or {})
     specification_as_dict = RenderSpecification(
         specification_file=args.specification_file,
         base_dir=args.base_dir,
@@ -1317,6 +1326,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_epp_keda_saturation=getattr(args, "epp_keda_saturation", False),
         cli_gateway_class=getattr(args, "gateway_class", None),
         setup_overrides=setup_overrides,
+        setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         cli_non_admin=getattr(args, "non_admin", False),
     ).eval()
 
@@ -1599,6 +1609,7 @@ def _log_env_overrides(logger, args):
         ),
         "LLMDBENCH_EXPERIMENTS": ("experiments", "--experiments"),
         "LLMDBENCH_OVERRIDES": ("overrides", "--overrides"),
+        "LLMDBENCH_SET": ("set_overrides", "--set"),
         "LLMDBENCH_OUTPUT": ("output", "--output"),
         "LLMDBENCH_PARALLELISM": ("parallelism", "--parallelism"),
         "LLMDBENCH_WAIT_TIMEOUT": ("wait_timeout", "--wait-timeout"),
@@ -1655,8 +1666,17 @@ def _log_env_overrides(logger, args):
     for k, v in sorted(active.items()):
         display = v if len(v) < 60 else v[:57] + "..."
         dest, flag = _ENV_TO_CLI[k]
-        # Check all flag variants (long and short forms)
-        overridden = any(f in cli_flags_used for f in _all_flag_forms(flag))
+        # Check all flag variants (long and short forms). `-o` is the one
+        # spelling that means different things per subcommand -- scenario
+        # overrides (--set) on standup, workload-profile overrides
+        # (--overrides) everywhere else -- so attribute it to whichever
+        # flag actually owns it for this command.
+        forms = [
+            f
+            for f in _all_flag_forms(flag)
+            if f != "-o" or _dash_o_owner(getattr(args, "command", None)) == flag
+        ]
+        overridden = any(f in cli_flags_used for f in forms)
         if overridden:
             cli_val = getattr(args, dest, None)
             cli_display = str(cli_val) if cli_val is not None else ""
@@ -1667,6 +1687,16 @@ def _log_env_overrides(logger, args):
             )
         else:
             logger.log_info(f"  {k}={display}")
+
+
+def _dash_o_owner(command: str | None) -> str:
+    """Which long flag ``-o`` aliases for a given subcommand.
+
+    ``standup`` has no workload profile, so ``-o`` there is the scenario
+    override flag (``--set``). On ``run``/``experiment`` it is
+    ``--overrides``, the workload-profile flag.
+    """
+    return "--set" if command == Command.STANDUP.value else "--overrides"
 
 
 def _all_flag_forms(flag: str) -> list[str]:
@@ -1699,6 +1729,9 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--workload-file-path": ["--workload-file-path"],
         "--experiments": ["--experiments", "-e"],
         "--overrides": ["--overrides", "-o"],
+        # `standup -o` aliases --set (scenario overrides); on run/experiment
+        # `-o` is --overrides (workload profile overrides) instead.
+        "--set": ["--set", "--override", "-o"],
         "--output": ["--output", "-r"],
         "--parallelism": ["--parallelism", "-j"],
         "--wait-timeout": ["--wait-timeout"],
@@ -1893,6 +1926,25 @@ def cli() -> None:
         "repo -- each user maintains their own. See docs/openshift-setup.md for examples.",
     )
 
+    benchmark_parser.add_argument(
+        "--set",
+        "--override",
+        dest="set_overrides",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Scenario override(s) as [stack:]dotted.key=value, comma-separated "
+        "and repeatable (env: LLMDBENCH_SET). Deep-merged on top of the scenario, "
+        "so a variant that only differs in a few fields needs no separate YAML "
+        "file. Prefix with a stack name or an fnmatch glob to scope the override "
+        "in a multi-stack scenario; unprefixed applies to every stack. "
+        "Precedence: scenario < --cluster-config < --set < DoE setup.treatments "
+        "< dedicated flags (-m/-t/--gateway-class/--monitoring/--wva). "
+        "Example: --set 'kustomize.acceleratorBackend=gpu/sglang' "
+        "--set 'llama-31-8b:decode.replicas=4'. "
+        "NOTE: on `run`/`experiment` this is distinct from -o/--overrides, which "
+        "overrides the workload profile rather than the scenario.",
+    )
+
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
@@ -2060,6 +2112,11 @@ def cli() -> None:
         getattr(args, "cluster_config", None), logger
     )
 
+    # Parse --set / `standup -o` into per-stack-selector buckets, with the
+    # --cluster-config file folded in underneath the global bucket so the
+    # whole precedence chain lives in one structure.
+    args.setup_overrides_by_stack = _build_setup_overrides_by_stack(args, logger)
+
     dispatch_cli(args, logger)
 
 
@@ -2076,6 +2133,47 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
         else:
             result[key] = deepcopy(value)
     return result
+
+
+def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
+    """Combine ``--cluster-config`` and ``--set`` into selector buckets.
+
+    Returns ``{selector: nested_overrides}``.  The ``--cluster-config`` file
+    is folded into the global (``*``) bucket *underneath* any global
+    ``--set`` pairs, so an explicit CLI value beats the file.  Exits with an
+    error on a malformed ``--set`` expression -- silently dropping it would
+    deploy a config the user did not ask for.
+    """
+    raw = getattr(args, "set_overrides", None) or env("LLMDBENCH_SET") or None
+
+    try:
+        by_selector, warnings = parse_cli_overrides(raw)
+    except OverrideParseError as exc:
+        logger.log_error(f"Invalid --set/-o override: {exc}")
+        sys.exit(1)
+
+    for warning in warnings:
+        logger.log_warning(warning)
+
+    cluster_overrides = getattr(args, "cluster_config_overrides", None)
+    if cluster_overrides:
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            cluster_overrides, by_selector.get(GLOBAL_SELECTOR, {})
+        )
+
+    if raw:
+        # Values, not just paths -- the log has to answer "overridden to
+        # what?" on its own. The per-stack `old -> new` lines come later,
+        # from RenderPlans, once the scenario has been merged.
+        for selector, overrides in by_selector.items():
+            scope = "all stacks" if selector == GLOBAL_SELECTOR else f"stack {selector}"
+            for path, value in dotted_leaves(overrides):
+                logger.log_info(
+                    f"CLI scenario override ({scope}): {path}={value!r}",
+                    emoji="🔧",
+                )
+
+    return by_selector
 
 
 def _load_cluster_config(path: str | None, logger) -> dict | None:

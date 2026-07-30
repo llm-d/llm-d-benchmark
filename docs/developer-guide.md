@@ -1097,14 +1097,20 @@ not "fall back to /bin/sh"; it removes the field and breaks rendering.
 1. `RenderSpecification` renders the `.yaml.j2` spec to resolve `base_dir`
    paths and writes the result as YAML.
 2. `RenderPlans` (in `llmdbenchmark/parser/render_plans.py`) loads the defaults
-   YAML and the scenario YAML. For each stack it applies a four-layer merge:
+   YAML and the scenario YAML. For each stack it applies a layered merge:
 
    ```
-   defaults.yaml  ->  scenario.shared  ->  stack config  ->  CLI / setup overrides
+   defaults.yaml -> scenario.shared -> stack config -> --cluster-config
+     -> --set / `standup -o` -> setup overrides (DoE setup.treatments)
    ```
 
    Each later layer wins over earlier ones; dicts deep-merge, lists replace
-   wholesale. After merging, `RenderPlans` resolves model IDs, per-stack
+   wholesale. The last two layers reach `RenderPlans` through two separate
+   constructor arguments: `setup_overrides_by_stack` (a
+   `{selector: overrides}` mapping -- `"*"`, an exact stack name, or an
+   fnmatch glob -- resolved per stack by specificity in
+   `_effective_setup_overrides`) and `setup_overrides` (unscoped, applied
+   last so a DoE treatment always beats a CLI `--set`). After merging, `RenderPlans` resolves model IDs, per-stack
    identity names, and substitutes `${dotted.path}` references, then renders
    each Jinja2 template in `config/templates/jinja/` with the final values.
 3. Output goes to one directory per stack under the plan directory (e.g.,
@@ -1299,7 +1305,10 @@ Each treatment triggers a full standup/run/teardown cycle. Override keys use
 dotted paths into the scenario config (e.g., `vllmCommon.tensorParallelism`,
 `decode.replicas`, `standalone.enabled`). These overrides are passed to
 `RenderPlans` as `setup_overrides` and deep-merged into the scenario config
-during template rendering.
+during template rendering. They are applied *after* any `--cluster-config`
+or `--set` overrides, so a treatment always wins on a contested key -- the
+sweep factor is never flattened by a CLI flag. Treatment keys apply to every
+stack; the `stack:` / glob selector prefix is a `--set` feature only.
 
 **Run treatments** (`treatments`) control the workload parameters for each
 benchmark run. Each treatment overrides profile values (e.g., `max-concurrency`,

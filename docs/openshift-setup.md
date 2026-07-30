@@ -6,11 +6,12 @@ OpenShift cluster. It covers the one-time cluster prerequisites, how to write a
 
 ## How it works
 
-The benchmark framework uses a three-layer merge for configuration:
+The benchmark framework uses a layered merge for configuration:
 
 ```
-defaults.yaml  →  scenario.yaml  →  --cluster-config FILE
-(in repo)          (in repo)         (your local file, not committed)
+defaults.yaml  →  scenario.yaml  →  --cluster-config FILE  →  --set KEY=VALUE
+(in repo)          (in repo)         (your local file,         (one-off CLI
+                                      not committed)            overrides)
 ```
 
 The scenario file (`config/scenarios/examples/eval-containers-aider-polyglot.yaml`) is

@@ -536,6 +536,9 @@ class TestRenderStackFilterValidation:
         r.scenarios_file = scenario_path
         r.output_dir = tmp_path / "out"
         r.cli_stack_filter = cli_stack_filter
+        # eval() also validates `--set stack:key=value` selectors; no
+        # overrides under test here, so an empty bucket keeps that gate quiet.
+        r.setup_overrides_by_stack = {}
         return r
 
     def test_unknown_stack_fails_at_render(self, tmp_path):
