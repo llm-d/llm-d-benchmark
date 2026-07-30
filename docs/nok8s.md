@@ -46,6 +46,47 @@ Verify GPU-in-container before you start:
 docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
+## Without a GPU
+
+Serving a model needs the accelerator, but *validating the plumbing* does not.
+Rendering and `--dry-run` never touch a device or a cluster, so a plain laptop
+can still check that a nok8s scenario renders and that the container commands
+are the ones you expect. Verified on macOS (Darwin 25.3, Python 3.13, `docker`
+present and usable, no GPU, no cluster, no `helm`/`yq`/`kind`):
+
+```bash
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . plan
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dry-run standup --methods nok8s
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dry-run run
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dry-run teardown --methods nok8s
+```
+
+| What | Without a GPU |
+|------|---------------|
+| `pytest tests/ -q -n2` | **Works** (739 passed, 31 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
+| `plan` | **Works** -- renders all 36 artifacts, including `31/32/33/34_nok8s-*` |
+| `--dry-run standup --methods nok8s` | **Works** (12/12 steps) -- step 06 logs each `docker run` it *would* execute, and records `http://localhost:8081` |
+| `--dry-run run` | **Works** -- endpoint resolves locally with no cluster query, profiles render, the harness `docker run` is logged |
+| `--dry-run teardown --methods nok8s` | **Works** -- logs one `docker rm -f` per container |
+| `teardown --methods nok8s` (live) | **Works** -- `docker rm -f` is idempotent, so it is safe with nothing running |
+| `standup` (live) | **Fails at step 06.** It emits `docker run -d --name vllm-0 --gpus all ...`, which a GPU-less docker rejects: `could not select device driver "" with capabilities: [[gpu]]` |
+| `run` / `smoketest` (live) | **Fails** -- nothing is serving the model |
+
+Two caveats before you read a green dry-run as "my host is fine":
+
+- **`--dry-run` skips the step 00 preflight.** It logs what it *would* verify
+  and returns success. It proves the plan and the command strings, not the host.
+- **Run live, step 00 passes anyway on a GPU-less host** with a working
+  container runtime: only a missing or broken runtime is fatal, so the missing
+  accelerator is a warning, not an error:
+  ```
+  WARNING  'nvidia-smi' found no nvidia accelerator; vLLM needs the device + driver present, ...
+  WARNING  $HUGGING_FACE_HUB_TOKEN is not set; gated Hugging Face models will fail to download ...
+  INFO     nok8s preflight passed (runtime=docker).
+  ```
+  The port-in-use check shells out to `ss -ltn`, so on a host without `ss`
+  (macOS) it silently reports nothing rather than warning.
+
 ## Usage
 
 ```bash
