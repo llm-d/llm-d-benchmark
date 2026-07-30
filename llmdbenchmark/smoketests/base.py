@@ -7,6 +7,10 @@ from pathlib import Path
 
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.smoketests.nok8s import (
+    health_check as nok8s_health_check,
+    inference_test as nok8s_inference_test,
+)
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.utilities.endpoint import (
     _build_overrides,
@@ -177,6 +181,10 @@ class BaseSmoketest:
         service endpoint, pod IPs, and OpenShift route.
         """
         report = SmoketestReport()
+        # nok8s deploys plain containers: no Service, no pods, no route to
+        # check. Probe the container endpoint over HTTP instead.
+        if context.container_only:
+            return nok8s_health_check(context, stack_path)
         cmd = context.require_cmd()
         namespace = context.require_namespace()
         plan_config = _load_config(stack_path)
@@ -593,6 +601,9 @@ class BaseSmoketest:
     ) -> SmoketestReport:
         """Run a sample inference request and report pass/fail."""
         report = SmoketestReport()
+        # nok8s has no ephemeral curl pod to exec from: POST directly.
+        if context.container_only:
+            return nok8s_inference_test(context, stack_path)
         cmd = context.require_cmd()
         namespace = context.require_namespace()
         plan_config = _load_config(stack_path)

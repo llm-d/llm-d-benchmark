@@ -519,8 +519,8 @@ def _execute_standup(args, logger, render_plan_errors):
     _print_standup_summary(context, result, logger)
 
     # Auto-chain smoketest after standup unless --skip-smoketest.
-    # nok8s has no cluster/namespace for the smoketest pod and the deploy step
-    # already curls /v1/models for readiness, so skip the chained smoketest.
+    # The nok8s deploy step already curls /v1/models for readiness, so skip
+    # the chained smoketest.
     skip_smoketest = getattr(args, "skip_smoketest", False) or (
         "nok8s" in (context.deployed_methods or [])
     )
@@ -551,7 +551,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         plan_info,
     )
 
-    if not namespace:
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
         raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
@@ -572,6 +573,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
