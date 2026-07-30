@@ -35,7 +35,7 @@ from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
 from llmdbenchmark.parser.render_specification import RenderSpecification
-from llmdbenchmark.exceptions.exceptions import TemplateError
+from llmdbenchmark.exceptions.exceptions import TemplateError, ConfigurationError
 from llmdbenchmark.parser.render_plans import RenderPlans
 from llmdbenchmark.parser.version_resolver import VersionResolver
 from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolver
@@ -87,10 +87,14 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         Command.RUN.value,
     ):
         # Resolve templates, scenarios, and values into the workspace
-        specification_as_dict = RenderSpecification(
-            specification_file=args.specification_file,
-            base_dir=args.base_dir,
-        ).eval()
+        try:
+            specification_as_dict = RenderSpecification(
+                specification_file=args.specification_file,
+                base_dir=args.base_dir,
+            ).eval()
+        except ConfigurationError as e:
+            logger.log_error(f"Invalid specification: {e}")
+            sys.exit(1)
 
         logger.log_info(
             "Specification file rendered and validated successfully.",
