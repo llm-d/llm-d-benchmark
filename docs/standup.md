@@ -78,6 +78,16 @@ Pairs are comma-separated and the flag is repeatable. Values are parsed as
 YAML, so `4`, `true`, `[a, b]` and `{x: 1}` mean what they would inside the
 scenario file; commas inside `[]`, `{}` or quotes belong to the value.
 
+> [!WARNING]
+> **Multi-line values are folded onto one line.** A value containing real
+> newlines is read as a YAML plain scalar, so its line breaks collapse into
+> spaces -- which silently changes the meaning of a shell command
+> (`export FOO=1`⏎`vllm serve` becomes `export FOO=1 vllm serve`). To keep
+> the breaks, wrap the value in double quotes so `\n` is an escape:
+> `--set 'decode.vllm.customCommand="export FOO=1\nvllm serve /model-cache/x"'`.
+> For a full multi-line `customCommand`, prefer the scenario file or
+> `--cluster-config` -- `--set` is best suited to single-line values.
+
 > [!IMPORTANT]
 > `--set` always means the **scenario**, on every subcommand. It is not the
 > same as `run`/`experiment`'s `-o/--overrides`, which overrides the

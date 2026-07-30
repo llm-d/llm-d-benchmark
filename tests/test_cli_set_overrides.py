@@ -109,6 +109,19 @@ class TestCoerceValue:
     def test_image_ref_with_colon_and_tag(self):
         assert coerce_value("quay.io/llm-d/epp:v1.2") == "quay.io/llm-d/epp:v1.2"
 
+    def test_real_newlines_are_folded_to_spaces(self):
+        # Documented in standup.md: a plain scalar folds line breaks, which
+        # silently changes the meaning of a multi-line shell command.
+        assert coerce_value("export FOO=1\nvllm serve /model-cache/x") == (
+            "export FOO=1 vllm serve /model-cache/x"
+        )
+
+    def test_double_quoted_escape_preserves_newlines(self):
+        # ...and this is the documented escape hatch for keeping them.
+        value = coerce_value(r'"export FOO=1\nvllm serve /model-cache/x"')
+        assert value == "export FOO=1\nvllm serve /model-cache/x"
+        assert value.count("\n") == 1
+
 
 # ---------------------------------------------------------------------------
 # Pair / expression parsing

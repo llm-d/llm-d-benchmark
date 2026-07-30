@@ -252,6 +252,13 @@ the value, not the separator. Because it is real YAML, `012` is octal 10 and
 `1:30` is 90 -- quote the value (`"foo='012'"`) to keep it a string; a
 warning is emitted whenever a value is read as something other than it looks.
 
+Multi-line values are folded onto one line: real newlines in a plain scalar
+collapse into spaces, which silently changes the meaning of a shell command.
+Wrap the value in double quotes so `\n` is an escape --
+`--set 'decode.vllm.customCommand="export FOO=1\nvllm serve /model-cache/x"'`
+-- or, for a full multi-line `customCommand`, set it in the scenario file
+instead; `--set` is best suited to single-line values.
+
 Lists are assigned whole, never indexed: `vllmCommon.volumeMounts.0.name=x`
 is rejected (it would silently replace the entire list) -- pass the full
 list instead, `'vllmCommon.volumeMounts=[{name: x, mountPath: /x}]'`.
