@@ -100,7 +100,11 @@ class NoK8sDeployStep(Step):
         if not context.dry_run:
             ready_err = self._wait_ready(cmd, runtime, spec, context)
             if ready_err:
-                self._dump_logs(cmd, runtime, "envoy", context)
+                envoy = next(
+                    (c["name"] for c in containers if c.get("kind") == "envoy"), None
+                )
+                if envoy:
+                    self._dump_logs(cmd, runtime, envoy, context)
                 return self._fail(stack_path, ready_err, [ready_err])
 
         return StepResult(
