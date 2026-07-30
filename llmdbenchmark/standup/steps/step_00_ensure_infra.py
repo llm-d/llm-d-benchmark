@@ -128,13 +128,30 @@ class EnsureInfraStep(Step):
         nok8s = plan_config.get("nok8s", {})
         accelerator = str(nok8s.get("vllm", {}).get("accelerator", "nvidia")).lower()
         hf_env = nok8s.get("hfTokenEnv", "HUGGING_FACE_HUB_TOKEN")
-        ports = [
-            nok8s.get("vllm", {}).get("hostPort", 8000),
-            nok8s.get("envoy", {}).get("listenPort", 8081),
-            nok8s.get("epp", {}).get("grpcPort", 9002),
-            nok8s.get("epp", {}).get("grpcHealthPort", 9003),
-            nok8s.get("epp", {}).get("metricsPort", 9090),
-        ]
+        # Every nok8s stack in the plan lands on this host, so the port and
+        # GPU checks cover all of them, not just the first.
+        stacks = [
+            cfg
+            for cfg in (
+                (self._load_stack_config(p).get("nok8s") or {})
+                for p in (context.rendered_stacks or [])
+            )
+            if cfg.get("enabled")
+        ] or [nok8s]
+        ports = sorted(
+            {
+                port
+                for cfg in stacks
+                for port in (
+                    cfg.get("vllm", {}).get("hostPort", 8000),
+                    cfg.get("envoy", {}).get("listenPort", 8081),
+                    cfg.get("envoy", {}).get("adminPort", 19000),
+                    cfg.get("epp", {}).get("grpcPort", 9002),
+                    cfg.get("epp", {}).get("grpcHealthPort", 9003),
+                    cfg.get("epp", {}).get("metricsPort", 9090),
+                )
+            }
+        )
 
         if context.dry_run:
             context.logger.log_info(
@@ -205,10 +222,11 @@ class EnsureInfraStep(Step):
 
         # 2b. GPU capacity: replicas x tensorParallel must fit the host's GPUs.
         #     Only checkable for nvidia (nvidia-smi -L enumerates devices).
-        vllm = nok8s.get("vllm", {})
-        replicas = int(vllm.get("replicas", 1) or 1)
-        tp = int(vllm.get("tensorParallel", 1) or 1)
-        needed = replicas * tp
+        needed = sum(
+            int(cfg.get("vllm", {}).get("replicas", 1) or 1)
+            * int(cfg.get("vllm", {}).get("tensorParallel", 1) or 1)
+            for cfg in stacks
+        )
         if accelerator == "nvidia" and needed > 1:
             res_gpu = cmd.execute("nvidia-smi -L", check=False, force=True, silent=True)
             if res_gpu.success and res_gpu.stdout:
@@ -217,10 +235,27 @@ class EnsureInfraStep(Step):
                 )
                 if count and needed > count:
                     warnings.append(
-                        f"nok8s.vllm needs {needed} GPUs (replicas {replicas} x "
-                        f"tensorParallel {tp}) but only {count} detected -- workers "
-                        f"will contend for devices or fail to start."
+                        f"nok8s.vllm needs {needed} GPUs (replicas x tensorParallel "
+                        f"over {len(stacks)} stack(s)) but only {count} detected -- "
+                        f"workers will contend for devices or fail to start."
                     )
+
+        # 2c. A worker with replicas: 1 and no explicit device selection gets
+        #     the whole accelerator ("--gpus all"), so two such stacks claim
+        #     the same devices and the second one runs out of memory.
+        unpinned = [
+            cfg
+            for cfg in stacks
+            if int(cfg.get("vllm", {}).get("replicas", 1) or 1) == 1
+            and str(cfg.get("vllm", {}).get("gpus", "all")) == "all"
+            and not cfg.get("vllm", {}).get("deviceArgs")
+        ]
+        if accelerator != "cpu" and len(unpinned) > 1:
+            warnings.append(
+                f"{len(unpinned)} nok8s stacks each take every accelerator on this "
+                f"host; give them distinct devices with nok8s.vllm.gpus (docker) or "
+                f"nok8s.vllm.deviceArgs, or they will fight over memory."
+            )
 
         # 3. Hugging Face token (warning).
         if not os.environ.get(hf_env):

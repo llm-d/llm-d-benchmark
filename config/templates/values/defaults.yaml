@@ -1421,7 +1421,8 @@ nok8s:
   # Appended to every container name (vllm-N, epp, envoy). Filled in
   # automatically with "-<stack>" when a scenario has more than one stack, so
   # sibling stacks on one host don't share (and delete) each other's
-  # containers. An explicit value is preserved; single-stack scenarios keep
+  # containers. An explicit value is preserved, but two stacks resolving to
+  # the same container name is a render error; single-stack scenarios keep
   # the bare names.
   nameSuffix: ""
 

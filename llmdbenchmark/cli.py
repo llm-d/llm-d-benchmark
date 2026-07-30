@@ -346,6 +346,32 @@ def _load_all_stacks_info(rendered_paths):
     return stacks_info
 
 
+def _nok8s_endpoint_url(all_stacks_info, stack_filter=None):
+    """Default the nok8s run target to the local Envoy front door.
+
+    Each nok8s stack has its own Envoy, so there is no scenario-wide
+    endpoint: picking one stack's port and benchmarking every stack through
+    it files stack A's traffic under stack B's name. Refuse instead, unless
+    --stack narrows the run to a single nok8s stack (then use that stack's
+    port) or the caller passed --endpoint-url.
+    """
+    stacks = [s for s in all_stacks_info if s.get("nok8s_enabled")]
+    if stack_filter:
+        stacks = [s for s in stacks if s.get("stack_name") in stack_filter]
+    if len(stacks) > 1:
+        raise PhaseError(
+            "This scenario has "
+            + str(len(stacks))
+            + " nok8s stacks, each with its own Envoy port, so there is no "
+            "single endpoint to benchmark. Run them one at a time with "
+            "'--stack <name>', or pass '--endpoint-url "
+            "http://localhost:<that stack's nok8s.envoy.listenPort>'. Stacks: "
+            + ", ".join(f"{s['stack_name']} ({s['nok8s_listen_port']})" for s in stacks)
+        )
+    port = (stacks[0] if stacks else {}).get("nok8s_listen_port", 8081)
+    return f"http://localhost:{port}"
+
+
 def _load_plan_info(rendered_paths):
     """Read key configuration from the first rendered plan config.yaml.
 
@@ -862,7 +888,9 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     # so the run is fully cluster-free (flips is_run_only_mode, skipping k8s
     # endpoint discovery and namespace validation).
     if container_only and not endpoint_url:
-        endpoint_url = f"http://localhost:{plan_info.get('nok8s_listen_port', 8081)}"
+        endpoint_url = _nok8s_endpoint_url(
+            all_stacks_info, _parse_stack_filter(getattr(args, "stack", None))
+        )
     is_run_only = bool(endpoint_url or run_config_file)
 
     if not namespace and not is_run_only:
