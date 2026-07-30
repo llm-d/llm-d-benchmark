@@ -20,8 +20,10 @@ from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.parser.cli_overrides import (
     MISSING,
+    REDACTED,
     dotted_leaves,
     find_broken_parent_paths,
+    is_secret_path,
     resolve_dotted,
     selectors_for_stack,
     validate_selectors,
@@ -1661,9 +1663,14 @@ class RenderPlans:
         """
         for path, new_value in dotted_leaves(overrides):
             old_value = resolve_dotted(base_values, path)
-            previous = "<unset>" if old_value is MISSING else repr(old_value)
+            if is_secret_path(path):
+                # Never echo a credential, not even the value it replaced.
+                previous, current = REDACTED, REDACTED
+            else:
+                previous = "<unset>" if old_value is MISSING else repr(old_value)
+                current = repr(new_value)
             self.logger.log_info(
-                f"[{stack_name}] Scenario override: {path}: {previous} -> {new_value!r}"
+                f"[{stack_name}] Scenario override: {path}: {previous} -> {current}"
             )
 
     def _check_override_paths(

@@ -194,11 +194,12 @@ def parse_cli_overrides(
         for pair in split_override_pairs(raw):
             selector, key, value = parse_override_pair(pair)
             bucket = flat_by_selector.setdefault(selector, {})
+            secret = is_secret_path(key)
             if key in bucket:
+                shown = f"({REDACTED})" if secret else f"({bucket[key]!r} -> {value!r})"
                 warnings.append(
                     f"override '{key}' set more than once for "
-                    f"'{selector}' -- last value wins "
-                    f"({bucket[key]!r} -> {value!r})"
+                    f"'{selector}' -- last value wins {shown}"
                 )
             if value is None:
                 warnings.append(
@@ -207,7 +208,11 @@ def parse_cli_overrides(
                     "-- use an explicit empty string ('') instead"
                 )
             raw_value = pair.split("=", 1)[1]
-            if (surprise := surprising_coercion(raw_value, value)) is not None:
+            if not secret and (
+                (surprise := surprising_coercion(raw_value, value)) is not None
+            ):
+                # The message quotes the raw value, so it is suppressed
+                # entirely for credential paths rather than redacted.
                 warnings.append(f"override '{key}': {surprise}")
             bucket[key] = value
 
@@ -287,6 +292,46 @@ def validate_selectors(
             )
 
     return errors
+
+
+# Config paths whose value must never reach a log. ``huggingface.token`` is
+# a plain-text HF token in ``defaults.yaml``, and overrides are echoed back
+# with their values, so an unfiltered log would leak it to stdout and to the
+# workspace log files. Matched on the LAST dotted segment, case-insensitively.
+_SECRET_SEGMENTS = frozenset(
+    {
+        "password",
+        "passwd",
+        "secret",
+        "credential",
+        "credentials",
+        "apikey",
+        "api_key",
+        "accesskey",
+        "privatekey",
+    }
+)
+
+#: What a redacted value renders as -- matches the convention already used by
+#: the kustomize deploy step.
+REDACTED = "<redacted>"
+
+
+def is_secret_path(dotted_path: str) -> bool:
+    """True when a config path holds a credential that must not be logged.
+
+    Deliberately errs toward over-masking: ``token``/``tokenBase64``/
+    ``tokenKey`` all match the ``token`` prefix. ``maxNumBatchedTokens``
+    does not (it ends in "tokens" and starts with "max"), so ordinary
+    numeric fields keep showing their values.
+    """
+    segment = dotted_path.rsplit(".", 1)[-1].lower()
+    return segment.startswith("token") or segment in _SECRET_SEGMENTS
+
+
+def redact(dotted_path: str, value: Any) -> Any:
+    """Return ``value``, or the redaction marker for a secret-bearing path."""
+    return REDACTED if is_secret_path(dotted_path) else value
 
 
 _MISSING = object()

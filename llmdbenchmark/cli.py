@@ -36,8 +36,10 @@ from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
 from llmdbenchmark.parser.cli_overrides import (
     GLOBAL_SELECTOR,
+    REDACTED,
     OverrideParseError,
     dotted_leaves,
+    is_secret_path,
     parse_cli_overrides,
 )
 from llmdbenchmark.parser.render_specification import RenderSpecification
@@ -2146,8 +2148,9 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
         for selector, overrides in by_selector.items():
             scope = "all stacks" if selector == GLOBAL_SELECTOR else f"stack {selector}"
             for path, value in dotted_leaves(overrides):
+                shown = REDACTED if is_secret_path(path) else repr(value)
                 logger.log_info(
-                    f"CLI scenario override ({scope}): {path}={value!r}",
+                    f"CLI scenario override ({scope}): {path}={shown}",
                     emoji="🔧",
                 )
 

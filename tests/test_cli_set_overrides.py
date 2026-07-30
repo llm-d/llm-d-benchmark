@@ -16,11 +16,13 @@ import yaml
 from llmdbenchmark.parser.cli_overrides import (
     GLOBAL_SELECTOR,
     MISSING,
+    REDACTED,
     OverrideParseError,
     coerce_value,
     dotted_leaves,
     find_broken_parent_paths,
     is_glob,
+    is_secret_path,
     parse_cli_overrides,
     resolve_dotted,
     selectors_for_stack,
@@ -842,6 +844,80 @@ class TestMultiStackRender:
             setup_overrides_by_stack={GLOBAL_SELECTOR: {"decode": {"replicas": 4}}},
         ).eval()
         assert result.global_errors == []
+
+
+class TestSecretRedaction:
+    """Credentials must never reach a log.
+
+    ``huggingface.token`` is a plain-text token in ``defaults.yaml``, and
+    overrides are echoed back with their values. The rendered
+    ``config.yaml`` still carries the real value on purpose -- it is what
+    ``05_namespace_sa_rbac_secret.yaml.j2`` turns into the cluster Secret --
+    but logs get streamed to CI and pasted into bug reports, so they get the
+    redaction marker instead.
+    """
+
+    @pytest.mark.parametrize(
+        "path,secret",
+        [
+            ("huggingface.token", True),
+            ("huggingface.tokenBase64", True),
+            ("huggingface.tokenKey", True),
+            ("foo.password", True),
+            ("foo.apiKey", True),
+            ("some.credential", True),
+            # Near-misses that must keep showing their values.
+            ("decode.maxNumBatchedTokens", False),
+            ("decode.acceleratorType.labelKey", False),
+            ("images.pullSecret", False),
+            ("decode.replicas", False),
+            ("model.name", False),
+        ],
+    )
+    def test_path_classification(self, path, secret):
+        assert is_secret_path(path) is secret
+
+    def test_token_is_redacted_in_the_render_log(self, tmp_path):
+        logger = MagicMock()
+        parsed, _ = parse_cli_overrides(
+            ["huggingface.token=hf_SUPERSECRET123,decode.replicas=4"]
+        )
+        _renderer(
+            tmp_path, SINGLE_STACK, logger=logger, setup_overrides_by_stack=parsed
+        ).eval()
+        emitted = " ".join(
+            str(c.args[0])
+            for c in logger.log_info.call_args_list + logger.log_warning.call_args_list
+            if c.args
+        )
+        assert "hf_SUPERSECRET123" not in emitted
+        assert f"huggingface.token: {REDACTED} -> {REDACTED}" in emitted
+        # Non-secret overrides still report their values.
+        assert "decode.replicas: 2 -> 4" in emitted
+
+    def test_token_still_reaches_the_rendered_config(self, tmp_path):
+        # Intentional: config.yaml is what produces the cluster Secret.
+        parsed, _ = parse_cli_overrides(["huggingface.token=hf_SUPERSECRET123"])
+        result = _renderer(
+            tmp_path, SINGLE_STACK, setup_overrides_by_stack=parsed
+        ).eval()
+        assert result.global_errors == []
+        config = _configs(result)["optimized-baseline"]
+        assert config["huggingface"]["token"] == "hf_SUPERSECRET123"
+
+    def test_duplicate_secret_warning_does_not_echo_values(self):
+        _, warnings = parse_cli_overrides(
+            ["huggingface.token=hf_AAA", "huggingface.token=hf_BBB"]
+        )
+        joined = " ".join(warnings)
+        assert "hf_AAA" not in joined and "hf_BBB" not in joined
+        assert REDACTED in joined
+
+    def test_coercion_warning_suppressed_for_secret_paths(self):
+        # The coercion message quotes the raw value, so it is dropped
+        # entirely rather than redacted.
+        _, warnings = parse_cli_overrides(["huggingface.token=012"])
+        assert not any("012" in w for w in warnings)
 
 
 class TestOverrideLogging:
