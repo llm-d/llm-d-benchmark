@@ -1,4 +1,4 @@
-"""Tests for CLI scenario overrides (``--set`` / ``standup -o``).
+"""Tests for CLI scenario overrides (``--set``).
 
 Covers the parser (`llmdbenchmark/parser/cli_overrides.py`), the per-stack
 selector resolution and fail-fast validation in ``RenderPlans``, the
@@ -958,20 +958,20 @@ class TestArgparseWiring:
                 pass
         return captured.get("args")
 
-    def test_standup_dash_o_maps_to_set_overrides(self):
+    def test_standup_set_maps_to_set_overrides(self):
         args = self._parse(
             [
                 "--spec",
                 "guides/optimized-baseline",
                 "standup",
-                "-o",
+                "--set",
                 "decode.replicas=4",
             ]
         )
         assert args is not None
         assert args.set_overrides == ["decode.replicas=4"]
 
-    def test_standup_set_and_dash_o_accumulate(self):
+    def test_repeated_set_flags_accumulate(self):
         args = self._parse(
             [
                 "--spec",
@@ -979,22 +979,43 @@ class TestArgparseWiring:
                 "standup",
                 "--set",
                 "a=1",
-                "-o",
+                "--set",
                 "b=2",
             ]
         )
         assert args is not None
         assert args.set_overrides == ["a=1", "b=2"]
 
-    def test_dash_o_env_attribution_is_per_subcommand(self):
-        # `-o` aliases --set on standup and --overrides elsewhere, so the
-        # env-var summary must credit the right flag for each.
-        from llmdbenchmark.cli import _dash_o_owner
+    @pytest.mark.parametrize("alias", ["-o", "--overrides", "--override"])
+    def test_standup_rejects_workload_profile_spellings(self, alias):
+        # One naming convention: `--set` is the only scenario-override
+        # spelling. `-o`/`--overrides` mean the workload profile and must
+        # NOT be accepted on standup, which has no workload profile --
+        # otherwise the same word means two things across subcommands.
+        args = self._parse(
+            [
+                "--spec",
+                "guides/optimized-baseline",
+                "standup",
+                alias,
+                "decode.replicas=4",
+            ]
+        )
+        assert args is None  # argparse rejected it before dispatch
 
-        assert _dash_o_owner("standup") == "--set"
-        assert _dash_o_owner("run") == "--overrides"
-        assert _dash_o_owner("experiment") == "--overrides"
-        assert _dash_o_owner(None) == "--overrides"
+    def test_set_is_available_on_every_rendering_subcommand(self):
+        for command in ("plan", "standup", "smoketest", "run", "teardown"):
+            args = self._parse(
+                [
+                    "--spec",
+                    "guides/optimized-baseline",
+                    command,
+                    "--set",
+                    "decode.replicas=4",
+                ]
+            )
+            assert args is not None, command
+            assert args.set_overrides == ["decode.replicas=4"], command
 
     def test_run_dash_o_still_means_profile_overrides(self):
         args = self._parse(

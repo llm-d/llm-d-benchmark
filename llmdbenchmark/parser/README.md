@@ -76,7 +76,7 @@ For each stack in the scenario:
 3. Apply scenario overrides if present, resolved once per stack by
    `_effective_setup_overrides`: the `setup_overrides_by_stack` selector
    buckets least-specific first (`*`, then fnmatch globs, then exact stack
-   names -- carrying `--cluster-config` and `--set`/`standup -o`), then the
+   names -- carrying `--cluster-config` and `--set`), then the
    unscoped `setup_overrides` (DoE experiment treatments) on top. Each
    applied value is logged as `old -> new`, and an override whose parent
    path is absent from the merged config warns as a probable typo.

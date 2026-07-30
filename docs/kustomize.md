@@ -30,22 +30,21 @@ methods). Equivalently, set `kustomize.enabled: true` in the scenario. If
 `kustomize.enabled` is false the step is a no-op.
 
 Any key in the `kustomize:` block below can also be set per-invocation with
-`--set` (`-o` on `standup`), so a backend or guide variant needs no separate
-scenario file:
+`--set`, so a backend or guide variant needs no separate scenario file:
 
 ```bash
 # same guide, SGLang model servers
 llmdbenchmark --spec guides/optimized-baseline standup \
-  -t kustomize -p NS -o kustomize.acceleratorBackend=gpu/sglang
+  -t kustomize -p NS --set kustomize.acceleratorBackend=gpu/sglang
 
 # fill a guide README ${VAR} without editing the scenario
 llmdbenchmark --spec guides/tiered-prefix-cache standup \
-  -t kustomize -p NS -o kustomize.guideVariableOverrides.INFRA_PROVIDER=base
+  -t kustomize -p NS --set kustomize.guideVariableOverrides.INFRA_PROVIDER=base
 ```
 
 Pass the same `--set` to every phase (`smoketest`/`run`/`teardown`) -- they
 re-render the plan. See
-[standup.md](standup.md#overriding-scenario-values-from-the-cli---set--standup--o).
+[standup.md](standup.md#overriding-scenario-values-from-the-cli---set).
 
 ## Config reference (`kustomize:` block)
 

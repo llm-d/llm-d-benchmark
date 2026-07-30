@@ -406,7 +406,7 @@ llmdbenchmark --version
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
-| `--set KEY=VALUE` / `--override` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. On `standup` this is also spelled `-o`. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set--standup--o). |
+| `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. Available on every subcommand that renders templates. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile — the two can be combined.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set). |
 | `--version` | | Show version |
 
 ### Plan Options
@@ -440,7 +440,7 @@ llmdbenchmark --version
 | `--annotations` | `LLMDBENCH_ANNOTATIONS` | Extra annotations for deployed resources |
 | `--wva` | `LLMDBENCH_WVA` | Workload Variant Autoscaler config |
 | `--epp-keda-saturation` | `LLMDBENCH_EPP_KEDA_SATURATION` | Direct EPP+KEDA saturation autoscaling (controller-free) |
-| `-o KEY=VALUE` / `--overrides` | `LLMDBENCH_SET` | Scenario override(s) -- alias for the global `--set`. `standup` has no workload profile, so `-o` is unambiguous here. E.g. `-o kustomize.acceleratorBackend=gpu/sglang` or `-o 'llama-31-8b:decode.replicas=4'`. See [Global Options](#global-options). |
+| `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) -- see [Global Options](#global-options). E.g. `--set kustomize.acceleratorBackend=gpu/sglang` or `--set 'llama-31-8b:decode.replicas=4'`. |
 
 ### Teardown Options
 

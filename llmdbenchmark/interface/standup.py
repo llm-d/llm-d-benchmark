@@ -58,23 +58,6 @@ def add_subcommands(
             "by kustomize/standalone/fma."
         ),
     )
-    # Alias for the shared `--set` flag (registered on the parent parser).
-    # `standup` has no workload profile, so `-o` is unambiguous here and
-    # matches the spelling `run`/`experiment` use for profile overrides.
-    standup_parser.add_argument(
-        "-o",
-        "--overrides",
-        dest="set_overrides",
-        action="append",
-        metavar="KEY=VALUE",
-        help=(
-            "Scenario override(s) as [stack:]dotted.key=value, comma-separated "
-            "and repeatable. Alias for --set. Deep-merged on top of the "
-            "scenario so a near-identical variant needs no separate YAML file. "
-            "Example: -o 'kustomize.acceleratorBackend=gpu/sglang' or "
-            "-o 'llama-31-8b:decode.replicas=4,qwen3-06b:decode.replicas=1'."
-        ),
-    )
     standup_parser.add_argument(
         "-a",
         "--affinity",

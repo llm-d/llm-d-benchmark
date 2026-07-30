@@ -107,7 +107,7 @@ privilege belong in a `--cluster-config` file
 For a one-off tweak that does not warrant a file, `--set` takes the same
 dotted paths on the command line -- e.g.
 `--set storage.workloadPvc.storageClassName=ocs-storagecluster-cephfs`
-([standup.md](standup.md#overriding-scenario-values-from-the-cli---set--standup--o)).
+([standup.md](standup.md#overriding-scenario-values-from-the-cli---set)).
 
 ---
 

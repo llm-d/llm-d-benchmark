@@ -1101,7 +1101,7 @@ not "fall back to /bin/sh"; it removes the field and breaks rendering.
 
    ```
    defaults.yaml -> scenario.shared -> stack config -> --cluster-config
-     -> --set / `standup -o` -> setup overrides (DoE setup.treatments)
+     -> --set -> setup overrides (DoE setup.treatments)
    ```
 
    Each later layer wins over earlier ones; dicts deep-merge, lists replace

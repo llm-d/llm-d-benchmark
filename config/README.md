@@ -231,8 +231,8 @@ llmdbenchmark --spec my-spec.yaml.j2 standup -p my-ns -t modelservice -r my-rele
 ##### Overriding arbitrary scenario keys (`--set`)
 
 The flags above cover the values that have a dedicated flag. **Any** key in
-the merged config can be overridden with `--set` (spelled `-o` on `standup`),
-using the same dotted paths a scenario file uses. This is what makes a
+the merged config can be overridden with `--set`, using the same dotted
+paths a scenario file uses. This is what makes a
 near-duplicate scenario file unnecessary:
 
 ```bash
@@ -242,8 +242,8 @@ llmdbenchmark --spec guides/optimized-baseline standup \
 
 # Several keys: comma-separated, or repeat the flag
 llmdbenchmark --spec guides/pd-disaggregation standup \
-  -o 'decode.replicas=2,prefill.replicas=4' \
-  -o 'storage.modelPvc.size=2Ti'
+  --set 'decode.replicas=2,prefill.replicas=4' \
+  --set 'storage.modelPvc.size=2Ti'
 ```
 
 Values are parsed as YAML, so `4`, `true`, `[a, b]` and `{x: 1}` mean what
@@ -262,11 +262,11 @@ glob) to scope it; unprefixed applies to every stack:
 ```bash
 # Different value per pool, both still deployed
 llmdbenchmark --spec examples/multi-model-wva standup \
-  -o 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
+  --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
 
 # A common floor with one exception (exact name beats the global)
 llmdbenchmark --spec examples/multi-model-wva standup \
-  -o 'wva.hpa.maxReplicas=6' -o 'llama-31-8b:wva.hpa.maxReplicas=2'
+  --set 'wva.hpa.maxReplicas=6' --set 'llama-31-8b:wva.hpa.maxReplicas=2'
 ```
 
 A selector matching no stack is a hard error, not a silent no-op. Every
@@ -276,13 +276,13 @@ applied override is logged with its previous value
 `--set` is available on every subcommand that renders templates
 (`plan`, `standup`, `smoketest`, `run`, `teardown`, `experiment`) -- pass it
 to each phase of a lifecycle, since they all re-render. Full reference:
-[docs/standup.md](../docs/standup.md#overriding-scenario-values-from-the-cli---set--standup--o).
+[docs/standup.md](../docs/standup.md#overriding-scenario-values-from-the-cli---set).
 
 > [!IMPORTANT]
-> On `run` and `experiment`, `-o/--overrides` is a **different** flag -- it
-> overrides the workload profile, not the scenario. Use `--set` there.
-> `standup` has no workload profile, so `-o` is unambiguous and both
-> spellings work.
+> `--set` always means the **scenario**. On `run` and `experiment`,
+> `-o/--overrides` is a **different** flag that overrides the workload
+> profile; the two can be combined. `standup` has no workload profile, so
+> it accepts `--set` only.
 
 There is also `--cluster-config FILE`, which takes the same overrides as a
 YAML mapping for values that are constant per cluster (storage class,

@@ -1,4 +1,4 @@
-"""Parse ``--set`` / ``standup -o`` scenario overrides from the command line.
+"""Parse ``--set`` scenario overrides from the command line.
 
 These are *scenario* (plan) overrides: dotted paths into the merged stack
 config, deep-merged on top of ``defaults.yaml`` + ``shared:`` + the stack

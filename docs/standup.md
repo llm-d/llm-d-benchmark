@@ -61,17 +61,17 @@ llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qw
 The same flag works on `smoketest`, `run`, and `teardown` with identical
 semantics, so you can scope every lifecycle phase to the same subset.
 
-## Overriding scenario values from the CLI (`--set` / `standup -o`)
+## Overriding scenario values from the CLI (`--set`)
 
 A scenario variant that differs from an existing one in only a handful of
 fields does not need its own YAML file. Every subcommand that renders
-templates accepts `--set` (aliased `-o`/`--overrides` on `standup`), which
-deep-merges dotted-path values on top of the scenario:
+templates accepts `--set`, which deep-merges dotted-path values on top of
+the scenario:
 
 ```bash
 # Run the SGLang flavour of a guide without a separate scenario file
 llmdbenchmark --spec guides/optimized-baseline standup \
-  -t kustomize -o kustomize.acceleratorBackend=gpu/sglang
+  -t kustomize --set kustomize.acceleratorBackend=gpu/sglang
 ```
 
 Pairs are comma-separated and the flag is repeatable. Values are parsed as
@@ -79,10 +79,11 @@ YAML, so `4`, `true`, `[a, b]` and `{x: 1}` mean what they would inside the
 scenario file; commas inside `[]`, `{}` or quotes belong to the value.
 
 > [!IMPORTANT]
-> On `run` and `experiment`, `-o/--overrides` means something different --
-> it overrides the **workload profile**, not the scenario. Use `--set` for
-> scenario overrides there. `standup` has no workload profile, so `-o` is
-> unambiguous and both spellings work.
+> `--set` always means the **scenario**, on every subcommand. It is not the
+> same as `run`/`experiment`'s `-o/--overrides`, which overrides the
+> **workload profile**. Those two are separate flags and can be combined:
+> `run --set decode.replicas=4 -o max-concurrency=8`. `standup` has no
+> workload profile, so it accepts `--set` only.
 
 The same value can be supplied via `LLMDBENCH_SET`. Pass `--set` to every
 lifecycle phase (`plan`/`standup`/`smoketest`/`run`/`teardown`) so each one
@@ -97,19 +98,19 @@ every stack:
 
 ```bash
 # every stack
-llmdbenchmark --spec examples/multi-model-wva standup -o decode.replicas=2
+llmdbenchmark --spec examples/multi-model-wva standup --set decode.replicas=2
 
 # one stack; both are still deployed
 llmdbenchmark --spec examples/multi-model-wva standup \
-  -o 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
+  --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
 
 # a common floor with one exception
 llmdbenchmark --spec examples/multi-model-wva standup \
-  -o 'wva.hpa.maxReplicas=6' -o 'llama-31-8b:wva.hpa.maxReplicas=2'
+  --set 'wva.hpa.maxReplicas=6' --set 'llama-31-8b:wva.hpa.maxReplicas=2'
 
 # every stack whose name ends in -8b
 llmdbenchmark --spec examples/multi-model-wva standup \
-  -o '*-8b:decode.resources.limits.memory=64Gi'
+  --set '*-8b:decode.resources.limits.memory=64Gi'
 ```
 
 When several selectors match a stack they are applied by specificity --
@@ -152,7 +153,7 @@ list element, so `--set vllmCommon.volumeMounts.0.mountPath=/x` is rejected
 rather than silently replacing the whole list. Assign the list instead:
 
 ```bash
--o 'vllmCommon.volumeMounts=[{name: dshm, mountPath: /dev/shm}]'
+--set 'vllmCommon.volumeMounts=[{name: dshm, mountPath: /dev/shm}]'
 ```
 
 (This differs from `run -o`, which overrides the workload profile and *does*

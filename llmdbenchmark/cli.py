@@ -1666,17 +1666,8 @@ def _log_env_overrides(logger, args):
     for k, v in sorted(active.items()):
         display = v if len(v) < 60 else v[:57] + "..."
         dest, flag = _ENV_TO_CLI[k]
-        # Check all flag variants (long and short forms). `-o` is the one
-        # spelling that means different things per subcommand -- scenario
-        # overrides (--set) on standup, workload-profile overrides
-        # (--overrides) everywhere else -- so attribute it to whichever
-        # flag actually owns it for this command.
-        forms = [
-            f
-            for f in _all_flag_forms(flag)
-            if f != "-o" or _dash_o_owner(getattr(args, "command", None)) == flag
-        ]
-        overridden = any(f in cli_flags_used for f in forms)
+        # Check all flag variants (long and short forms)
+        overridden = any(f in cli_flags_used for f in _all_flag_forms(flag))
         if overridden:
             cli_val = getattr(args, dest, None)
             cli_display = str(cli_val) if cli_val is not None else ""
@@ -1687,16 +1678,6 @@ def _log_env_overrides(logger, args):
             )
         else:
             logger.log_info(f"  {k}={display}")
-
-
-def _dash_o_owner(command: str | None) -> str:
-    """Which long flag ``-o`` aliases for a given subcommand.
-
-    ``standup`` has no workload profile, so ``-o`` there is the scenario
-    override flag (``--set``). On ``run``/``experiment`` it is
-    ``--overrides``, the workload-profile flag.
-    """
-    return "--set" if command == Command.STANDUP.value else "--overrides"
 
 
 def _all_flag_forms(flag: str) -> list[str]:
@@ -1729,9 +1710,7 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--workload-file-path": ["--workload-file-path"],
         "--experiments": ["--experiments", "-e"],
         "--overrides": ["--overrides", "-o"],
-        # `standup -o` aliases --set (scenario overrides); on run/experiment
-        # `-o` is --overrides (workload profile overrides) instead.
-        "--set": ["--set", "--override", "-o"],
+        "--set": ["--set"],
         "--output": ["--output", "-r"],
         "--parallelism": ["--parallelism", "-j"],
         "--wait-timeout": ["--wait-timeout"],
@@ -1928,7 +1907,6 @@ def cli() -> None:
 
     benchmark_parser.add_argument(
         "--set",
-        "--override",
         dest="set_overrides",
         action="append",
         metavar="KEY=VALUE",
@@ -1941,8 +1919,8 @@ def cli() -> None:
         "< dedicated flags (-m/-t/--gateway-class/--monitoring/--wva). "
         "Example: --set 'kustomize.acceleratorBackend=gpu/sglang' "
         "--set 'llama-31-8b:decode.replicas=4'. "
-        "NOTE: on `run`/`experiment` this is distinct from -o/--overrides, which "
-        "overrides the workload profile rather than the scenario.",
+        "NOTE: `--set` always overrides the SCENARIO. On `run`/`experiment`, "
+        "-o/--overrides is a separate flag that overrides the workload profile.",
     )
 
     subparsers = parser.add_subparsers(
@@ -2112,7 +2090,7 @@ def cli() -> None:
         getattr(args, "cluster_config", None), logger
     )
 
-    # Parse --set / `standup -o` into per-stack-selector buckets, with the
+    # Parse --set into per-stack-selector buckets, with the
     # --cluster-config file folded in underneath the global bucket so the
     # whole precedence chain lives in one structure.
     args.setup_overrides_by_stack = _build_setup_overrides_by_stack(args, logger)
@@ -2149,7 +2127,7 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
     try:
         by_selector, warnings = parse_cli_overrides(raw)
     except OverrideParseError as exc:
-        logger.log_error(f"Invalid --set/-o override: {exc}")
+        logger.log_error(f"Invalid --set override: {exc}")
         sys.exit(1)
 
     for warning in warnings:

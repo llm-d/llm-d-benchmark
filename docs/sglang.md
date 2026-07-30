@@ -110,7 +110,7 @@ export HF_TOKEN=hf_...     # if the model is gated
 export SGLANG='kustomize.acceleratorBackend=gpu/sglang'
 
 # 1. Stand up the SGLang stack (kustomize deploy method).
-llmdbenchmark --spec guides/optimized-baseline standup -t kustomize -p "$NS" -o "$SGLANG"
+llmdbenchmark --spec guides/optimized-baseline standup -t kustomize -p "$NS" --set "$SGLANG"
 
 # 2. Smoketest: send real requests through the gateway and validate responses.
 llmdbenchmark --spec guides/optimized-baseline smoketest -t kustomize -p "$NS" --set "$SGLANG"
@@ -124,10 +124,8 @@ llmdbenchmark --spec guides/optimized-baseline teardown -t kustomize -p "$NS" --
 ```
 
 Pass the override to **every** phase: each one re-renders the plan, and a
-phase that misses it renders a vLLM plan for an SGLang deployment. On
-`standup` the flag is spelled `-o`/`--set` interchangeably; elsewhere use
-`--set`, because `run`'s `-o` means workload-profile overrides. See
-[standup.md](standup.md#overriding-scenario-values-from-the-cli---set--standup--o).
+phase that misses it renders a vLLM plan for an SGLang deployment. See
+[standup.md](standup.md#overriding-scenario-values-from-the-cli---set).
 
 To benchmark a different guide, swap the `--spec` (e.g.
 `guides/tiered-prefix-cache`). For AMD accelerators on `optimized-baseline`,
@@ -138,7 +136,7 @@ use `kustomize.acceleratorBackend=amd/sglang`.
 The `acceleratorBackend` value lives in the scenario's `kustomize` block. There
 is no dedicated CLI flag; set it one of these ways:
 
-- `--set kustomize.acceleratorBackend=gpu/sglang` (`-o` on `standup`), as in
+- `--set kustomize.acceleratorBackend=gpu/sglang`, as in
   Option B above -- no file is modified. `LLMDBENCH_SET` carries the same
   value through the environment.
 - Edit `config/scenarios/guides/<guide>.yaml` directly (`kustomize.acceleratorBackend`).

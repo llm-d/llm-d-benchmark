@@ -87,7 +87,7 @@ class RenderPlans:
         self.setup_overrides = setup_overrides
         # Scenario overrides keyed by stack selector ("*", an exact stack
         # name, or an fnmatch glob). Carries ``--cluster-config`` (folded
-        # into "*") and ``--set`` / ``standup -o``. Resolved per stack by
+        # into "*") and ``--set``. Resolved per stack by
         # specificity in ``_effective_setup_overrides``.
         self.setup_overrides_by_stack: dict[str, dict] = dict(
             setup_overrides_by_stack or {}
