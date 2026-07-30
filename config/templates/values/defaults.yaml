@@ -319,6 +319,28 @@ storage:
     volumeMode: Filesystem
     storageClassName: *storage_class
 
+  # HostPath-backed model storage (opt-in).
+  # When enabled, a static PersistentVolume with hostPath is created and the
+  # model PVC binds to it via a matching storageClassName.  A DaemonSet
+  # downloads the model to the hostPath on every target node BEFORE the
+  # serving pods start; the regular download Job is skipped.
+  #
+  # Requirements:
+  #   - Nodes must have the hostPath directory writable.
+  #   - nodeSelector / tolerations should target the GPU nodes where
+  #     vLLM pods will schedule.
+  #   - The storageClassName does NOT need a real StorageClass object
+  #     on the cluster; static PV binding uses label matching.
+  hostPath:
+    enabled: false
+    path: /mnt/models
+    storageClassName: hostpath
+    capacity: 300Gi
+    nodeSelector: {}
+    tolerations: []
+    daemonSetTimeout: 3600
+    daemonSetName: download-model-ds
+
 # ============================================================================
 # HUGGINGFACE CONFIGURATION
 # ============================================================================
