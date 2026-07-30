@@ -1,6 +1,6 @@
 name: CI - Nightly Eval GPU on OCP (aider-polyglot / gemini-cli)
 
-# GPU-SERVED eval caller: stands up Qwen/Qwen3-32B on a single H100 via llm-d
+# GPU-SERVED eval caller: stands up Qwen/Qwen3.6-27B on a single H100 via llm-d
 # (modelservice) and drives the aider-polyglot / gemini-cli eval-containers
 # agent against that in-cluster served endpoint -- the standard llm-d path, NOT
 # run-only against LiteLLM. See reusable-ci-nightly-eval-gpu.yaml for the

@@ -14,7 +14,7 @@ name: Reusable - Nightly Eval GPU (eval-containers, vLLM standup)
 # stood-up epponly endpoint. The in-pod bifrost gateway's OPENAI_API_KEY
 # defaults to a placeholder that llm-d ignores, so NO API key is forwarded and
 # NO `-U` is passed. EVAL_MODEL is derived from the scenario's model.name, which
-# must be the SERVED model id (e.g. Qwen/Qwen3-32B).
+# must be the SERVED model id (e.g. Qwen/Qwen3.6-27B).
 #
 # Target: OCP pok-prod (self-hosted runner + KUBECONFIG_DATA_OCP), same as the
 # run-only eval engine and the perf callers. Root for the eval image's /app
@@ -63,6 +63,11 @@ jobs:
       CLEANUP: ${{ inputs.cleanup }}
       # Forwarded to the model download job for gated models; harmless if empty.
       HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      # Pin the workspace so results land at a known path we can collect.
+      # Without --workspace the CLI falls back to the scenario's `workDir`
+      # (e.g. ~/data/eval-gaia-gpu) -- OUTSIDE the checkout, and on a
+      # self-hosted runner that path persists and mixes runs together.
+      WORKSPACE: ${{ github.workspace }}/eval-workspace
     steps:
       - uses: actions/checkout@v7
 
@@ -94,7 +99,7 @@ jobs:
           DRYFLAG=""; [ "$DRY" = "true" ] && DRYFLAG="--dry-run"
           llmdbenchmark --spec "$SPEC" $DRYFLAG standup \
             --cluster-config "$CC" \
-            -p "$NS" -t "$METHODS" --base-dir . \
+            -p "$NS" -t "$METHODS" --base-dir . --workspace "$WORKSPACE" \
             --pvc-bind-timeout "$PVC_TIMEOUT" \
             --modelservice-deploy-timeout "$MS_TIMEOUT"
 
@@ -105,7 +110,58 @@ jobs:
           llmdbenchmark --spec "$SPEC" $DRYFLAG run \
             --cluster-config "$CC" \
             -p "$NS" -t "$METHODS" -j "$TASKS" \
-            --base-dir . --analyze --wait-timeout "$WAIT"
+            --base-dir . --workspace "$WORKSPACE" \
+            --analyze --wait-timeout "$WAIT"
+
+      # Collect BEFORE teardown: teardown deletes the harness + vLLM pods, and
+      # with them any chance of reading pod logs. `if: always()` so a failed or
+      # timed-out run still yields diagnostics -- that is when they matter most.
+      - name: Collect eval results + pod logs
+        if: always()
+        run: |
+          DEST="$GITHUB_WORKSPACE/eval-artifacts"
+          mkdir -p "$DEST/cluster"
+
+          # Benchmark results (per-task dirs: stdout.log, run_metadata.yaml, and
+          # the analyze output). Stamp the run id in so a downloaded artifact is
+          # traceable back to the Actions run, as the perf nightly does.
+          if [ -d "$WORKSPACE" ]; then
+            find "$WORKSPACE" -name run_metadata.yaml \
+              -exec sh -c 'echo "github_run_id: \"'"$GITHUB_RUN_ID"'\"" >> "$1"' _ {} \; || true
+            cp -a "$WORKSPACE/." "$DEST/workspace/" 2>/dev/null || true
+          else
+            echo "WARNING: workspace $WORKSPACE not found -- no results to collect"
+          fi
+
+          # Cluster-side state. Each is best-effort: a missing pod must not fail
+          # the collection step and cost us the rest of the diagnostics.
+          oc get pods -n "$NS" -o wide          > "$DEST/cluster/pods.txt" 2>&1 || true
+          oc get events -n "$NS" \
+            --sort-by=.lastTimestamp             > "$DEST/cluster/events.txt" 2>&1 || true
+          oc describe pods -n "$NS"              > "$DEST/cluster/describe-pods.txt" 2>&1 || true
+
+          # Per-pod logs, including --previous to catch a crash-looped vLLM.
+          for pod in $(oc get pods -n "$NS" -o name 2>/dev/null | cut -d/ -f2); do
+            oc logs "$pod" -n "$NS" --all-containers --tail=-1 \
+              > "$DEST/cluster/log-${pod}.txt" 2>&1 || true
+            oc logs "$pod" -n "$NS" --all-containers --previous --tail=-1 \
+              > "$DEST/cluster/log-${pod}-previous.txt" 2>&1 || true
+            # Drop empty --previous files (no prior container = expected).
+            [ -s "$DEST/cluster/log-${pod}-previous.txt" ] || rm -f "$DEST/cluster/log-${pod}-previous.txt"
+          done
+
+          echo "### Collected artifacts:"
+          du -sh "$DEST" 2>/dev/null || true
+          find "$DEST" -type f | head -50
+
+      - name: Upload eval results + logs
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: eval-gpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: eval-artifacts/
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Teardown vLLM model (free the GPU)
         if: always()
