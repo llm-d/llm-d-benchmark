@@ -121,7 +121,7 @@ All wait helpers show live terminal progress with progress bars and pod status. 
 
 - `wait_for_pods(label, namespace, timeout=300, poll_interval=10, description="") -> CommandResult` -- Poll pods by label until all are Ready. Detects and aborts on terminal states (`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, etc.).
 - `wait_for_job(job_name, namespace, timeout=3600, poll_interval=15, description="") -> CommandResult` -- Poll a Job until it completes or fails. Tracks active/succeeded/failed counts.
-- `wait_for_pvc(pvc_name, namespace, timeout=300, poll_interval=10, description="") -> CommandResult` -- Poll a PVC until it reaches `Bound` phase.
+- `wait_for_pvc(pvc_name, namespace, timeout=300, poll_interval=10, description="") -> CommandResult` -- Poll a PVC until it reaches `Bound` phase. Short-circuits to success when the StorageClass uses `volumeBindingMode: WaitForFirstConsumer` (such PVCs stay `Pending` until a consumer pod schedules), returning `wait_skipped=True` so a caller with a tighter next wait can add this `timeout` to it.
 
 ### CommandResult
 
@@ -134,6 +134,7 @@ class CommandResult:
     stderr: str = ""
     dry_run: bool = False
     attempts: int = 1
+    wait_skipped: bool = False  # a readiness wait was deliberately not performed
 
     @property
     def success(self) -> bool: ...  # exit_code == 0

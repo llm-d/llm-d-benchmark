@@ -60,6 +60,9 @@ class CommandResult:
     stderr: str = ""
     dry_run: bool = False
     attempts: int = 1
+    # True when a readiness wait was deliberately not performed, so the
+    # caller owns the deferred budget (see CommandExecutor.wait_for_pvc).
+    wait_skipped: bool = False
 
     @property
     def success(self) -> bool:
@@ -534,7 +537,12 @@ class CommandExecutor:
         consumer pod is scheduled, so blocking on Bound here would deadlock
         standup before the consumer pod ever gets a chance to apply. Real
         provisioning failures still surface as a pod-readiness or
-        download-job timeout downstream.
+        download-job timeout downstream. When that happens the returned
+        result has ``wait_skipped=True``: the caller's next wait now covers
+        volume provisioning on top of whatever it originally waited for, so
+        a caller whose next wait is tighter than this ``timeout`` should add
+        this ``timeout`` to it (step 04's callers already wait far longer,
+        so they need no adjustment; step 05's data-access pod wait does).
         """
         desc = description or f"pvc/{pvc_name}"
         kc_args = " ".join(self._kubeconfig_args())
@@ -552,7 +560,7 @@ class CommandExecutor:
                 "-- PVC will bind when its consumer pod schedules; "
                 "skipping bind wait."
             )
-            return CommandResult(command=cmd_repr, exit_code=0)
+            return CommandResult(command=cmd_repr, exit_code=0, wait_skipped=True)
 
         start = time.time()
         last_status_line = ""

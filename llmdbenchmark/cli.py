@@ -482,6 +482,9 @@ def _do_standup(args, logger, render_plan_errors):
             getattr(args, "modelservice_deploy_timeout", 1500) or 1500
         ),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
+        harness_data_access_timeout=int(
+            getattr(args, "data_access_timeout", 120) or 120
+        ),
         kustomize_deploy_timeout=int(
             getattr(args, "kustomize_deploy_timeout", 900) or 900
         ),

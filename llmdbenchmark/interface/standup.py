@@ -158,6 +158,17 @@ def add_subcommands(
         "(some dynamic provisioners take 1-3 minutes per volume).",
     )
     standup_parser.add_argument(
+        "--data-access-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
+        help="Seconds to wait for the harness data-access pod to become "
+        "Ready. Mirrors the run flag and accepts the same env var "
+        "(LLMDBENCH_DATA_ACCESS_TIMEOUT). On a WaitForFirstConsumer "
+        "StorageClass the unspent --pvc-bind-timeout is added to this "
+        "budget, because the volume is only provisioned once that pod "
+        "schedules. Default: 120.",
+    )
+    standup_parser.add_argument(
         "--llmd-repo-path",
         default=env("LLMDBENCH_LLMD_REPO_PATH"),
         help="Path to a local llm-d repository clone (used by the kustomize method).",
