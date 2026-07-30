@@ -1,0 +1,21 @@
+{% if storage.hostPath is defined and storage.hostPath.enabled | default(false) %}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ storage.modelPvc.name }}-hostpath-pv
+  labels:
+    app: {{ labels.app }}
+    usage: model-cache
+spec:
+  capacity:
+    storage: {{ storage.hostPath.capacity | default(storage.modelPvc.size) }}
+  accessModes:
+{% for mode in storage.modelPvc.accessModes %}
+    - {{ mode }}
+{% endfor %}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ storage.hostPath.storageClassName }}
+  hostPath:
+    path: {{ storage.hostPath.path }}
+    type: DirectoryOrCreate
+{% endif %}

@@ -9,7 +9,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 
 
 NORMAL_RESOURCE_LIST = (
-    "leaderworkerset,deployment,statefulset,httproute,service,"
+    "daemonset,leaderworkerset,deployment,statefulset,httproute,service,"
     "gateway,gatewayparameters,"
     "inferencepool,inferencemodel,configmap,ingress,pod,job"
 )
@@ -27,6 +27,7 @@ SYSTEM_EXCLUDES = {
 STANDALONE_PATTERNS = [
     "standalone",
     "download-model",
+    "download-model-ds",
     "testinference",
     "lmbenchmark",
 ]
@@ -65,6 +66,7 @@ DEEP_RESOURCE_KINDS = [
     "inferencepool",
     "httproute",
     "configmap",
+    "daemonset",
     "job",
     "role",
     "rolebinding",
@@ -196,6 +198,18 @@ class DeleteResourcesStep(Step):
                     context.logger.log_info(
                         f"  Deleted {len(existing)} {kind}(s) in {ns}"
                     )
+
+        # Clean up cluster-scoped hostPath PVs created by the benchmark.
+        pv_result = cmd.kube(
+            "delete",
+            "pv",
+            "-l",
+            "usage=model-cache",
+            "--ignore-not-found",
+            check=False,
+        )
+        if pv_result.success and pv_result.stdout.strip():
+            context.logger.log_info("  Deleted hostPath PV(s)")
 
     def _normal_clean(
         self,
@@ -346,6 +360,18 @@ class DeleteResourcesStep(Step):
             context.logger.log_info(
                 f"  Deleted {deleted_count}/{len(filtered)} resources in {ns}"
             )
+
+        # Clean up cluster-scoped hostPath PVs created by the benchmark.
+        pv_result = cmd.kube(
+            "delete",
+            "pv",
+            "-l",
+            "usage=model-cache",
+            "--ignore-not-found",
+            check=False,
+        )
+        if pv_result.success and pv_result.stdout.strip():
+            context.logger.log_info("  Deleted hostPath PV(s)")
 
     def _prune_unsupported(
         self, cmd: CommandExecutor, resource_list: str, namespace: str
