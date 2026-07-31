@@ -168,6 +168,19 @@ class EnsureInfraStep(Step):
                 f"permissions). Verify with '{runtime} info'."
             )
 
+        # 1b. Host tools the nok8s path shells out to (fatal). The k8s
+        #     toolchain check does not run for nok8s, so these would otherwise
+        #     go unchecked: 'timeout' bounds the harness wait in step 07 and
+        #     'curl' probes endpoint readiness in step 06.
+        for tool in ("timeout", "curl"):
+            if not cmd.execute(
+                f"command -v {tool}", check=False, force=True, silent=True
+            ).success:
+                errors.append(
+                    f"'{tool}' not found on PATH; the nok8s path needs it "
+                    f"(install GNU coreutils and curl)."
+                )
+
         # 2. Accelerator visible on the host (warning). Probe depends on the
         #    configured accelerator; cpu/spyre/custom are not probed here.
         probe = {
