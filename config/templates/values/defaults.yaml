@@ -1635,7 +1635,6 @@ eppKedaSaturation:
   prometheus:
     baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
     port: 9091
-    proxyUrl: "http://prometheus-proxy.openshift-keda:8080"  # local proxy using projected tokens
   epp:
     poolName: ""                # InferencePool name; defaults to model_id_label
     serviceLabelSelector: {}    # matchLabels for EPP Service selector

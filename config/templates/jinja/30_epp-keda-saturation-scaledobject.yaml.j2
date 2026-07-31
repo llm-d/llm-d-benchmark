@@ -8,50 +8,6 @@
    No WVA controller, no VariantAutoscaling, no prometheus-adapter.
    Just dual Prometheus triggers → HPA.
 
-   PROMETHEUS QUERY PROXY:
-   =======================
-   This template uses a local prometheus-proxy deployment (24_prometheus-proxy.yaml.j2)
-   running in the openshift-keda namespace. The proxy:
-
-     - Listens on http://prometheus-proxy.openshift-keda:8080
-     - Uses the KEDA operator's projected ServiceAccount token for authentication
-     - Forwards queries to the cluster's Prometheus (thanos-querier)
-     - Avoids kube-rbac-proxy 401 Unauthorized errors that occur with external bearer tokens
-
-   The prometheus-proxy URL is CONFIGURABLE via eppKedaSaturation.prometheus.proxyUrl
-   in the scenario/config. Default: "http://prometheus-proxy.openshift-keda:8080"
-
-   WHY NOT USE TRADITIONAL BEARER TOKENS?
-   ======================================
-   On OpenShift 4.19+, the cluster-monitoring-operator (CMA) hardens kube-rbac-proxy
-   with a static authorization policy that only allows tokens from specific system
-   ServiceAccounts (e.g., openshift-monitoring/prometheus-k8s). External bearer tokens
-   from Kubernetes Secrets are rejected with 401 Unauthorized, even with proper RBAC
-   ClusterRoles. This is a cluster-level security constraint, not an RBAC issue.
-
-   SOLUTION: Pod-native projected tokens
-   ======================================
-   Instead of external bearer tokens (which kube-rbac-proxy rejects), we use projected
-   service account tokens native to the pod. The keda-operator ServiceAccount gets
-   cluster-monitoring-view RBAC, allowing its projected token to query Prometheus.
-   A local proxy intercepts KEDA's HTTP requests and adds the pod's own token, which
-   is always trusted by kube-rbac-proxy. This pattern matches how other cluster
-   components (e.g., WVA) successfully authenticate to Prometheus on 4.19+.
-
-   SMOKE TEST:
-   ===========
-   After deployment, verify the proxy is accessible and working:
-
-     # From any pod in the cluster:
-     curl -s "http://prometheus-proxy.openshift-keda:8080/api/v1/query?query=node_memory_MemFree_bytes" | head -c 200
-
-     # Expected: JSON response with metrics data (not a 401 or 404 error)
-
-   If the proxy returns 401, check:
-     1. prometheus-proxy pod is Running: kubectl get pod -n openshift-keda -l app=prometheus-proxy
-     2. keda-operator SA has cluster-monitoring-view role:
-        kubectl get clusterrolebinding | grep keda-operator | grep cluster-monitoring-view
-
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
@@ -66,7 +22,8 @@
 {% endif %}
 {% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
 {% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router', true) %}
-{% set prom_proxy_url = eppKedaSaturation.prometheus.proxyUrl | default('http://prometheus-proxy.openshift-keda:8080', true) %}
+{% set prom_url = eppKedaSaturation.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local', true) %}
+{% set prom_url = prom_url ~ ':' ~ (eppKedaSaturation.prometheus.port | default(9091, true)) %}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -89,8 +46,11 @@ spec:
   - type: prometheus
     name: kv-cache
     metricType: AverageValue
+    authenticationRef:
+      name: prometheus-auth
     metadata:
-      serverAddress: "{{ prom_proxy_url }}"
+      serverAddress: "{{ prom_url }}"
+      authModes: bearer
       query: |
         max(inference_pool_average_kv_cache_utilization{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
       threshold: "{{ eppKedaSaturation.scaledObject.kvCacheThreshold | default('0.7') }}"
@@ -99,8 +59,11 @@ spec:
   - type: prometheus
     name: queue-size
     metricType: AverageValue
+    authenticationRef:
+      name: prometheus-auth
     metadata:
       serverAddress: "{{ prom_proxy_url }}"
+      authModes: bearer
       query: |
         max(inference_pool_average_queue_size{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
       threshold: "{{ eppKedaSaturation.scaledObject.queueSizeThreshold | default('2') }}"
