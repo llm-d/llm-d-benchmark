@@ -110,6 +110,28 @@ def test_explicit_profile_resolves_resource_without_cluster():
     assert resolver._connected is False
 
 
+def test_explicit_unified_xpu_profile_resolves_dra_driver_without_cluster():
+    resolver = ClusterResourceResolver(logger=MagicMock(), dry_run=False)
+
+    resolved = resolver.resolve_all(
+        {"accelerator": {"profile": "intel-xpu", "resource": "auto"}}
+    )
+
+    assert resolved["accelerator"]["resource"] == "gpu.intel.com"
+    assert resolved["accelerator"]["type"] == "intel-xpu"
+    assert resolver._connected is False
+
+
+def test_unified_xpu_dra_profile_uses_shared_xpu_overlay(tmp_path):
+    result, merged = _render(tmp_path, "intel-xpu", "gpu.intel.com")
+
+    assert not result.has_errors
+    assert merged["accelerator"]["type"] == "intel-xpu"
+    assert merged["accelerator"]["resource"] == "gpu.intel.com"
+    assert "llm-d-xpu" in merged["images"]["vllm"]["repository"]
+    assert "--enforce-eager" in merged["decode"]["vllm"]["customCommand"]
+
+
 def test_cluster_connection_uses_cli_kubeconfig(monkeypatch):
     observed: dict[str, str | None] = {}
     api_client = object()

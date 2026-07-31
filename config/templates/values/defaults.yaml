@@ -550,7 +550,7 @@ monitoring:
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
-# Supports: nvidia, intel-i915, intel-xe, intel-gaudi, amd, google
+# Supports: nvidia, intel-xpu, intel-i915, intel-xe, intel-gaudi, amd, google
 # ============================================================================
 accelerator:
   type: nvidia
@@ -571,6 +571,7 @@ accelerator:
   # Resource names for different accelerator types (optional override)
   # resources:
   #   nvidia: "nvidia.com/gpu"
+  #   intel-xpu: "gpu.intel.com"
   #   intel-i915: "gpu.intel.com/i915"
   #   intel-xe: "gpu.intel.com/xe"
   #   intel-gaudi: "habana.ai/gaudi"

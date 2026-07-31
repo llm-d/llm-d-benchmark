@@ -1,6 +1,6 @@
-# Shared Intel XPU machine profile. It is selected automatically for both the
-# classic i915 and Xe device-plugin resources; the resolver preserves the exact
-# resource/type as ``intel-i915`` or ``intel-xe``.
+# Shared Intel XPU machine profile. DRA clusters select it directly from the
+# stable ``gpu.intel.com`` driver/device class. Classic device-plugin clusters
+# continue to select it through their ``intel-i915`` or ``intel-xe`` profiles.
 
 accelerator:
   # Avoid duplicating VLLM_WORKER_MULTIPROC_METHOD: llm-d-benchmark already

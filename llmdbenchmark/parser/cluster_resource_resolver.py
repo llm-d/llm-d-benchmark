@@ -97,6 +97,7 @@ class ClusterResourceResolver:
         "habana.ai/gaudi": "intel-gaudi",
         "google.com/tpu": "google",
         "intel.com/gpu": "intel-i915",
+        "gpu.intel.com": "intel-xpu",
         "gpu.intel.com/i915": "intel-i915",
         "gpu.intel.com/xe": "intel-xe",
     }
@@ -105,6 +106,7 @@ class ClusterResourceResolver:
         "amd": "amd.com/gpu",
         "intel-gaudi": "habana.ai/gaudi",
         "google": "google.com/tpu",
+        "intel-xpu": "gpu.intel.com",
         "intel-i915": "gpu.intel.com/i915",
         "intel-xe": "gpu.intel.com/xe",
     }
@@ -512,6 +514,19 @@ class ClusterResourceResolver:
             discovered = ", ".join(resources.accelerator_resources)
             raise RuntimeError(
                 "Multiple accelerator resources were discovered "
+                f"({discovered}); set accelerator.resource or "
+                "accelerator.profile explicitly."
+            )
+        elif len(resources.dra_drivers) == 1:
+            resolved = resources.dra_drivers[0]
+            accel["resource"] = resolved
+            self.logger.log_info(
+                f"Resolved accelerator.resource from DRA driver: {resolved}"
+            )
+        elif len(resources.dra_drivers) > 1:
+            discovered = ", ".join(resources.dra_drivers)
+            raise RuntimeError(
+                "Multiple DRA accelerator drivers were discovered "
                 f"({discovered}); set accelerator.resource or "
                 "accelerator.profile explicitly."
             )
