@@ -2249,6 +2249,13 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                         ["successes", "throughput", "total_tokens_per_sec"],
                     ),
                 },
+                "input_token_rate": {
+                    "units": Units.TOKEN_PER_S,
+                    "mean": get_nested(
+                        results,
+                        ["successes", "throughput", "input_tokens_per_sec"],
+                    ),
+                },
                 "request_rate": {
                     "units": Units.QUERY_PER_S,
                     "mean": get_nested(
