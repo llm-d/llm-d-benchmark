@@ -528,9 +528,7 @@ class ClusterResourceResolver:
             resolved = resources.dra_drivers[0]
             accel.pop("resource", None)
             accel["draDriver"] = resolved
-            self.logger.log_info(
-                f"Resolved accelerator.draDriver: {resolved}"
-            )
+            self.logger.log_info(f"Resolved accelerator.draDriver: {resolved}")
         elif len(resources.dra_drivers) > 1:
             discovered = ", ".join(resources.dra_drivers)
             raise RuntimeError(

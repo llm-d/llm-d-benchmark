@@ -138,9 +138,10 @@ def test_unified_xpu_dra_profile_uses_shared_xpu_overlay(tmp_path):
 
     plan_dir = result.rendered_paths[0]
     assert "gpu.intel.com" not in (plan_dir / "13_ms-values.yaml").read_text()
-    assert "gpu.intel.com" not in (
-        plan_dir / "14_standalone-deployment_yaml.yaml"
-    ).read_text()
+    assert (
+        "gpu.intel.com"
+        not in (plan_dir / "14_standalone-deployment_yaml.yaml").read_text()
+    )
 
 
 def test_cluster_connection_uses_cli_kubeconfig(monkeypatch):
