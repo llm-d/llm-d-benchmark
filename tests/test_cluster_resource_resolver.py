@@ -322,6 +322,33 @@ class TestDraGracefulDegradation:
         assert values["decode"]["acceleratorType"]["labelValue"] == "Data Center Max"
 
 
+class TestDraAcceleratorResourceResolution:
+    def test_resolves_from_stable_dra_driver_name(self, resolver):
+        resolver._node_resources = NodeResources(
+            dra_drivers=["gpu.intel.com"],
+        )
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+        unresolved: list[str] = []
+
+        resolver._resolve_accelerator_resource(values, unresolved)
+        resolver._resolve_accelerator_profile(values, unresolved)
+
+        assert unresolved == []
+        assert "resource" not in values["accelerator"]
+        assert values["accelerator"]["draDriver"] == "gpu.intel.com"
+        assert values["accelerator"]["profile"] == "intel-xpu"
+        assert values["accelerator"]["type"] == "intel-xpu"
+
+    def test_multiple_dra_drivers_require_explicit_selection(self, resolver):
+        resolver._node_resources = NodeResources(
+            dra_drivers=["gpu.intel.com", "gpu.nvidia.com"],
+        )
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+
+        with pytest.raises(RuntimeError, match="Multiple DRA accelerator drivers"):
+            resolver._resolve_accelerator_resource(values, [])
+
+
 class TestGpuSkuLabelHeuristic:
     """The vendor-prefix + SKU-suffix heuristic that lets the resolver match
     GPU SKU labels from any vendor without per-vendor maintenance.

@@ -97,6 +97,7 @@ class ClusterResourceResolver:
         "habana.ai/gaudi": "intel-gaudi",
         "google.com/tpu": "google",
         "intel.com/gpu": "intel-i915",
+        "gpu.intel.com": "intel-xpu",
         "gpu.intel.com/i915": "intel-i915",
         "gpu.intel.com/xe": "intel-xe",
     }
@@ -107,6 +108,9 @@ class ClusterResourceResolver:
         "google": "google.com/tpu",
         "intel-i915": "gpu.intel.com/i915",
         "intel-xe": "gpu.intel.com/xe",
+    }
+    PROFILE_DRA_DRIVERS = {
+        "intel-xpu": "gpu.intel.com",
     }
     INTEL_XPU_RESOURCE_PRIORITY = (
         "gpu.intel.com/xe",
@@ -193,9 +197,14 @@ class ClusterResourceResolver:
         if explicit_profile and explicit_profile != "auto":
             accelerator["type"] = explicit_profile
             if accelerator.get("resource") == "auto":
-                explicit_resource = self.PROFILE_RESOURCES.get(explicit_profile)
-                if explicit_resource:
-                    accelerator["resource"] = explicit_resource
+                dra_driver = self.PROFILE_DRA_DRIVERS.get(explicit_profile)
+                if dra_driver:
+                    accelerator.pop("resource", None)
+                    accelerator["draDriver"] = dra_driver
+                else:
+                    explicit_resource = self.PROFILE_RESOURCES.get(explicit_profile)
+                    if explicit_resource:
+                        accelerator["resource"] = explicit_resource
 
         auto_fields = self.has_unresolved(result)
         if not auto_fields:
@@ -515,6 +524,20 @@ class ClusterResourceResolver:
                 f"({discovered}); set accelerator.resource or "
                 "accelerator.profile explicitly."
             )
+        elif len(resources.dra_drivers) == 1:
+            resolved = resources.dra_drivers[0]
+            accel.pop("resource", None)
+            accel["draDriver"] = resolved
+            self.logger.log_info(
+                f"Resolved accelerator.draDriver: {resolved}"
+            )
+        elif len(resources.dra_drivers) > 1:
+            discovered = ", ".join(resources.dra_drivers)
+            raise RuntimeError(
+                "Multiple DRA accelerator drivers were discovered "
+                f"({discovered}); set accelerator.resource or "
+                "accelerator.profile explicitly."
+            )
         elif self.dry_run:
             # A dry-run deliberately does not connect to the cluster. Keep its
             # historical NVIDIA rendering behaviour while allowing real runs
@@ -541,13 +564,14 @@ class ClusterResourceResolver:
         if accel.get("profile") != "auto":
             return
 
-        resource = accel.get("resource")
-        profile = self.ACCELERATOR_PROFILES.get(resource)
+        accelerator_identity = accel.get("resource") or accel.get("draDriver")
+        profile = self.ACCELERATOR_PROFILES.get(accelerator_identity)
         if profile:
             accel["profile"] = profile
             accel["type"] = profile
             self.logger.log_info(
-                f"Resolved accelerator.profile: {profile} (resource={resource})"
+                "Resolved accelerator.profile: "
+                f"{profile} (identity={accelerator_identity})"
             )
         else:
             unresolved.append("accelerator.profile")

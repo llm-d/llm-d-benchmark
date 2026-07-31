@@ -550,7 +550,7 @@ monitoring:
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
-# Supports: nvidia, intel-i915, intel-xe, intel-gaudi, amd, google
+# Supports: nvidia, intel-xpu, intel-i915, intel-xe, intel-gaudi, amd, google
 # ============================================================================
 accelerator:
   type: nvidia
@@ -569,6 +569,8 @@ accelerator:
   memoryUtilizationArgs: "--gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL"
   kvBufferDeviceJson: ""
   # Resource names for different accelerator types (optional override)
+  # DRA drivers are tracked separately as accelerator.draDriver and are not
+  # rendered into container resource limits or requests.
   # resources:
   #   nvidia: "nvidia.com/gpu"
   #   intel-i915: "gpu.intel.com/i915"
