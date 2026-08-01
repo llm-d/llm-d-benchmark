@@ -100,7 +100,12 @@ class NoK8sDeployStep(Step):
         if not context.dry_run:
             ready_err = self._wait_ready(cmd, runtime, spec, context)
             if ready_err:
-                self._dump_logs(cmd, runtime, "envoy", context)
+                # Dump every launched container's logs, not just Envoy's --
+                # the failing one (often a vLLM worker) is whichever port
+                # in `ports` didn't come up, and that's where the actual
+                # cause (bad HF token, OOM, wrong accelerator image) shows.
+                for c in containers:
+                    self._dump_logs(cmd, runtime, c["name"], context)
                 return self._fail(stack_path, ready_err, [ready_err])
 
         return StepResult(
