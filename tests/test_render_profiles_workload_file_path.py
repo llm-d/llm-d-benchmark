@@ -150,6 +150,46 @@ def test_render_profiles_returns_error_for_missing_local_workload_file(
     assert result.errors == [f"Workload profile file not found: {missing_file}"]
 
 
+def test_treatment_profile_overrides_base_profile(tmp_path: Path) -> None:
+    """A treatment with `profile:` uses its own source file, not the base profile."""
+    base_dir = tmp_path / "base"
+    profiles_dir = base_dir / "workload" / "profiles" / "inference-perf"
+    profiles_dir.mkdir(parents=True)
+    (profiles_dir / "shared_prefix.yaml.in").write_text(
+        "workload: shared-prefix\n", encoding="utf-8"
+    )
+    (profiles_dir / "concurrent_sessions.yaml.in").write_text(
+        "workload: concurrent\n", encoding="utf-8"
+    )
+
+    experiments_file = tmp_path / "experiments.yaml"
+    experiments_file.write_text(
+        "treatments:\n"
+        "  - name: prefix\n"
+        "  - name: concurrent\n"
+        "    profile: concurrent_sessions.yaml\n",
+        encoding="utf-8",
+    )
+
+    context = _Context(
+        workspace=tmp_path / "workspace",
+        base_dir=base_dir,
+        harness_profile="shared_prefix.yaml",
+        experiment_treatments_file=str(experiments_file),
+    )
+
+    result = RenderProfilesStep().execute(context, _write_stack(tmp_path))
+
+    assert result.success
+    out_dir = context.workload_profiles_dir() / "inference-perf"
+    assert (out_dir / "shared_prefix-prefix.yaml").read_text(
+        encoding="utf-8"
+    ) == "workload: shared-prefix\n"
+    assert (out_dir / "concurrent_sessions-concurrent.yaml").read_text(
+        encoding="utf-8"
+    ) == "workload: concurrent\n"
+
+
 def test_debug_render_profiles_includes_all_harness_workloads(tmp_path: Path) -> None:
     base_dir = tmp_path / "base"
     inference_perf_dir = base_dir / "workload" / "profiles" / "inference-perf"

@@ -22,10 +22,11 @@ setup:
       decode.parallelism.tensor: 4
 
 treatments:                # Or "run:" -- workload treatments
-  - name: low-load
-    rate: 10
-  - name: high-load
-    rate: 100
+  - name: low-concurrency
+    load.stages.0.concurrency_level: 2
+  - name: high-concurrency
+    profile: random_concurrent.yaml     # Optional; selects a different source profile
+    load.stages.0.concurrency_level: 16
 ```
 
 ### Setup Treatments
@@ -36,7 +37,7 @@ Each setup treatment triggers a complete standup to run to teardown cycle.
 
 ### Run Treatments (Workload)
 
-Run treatments (under `treatments` or `run`) are consumed by the run phase's profile renderer (step 04). Multiple run treatments execute against a single stood-up stack.
+Run treatments (under `treatments` or `run`) are consumed by the run phase's profile renderer. Multiple run treatments execute against a single stood-up stack. Each treatment can optionally set `profile:` to select a different source file than the one resolved from the stack config or `--workload`, enabling a workload sweep across structurally different profiles without needing separate experiment files. Non-`name`/non-`profile` keys are dotted-path overrides applied to the rendered YAML.
 
 ### Matrix
 
