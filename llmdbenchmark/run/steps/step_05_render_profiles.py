@@ -374,7 +374,7 @@ class RenderProfilesStep(Step):
                     constants: dict[str, Any] = {}
                     raw_constants = exp_data.get("constants")
                     if isinstance(raw_constants, dict):
-                        constants = dict(raw_constants)
+                        constants = {str(k): v for k, v in raw_constants.items()}
 
                     # Look for 'treatments' or 'run' key
                     raw = exp_data.get("treatments") or exp_data.get("run", [])
@@ -384,7 +384,7 @@ class RenderProfilesStep(Step):
                                 # Constants first, then treatment overrides
                                 overrides = dict(constants)
                                 overrides.update(
-                                    {k: v for k, v in item.items() if k != "name"}
+                                    {str(k): v for k, v in item.items() if k != "name"}
                                 )
                                 treatments.append(
                                     {

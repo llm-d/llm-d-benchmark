@@ -255,7 +255,7 @@ def apply_overrides(
 
 
 def _coerce_value(value: Any) -> Any:
-    """Coerce a string to int, float, bool, or leave as str."""
+    """Coerce a string to int, float, bool, or leave as str. Non-string values are returned unchanged."""
     if not isinstance(value, str):
         return value
     if value.lower() in ("true", "yes"):
