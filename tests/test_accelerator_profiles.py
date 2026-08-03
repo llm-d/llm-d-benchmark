@@ -137,11 +137,10 @@ def test_unified_xpu_dra_profile_uses_shared_xpu_overlay(tmp_path):
     assert "--enforce-eager" in merged["decode"]["vllm"]["customCommand"]
 
     plan_dir = result.rendered_paths[0]
-    assert "gpu.intel.com" not in (plan_dir / "13_ms-values.yaml").read_text()
-    assert (
-        "gpu.intel.com"
-        not in (plan_dir / "14_standalone-deployment_yaml.yaml").read_text()
-    )
+    for rendered in ("13_ms-values.yaml", "14_standalone-deployment_yaml.yaml"):
+        # A DRA driver is not an extended resource, so it must never appear
+        # as a container resource key.
+        assert 'gpu.intel.com: "' not in (plan_dir / rendered).read_text()
 
 
 def test_cluster_connection_uses_cli_kubeconfig(monkeypatch):

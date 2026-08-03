@@ -97,9 +97,13 @@ class ClusterResourceResolver:
         "habana.ai/gaudi": "intel-gaudi",
         "google.com/tpu": "google",
         "intel.com/gpu": "intel-i915",
-        "gpu.intel.com": "intel-xpu",
         "gpu.intel.com/i915": "intel-i915",
         "gpu.intel.com/xe": "intel-xe",
+    }
+    # DRA driver/DeviceClass names live in a different namespace than the
+    # extended resource names above and must never be used interchangeably.
+    DRA_DRIVER_PROFILES = {
+        "gpu.intel.com": "intel-xpu",
     }
     PROFILE_RESOURCES = {
         "nvidia": "nvidia.com/gpu",
@@ -524,6 +528,7 @@ class ClusterResourceResolver:
                 f"({discovered}); set accelerator.resource or "
                 "accelerator.profile explicitly."
             )
+        # Device-plugin resources win over DRA on clusters exposing both.
         elif len(resources.dra_drivers) == 1:
             resolved = resources.dra_drivers[0]
             accel.pop("resource", None)
@@ -533,8 +538,7 @@ class ClusterResourceResolver:
             discovered = ", ".join(resources.dra_drivers)
             raise RuntimeError(
                 "Multiple DRA accelerator drivers were discovered "
-                f"({discovered}); set accelerator.resource or "
-                "accelerator.profile explicitly."
+                f"({discovered}); set accelerator.profile explicitly."
             )
         elif self.dry_run:
             # A dry-run deliberately does not connect to the cluster. Keep its
@@ -562,8 +566,12 @@ class ClusterResourceResolver:
         if accel.get("profile") != "auto":
             return
 
-        accelerator_identity = accel.get("resource") or accel.get("draDriver")
-        profile = self.ACCELERATOR_PROFILES.get(accelerator_identity)
+        accelerator_identity = accel.get("resource")
+        if accelerator_identity:
+            profile = self.ACCELERATOR_PROFILES.get(accelerator_identity)
+        else:
+            accelerator_identity = accel.get("draDriver")
+            profile = self.DRA_DRIVER_PROFILES.get(accelerator_identity)
         if profile:
             accel["profile"] = profile
             accel["type"] = profile
