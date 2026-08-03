@@ -590,8 +590,12 @@ accelerator:
 dra:
   enabled: false
   type: nvidia
+  # Keyed by accelerator type -- the chart looks the entry up by
+  # accelerator.type and builds one ResourceClaimTemplate per role.
+  # Omit `count` to let each role derive it from its own parallelism.
   # claimTemplates:
-  #   - name: nvidia
+  #   nvidia:
+  #     name: nvidia-claim-template
   #     class: gpu.nvidia.com
   #     match: "exactly"
   #     count: 1

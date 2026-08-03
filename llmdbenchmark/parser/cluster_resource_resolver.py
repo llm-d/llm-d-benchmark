@@ -212,6 +212,7 @@ class ClusterResourceResolver:
 
         auto_fields = self.has_unresolved(result)
         if not auto_fields:
+            self._apply_dra_claim_defaults(result)
             self._propagate_network_to_methods(result)
             return result
 
@@ -226,6 +227,7 @@ class ClusterResourceResolver:
         self._resolve_network_resource(result, unresolved)
         self._resolve_affinity_node_selector(result, unresolved)
         self._resolve_accelerator_type_labels(result, unresolved)
+        self._apply_dra_claim_defaults(result)
         self._propagate_network_to_methods(result)
 
         if unresolved:
@@ -581,6 +583,37 @@ class ClusterResourceResolver:
             )
         else:
             unresolved.append("accelerator.profile")
+
+    def _apply_dra_claim_defaults(self, values: dict) -> None:
+        """Turn a resolved ``accelerator.draDriver`` into a real device request.
+
+        A DRA driver is deliberately kept out of container limits/requests, so
+        without a claim the plan would render workloads with no accelerator at
+        all.  The modelservice chart builds the ``ResourceClaimTemplate`` and
+        attaches the pod ``resourceClaims`` on its own once ``dra.enabled`` and
+        a matching claim template are present.
+        """
+        accel = values.get("accelerator") or {}
+        dra_driver = accel.get("draDriver")
+        accelerator_type = accel.get("type")
+        if not dra_driver or not accelerator_type:
+            return
+
+        dra = values.setdefault("dra", {})
+        dra["enabled"] = True
+        dra["type"] = accelerator_type
+        if dra.get("claimTemplates"):
+            return
+
+        # The chart keys claim templates by accelerator type and otherwise
+        # falls back to a ``gpu.<type>.com`` DeviceClass that never exists.
+        # ``count`` stays unset so each role derives it from its own
+        # parallelism -- one entry has to serve both decode and prefill.
+        dra["claimTemplates"] = {accelerator_type: {"class": dra_driver}}
+        self.logger.log_info(
+            f"Enabled DRA claim template for {accelerator_type} "
+            f"(deviceClass={dra_driver})"
+        )
 
     def _resolve_network_resource(
         self,

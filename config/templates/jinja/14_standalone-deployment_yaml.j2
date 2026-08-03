@@ -607,7 +607,7 @@ spec:
           limits:
             memory: {{ standalone.resources.limits.memory }}
             cpu: "{{ standalone.resources.limits.cpu }}"
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if standalone_accel_resource and (standalone.parallelism.tensor | int) > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
 {% endif %}
 {% if eph_storage and eph_resource %}
@@ -619,7 +619,7 @@ spec:
           requests:
             memory: {{ standalone.resources.requests.memory }}
             cpu: "{{ standalone.resources.requests.cpu }}"
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if standalone_accel_resource and (standalone.parallelism.tensor | int) > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
 {% endif %}
 {% if eph_storage and eph_resource %}

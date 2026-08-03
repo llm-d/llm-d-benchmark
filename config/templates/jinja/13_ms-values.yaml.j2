@@ -106,7 +106,7 @@ accelerator:
 {% endif %}
 {% if dra is defined and dra.claimTemplates is defined %}
   resourceClaimTemplates:
-{{ dra.claimTemplates | toyaml | indent(4) }}
+{{ dra.claimTemplates | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# -------------------------------------------------------------------------- #}
@@ -346,7 +346,7 @@ decode:
 
 {% if decode.resourceClaims is defined and decode.resourceClaims %}
   resourceClaims:
-{{ decode.resourceClaims | toyaml | indent(4) }}
+{{ decode.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if decode.podSecurityContext is defined and decode.podSecurityContext %}
@@ -766,7 +766,7 @@ prefill:
 
 {% if prefill.resourceClaims is defined and prefill.resourceClaims %}
   resourceClaims:
-{{ prefill.resourceClaims | toyaml | indent(4) }}
+{{ prefill.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if prefill.podSecurityContext is defined and prefill.podSecurityContext %}

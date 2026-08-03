@@ -135,8 +135,16 @@ def test_unified_xpu_dra_profile_uses_shared_xpu_overlay(tmp_path):
     assert merged["accelerator"]["draDriver"] == "gpu.intel.com"
     assert "llm-d-xpu" in merged["images"]["vllm"]["repository"]
     assert "--enforce-eager" in merged["decode"]["vllm"]["customCommand"]
+    assert merged["dra"]["enabled"] is True
+    assert merged["dra"]["claimTemplates"] == {"intel-xpu": {"class": "gpu.intel.com"}}
 
     plan_dir = result.rendered_paths[0]
+    ms_values = yaml.safe_load((plan_dir / "13_ms-values.yaml").read_text())
+    assert ms_values["accelerator"]["dra"] is True
+    assert ms_values["accelerator"]["resourceClaimTemplates"] == {
+        "intel-xpu": {"class": "gpu.intel.com"}
+    }
+
     for rendered in ("13_ms-values.yaml", "14_standalone-deployment_yaml.yaml"):
         # A DRA driver is not an extended resource, so it must never appear
         # as a container resource key.
