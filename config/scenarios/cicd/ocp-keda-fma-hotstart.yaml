@@ -298,8 +298,6 @@ scenario:
       # run even begins, matching the hot-start job's wait_timeout: 7200.
       waitTimeout: 7200
 
-    # TEMP HACK (revert to nightly before merge): branch-built image so the
-    # in-pod collect_metrics.sh carries the requester replica-counting fix.
     images:
       benchmark:
-        tag: fma_keda
+        tag: nightly

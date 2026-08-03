@@ -255,10 +255,3 @@ scenario:
       # Heavy variant -- matched RPS across the baseline and FMA passes.
       experimentProfile: shared_prefix_synthetic_heavy.yaml
       waitTimeout: 5400
-
-    # TEMP HACK (revert to nightly before merge): pin the harness image to the
-    # branch-built tag so the in-pod collect_metrics.sh carries the requester
-    # replica-counting fix (the published :nightly image predates it).
-    images:
-      benchmark:
-        tag: fma_keda

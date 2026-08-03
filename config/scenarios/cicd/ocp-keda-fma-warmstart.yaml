@@ -340,8 +340,6 @@ scenario:
       # back to this field (see cli.py harness_wait_timeout resolution).
       waitTimeout: 5400
 
-    # TEMP HACK (revert to nightly before merge): branch-built image so the
-    # in-pod collect_metrics.sh carries the requester replica-counting fix.
     images:
       benchmark:
-        tag: fma_keda
+        tag: nightly

@@ -26,22 +26,20 @@ import os
 # Artifact location + loading
 # ---------------------------------------------------------------------------
 def newest_run_dir(root):
-    """Return the newest run root directory."""
-    roots = sorted(
-        os.path.dirname(d)
-        for d in glob.glob(os.path.join(root, "**", "results"), recursive=True)
-        if os.path.isdir(d)
-    )
-    return roots[-1] if roots else ""
+    """Return the newest run directory under ``root`` (or "").
+
+    Runs are ``runner-<UTC YYYYMMDD-HHMMSS>-<id>`` dirs holding a ``results/``,
+    so the newest is simply the latest-sorting ``runner-*`` match. (Lexical, not
+    mtime: these are GCS-downloaded, so mtimes are the download time.)"""
+    runs = glob.glob(os.path.join(root, "**", "runner-*", "results"), recursive=True)
+    return os.path.dirname(sorted(runs)[-1]) if runs else ""
 
 
 def _find_one(run_root, filename):
     """Newest file named ``filename`` anywhere under ``run_root``, or ""."""
     if not run_root:
         return ""
-    matches = sorted(
-        glob.glob(os.path.join(run_root, "**", filename), recursive=True)
-    )
+    matches = sorted(glob.glob(os.path.join(run_root, "**", filename), recursive=True))
     return matches[-1] if matches else ""
 
 
@@ -73,6 +71,7 @@ def fmt(v, unit="", precision=1):
         return f"{v:.{precision}f}{unit}"
     return f"{v}{unit}"
 
+
 # ---------------------------------------------------------------------------
 
 KV_CACHE_METRIC = "inference_pool_average_kv_cache_utilization"
@@ -86,12 +85,14 @@ def replica_stats(rdir):
     agg = (data or {}).get("aggregate_ready_replicas") or {}
     return (agg.get("mean"), agg.get("max"))
 
+
 def epp_gauge_mean(rdir, metric):
     """Mean of an EPP pool gauge, read from process_metrics' pre-aggregated
     ``metrics_summary.json`` (``_aggregated.metrics.<metric>.mean``)."""
     data = load_json(_find_one(rdir, "metrics_summary.json"))
     metrics = (((data or {}).get("_aggregated") or {}).get("metrics")) or {}
     return (metrics.get(metric) or {}).get("mean")
+
 
 def pod_startup_mean(rdir):
     """Avg pod startup = pod creation → Ready, read from process_metrics'
@@ -112,37 +113,81 @@ ROWS = [
     ("Avg prompt len (tokens)", "successes", "prompt_len", "mean", None, 1, ""),
     ("Avg output len (tokens)", "successes", "output_len", "mean", None, 1, ""),
     ("Throughput (req/s)", "successes", "throughput", "requests_per_sec", None, 1, ""),
-    ("Throughput input (tok/s)", "successes", "throughput", "input_tokens_per_sec", None, 0, ""),
-    ("Throughput output (tok/s)", "successes", "throughput", "output_tokens_per_sec", None, 0, ""),
+    (
+        "Throughput input (tok/s)",
+        "successes",
+        "throughput",
+        "input_tokens_per_sec",
+        None,
+        0,
+        "",
+    ),
+    (
+        "Throughput output (tok/s)",
+        "successes",
+        "throughput",
+        "output_tokens_per_sec",
+        None,
+        0,
+        "",
+    ),
     ("Latency mean (ms)", "successes", "latency", "request_latency", "mean", 1000, ""),
-    ("Latency p50 (ms)", "successes", "latency", "request_latency", "median", 1000, ""),
-    ("Latency p90 (ms)", "successes", "latency", "request_latency", "p90", 1000, ""),
-    ("Latency p95 (ms)", "successes", "latency", "request_latency", "p95", 1000, ""),
     ("Latency p99 (ms)", "successes", "latency", "request_latency", "p99", 1000, ""),
     ("TTFT mean (ms)", "successes", "latency", "time_to_first_token", "mean", 1000, ""),
-    ("TTFT p50 (ms)", "successes", "latency", "time_to_first_token", "median", 1000, ""),
-    ("TTFT p90 (ms)", "successes", "latency", "time_to_first_token", "p90", 1000, ""),
-    ("TTFT p95 (ms)", "successes", "latency", "time_to_first_token", "p95", 1000, ""),
     ("TTFT p99 (ms)", "successes", "latency", "time_to_first_token", "p99", 1000, ""),
-    ("TPOT mean (ms)", "successes", "latency", "time_per_output_token", "mean", 1000, ""),
-    ("TPOT p50 (ms)", "successes", "latency", "time_per_output_token", "median", 1000, ""),
-    ("TPOT p90 (ms)", "successes", "latency", "time_per_output_token", "p90", 1000, ""),
-    ("TPOT p95 (ms)", "successes", "latency", "time_per_output_token", "p95", 1000, ""),
+    (
+        "TPOT mean (ms)",
+        "successes",
+        "latency",
+        "time_per_output_token",
+        "mean",
+        1000,
+        "",
+    ),
     ("TPOT p99 (ms)", "successes", "latency", "time_per_output_token", "p99", 1000, ""),
     ("ITL mean (ms)", "successes", "latency", "inter_token_latency", "mean", 1000, ""),
-    ("ITL p50 (ms)", "successes", "latency", "inter_token_latency", "median", 1000, ""),
-    ("ITL p90 (ms)", "successes", "latency", "inter_token_latency", "p90", 1000, ""),
-    ("ITL p95 (ms)", "successes", "latency", "inter_token_latency", "p95", 1000, ""),
     ("ITL p99 (ms)", "successes", "latency", "inter_token_latency", "p99", 1000, ""),
 ]
 
+# Rows that are additive across inference-perf workers (each worker's summary
+# reports only its own share), so they are multiplied by the worker count.
+_PER_WORKER_ROWS = {
+    "Total requests",
+    "Successes",
+    "Failures",
+    "Throughput (req/s)",
+    "Throughput input (tok/s)",
+    "Throughput output (tok/s)",
+}
 
-def render_run_info(args, summaries):
+
+def _num_workers(rdir, workload):
+    prof = _find_one(rdir, os.path.basename(workload)) if workload else ""
+    if prof:
+        try:
+            with open(prof, encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s.startswith("num_workers:"):
+                        return int(s.split(":", 1)[1].strip())
+        except (OSError, ValueError):
+            pass
+    return 1
+
+
+def render_run_info(args, summaries, workers):
     """Emit a Run Info block above the table."""
-    duration = next(
-        (get(s, "benchmark_time_seconds") for s in summaries if s), None
+    duration = next((get(s, "benchmark_time_seconds") for s in summaries if s), None)
+    # Total requests summed across the inference-perf workers (per-worker count
+    # x worker count), matching the per-arm Total requests row.
+    total = next(
+        (
+            get(s, "load_summary", "count") * w
+            for s, w in zip(summaries, workers)
+            if s and get(s, "load_summary", "count") is not None
+        ),
+        None,
     )
-    total = next((get(s, "load_summary", "count") for s in summaries if s), None)
     lines = ["### Run Info", ""]
     if args.model:
         lines.append(f"- **Model:** {args.model}")
@@ -185,7 +230,8 @@ def main():
     bl, fw_ws, fw_hs = (load_json(p) for p in sums)
     summaries = [bl, fw_ws, fw_hs]
 
-    out = [render_run_info(args, summaries)]
+    workers = [_num_workers(r, args.workload) for r in rdirs]
+    out = [render_run_info(args, summaries, workers)]
 
     out.append(
         f"| Metric | {args.col_baseline} | {args.col_warmstart} | {args.col_hotstart} |"
@@ -205,10 +251,10 @@ def main():
             else 1
         )
         vals = [get(s, *keys, scale=scale) for s in summaries]
+        if label in _PER_WORKER_ROWS:
+            vals = [v * w if v is not None else None for v, w in zip(vals, workers)]
         out.append(
-            f"| {label} | "
-            + " | ".join(fmt(v, unit, prec) for v in vals)
-            + " |"
+            f"| {label} | " + " | ".join(fmt(v, unit, prec) for v in vals) + " |"
         )
 
     repl = [replica_stats(r) for r in rdirs]

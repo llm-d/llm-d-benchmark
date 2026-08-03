@@ -133,7 +133,7 @@ jobs:
   # =========================================================================
   baseline:
     name: Baseline (EPP+KEDA, no FMA)
-    uses: ./.github/workflows/reusable-ci-nightly-benchmark.yaml  # TEMP HACK (revert before merge): local copy so it clones the fma_keda branch
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: 'modelservice'
@@ -170,7 +170,7 @@ jobs:
   nightly:
     name: EPP+KEDA with FMA (Warm-Start)
     needs: [baseline]
-    uses: ./.github/workflows/reusable-ci-nightly-benchmark.yaml  # TEMP HACK (revert before merge): local copy so it clones the fma_keda branch
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       # Both methods: this scenario deploys modelservice (gateway/EPP/
@@ -211,7 +211,7 @@ jobs:
   hotstart:
     name: EPP+KEDA with FMA (Hot-Start)
     needs: [baseline]
-    uses: ./.github/workflows/reusable-ci-nightly-benchmark.yaml  # TEMP HACK (revert before merge): local copy so it clones the fma_keda branch
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: 'modelservice,fma'
