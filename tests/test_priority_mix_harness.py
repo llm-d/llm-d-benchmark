@@ -6,6 +6,7 @@ import importlib.util
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import socket
 import sys
 import threading
 import time
@@ -119,6 +120,28 @@ def test_priority_mix_sends_each_objective_header() -> None:
     assert output["summary"]["errors"] == 0
     assert seen.count("app-critical") == 2
     assert seen.count("app-normal") == 2
+
+
+def test_send_request_sets_error_not_ttft_on_connection_failure() -> None:
+    traffic_class = priority_mix.TrafficClass(name="critical", weight=1)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        unused_port = probe.getsockname()[1]
+
+    result = priority_mix.send_request(
+        f"http://127.0.0.1:{unused_port}/v1/chat/completions",
+        {"model": "test-model", "messages": [], "stream": False},
+        traffic_class,
+        timeout_seconds=2,
+    )
+
+    assert result.status_code == 0
+    assert result.error is not None
+    assert result.ttft_ms is None
+
+    summary = priority_mix.summarize([result], [traffic_class])
+    assert summary["successes"] == 0
+    assert summary["errors"] == 1
 
 
 def test_priority_mix_reports_streaming_ttft_and_tpot() -> None:

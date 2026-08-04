@@ -193,20 +193,20 @@ def send_request(
     headers = {"Content-Type": "application/json", **traffic_class.headers}
     start = time.perf_counter()
     try:
-        response = requests.post(
+        with requests.post(
             url,
             headers=headers,
             json=payload,
             timeout=timeout_seconds,
             stream=bool(payload.get("stream")),
-        )
-        if payload.get("stream"):
-            return read_streaming_response(response, traffic_class.name, start)
-        latency_ms = (time.perf_counter() - start) * 1000
-        return RequestResult(traffic_class.name, response.status_code, latency_ms)
+        ) as response:
+            if payload.get("stream"):
+                return read_streaming_response(response, traffic_class.name, start)
+            latency_ms = (time.perf_counter() - start) * 1000
+            return RequestResult(traffic_class.name, response.status_code, latency_ms)
     except requests.RequestException as exc:
         latency_ms = (time.perf_counter() - start) * 1000
-        return RequestResult(traffic_class.name, 0, latency_ms, str(exc))
+        return RequestResult(traffic_class.name, 0, latency_ms, error=str(exc))
 
 
 def read_streaming_response(
