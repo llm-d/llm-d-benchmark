@@ -369,20 +369,37 @@ def redact(dotted_path: str, value: Any) -> Any:
 _MISSING = object()
 
 
-def dotted_leaves(nested: dict, prefix: str = "") -> list[tuple[str, Any]]:
-    """Flatten a nested override dict to ``(dotted.path, value)`` pairs.
+def leaf_entries(
+    nested: dict, prefix: tuple[str, ...] = ()
+) -> list[tuple[tuple[str, ...], Any]]:
+    """Flatten a nested override dict to ``(segments, value)`` pairs.
+
+    Segments rather than a joined path: a key may itself contain a dot
+    (``k8s.v1.cni.cncf.io/networks``), so a string built by joining on ``.``
+    cannot be split back into the original segments. Callers that need to
+    look the path up in another dict must use these.
 
     An empty mapping is itself a leaf -- ``kustomize.extraHelmSets={}`` is a
     meaningful assignment, not an empty branch to recurse into.
     """
-    leaves: list[tuple[str, Any]] = []
+    leaves: list[tuple[tuple[str, ...], Any]] = []
     for key, value in nested.items():
-        path = f"{prefix}.{key}" if prefix else key
+        path = prefix + (key,)
         if isinstance(value, dict) and value:
-            leaves.extend(dotted_leaves(value, path))
+            leaves.extend(leaf_entries(value, path))
         else:
             leaves.append((path, value))
     return leaves
+
+
+def dotted_leaves(nested: dict, prefix: str = "") -> list[tuple[str, Any]]:
+    """Flatten to ``(dotted.path, value)`` pairs, for display only.
+
+    Lossy when a key contains a dot -- use :func:`leaf_entries` for anything
+    that has to address the config.
+    """
+    root = tuple(prefix.split(".")) if prefix else ()
+    return [(".".join(segs), value) for segs, value in leaf_entries(nested, root)]
 
 
 def resolve_dotted(values: dict, dotted_path: str) -> Any:
@@ -392,8 +409,17 @@ def resolve_dotted(values: dict, dotted_path: str) -> Any:
     against :data:`MISSING` rather than ``None`` (a key explicitly set to
     ``None`` is not the same as an absent key).
     """
+    return resolve_segments(values, dotted_path.split("."))
+
+
+def resolve_segments(values: dict, segments: tuple[str, ...] | list[str]) -> Any:
+    """Return the value at ``segments``, or :data:`MISSING` if absent.
+
+    The segment-wise counterpart of :func:`resolve_dotted`; correct for keys
+    that contain a literal dot.
+    """
     current: Any = values
-    for part in dotted_path.split("."):
+    for part in segments:
         if not isinstance(current, dict) or part not in current:
             return _MISSING
         current = current[part]

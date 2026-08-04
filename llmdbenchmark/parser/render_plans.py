@@ -21,10 +21,10 @@ from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.parser.cli_overrides import (
     MISSING,
     REDACTED,
-    dotted_leaves,
     find_broken_parent_paths,
     is_secret_path,
-    resolve_dotted,
+    leaf_entries,
+    resolve_segments,
     selectors_for_stack,
     validate_selectors,
 )
@@ -1661,8 +1661,12 @@ class RenderPlans:
         with CLI overrides is auditable from the log alone, without diffing
         the rendered config against the scenario file.
         """
-        for path, new_value in dotted_leaves(overrides):
-            old_value = resolve_dotted(base_values, path)
+        for segments, new_value in leaf_entries(overrides):
+            # Look up by segments, not by a joined string: an override key
+            # may itself contain a dot (a Kubernetes annotation), and a
+            # joined path cannot be split back into the original segments.
+            old_value = resolve_segments(base_values, segments)
+            path = ".".join(segments)
             if is_secret_path(path):
                 # Never echo a credential, not even the value it replaced.
                 previous, current = REDACTED, REDACTED

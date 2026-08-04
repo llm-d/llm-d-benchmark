@@ -23,8 +23,10 @@ from llmdbenchmark.parser.cli_overrides import (
     find_broken_parent_paths,
     is_glob,
     is_secret_path,
+    leaf_entries,
     parse_cli_overrides,
     resolve_dotted,
+    resolve_segments,
     selectors_for_stack,
     split_override_pairs,
     validate_selectors,
@@ -117,6 +119,19 @@ class TestQuotedDottedKeys:
         )
         joined = " ".join(warnings)
         assert "hf_AAA" not in joined and "hf_BBB" not in joined
+
+    def test_log_reports_the_true_previous_value_of_a_dotted_key(self):
+        # A joined path cannot be split back into segments when a key
+        # contains a dot, so the log used to report <unset> for an override
+        # that was in fact replacing a real value -- which reads as "the
+        # override did not work" even though it did.
+        base = {"annotations": {"pod": {"k8s.io/networks": "old-net"}}}
+        overrides = {"annotations": {"pod": {"k8s.io/networks": "new-net"}}}
+        [(segments, new_value)] = leaf_entries(overrides)
+        assert segments == ("annotations", "pod", "k8s.io/networks")
+        assert resolve_segments(base, segments) == "old-net"
+        # The lossy, display-only form cannot find it:
+        assert resolve_dotted(base, ".".join(segments)) is MISSING
 
     def test_sentinel_is_not_observable_in_output(self):
         parsed, _ = parse_cli_overrides(['annotations.pod."a.b"=x'])
