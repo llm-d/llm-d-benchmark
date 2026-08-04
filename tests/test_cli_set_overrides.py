@@ -50,6 +50,79 @@ MULTI_STACK = (
 # ---------------------------------------------------------------------------
 
 
+class TestQuotedDottedKeys:
+    """Keys whose *name* contains dots, e.g. Kubernetes annotations.
+
+    A quoted segment protects its dots from path splitting. The quoting must
+    apply to the KEY half only -- quoting is also load-bearing on the value
+    side (comma protection, and the documented escape hatches for YAML's
+    octal reading and for multi-line folding), so a transform applied to the
+    whole expression would silently break those.
+    """
+
+    def test_annotation_key_with_dots(self):
+        parsed, _ = parse_cli_overrides(
+            ['annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"=multi-nic']
+        )
+        assert parsed == {
+            GLOBAL_SELECTOR: {
+                "annotations": {
+                    "prefill": {"pod": {"k8s.v1.cni.cncf.io/networks": "multi-nic"}}
+                }
+            }
+        }
+
+    def test_dotted_key_in_a_parent_position(self):
+        parsed, _ = parse_cli_overrides(['annotations."k8s.io/zone".pod=east'])
+        assert parsed == {
+            GLOBAL_SELECTOR: {"annotations": {"k8s.io/zone": {"pod": "east"}}}
+        }
+
+    def test_unquoted_dots_still_split_into_a_path(self):
+        parsed, _ = parse_cli_overrides(["decode.resources.limits.cpu=8"])
+        assert parsed == {
+            GLOBAL_SELECTOR: {"decode": {"resources": {"limits": {"cpu": 8}}}}
+        }
+
+    # --- value-side quoting must survive ---------------------------------
+
+    def test_quoted_value_with_a_comma_is_still_one_pair(self):
+        parsed, _ = parse_cli_overrides(
+            ['annotations.pod.note="a,b",decode.replicas=3']
+        )
+        assert parsed[GLOBAL_SELECTOR]["annotations"]["pod"]["note"] == "a,b"
+        assert parsed[GLOBAL_SELECTOR]["decode"]["replicas"] == 3
+
+    def test_quoted_value_keeps_the_octal_escape_hatch(self):
+        parsed, _ = parse_cli_overrides(['model.blockSize="012"'])
+        assert parsed[GLOBAL_SELECTOR]["model"]["blockSize"] == "012"
+
+    def test_quoted_value_keeps_the_multiline_escape_hatch(self):
+        parsed, _ = parse_cli_overrides(
+            [r'decode.vllm.customCommand="export FOO=1\nvllm serve /x"']
+        )
+        assert parsed[GLOBAL_SELECTOR]["decode"]["vllm"]["customCommand"] == (
+            "export FOO=1\nvllm serve /x"
+        )
+
+    def test_dotted_key_and_quoted_value_together(self):
+        parsed, _ = parse_cli_overrides(['annotations.pod."k8s.io/limit"="1,2"'])
+        assert parsed[GLOBAL_SELECTOR]["annotations"]["pod"]["k8s.io/limit"] == "1,2"
+
+    def test_dotted_secret_key_is_still_recognised(self):
+        # Redaction keys off the last path segment; a quoted segment must
+        # not smuggle a credential past it.
+        _, warnings = parse_cli_overrides(
+            ['foo."my.token"=hf_AAA', 'foo."my.token"=hf_BBB']
+        )
+        joined = " ".join(warnings)
+        assert "hf_AAA" not in joined and "hf_BBB" not in joined
+
+    def test_sentinel_is_not_observable_in_output(self):
+        parsed, _ = parse_cli_overrides(['annotations.pod."a.b"=x'])
+        assert "_PROTECTDOT_" not in str(parsed)
+
+
 class TestSplitOverridePairs:
     def test_single_pair(self):
         assert split_override_pairs("decode.replicas=2") == ["decode.replicas=2"]

@@ -30,7 +30,11 @@ from typing import Any
 
 import yaml
 
-from llmdbenchmark.experiment.parser import dotted_to_nested
+from llmdbenchmark.experiment.parser import (
+    DOT_SENTINEL,
+    dotted_to_nested,
+    restore_dots,
+)
 
 # Selector that matches every stack -- what a pair with no ``stack:`` prefix
 # gets. Also the bucket the ``--cluster-config`` file is folded into, so the
@@ -46,11 +50,24 @@ class OverrideParseError(ValueError):
 
 
 def protect_internal_dotting(raw: str) -> str:
-    """Ensure keys with dots in the name can be properly specified"""
+    """Let a key segment carry a literal dot, e.g. a K8s annotation name.
 
+    A double-quoted run inside the key has its dots swapped for
+    :data:`~llmdbenchmark.experiment.parser.DOT_SENTINEL`, so path splitting
+    leaves them alone; ``dotted_to_nested`` restores them afterwards::
+
+        annotations.pod."k8s.v1.cni.cncf.io/networks"=multi-nic
+        -> {"annotations": {"pod": {"k8s.v1.cni.cncf.io/networks": ...}}}
+
+    Applied to the KEY half only. Quoting is load-bearing on the value side
+    too -- it protects commas from the pair splitter and is the documented
+    escape hatch for YAML's octal reading (``"012"``) and for multi-line
+    folding (``"a\\nb"``) -- so stripping quotes across a whole expression
+    would silently break those.
+    """
     processed = raw
     for match in re.findall(r'"([^"]*)"', raw):
-        processed = processed.replace(f'"{match}"', match.replace(".", "_PROTECTDOT_"))
+        processed = processed.replace(f'"{match}"', match.replace(".", DOT_SENTINEL))
     return processed
 
 
@@ -160,7 +177,9 @@ def parse_override_pair(pair: str) -> tuple[str, str, Any]:
         )
 
     key_part, raw_value = pair.split("=", 1)
-    key_part = key_part.strip()
+    # Protect quoted dots in the KEY only -- the value keeps its quoting,
+    # which YAML still needs (see protect_internal_dotting).
+    key_part = protect_internal_dotting(key_part.strip())
 
     selector = GLOBAL_SELECTOR
     if ":" in key_part:
@@ -201,20 +220,22 @@ def parse_cli_overrides(
     flat_by_selector: dict[str, dict[str, Any]] = {}
 
     for raw in values:
-        processed = protect_internal_dotting(raw)
-        for pair in split_override_pairs(processed):
+        for pair in split_override_pairs(raw):
             selector, key, value = parse_override_pair(pair)
             bucket = flat_by_selector.setdefault(selector, {})
-            secret = is_secret_path(key)
+            # `key` still carries the sentinel so dotted_to_nested can split
+            # it correctly; everything user-facing uses the restored form.
+            shown_key = restore_dots(key)
+            secret = is_secret_path(shown_key)
             if key in bucket:
                 shown = f"({REDACTED})" if secret else f"({bucket[key]!r} -> {value!r})"
                 warnings.append(
-                    f"override '{key}' set more than once for "
+                    f"override '{shown_key}' set more than once for "
                     f"'{selector}' -- last value wins {shown}"
                 )
             if value is None:
                 warnings.append(
-                    f"override '{key}' resolves to null, which cannot clear a "
+                    f"override '{shown_key}' resolves to null, which cannot clear a "
                     "value (null is treated as 'no value' by the config merge) "
                     "-- use an explicit empty string ('') instead"
                 )
@@ -224,7 +245,7 @@ def parse_cli_overrides(
             ):
                 # The message quotes the raw value, so it is suppressed
                 # entirely for credential paths rather than redacted.
-                warnings.append(f"override '{key}': {surprise}")
+                warnings.append(f"override '{shown_key}': {surprise}")
             bucket[key] = value
 
     nested_by_selector: dict[str, dict] = {}
