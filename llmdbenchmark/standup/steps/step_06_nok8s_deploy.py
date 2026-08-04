@@ -104,8 +104,8 @@ class NoK8sDeployStep(Step):
                 # the failing one (often a vLLM worker) is whichever port
                 # in `ports` didn't come up, and that's where the actual
                 # cause (bad HF token, OOM, wrong accelerator image) shows.
-                for c in containers:
-                    self._dump_logs(cmd, runtime, c["name"], context)
+                for name in launched:
+                    self._dump_logs(cmd, runtime, name, context)
                 return self._fail(stack_path, ready_err, [ready_err])
 
         return StepResult(

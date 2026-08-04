@@ -278,11 +278,12 @@ def test_readiness_timeout_dumps_all_container_logs(tmp_path: Path) -> None:
     )
     (stack_path / "34_nok8s-containers.yaml").write_text(spec_yaml)
 
-    # curl readiness checks always fail; everything else (rm -f, run -d,
-    # logs) succeeds.
-    cmd = _FakeCmd(fail_substrings=("curl -fsS",))
+    # timeout=0 means the poll loop's `while time.time() < deadline` never
+    # runs an iteration -- readiness fails immediately without curl ever
+    # being invoked. rm -f/run -d/logs all succeed.
+    cmd = _FakeCmd()
     ctx = _nok8s_ctx(tmp_path, cmd)
-    ctx.nok8s_deploy_timeout = 0  # skip the poll-retry sleep loop
+    ctx.nok8s_deploy_timeout = 0
 
     result = NoK8sDeployStep().execute(ctx, stack_path=stack_path)
 
