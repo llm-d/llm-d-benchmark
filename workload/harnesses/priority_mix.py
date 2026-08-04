@@ -82,7 +82,9 @@ def traffic_classes(profile: dict[str, Any]) -> list[TrafficClass]:
         name = str(item.get("name") or "").strip()
         if not name:
             raise ValueError("traffic class name is required")
-        headers = {str(key): str(value) for key, value in (item.get("headers") or {}).items()}
+        headers = {
+            str(key): str(value) for key, value in (item.get("headers") or {}).items()
+        }
         objective = item.get("objective")
         if objective:
             headers.setdefault(OBJECTIVE_HEADER, str(objective))
@@ -90,7 +92,13 @@ def traffic_classes(profile: dict[str, Any]) -> list[TrafficClass]:
         if fairness_id:
             headers.setdefault(FAIRNESS_HEADER, str(fairness_id))
         request_overrides = dict(item.get("request") or {})
-        for key in ("prompt", "promptTemplate", "prompt_template", "promptRepeat", "max_tokens"):
+        for key in (
+            "prompt",
+            "promptTemplate",
+            "prompt_template",
+            "promptRepeat",
+            "max_tokens",
+        ):
             if key in item:
                 request_overrides[key] = item[key]
         parsed.append(
@@ -107,7 +115,9 @@ def traffic_classes(profile: dict[str, Any]) -> list[TrafficClass]:
     return parsed
 
 
-def weighted_schedule(classes: list[TrafficClass], total_requests: int) -> list[TrafficClass]:
+def weighted_schedule(
+    classes: list[TrafficClass], total_requests: int
+) -> list[TrafficClass]:
     total_weight = sum(item.weight for item in classes)
     current = [0.0 for _ in classes]
     schedule: list[TrafficClass] = []
@@ -125,9 +135,13 @@ def build_payload(
     traffic_class: TrafficClass | None = None,
     request_index: int = 0,
 ) -> dict[str, Any]:
-    model = str(profile.get("model") or os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", ""))
+    model = str(
+        profile.get("model") or os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", "")
+    )
     if not model:
-        raise ValueError("model is required in profile or LLMDBENCH_DEPLOY_CURRENT_MODEL")
+        raise ValueError(
+            "model is required in profile or LLMDBENCH_DEPLOY_CURRENT_MODEL"
+        )
 
     request = dict(profile.get("request") or {})
     if traffic_class is not None:
@@ -158,7 +172,9 @@ def render_prompt(
     request_index: int,
 ) -> str:
     template = request.get("promptTemplate") or request.get("prompt_template")
-    prompt = str(template or request.get("prompt", "Say hello from the priority mix benchmark."))
+    prompt = str(
+        template or request.get("prompt", "Say hello from the priority mix benchmark.")
+    )
     if template:
         prompt = prompt.format(
             traffic_class=traffic_class.name if traffic_class else "default",
@@ -277,7 +293,9 @@ def percentile(values: list[float], percentile_value: float) -> float:
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (index - lower)
 
 
-def summarize(results: list[RequestResult], classes: list[TrafficClass]) -> dict[str, Any]:
+def summarize(
+    results: list[RequestResult], classes: list[TrafficClass]
+) -> dict[str, Any]:
     by_class: dict[str, list[RequestResult]] = {item.name: [] for item in classes}
     for result in results:
         by_class.setdefault(result.traffic_class, []).append(result)
@@ -285,11 +303,23 @@ def summarize(results: list[RequestResult], classes: list[TrafficClass]) -> dict
     class_summaries: dict[str, Any] = {}
     for item in classes:
         class_results = by_class.get(item.name, [])
-        latencies = [result.latency_ms for result in class_results if result.error is None]
-        ttfts = [result.ttft_ms for result in class_results if result.ttft_ms is not None]
-        tpots = [result.tpot_ms for result in class_results if result.tpot_ms is not None]
-        successes = sum(1 for result in class_results if 200 <= result.status_code < 300)
-        errors = [result for result in class_results if result.error or result.status_code >= 400]
+        latencies = [
+            result.latency_ms for result in class_results if result.error is None
+        ]
+        ttfts = [
+            result.ttft_ms for result in class_results if result.ttft_ms is not None
+        ]
+        tpots = [
+            result.tpot_ms for result in class_results if result.tpot_ms is not None
+        ]
+        successes = sum(
+            1 for result in class_results if 200 <= result.status_code < 300
+        )
+        errors = [
+            result
+            for result in class_results
+            if result.error or result.status_code >= 400
+        ]
         class_summaries[item.name] = {
             "configured_weight": item.weight,
             "configured_priority": item.priority,
@@ -321,7 +351,9 @@ def summarize(results: list[RequestResult], classes: list[TrafficClass]) -> dict
     return {
         "total_requests": len(results),
         "successes": sum(1 for result in results if 200 <= result.status_code < 300),
-        "errors": sum(1 for result in results if result.error or result.status_code >= 400),
+        "errors": sum(
+            1 for result in results if result.error or result.status_code >= 400
+        ),
         "traffic_classes": class_summaries,
     }
 
@@ -332,13 +364,17 @@ def run(profile: dict[str, Any], logger: logging.Logger) -> dict[str, Any]:
     rate_per_second = float(load.get("rate_per_second", 1))
     max_in_flight = int(load.get("max_in_flight", max(1, math.ceil(rate_per_second))))
     timeout_seconds = float(load.get("request_timeout_seconds", 60))
-    total_requests = int(load.get("total_requests", max(1, duration_seconds * rate_per_second)))
+    total_requests = int(
+        load.get("total_requests", max(1, duration_seconds * rate_per_second))
+    )
 
     classes = traffic_classes(profile)
     schedule = weighted_schedule(classes, total_requests)
     url = request_url(profile)
 
-    logger.info("running priority-mix workload url=%s total_requests=%d", url, total_requests)
+    logger.info(
+        "running priority-mix workload url=%s total_requests=%d", url, total_requests
+    )
     logger.info("traffic classes: %s", ", ".join(item.name for item in classes))
 
     results: list[RequestResult] = []
@@ -352,7 +388,11 @@ def run(profile: dict[str, Any], logger: logging.Logger) -> dict[str, Any]:
                 time.sleep(delay)
             traffic_class = schedule[index]
             payload = build_payload(profile, traffic_class, index)
-            futures.append(executor.submit(send_request, url, payload, traffic_class, timeout_seconds))
+            futures.append(
+                executor.submit(
+                    send_request, url, payload, traffic_class, timeout_seconds
+                )
+            )
             next_send += interval
         for future in as_completed(futures):
             results.append(future.result())
@@ -363,7 +403,9 @@ def run(profile: dict[str, Any], logger: logging.Logger) -> dict[str, Any]:
     }
 
 
-def write_run_metadata(results_dir: Path, start: datetime, stop: datetime, rc: int) -> None:
+def write_run_metadata(
+    results_dir: Path, start: datetime, stop: datetime, rc: int
+) -> None:
     metadata = {
         "harness_start": start.isoformat(),
         "harness_stop": stop.isoformat(),
@@ -371,13 +413,17 @@ def write_run_metadata(results_dir: Path, start: datetime, stop: datetime, rc: i
         "harness_args": f"--workload {os.environ.get('LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME', '')}",
         "harness_version": "unknown",
         "harness_name": "priority-mix",
-        "harness_workload": os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", ""),
+        "harness_workload": os.environ.get(
+            "LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", ""
+        ),
         "harness_rc": str(rc),
         "model": os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", ""),
         "endpoint_url": os.environ.get("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", ""),
         "namespace": os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE", ""),
     }
-    with (results_dir / "run_metadata.yaml").open("w", encoding="utf-8") as metadata_file:
+    with (results_dir / "run_metadata.yaml").open(
+        "w", encoding="utf-8"
+    ) as metadata_file:
         yaml.safe_dump(metadata, metadata_file, sort_keys=False)
 
 
