@@ -518,6 +518,11 @@ monitoring:
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
+  # Embed downsampled per-timestamp series into the report's
+  # results.observability.components[].time_series, for interactive plotting.
+  # Only metrics in the _EMBED_TIME_SERIES allow-list (metrics_processor.py) qualify.
+  embedTimeSeries: true
+  timeSeriesMaxPoints: 256
   # Prometheus time-series metrics retained for processing, visualization,
   # and benchmark-report observability entries. Add new metrics here without
   # changing the analysis code.
@@ -543,6 +548,8 @@ monitoring:
     - vllm:nixl_bytes_transferred_sum
     - vllm:nixl_bytes_transferred_count
     - vllm:num_preemptions_total
+    - vllm:prompt_tokens_total
+    - vllm:generation_tokens_total
     - inference_pool_average_kv_cache_utilization
     - inference_pool_average_queue_size
     - inference_pool_average_running_requests

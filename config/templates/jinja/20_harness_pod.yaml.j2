@@ -128,6 +128,14 @@ spec:
       value: >-
         {{ monitoring.timeSeriesMetrics | tojson }}
 {% endif %}
+{% if monitoring.embedTimeSeries is defined %}
+    - name: LLMDBENCH_METRICS_EMBED_TIME_SERIES
+      value: "{{ monitoring.embedTimeSeries | lower }}"
+{% endif %}
+{% if monitoring.timeSeriesMaxPoints is defined %}
+    - name: LLMDBENCH_METRICS_TS_MAX_POINTS
+      value: "{{ monitoring.timeSeriesMaxPoints }}"
+{% endif %}
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED
       value: "{{ standalone.enabled | lower }}"
