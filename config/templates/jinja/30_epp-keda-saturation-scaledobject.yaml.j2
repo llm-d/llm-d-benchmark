@@ -42,7 +42,7 @@ spec:
   pollingInterval: {{ eppKedaSaturation.scaledObject.pollingInterval | default(15) }}
   triggers:
   # Pool-average KV cache utilization (0.0–1.0)
-  # Queries prometheus-proxy in openshift-keda namespace (configurable via eppKedaSaturation.prometheus.proxyUrl)
+  # Queries Prometheus/thanos directly (configurable via eppKedaSaturation.prometheus.baseUrl)
   - type: prometheus
     name: kv-cache
     metricType: AverageValue
@@ -62,7 +62,7 @@ spec:
     authenticationRef:
       name: prometheus-auth
     metadata:
-      serverAddress: "{{ prom_proxy_url }}"
+      serverAddress: "{{ prom_url }}"
       authModes: bearer
       query: |
         max(inference_pool_average_queue_size{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
