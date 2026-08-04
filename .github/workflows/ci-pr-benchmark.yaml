@@ -27,7 +27,7 @@ jobs:
           pip install pytest pytest-xdist
 
       - name: Run unit tests
-        run: python -m pytest tests/ -x -q -n2
+        run: python -m pytest tests/ benchmark-report/tests/ -x -q -n2
 
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:

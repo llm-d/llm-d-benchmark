@@ -31,7 +31,7 @@ from llmdbenchmark.analysis.benchmark_report.schema_v0_2_1 import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BR_DIR = PROJECT_ROOT / "llmdbenchmark" / "analysis" / "benchmark_report"
+BR_DIR = PROJECT_ROOT / "benchmark-report" / "llmd_benchmark_report"
 V02_EXAMPLE = BR_DIR / "br_v0_2_example.yaml"
 
 # Smallest document that satisfies the v0.2 required fields.

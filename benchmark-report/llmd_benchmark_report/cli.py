@@ -4,7 +4,8 @@ a standardized benchmark report. This format can then be used for post
 processing that is not specialized to a particular harness.
 
 To run, do:
-python -m benchmark_report.cli ...
+benchmark-report ...
+(or: python -m llmd_benchmark_report.cli ...)
 
 Use the -j option to print a JSON Schema for the benchmark report.
 """

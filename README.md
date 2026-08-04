@@ -747,9 +747,9 @@ Benchmark load specifications including LLM use case, traffic pattern, input/out
 
 Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations. The `experiment` command automates the full setup x run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary. See [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) for the full experiment lifecycle documentation.
 
-### [Benchmark Report](llmdbenchmark/analysis/benchmark_report/README.md)
+### [Benchmark Report](benchmark-report/README.md)
 
-Results are saved in the native format of each harness, as well as a universal Benchmark Report format (v0.1 and v0.2). The benchmark report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. It acts as a common API for comparing results across different harnesses and configurations. See [llmdbenchmark/analysis/benchmark_report/README.md](llmdbenchmark/analysis/benchmark_report/README.md) for the full schema documentation and Python API.
+Results are saved in the native format of each harness, as well as a universal Benchmark Report format (v0.1 and v0.2). The benchmark report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. It acts as a common API for comparing results across different harnesses and configurations. See [benchmark-report/README.md](benchmark-report/README.md) for the full schema documentation and Python API.
 
 ### [Analysis](docs/analysis.md)
 
