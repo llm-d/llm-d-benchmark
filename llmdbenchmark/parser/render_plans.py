@@ -105,15 +105,9 @@ class RenderPlans:
         # in a multi-stack scenario.
         self._cli_model_multi_stack_warned: bool = False
 
-        # ``--non-admin`` propagates into the Jinja render context as
-        # ``nonAdmin`` so templates can gate cluster-scoped resources
-        # (ClusterRole, ClusterRoleBinding, etc.) the namespaced user
-        # can't create. Currently consumed by
-        # ``05_namespace_sa_rbac_secret.yaml.j2`` to skip the
-        # ``inference-perf-service-viewer`` pair -- those are only
-        # required by the ``nop`` harness's cluster-wide service
-        # discovery, so dropping them is safe for the mainstream
-        # harnesses (inference-perf, guidellm, vllm-benchmark).
+        # Keep accepting --non-admin for CLI/API compatibility. Resource
+        # authorization is enforced by the execution context; the rendered
+        # namespace template no longer emits cluster-scoped resources.
         self.cli_non_admin: bool = bool(cli_non_admin)
 
         self.logger = logger or get_logger(
@@ -1878,7 +1872,6 @@ class RenderPlans:
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
-        merged_values["nonAdmin"] = self.cli_non_admin
         merged_values["scenarioName"] = self.scenarios_file.stem
 
         epponly_errors = self._validate_epponly_constraints(
