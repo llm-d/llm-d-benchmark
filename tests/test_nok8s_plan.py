@@ -242,3 +242,52 @@ def test_resolve_deploy_method_forces_nok8s() -> None:
     assert out["nok8s"]["enabled"] is True
     assert out["standalone"]["enabled"] is False
     assert out["modelservice"]["enabled"] is False
+
+
+def test_readiness_timeout_dumps_all_container_logs(tmp_path: Path) -> None:
+    """Regression: a vLLM readiness timeout used to only dump Envoy's logs
+    (hard-coded), leaving the actually-failing container's logs uncaptured.
+    """
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack_path = tmp_path / "stack"
+    stack_path.mkdir()
+    workspace_host_dir = tmp_path / "ws"
+    spec_yaml = yaml.safe_dump(
+        {
+            "runtime": "docker",
+            "workspaceHostDir": str(workspace_host_dir),
+            "model": "test/model",
+            "endpoint": "http://localhost:8081",
+            "containers": [
+                {
+                    "name": "vllm-0",
+                    "kind": "vllm",
+                    "hostPort": 8000,
+                    "image": "vllm/vllm-openai:latest",
+                },
+                {
+                    "name": "envoy",
+                    "kind": "envoy",
+                    "hostPort": 8081,
+                    "image": "envoyproxy/envoy:v1.31.0",
+                },
+            ],
+            "readiness": {"vllmPorts": [8000], "envoyPort": 8081},
+        }
+    )
+    (stack_path / "34_nok8s-containers.yaml").write_text(spec_yaml)
+
+    # timeout=0 means the poll loop's `while time.time() < deadline` never
+    # runs an iteration -- readiness fails immediately without curl ever
+    # being invoked. rm -f/run -d/logs all succeed.
+    cmd = _FakeCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+    ctx.nok8s_deploy_timeout = 0
+
+    result = NoK8sDeployStep().execute(ctx, stack_path=stack_path)
+
+    assert result.success is False
+    logs_dir = ctx.setup_logs_dir()
+    assert (logs_dir / "nok8s-vllm-0.log").exists()
+    assert (logs_dir / "nok8s-envoy.log").exists()
