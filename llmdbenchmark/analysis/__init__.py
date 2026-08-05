@@ -127,9 +127,10 @@ def run_analysis(
     if harness_name == "inference-perf":
         _run_inference_perf_analyze(results_dir, context)
 
-    # --- 4. Generate metric plots (if metrics were collected) ---
+    # --- 4. Embed metrics + generate plots (if metrics were collected) ---
     metrics_dir = results_dir / "metrics"
     if metrics_dir.exists():
+        _embed_metrics_in_reports(metrics_dir, results_dir, context)
         _run_metric_visualizations(metrics_dir, results_dir, context)
 
     # --- 5. Generate per-request distribution plots ---
@@ -366,6 +367,48 @@ def _run_inference_perf_analyze(
 # ---------------------------------------------------------------------------
 # Metric visualization (Prometheus time series to PNG plots)
 # ---------------------------------------------------------------------------
+
+
+def _embed_metrics_in_reports(
+    metrics_dir: Path,
+    results_dir: Path,
+    context: ExecutionContext | None,
+) -> None:
+    """Merge scraped metrics into the v0.2 reports written by step 1.
+
+    The in-pod ``*-analyze_results.sh`` scripts also do this, but they run when
+    the harness pod exits -- before the driver has written
+    ``metrics/processed/metrics_summary.json`` -- so their guard is always false
+    and the reports ship without time series. Here the metrics exist.
+    """
+    import yaml
+
+    from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
+        add_metrics_to_benchmark_report,
+    )
+
+    if not (metrics_dir / "processed" / "metrics_summary.json").exists():
+        _log(context, "No metrics summary -- skipping report metrics embedding")
+        return
+
+    reports = sorted(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
+    if not reports:
+        return
+
+    for report in reports:
+        try:
+            with open(report) as fh:
+                br_dict = yaml.safe_load(fh) or {}
+            br_dict = add_metrics_to_benchmark_report(br_dict, str(metrics_dir))
+            with open(report, "w") as fh:
+                yaml.dump(br_dict, fh, default_flow_style=False, allow_unicode=True)
+            _log(context, f"Embedded metrics into {report.name}")
+        except Exception as exc:
+            _log(
+                context,
+                f"Metrics embedding failed for {report.name}: {exc}",
+                warning=True,
+            )
 
 
 def _run_metric_visualizations(
