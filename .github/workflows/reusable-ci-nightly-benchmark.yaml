@@ -557,9 +557,6 @@ jobs:
             -n "$LLMDBENCH_CICD_NS" \
             --timeout=$LLMDBENCH_CICD_JOB_TIMEOUT
 
-          # Release the chips so test can use them
-          kubectl delete job tpu-request-job -n "$LLMDBENCH_CICD_NS"
-
           # Export topology and accelerator so subsequent steps (like scenario overrides) can read them
           echo "TPU_ACCELERATOR=$ACCELERATOR" >> $GITHUB_ENV
           echo "TPU_TOPOLOGY=$TOPOLOGY" >> $GITHUB_ENV
@@ -571,6 +568,13 @@ jobs:
           echo "| GKE Resource Name | $ACCELERATOR |" >> $GITHUB_STEP_SUMMARY
           echo "| TPU Topology | $TOPOLOGY |" >> $GITHUB_STEP_SUMMARY
           echo "| Requested Chips | $CHIPS_TO_REQUEST |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup TPU DWS Request
+        id: infra_clean_tpus
+        if: always() && env.LLMDBENCH_CICD_TARGET == 'gke' && contains(inputs.accelerator_type, 'tpu') && inputs.tpu_chips > 0
+        run: |
+          # Release the chips so test can use them
+          kubectl delete job tpu-request-job -n "$LLMDBENCH_CICD_NS"
 
       - name: Create nightly PriorityClass
         id: infra_create_nightly_prioclass
