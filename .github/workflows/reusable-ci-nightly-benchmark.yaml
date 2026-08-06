@@ -771,6 +771,50 @@ jobs:
           fi
         shell: bash
 
+      - name: Set up extra command line parameters
+        id: prereqs_setup_extrac_cli_parms_llmdbenchmark
+        run: |
+          export LLMDBENCH_EXTRA_CMD=""
+          export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD=""
+          export LLMDBENCH_EXTRA_RUN_OPERATION_CMD=""
+          export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD=""
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--non-admin"
+          fi
+          if [[ "$LLMDBENCH_IS_DRY_RUN" == "true" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--dry-run"
+          fi
+          if [[ "$LLMDBENCH_IS_VERBOSE" == "true" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
+          fi
+          if [[ $LLMDBENCH_CICD_METHOD == "kustomize" ]]; then
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--kustomize-deploy-timeout $LLMDBENCH_CICD_KUSTOMIZE_STANDUP_TIMEOUT --modelservice-deploy-timeout $LLMDBENCH_CICD_MODELSERVICE_STANDUP_TIMEOUT --standalone-deploy-timeout $LLMDBENCH_CICD_STANDALONE_STANDUP_TIMEOUT $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+          fi
+          export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--wait-timeout $LLMDBENCH_CICD_RUN_WAIT_TIMEOUT --pvc-bind-timeout $LLMDBENCH_CICD_RUN_PVC_BIND_TIMEOUT --data-access-timeout $LLMDBENCH_CICD_DATA_ACCESS_TIMEOUT $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+          if [[ ! -z $LLMDBENCH_CICD_DETECTED_MODEL ]]; then
+            export LLMDBENCH_EXTRA_RUN_OPERATION_CMD="--model $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_RUN_OPERATION_CMD "
+          fi
+          if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
+          fi
+          if [[ ! -z $LLMDBENCH_CICD_DETECTED_MODEL ]]; then
+            export LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD "
+            export LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD="--models $LLMDBENCH_CICD_DETECTED_MODEL $LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD "
+          fi
+          echo "### LLMDBENCH_EXTRA_CMD is \"$LLMDBENCH_EXTRA_CMD\""
+          echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD is \"$LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD\""
+          echo "LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD=$LLMDBENCH_EXTRA_STANDUP_OPERATION_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_RUN_OPERATION_CMD is \"$LLMDBENCH_EXTRA_RUN_OPERATION_CMD\""
+          echo "LLMDBENCH_EXTRA_RUN_OPERATION_CMD=$LLMDBENCH_EXTRA_RUN_OPERATION_CMD" >> $GITHUB_ENV
+          echo "### LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD is \"$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD\""
+          echo "LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD=$LLMDBENCH_EXTRA_TEARDOWN_OPERATION_CMD" >> $GITHUB_ENV
+          export LLMDBENCH_CICD_GATEWAY_CLASS=$(echo "$LLMDBENCH_CICD_GATEWAY_CLASS" | sed 's^standalone^epponly^g')
+          echo "LLMDBENCH_CICD_GATEWAY_CLASS is \"$LLMDBENCH_CICD_GATEWAY_CLASS\""
+          echo "LLMDBENCH_CICD_GATEWAY_CLASS=$LLMDBENCH_CICD_GATEWAY_CLASS"  >> $GITHUB_ENV
+        shell: bash
+
       - name: Cleanup target cloud
         id: guide_teardown
         run: |
