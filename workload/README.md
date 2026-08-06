@@ -229,6 +229,7 @@ Profile templates use a simple token-replacement system (NOT Jinja2). Any occurr
 |-------|--------------|--------|
 | `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL` | Model name | `--model` flag or plan config |
 | `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER` | Model name (same) | `--model` flag or plan config |
+| `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MAX_MODEL_LEN` | Model max context length | `model.maxModelLen` in plan config |
 | `REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL` | Endpoint URL | Detected in step 02 or `--endpoint-url` |
 | `REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR` | Dataset directory | `--dataset` flag |
 

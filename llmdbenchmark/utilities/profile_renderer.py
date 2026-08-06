@@ -35,6 +35,10 @@ PROFILE_TOKENS: dict[str, TokenDef] = {
         config_path="model.name",
         description="Tokenizer model name (defaults to same as model)",
     ),
+    "LLMDBENCH_DEPLOY_CURRENT_MAX_MODEL_LEN": TokenDef(
+        config_path="model.maxModelLen",
+        description="Model max context length (--max-model-len)",
+    ),
     "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL": TokenDef(
         config_path=None,  # runtime: detected in step 02
         description="Model-serving endpoint URL (detected at runtime)",
