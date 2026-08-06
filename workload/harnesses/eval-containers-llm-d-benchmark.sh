@@ -20,7 +20,30 @@ if [[ -z "${EVAL_TASK_ID:-}" ]]; then
   # parallel_idx is 1-based (framework: range(1, N+1)); fall back to 1 for a
   # missing / non-numeric / zero suffix so EVAL_TASK_ID can never go negative.
   case "$idx" in ''|*[!0-9]*|0) idx=1 ;; esac
-  export EVAL_TASK_ID="$(( idx - 1 + ${EVAL_TASK_OFFSET:-0} ))"
+
+  # EVAL_TASK_LIST selects an ARBITRARY set of task ids: a comma-separated list
+  # indexed by this pod's 1-based position. EVAL_TASK_OFFSET can only express a
+  # contiguous range, and the aider-polyglot dataset is language-ORDERED (cpp
+  # 0-25, go 26-64, java 65-111, javascript 112-160, python 161-194, rust
+  # 195-224), so every contiguous slice is effectively single-language and its
+  # score is not comparable to any other slice. A representative sample needs an
+  # explicit list.
+  if [[ -n "${EVAL_TASK_LIST:-}" ]]; then
+    IFS=',' read -r -a _task_ids <<< "$EVAL_TASK_LIST"
+    if (( idx > ${#_task_ids[@]} )); then
+      echo "eval-containers: FATAL pod index $idx exceeds EVAL_TASK_LIST length ${#_task_ids[@]}" >&2
+      exit 1
+    fi
+    _tid="${_task_ids[$(( idx - 1 ))]}"
+    _tid="${_tid//[[:space:]]/}"
+    case "$_tid" in ''|*[!0-9]*)
+      echo "eval-containers: FATAL EVAL_TASK_LIST entry $idx is not a task id: '$_tid'" >&2
+      exit 1 ;;
+    esac
+    export EVAL_TASK_ID="$_tid"
+  else
+    export EVAL_TASK_ID="$(( idx - 1 + ${EVAL_TASK_OFFSET:-0} ))"
+  fi
 fi
 
 # --- point the eval's in-pod model gateway at the deployed llm-d endpoint -----
