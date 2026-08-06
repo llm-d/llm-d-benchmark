@@ -6,8 +6,8 @@
 # eval-containers harness against that IN-CLUSTER endpoint -- no `-U`, no key.
 #
 # Served model: Qwen/Qwen3.6-27B, TP=1, on a single GPU.
-# The eval agent (gemini-cli) calls `openai/Qwen/Qwen3.6-27B` (EVAL_MODEL is
-# openai/<model.name>), which the in-pod gateway forwards to the discovered
+# The eval agent (gemini-cli) calls `Qwen/Qwen3.6-27B` (EVAL_MODEL is
+# <model.name>), which the in-pod gateway forwards to the discovered
 # in-cluster endpoint (epponly -> *-router-epp Service).
 #
 # Cluster-specific values (storage class, serviceAccount, runAsUser) live in a
@@ -31,6 +31,7 @@
 scenario:
   - name: "eval-aider-polyglot-gpu"
 
+<<<<<<< HEAD
     common:
       model:
         name: Qwen/Qwen3.6-27B
@@ -41,6 +42,20 @@ scenario:
         maxModelLen: 16000
         blockSize: 64
         gpuMemoryUtilization: 0.95
+=======
+    # -------------------------------------------------------------------------
+    # Model -- the SERVED model. model.name flows to EVAL_MODEL=<name>.
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3.6-27B
+      shortName: qwen-qwen36-27b
+      path: models/Qwen/Qwen3.6-27B
+      huggingfaceId: Qwen/Qwen3.6-27B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+>>>>>>> 9df43bf (fix(eval-containers): EVAL_MODEL must be a bare model handle)
 
       storage:
         modelPvc:

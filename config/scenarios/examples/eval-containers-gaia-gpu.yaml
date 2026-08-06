@@ -6,7 +6,7 @@
 # against that IN-CLUSTER served endpoint -- no `-U`, no external key.
 #
 # Served model: Qwen/Qwen3.6-27B, TP=1, on a single GPU (e.g. NVIDIA-H100-80GB).
-# The eval agent (codex) calls `openai/Qwen/Qwen3.6-27B` (EVAL_MODEL is derived
+# The eval agent (codex) calls `Qwen/Qwen3.6-27B` (EVAL_MODEL is derived
 # from model.name), which the in-pod bifrost gateway forwards to the deployed
 # endpoint that step_03 auto-discovers (epponly -> the *-router-epp Service).
 #
@@ -32,6 +32,7 @@
 scenario:
   - name: "eval-gaia-gpu"
 
+<<<<<<< HEAD
     common:
       model:
         name: Qwen/Qwen3.6-27B
@@ -42,6 +43,21 @@ scenario:
         maxModelLen: 16000
         blockSize: 64
         gpuMemoryUtilization: 0.95
+=======
+    # -------------------------------------------------------------------------
+    # Model -- the SERVED model. model.name flows to EVAL_MODEL=<name>,
+    # so it MUST be the id the agent calls.
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3.6-27B
+      shortName: qwen-qwen36-27b
+      path: models/Qwen/Qwen3.6-27B
+      huggingfaceId: Qwen/Qwen3.6-27B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+>>>>>>> 9df43bf (fix(eval-containers): EVAL_MODEL must be a bare model handle)
 
       storage:
         modelPvc:
