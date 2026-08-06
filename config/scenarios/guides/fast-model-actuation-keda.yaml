@@ -1,0 +1,70 @@
+# FAST MODEL ACTUATION + KEDA WELL LIT PATH (kustomize-only)
+#
+# Deploys the upstream llm-d `fast-model-actuation-keda` guide directly via the
+# kustomize deploy method. This is the FMA-only guide plus saturation-based KEDA
+# autoscaling of the GPU-reserving requester Deployment (scaled on EPP
+# flow-control metrics; hot start wakes a sleeping vLLM, warm start creates a new
+# instance on an existing launcher).
+#
+# NOTE: FMA-specific handling in standup/smoketest/teardown keys off
+# kustomize.guideName starting with "fast-model-actuation" (covers this KEDA
+# variant), so the dual-pods CR cleanup and requester-only readiness check apply.
+# See https://github.com/llm-d/llm-d/tree/main/guides/fast-model-actuation-keda
+#
+# monitoring MUST be true: the guide's KEDA step copies the prometheus-token
+# secret and waits for the ScaledObject to go Ready, which requires KEDA to reach
+# Prometheus and scrape the EPP pool-saturation metric.
+#
+# Run with:
+#   llmdbenchmark --spec guides/fast-model-actuation-keda standup   -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/fast-model-actuation-keda smoketest -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/fast-model-actuation-keda teardown  -t kustomize -p "$NS"
+# ===========================================================================
+
+scenario:
+  - name: "fast-model-actuation-keda"
+
+    # =======================================================================
+    # KUSTOMIZE DEPLOY METHOD -- pre-enabled. This block defines the ENTIRE
+    # deployment (the upstream FMA+KEDA guide's manifests). See docs/kustomize.md.
+    # =======================================================================
+    kustomize:
+      enabled: true
+
+      guideName: "fast-model-actuation-keda"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: true            # REQUIRED: KEDA reads the EPP saturation metric from Prometheus
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+    # -----------------------------------------------------------------------
+    # Model metadata. Under kustomize the deployed model is fixed by the
+    # guide's manifests, so these values do NOT drive the deployment. They
+    # MUST, however, match the model the guide actually serves -- the
+    # post-standup smoketest validates the /v1/models endpoint against
+    # model.name (the guide serves Qwen/Qwen3-0.6B via its InferenceServerConfig).
+    # -----------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-0.6B
+      shortName: qwen-qwen3-0-6b
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 10Gi
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.9
+
+    # =======================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =======================================================================
+    workDir: "~/data/fast-model-actuation-keda"
+
+    harness:
+      name: nop
+      experimentProfile: nop.yaml
+      executable: llm-d-benchmark.py

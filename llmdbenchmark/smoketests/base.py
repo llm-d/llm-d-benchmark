@@ -219,11 +219,14 @@ class BaseSmoketest:
         if is_kustomize:
             if guide_name == "pd-disaggregation":
                 roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
-            elif guide_name == "fast-model-actuation":
-                # FMA has no decode/prefill Deployments: launcher pods host vLLM and
-                # are intentionally sleeping (not all Ready) and are not
-                # guide-labeled. The requester pods reserve GPUs, carry the guide
-                # label -- so assert *those* are Ready.
+            elif guide_name == "fast-model-actuation" or guide_name.startswith(
+                "fast-model-actuation-"
+            ):
+                # Every FMA variant (base guide + derivatives like
+                # fast-model-actuation-keda) has no decode/prefill Deployments:
+                # launcher pods host vLLM and are intentionally sleeping (not all
+                # Ready) and are not guide-labeled. The requester pods reserve
+                # GPUs, carry the guide label -- so assert *those* are Ready.
                 roles_to_check = [("requester", None)]
             else:
                 roles_to_check = [("decode", "decode")]
