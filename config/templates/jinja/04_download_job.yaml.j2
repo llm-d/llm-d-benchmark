@@ -14,7 +14,16 @@ spec:
     spec:
       containers:
         - name: downloader
-          image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+          # This job only needs Python + pip (it pip-installs huggingface_hub
+          # below), so it uses images.python rather than images.benchmark. With
+          # the benchmark image the weight download inherited whatever the
+          # harness image happens to be: for agentic harnesses (e.g. the
+          # exgentic eval images) that is a multi-GB image bundling an agent CLI
+          # and its toolchain, and since this template sets no imagePullPolicy a
+          # :latest tag defaults to Always -- so every standup re-pulled
+          # gigabytes of image unrelated to fetching weights, stalling the
+          # download job past its timeout before any bytes transferred.
+          image: {{ images.python.repository }}:{{ images.python.tag }}
           command: ["/bin/sh", "-c"]
           args:
             - |
