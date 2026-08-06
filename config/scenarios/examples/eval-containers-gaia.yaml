@@ -347,21 +347,13 @@ scenario:
     # =========================================================================
     gateway:
       className: epponly
-
-    # -------------------------------------------------------------------------
-    # Infrastructure / Gateway Configuration
-    # Corresponds to: LLMDBENCH_VLLM_INFRA_GATEWAY_*
-    # -------------------------------------------------------------------------
-    infrastructure:
-      gateway:
-        resources:
-          requests:
-            cpu: "500m"
-            memory: 512Mi
-          limits:
-            cpu: "2"
-            memory: 2Gi
-
+      resources:
+        requests:
+          cpu: "500m"
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
     # -------------------------------------------------------------------------
     # Workload Configuration
     # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR

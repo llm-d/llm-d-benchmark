@@ -19,31 +19,200 @@ scenario:
   # =========================================================================
   - name: "epp-keda-saturation"
 
-    # =========================================================================
-    # MODEL CONFIGURATION
-    # =========================================================================
-    model:
-      name: Qwen/Qwen3-32B
-      shortName: qwen-qwen3-32b
-      path: models/Qwen/Qwen3-32B
-      huggingfaceId: Qwen/Qwen3-32B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
+    common:
+      # =========================================================================
+      # MODEL CONFIGURATION
+      # =========================================================================
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+
+      # =========================================================================
+      # STORAGE
+      # =========================================================================
+      storage:
+        modelPvc:
+          size: 1Ti
+        hostPath:
+          # TODO: should we default to enabled: true for WVA scenarios?
+          enabled: false
+          path: /mnt/models
+          storageClassName: hostpath
+          capacity: 1Ti
+          # Target the GPU nodes where decode pods will schedule.
+          # Replace with your cluster's actual node labels.
+          nodeSelector:
+            nvidia.com/gpu.present: "true"
+          tolerations: []
+          daemonSetTimeout: 3600
+
+      # =========================================================================
+      # VLLM COMMON CONFIGURATION
+      # =========================================================================
+      vllmCommon:
+        kvTransfer:
+          enabled: true
+          connector: NixlConnector
+          role: kv_both
+
+        flags:
+          enforceEager: true
+          disableLogRequests: true
+          disableUvicornAccessLog: true
+          allowLongMaxModelLen: "1"
+          serverDevMode: "1"
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: shared-config
+            mountPath: /shared-config
 
     # =========================================================================
-    # DEPLOYMENT METHOD
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, router, and gateway.
     # =========================================================================
     modelservice:
       enabled: true
 
-    standalone:
-      enabled: false
+      gateway:
+        className: agentgateway
+        externallyManaged: true  # agentgateway already exists in cluster
 
-    gateway:
-      className: agentgateway
-      externallyManaged: true  # agentgateway already exists in cluster
+      # =========================================================================
+      # ROUTING / GAIE CONFIGURATION
+      #
+      # EPP+KEDA autoscaling is driven by EPP queue depth, so we enable the
+      # `flowControl` feature gate in the EPP's EndpointPickerConfig. That gate
+      # is not on by default, and toggling it requires shipping a custom
+      # EndpointPickerConfig (the default one the gaie chart ships has no
+      # `featureGates` block). We inline it here and point `pluginsConfigFile`
+      # at this filename so the chart mounts it as the active config.
+      # =========================================================================
+      router:
+        epp:
+          pluginsConfigFile: "epp-keda-optimized-baseline.yaml"
+          pluginsCustomConfig:
+            epp-keda-optimized-baseline.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
+              featureGates:
+                - flowControl
+              plugins:
+                - type: queue-scorer
+                - type: kv-cache-utilization-scorer
+                - type: prefix-cache-scorer
+                - type: no-hit-lru-scorer
+              schedulingProfiles:
+                - name: default
+                  plugins:
+                    - pluginRef: queue-scorer
+                      weight: 2
+                    - pluginRef: kv-cache-utilization-scorer
+                      weight: 2
+                    - pluginRef: prefix-cache-scorer
+                      weight: 3
+                    - pluginRef: no-hit-lru-scorer
+                      weight: 2
+
+      # =========================================================================
+      # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+      # =========================================================================
+      prefill:
+        enabled: false
+        replicas: 0
+
+      decode:
+        replicas: 2
+
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
+
+        parallelism:
+          tensor: 1
+          data: 1
+          dataLocal: 1
+          workers: 1
+
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 64Gi
+            cpu: "16"
+
+        extraEnvVars: []
+
+        extraContainerConfig:
+          ports:
+            - containerPort: 5557
+              protocol: TCP
+            - containerPort: 8200
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        additionalVolumeMounts: []
+        additionalVolumes: []
+
+        probes:
+          startup:
+            path: /v1/models
+            failureThreshold: 60
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          liveness:
+            path: /health
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readiness:
+            path: /v1/models
+            failureThreshold: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+
+        monitoring:
+          podmonitor:
+            enabled: true
+            portName: metrics
+            path: /metrics
+            interval: 30s
+            labels:
+              release: llmd
+
 
     # =========================================================================
     # EPP+KEDA SATURATION CONFIGURATION
@@ -93,179 +262,8 @@ scenario:
                 value: 1
                 periodSeconds: 300
 
-    # =========================================================================
-    # ROUTING / GAIE CONFIGURATION
-    #
-    # EPP+KEDA autoscaling is driven by EPP queue depth, so we enable the
-    # `flowControl` feature gate in the EPP's EndpointPickerConfig. That gate
-    # is not on by default, and toggling it requires shipping a custom
-    # EndpointPickerConfig (the default one the gaie chart ships has no
-    # `featureGates` block). We inline it here and point `pluginsConfigFile`
-    # at this filename so the chart mounts it as the active config.
-    # =========================================================================
-    router:
-      epp:
-        pluginsConfigFile: "epp-keda-optimized-baseline.yaml"
-        pluginsCustomConfig:
-          epp-keda-optimized-baseline.yaml: |
-            apiVersion: llm-d.ai/v1alpha1
-            kind: EndpointPickerConfig
-            featureGates:
-              - flowControl
-            plugins:
-              - type: queue-scorer
-              - type: kv-cache-utilization-scorer
-              - type: prefix-cache-scorer
-              - type: no-hit-lru-scorer
-            schedulingProfiles:
-              - name: default
-                plugins:
-                  - pluginRef: queue-scorer
-                    weight: 2
-                  - pluginRef: kv-cache-utilization-scorer
-                    weight: 2
-                  - pluginRef: prefix-cache-scorer
-                    weight: 3
-                  - pluginRef: no-hit-lru-scorer
-                    weight: 2
-
-    # =========================================================================
-    # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
-    # =========================================================================
-    prefill:
-      enabled: false
-      replicas: 0
-
-    decode:
-      replicas: 2
-
-      initContainers:
-        - name: preprocess
-          imageKey: benchmark
-          imagePullPolicy: Always
-          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          volumeMounts:
-            - name: shared-config
-              mountPath: /shared-config
-
-      parallelism:
-        tensor: 1
-        data: 1
-        dataLocal: 1
-        workers: 1
-
-      resources:
-        limits:
-          memory: 64Gi
-          cpu: "16"
-        requests:
-          memory: 64Gi
-          cpu: "16"
-
-      extraEnvVars: []
-
-      extraContainerConfig:
-        ports:
-          - containerPort: 5557
-            protocol: TCP
-          - containerPort: 8200
-            name: metrics
-            protocol: TCP
-        securityContext:
-          capabilities:
-            add:
-              - "IPC_LOCK"
-              - "SYS_RAWIO"
-          runAsGroup: 0
-          runAsUser: 0
-        imagePullPolicy: Always
-
-      additionalVolumeMounts: []
-      additionalVolumes: []
-
-      probes:
-        startup:
-          path: /v1/models
-          failureThreshold: 60
-          initialDelaySeconds: 15
-          periodSeconds: 30
-          timeoutSeconds: 5
-        liveness:
-          path: /health
-          failureThreshold: 3
-          periodSeconds: 10
-          timeoutSeconds: 5
-        readiness:
-          path: /v1/models
-          failureThreshold: 3
-          periodSeconds: 5
-          timeoutSeconds: 2
-
-      monitoring:
-        podmonitor:
-          enabled: true
-          portName: metrics
-          path: /metrics
-          interval: 30s
-          labels:
-            release: llmd
-
-    # =========================================================================
-    # VLLM COMMON CONFIGURATION
-    # =========================================================================
-    vllmCommon:
-      kvTransfer:
-        enabled: true
-        connector: NixlConnector
-        role: kv_both
-
-      flags:
-        enforceEager: true
-        disableLogRequests: true
-        disableUvicornAccessLog: true
-        allowLongMaxModelLen: "1"
-        serverDevMode: "1"
-
-      volumes:
-        - name: shared-config
-          type: emptyDir
-          emptyDir: {}
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 16Gi
-
-      volumeMounts:
-        - name: dshm
-          mountPath: /dev/shm
-        - name: shared-config
-          mountPath: /shared-config
-
-    # =========================================================================
-    # STORAGE
-    # =========================================================================
-    storage:
-      modelPvc:
-        size: 1Ti
-      hostPath:
-        # TODO: should we default to enabled: true for WVA scenarios?
-        enabled: false
-        path: /mnt/models
-        storageClassName: hostpath
-        capacity: 1Ti
-        # Target the GPU nodes where decode pods will schedule.
-        # Replace with your cluster's actual node labels.
-        nodeSelector:
-          nvidia.com/gpu.present: "true"
-        tolerations: []
-        daemonSetTimeout: 3600
-
-    # =========================================================================
-    # WORKLOAD / HARNESS
-    # =========================================================================
-    workDir: "~/data/epp-keda-saturation"
-
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic.yaml
+
+    workDir: "~/data/epp-keda-saturation"

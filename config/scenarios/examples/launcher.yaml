@@ -12,29 +12,36 @@
 
 scenario:
   - name: "launcher-example"
-    model:
-      name: meta-llama/Llama-3.1-8B-Instruct
-      shortName: llama-3.1-8b
-      path: models/meta-llama/Llama-3.1-8B-Instruct
-      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+    common:
+      model:
+        name: meta-llama/Llama-3.1-8B-Instruct
+        shortName: llama-3.1-8b
+        path: models/meta-llama/Llama-3.1-8B-Instruct
+        huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
 
-    vllmCommon:
-      # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
-      # shell: /bin/sh
-      flags:
-        enforceEager: false
-      volumes:
-        - name: preprocesses
-          type: configMap
-          configMap:
-            name: llm-d-benchmark-preprocesses
-            defaultMode: 320
-      volumeMounts:
-        - name: preprocesses
-          mountPath: /setup/preprocess
+      images:
+        benchmark:
+          repository: ghcr.io/llm-d/llm-d-benchmark
+          tag: nightly
+
+      vllmCommon:
+        # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+        # shell: /bin/sh
+        flags:
+          enforceEager: false
+        volumes:
+          - name: preprocesses
+            type: configMap
+            configMap:
+              name: llm-d-benchmark-preprocesses
+              defaultMode: 320
+        volumeMounts:
+          - name: preprocesses
+            mountPath: /setup/preprocess
 
     modelservice:
       enabled: false
+
     fma:
       enabled: false
 
@@ -55,8 +62,6 @@ scenario:
           tag: v0.5.1-alpha.7
         customPreprocessCommand: "source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
 
-    workDir: "~/data/launcher"
-
     harness:
       name: nop
       profile: nop.yaml
@@ -74,7 +79,4 @@ scenario:
       inferencePerf:
         rayonNumThreads: 4
 
-    images:
-      benchmark:
-        repository: ghcr.io/llm-d/llm-d-benchmark
-        tag: nightly
+    workDir: "~/data/launcher"

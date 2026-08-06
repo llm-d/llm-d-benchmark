@@ -682,7 +682,7 @@ gateway:
   #                                HTTP directly (single-stack only).
   #   none                       - plain ClusterIP Service to decode vLLM;
   #                                no Gateway, EPP, Envoy, or routing proxy.
-  className: istio
+  className: epponly
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
   logLevel: error

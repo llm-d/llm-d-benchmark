@@ -10,6 +10,10 @@ scenario:
   - name: "ocp-cicd"
 
     common:
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        # labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
       # Model
       model:
         name: Qwen/Qwen3-8B
@@ -42,30 +46,22 @@ scenario:
           # FMA runs with prefix caching off (--no-enable-prefix-caching)
           noPrefixCaching: true
 
-      workDir: /tmp/llmdbenchcicd-ocp/
-
-      harness:
-        name: vllm-benchmark
-        experimentProfile: sanity_random.yaml
-        # executable: llm-d-benchmark.py
-
       images:
         benchmark:
           repository: ghcr.io/llm-d/llm-d-benchmark
           tag: nightly
+
+    standalone:
+      enabled: false
+
     # Deployment method
     modelservice:
       enabled: true
-      # gateway:
-      #   className: istio
 
       prefill:
         enabled: true
         replicas: 1
-        acceleratorType:
-          labelKey: nvidia.com/gpu.product
-          # labelValue: NVIDIA-L40S
-          labelValue: NVIDIA-H100-80GB-HBM3
+
 
       decode:
         enabled: true
@@ -75,13 +71,14 @@ scenario:
           # labelValue: NVIDIA-L40S
           labelValue: NVIDIA-H100-80GB-HBM3
 
-    standalone:
-      enabled: false
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        # labelValue: NVIDIA-L40S
-        labelValue: NVIDIA-H100-80GB-HBM3
-
     fma:
       enabled: false
       iterations: 10
+
+
+    harness:
+      name: vllm-benchmark
+      experimentProfile: sanity_random.yaml
+      # executable: llm-d-benchmark.py
+
+    workDir: /tmp/llmdbenchcicd-ocp/

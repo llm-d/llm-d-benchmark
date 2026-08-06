@@ -14,6 +14,105 @@ scenario:
   # ============================================================================
   - name: "wide-ep-lws"
 
+    common:
+      # -------------------------------------------------------------------------
+      # Affinity / Node Selection
+      # By default, affinity is disabled and pods schedule on any available node.
+      # Options:
+      #   1. Leave commented out -- no node selection constraint
+      #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+      #   3. Set explicit labels -- pods only schedule on matching nodes
+      # -------------------------------------------------------------------------
+      # affinity:
+      #   enabled: true
+      #   nodeSelector:
+      #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+      #     # gpu.nvidia.com/model: H200                        # Kubernetes
+      #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+
+      # -------------------------------------------------------------------------
+      # Multinode Configuration (LeaderWorkerSet)
+      # -------------------------------------------------------------------------
+      multinode:
+        enabled: true
+
+      # -------------------------------------------------------------------------
+      # Scheduler Configuration
+      # (commented out in original -- uncomment to enable)
+      # -------------------------------------------------------------------------
+      # schedulerName: custom-binpack-scheduler
+      # -------------------------------------------------------------------------
+      # Model Configuration
+      #
+      #
+      #
+      #
+      #
+      #
+      # -------------------------------------------------------------------------
+      model:
+        name: Qwen/Qwen3-30B-A3B
+        shortName: qwen-qwen3-30b-a3b
+        path: models/Qwen/Qwen3-30B-A3B
+        huggingfaceId: Qwen/Qwen3-30B-A3B
+  #      name: deepseek-ai/DeepSeek-R1-0528
+  #      shortName: DeepSeek-R1-0528
+  #      path: models/deepseek-ai/DeepSeek-R1-0528
+  #      huggingfaceId: deepseek-ai/DeepSeek-R1-0528
+        size: 1Ti
+        maxModelLen: 4000
+        blockSize: 64
+        gpuMemoryUtilization: 0.75
+        cacheBase: /model-cache
+
+      # -------------------------------------------------------------------------
+      # Storage Configuration
+      # -------------------------------------------------------------------------
+      storage:
+        modelPvc:
+          size: 1Ti
+          # Uncomment to specify storage class:
+          # storageClassName: standard-rwx
+          # storageClassName: shared-vast
+          # storageClassName: ocs-storagecluster-cephfs
+
+    vllmCommon:
+#      priorityClassName: nightly-gpu-critical
+#      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+      networkResource: "auto"   # auto-detect from cluster nodes
+      networkNr: "1"            # number of network devices
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+        - name: dshm
+          mountPath: /dev/shm
+
+#     annotations:
+#       prefill:
+#         pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#       decode:
+#         pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      prefill:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
+      decode:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
+
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
     # -------------------------------------------------------------------------
@@ -82,53 +181,9 @@ scenario:
       patches: []
 
     # =========================================================================
-    # COMMON -- Applies to all deployment methods
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Model Configuration
-    #
-    #
-    #
-    #
-    #
-    #
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3-30B-A3B
-      shortName: qwen-qwen3-30b-a3b
-      path: models/Qwen/Qwen3-30B-A3B
-      huggingfaceId: Qwen/Qwen3-30B-A3B
-#      name: deepseek-ai/DeepSeek-R1-0528
-#      shortName: DeepSeek-R1-0528
-#      path: models/deepseek-ai/DeepSeek-R1-0528
-#      huggingfaceId: deepseek-ai/DeepSeek-R1-0528
-      size: 1Ti
-      maxModelLen: 4000
-      blockSize: 64
-      gpuMemoryUtilization: 0.75
-      cacheBase: /model-cache
-
-    # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Multinode Configuration (LeaderWorkerSet)
-    # -------------------------------------------------------------------------
-    multinode:
-      enabled: true
-
-    # -------------------------------------------------------------------------
-    # Scheduler Configuration
-    # (commented out in original -- uncomment to enable)
-    # -------------------------------------------------------------------------
-    # schedulerName: custom-binpack-scheduler
-
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # deployment including decode pods, prefill pods, router, and gateway.
     # =========================================================================
     modelservice:
       enabled: true
@@ -267,45 +322,6 @@ scenario:
       httpRoute:
         requestTimeout: "300s"
         backendRequestTimeout: "0s"
-
-    standalone:
-      enabled: false
-
-    # -------------------------------------------------------------------------
-    # Affinity / Node Selection
-    # By default, affinity is disabled and pods schedule on any available node.
-    # Options:
-    #   1. Leave commented out -- no node selection constraint
-    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
-    #   3. Set explicit labels -- pods only schedule on matching nodes
-    # -------------------------------------------------------------------------
-    # affinity:
-    #   enabled: true
-    #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
-    #     # gpu.nvidia.com/model: H200                        # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Storage Configuration
-    # -------------------------------------------------------------------------
-    storage:
-      modelPvc:
-        size: 1Ti
-        # Uncomment to specify storage class:
-        # storageClassName: standard-rwx
-        # storageClassName: shared-vast
-        # storageClassName: ocs-storagecluster-cephfs
-
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
 
     # -------------------------------------------------------------------------
     # Prefill Configuration
@@ -574,40 +590,6 @@ scenario:
       # Additional Volumes
       # -----------------------------------------------------------------------
       additionalVolumes: []
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-#####    annotations:
-#####      prefill:
-#####        pod:
-#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-#####      decode:
-#####        pod:
-#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
-    vllmCommon:
-#      priorityClassName: nightly-gpu-critical
-#####      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
-      networkResource: "auto"   # auto-detect from cluster nodes
-      networkNr: "1"            # number of network devices
-
-      volumes:
-        - name: shared-config
-          type: emptyDir
-          emptyDir: {}
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Gi
-
-      volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
-        - name: dshm
-          mountPath: /dev/shm
 
     # -------------------------------------------------------------------------
     # Timeout Configuration
