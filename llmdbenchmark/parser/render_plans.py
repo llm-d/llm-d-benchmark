@@ -1033,7 +1033,39 @@ class RenderPlans:
             cur = cur[part]
         cur[path[-1]] = value
 
-    def _expand_stack_common(self, values: dict) -> dict:
+    #: Stack sections that describe one deploy method. A value the author
+    #: puts in ``common:`` is seeded into these when the section itself owns
+    #: that key (per ``defaults.yaml``), so ``acceleratorType`` need not be
+    #: repeated under decode and prefill.
+    _METHOD_SECTIONS = ("decode", "prefill", "standalone", "fma")
+
+    #: Never inherited from ``common:`` -- ``enabled`` is the per-method
+    #: on/off switch, so broadcasting it would turn every method on at once.
+    _COMMON_NOT_INHERITED = frozenset({"enabled"})
+
+    #: Genuine renames, where the shared spelling and the per-method spelling
+    #: differ so the link cannot be derived from key names. Keep this small:
+    #: anything whose names already agree is handled automatically.
+    _COMMON_ALIASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        # the vLLM serving image; standalone/fma call it `image`
+        (("images", "vllmOpenai"), ("standalone", "image")),
+        (("images", "vllmOpenai"), ("fma", "image")),
+    )
+
+    def _method_owned_keys(self, defaults: dict) -> dict[str, tuple[str, ...]]:
+        """Map ``key -> sections that own it``, read from ``defaults.yaml``.
+
+        Derived rather than hand-maintained: a new per-method key added to
+        defaults becomes inheritable from ``common:`` with no code change.
+        """
+        owned: dict[str, list[str]] = {}
+        for section in self._METHOD_SECTIONS:
+            for key in (defaults.get(section) or {}):
+                if key not in self._COMMON_NOT_INHERITED:
+                    owned.setdefault(key, []).append(section)
+        return {k: tuple(v) for k, v in owned.items()}
+
+    def _expand_stack_common(self, values: dict, defaults: dict | None = None) -> dict:
         """Expand a scenario layer's ``common`` section to the config root.
 
         Scenario stacks group settings shared by every standup method under
@@ -1053,6 +1085,35 @@ class RenderPlans:
             return result
         if not isinstance(common, dict):
             raise TypeError("'common' must be a mapping when present")
+
+        # Seed the per-method sections BEFORE the root expansion, and only
+        # where this scenario layer did not set the key itself. Done at the
+        # authoring layer (not after defaults are merged), absence here
+        # genuinely means "the author did not set this", so no comparison
+        # against shipped defaults is needed and an explicit per-method
+        # value always wins.
+        if defaults:
+            owned = self._method_owned_keys(defaults)
+            for key, value in common.items():
+                for section in owned.get(key, ()):
+                    section_block = result.setdefault(section, {})
+                    if not isinstance(section_block, dict) or key in section_block:
+                        continue  # author set it explicitly for this method
+                    section_block[key] = deepcopy(value)
+            for source, dest in self._COMMON_ALIASES:
+                shared = common
+                for part in source:
+                    shared = shared.get(part) if isinstance(shared, dict) else None
+                if not isinstance(shared, dict):
+                    continue
+                section_block = result.setdefault(dest[0], {})
+                if not isinstance(section_block, dict) or dest[1] in section_block:
+                    continue
+                allowed = ((defaults.get(dest[0]) or {}).get(dest[1]) or {})
+                section_block[dest[1]] = {
+                    k: v for k, v in shared.items() if not allowed or k in allowed
+                }
+
         return self.deep_merge(result, common)
 
     # Sections a scenario may nest under `modelservice:` for clarity. They
@@ -1774,9 +1835,9 @@ class RenderPlans:
         result.stacks[stack_name] = stack_errors
 
         stack_config = self._expand_stack_common(
-            {k: v for k, v in stack.items() if k != "name"}
+            {k: v for k, v in stack.items() if k != "name"}, defaults
         )
-        shared_config = self._expand_stack_common(shared or {})
+        shared_config = self._expand_stack_common(shared or {}, defaults)
         # Merge order: defaults -> shared (scenario-wide) -> stack -> CLI/setup
         # overrides. Per-stack always wins so a stack can opt out of any
         # shared value by setting it explicitly.
