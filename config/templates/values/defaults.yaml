@@ -550,7 +550,7 @@ monitoring:
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
-# Supports: nvidia, intel-i915, intel-xe, intel-gaudi, amd, google
+# Supports: nvidia, intel-xpu, intel-i915, intel-xe, intel-gaudi, amd, google
 # ============================================================================
 accelerator:
   type: nvidia
@@ -569,6 +569,8 @@ accelerator:
   memoryUtilizationArgs: "--gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL"
   kvBufferDeviceJson: ""
   # Resource names for different accelerator types (optional override)
+  # DRA drivers are tracked separately as accelerator.draDriver and are not
+  # rendered into container resource limits or requests.
   # resources:
   #   nvidia: "nvidia.com/gpu"
   #   intel-i915: "gpu.intel.com/i915"
@@ -588,8 +590,12 @@ accelerator:
 dra:
   enabled: false
   type: nvidia
+  # Keyed by accelerator type -- the chart looks the entry up by
+  # accelerator.type and builds one ResourceClaimTemplate per role.
+  # Omit `count` to let each role derive it from its own parallelism.
   # claimTemplates:
-  #   - name: nvidia
+  #   nvidia:
+  #     name: nvidia-claim-template
   #     class: gpu.nvidia.com
   #     match: "exactly"
   #     count: 1

@@ -335,7 +335,10 @@ class RenderPlans:
 
         if profile and profile != "auto":
             profile_names = [profile]
-            if profile.startswith("intel-") and profile != "intel-gaudi":
+            if profile.startswith("intel-") and profile not in (
+                "intel-gaudi",
+                "intel-xpu",
+            ):
                 profile_names.append("intel-xpu")
 
             for profile_name in reversed(profile_names):

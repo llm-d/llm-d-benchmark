@@ -106,7 +106,7 @@ accelerator:
 {% endif %}
 {% if dra is defined and dra.claimTemplates is defined %}
   resourceClaimTemplates:
-{{ dra.claimTemplates | toyaml | indent(4) }}
+{{ dra.claimTemplates | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# -------------------------------------------------------------------------- #}
@@ -346,7 +346,7 @@ decode:
 
 {% if decode.resourceClaims is defined and decode.resourceClaims %}
   resourceClaims:
-{{ decode.resourceClaims | toyaml | indent(4) }}
+{{ decode.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if decode.podSecurityContext is defined and decode.podSecurityContext %}
@@ -427,10 +427,10 @@ decode:
       limits:
         memory: {{ decode.resources.limits.memory }}
         cpu: "{{ decode.resources.limits.cpu }}"
-{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource) %}
-{% if decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
+{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource | default('')) %}
+{% if decode_accel_resource and decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.limits[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif decode_accel_resource and decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% set decode_eph_storage = decode.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -450,9 +450,9 @@ decode:
       requests:
         memory: {{ decode.resources.requests.memory }}
         cpu: "{{ decode.resources.requests.cpu }}"
-{% if decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
+{% if decode_accel_resource and decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.requests[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif decode_accel_resource and decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% if decode_eph_storage and decode_eph_resource %}
@@ -766,7 +766,7 @@ prefill:
 
 {% if prefill.resourceClaims is defined and prefill.resourceClaims %}
   resourceClaims:
-{{ prefill.resourceClaims | toyaml | indent(4) }}
+{{ prefill.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if prefill.podSecurityContext is defined and prefill.podSecurityContext %}
@@ -844,10 +844,10 @@ prefill:
       limits:
         memory: {{ prefill.resources.limits.memory }}
         cpu: "{{ prefill.resources.limits.cpu }}"
-{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource) %}
-{% if prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
+{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource | default('')) %}
+{% if prefill_accel_resource and prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.limits[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif prefill_accel_resource and prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% set prefill_eph_storage = prefill.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -867,9 +867,9 @@ prefill:
       requests:
         memory: {{ prefill.resources.requests.memory }}
         cpu: "{{ prefill.resources.requests.cpu }}"
-{% if prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
+{% if prefill_accel_resource and prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.requests[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif prefill_accel_resource and prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% if prefill_eph_storage and prefill_eph_resource %}

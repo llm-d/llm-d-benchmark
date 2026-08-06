@@ -322,6 +322,68 @@ class TestDraGracefulDegradation:
         assert values["decode"]["acceleratorType"]["labelValue"] == "Data Center Max"
 
 
+class TestDraAcceleratorResourceResolution:
+    def test_resolves_from_stable_dra_driver_name(self, resolver):
+        resolver._node_resources = NodeResources(
+            dra_drivers=["gpu.intel.com"],
+        )
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+        unresolved: list[str] = []
+
+        resolver._resolve_accelerator_resource(values, unresolved)
+        resolver._resolve_accelerator_profile(values, unresolved)
+
+        assert unresolved == []
+        assert "resource" not in values["accelerator"]
+        assert values["accelerator"]["draDriver"] == "gpu.intel.com"
+        assert values["accelerator"]["profile"] == "intel-xpu"
+        assert values["accelerator"]["type"] == "intel-xpu"
+
+    def test_multiple_dra_drivers_require_explicit_selection(self, resolver):
+        resolver._node_resources = NodeResources(
+            dra_drivers=["gpu.intel.com", "gpu.nvidia.com"],
+        )
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+
+        with pytest.raises(RuntimeError, match="Multiple DRA accelerator drivers"):
+            resolver._resolve_accelerator_resource(values, [])
+
+    def test_detected_driver_becomes_a_chart_claim_template(self, resolver):
+        resolver._node_resources = NodeResources(dra_drivers=["gpu.intel.com"])
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+
+        resolver._resolve_accelerator_resource(values, [])
+        resolver._resolve_accelerator_profile(values, [])
+        resolver._apply_dra_claim_defaults(values)
+
+        assert values["dra"]["enabled"] is True
+        assert values["dra"]["type"] == "intel-xpu"
+        assert values["dra"]["claimTemplates"] == {
+            "intel-xpu": {"class": "gpu.intel.com"}
+        }
+
+    def test_user_supplied_claim_templates_are_not_overwritten(self, resolver):
+        custom = {"intel-xpu": {"class": "gpu.intel.com", "count": 4}}
+        values = {
+            "accelerator": {"draDriver": "gpu.intel.com", "type": "intel-xpu"},
+            "dra": {"enabled": False, "claimTemplates": custom},
+        }
+
+        resolver._apply_dra_claim_defaults(values)
+
+        assert values["dra"]["enabled"] is True
+        assert values["dra"]["claimTemplates"] == custom
+
+    def test_device_plugin_clusters_get_no_dra_claim(self, resolver):
+        values = {
+            "accelerator": {"resource": "gpu.intel.com/xe", "type": "intel-xe"},
+        }
+
+        resolver._apply_dra_claim_defaults(values)
+
+        assert "dra" not in values
+
+
 class TestGpuSkuLabelHeuristic:
     """The vendor-prefix + SKU-suffix heuristic that lets the resolver match
     GPU SKU labels from any vendor without per-vendor maintenance.

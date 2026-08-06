@@ -100,6 +100,11 @@ class ClusterResourceResolver:
         "gpu.intel.com/i915": "intel-i915",
         "gpu.intel.com/xe": "intel-xe",
     }
+    # DRA driver/DeviceClass names live in a different namespace than the
+    # extended resource names above and must never be used interchangeably.
+    DRA_DRIVER_PROFILES = {
+        "gpu.intel.com": "intel-xpu",
+    }
     PROFILE_RESOURCES = {
         "nvidia": "nvidia.com/gpu",
         "amd": "amd.com/gpu",
@@ -107,6 +112,9 @@ class ClusterResourceResolver:
         "google": "google.com/tpu",
         "intel-i915": "gpu.intel.com/i915",
         "intel-xe": "gpu.intel.com/xe",
+    }
+    PROFILE_DRA_DRIVERS = {
+        "intel-xpu": "gpu.intel.com",
     }
     INTEL_XPU_RESOURCE_PRIORITY = (
         "gpu.intel.com/xe",
@@ -193,12 +201,18 @@ class ClusterResourceResolver:
         if explicit_profile and explicit_profile != "auto":
             accelerator["type"] = explicit_profile
             if accelerator.get("resource") == "auto":
-                explicit_resource = self.PROFILE_RESOURCES.get(explicit_profile)
-                if explicit_resource:
-                    accelerator["resource"] = explicit_resource
+                dra_driver = self.PROFILE_DRA_DRIVERS.get(explicit_profile)
+                if dra_driver:
+                    accelerator.pop("resource", None)
+                    accelerator["draDriver"] = dra_driver
+                else:
+                    explicit_resource = self.PROFILE_RESOURCES.get(explicit_profile)
+                    if explicit_resource:
+                        accelerator["resource"] = explicit_resource
 
         auto_fields = self.has_unresolved(result)
         if not auto_fields:
+            self._apply_dra_claim_defaults(result)
             self._propagate_network_to_methods(result)
             return result
 
@@ -213,6 +227,7 @@ class ClusterResourceResolver:
         self._resolve_network_resource(result, unresolved)
         self._resolve_affinity_node_selector(result, unresolved)
         self._resolve_accelerator_type_labels(result, unresolved)
+        self._apply_dra_claim_defaults(result)
         self._propagate_network_to_methods(result)
 
         if unresolved:
@@ -515,6 +530,18 @@ class ClusterResourceResolver:
                 f"({discovered}); set accelerator.resource or "
                 "accelerator.profile explicitly."
             )
+        # Device-plugin resources win over DRA on clusters exposing both.
+        elif len(resources.dra_drivers) == 1:
+            resolved = resources.dra_drivers[0]
+            accel.pop("resource", None)
+            accel["draDriver"] = resolved
+            self.logger.log_info(f"Resolved accelerator.draDriver: {resolved}")
+        elif len(resources.dra_drivers) > 1:
+            discovered = ", ".join(resources.dra_drivers)
+            raise RuntimeError(
+                "Multiple DRA accelerator drivers were discovered "
+                f"({discovered}); set accelerator.profile explicitly."
+            )
         elif self.dry_run:
             # A dry-run deliberately does not connect to the cluster. Keep its
             # historical NVIDIA rendering behaviour while allowing real runs
@@ -541,16 +568,52 @@ class ClusterResourceResolver:
         if accel.get("profile") != "auto":
             return
 
-        resource = accel.get("resource")
-        profile = self.ACCELERATOR_PROFILES.get(resource)
+        accelerator_identity = accel.get("resource")
+        if accelerator_identity:
+            profile = self.ACCELERATOR_PROFILES.get(accelerator_identity)
+        else:
+            accelerator_identity = accel.get("draDriver")
+            profile = self.DRA_DRIVER_PROFILES.get(accelerator_identity)
         if profile:
             accel["profile"] = profile
             accel["type"] = profile
             self.logger.log_info(
-                f"Resolved accelerator.profile: {profile} (resource={resource})"
+                "Resolved accelerator.profile: "
+                f"{profile} (identity={accelerator_identity})"
             )
         else:
             unresolved.append("accelerator.profile")
+
+    def _apply_dra_claim_defaults(self, values: dict) -> None:
+        """Turn a resolved ``accelerator.draDriver`` into a real device request.
+
+        A DRA driver is deliberately kept out of container limits/requests, so
+        without a claim the plan would render workloads with no accelerator at
+        all.  The modelservice chart builds the ``ResourceClaimTemplate`` and
+        attaches the pod ``resourceClaims`` on its own once ``dra.enabled`` and
+        a matching claim template are present.
+        """
+        accel = values.get("accelerator") or {}
+        dra_driver = accel.get("draDriver")
+        accelerator_type = accel.get("type")
+        if not dra_driver or not accelerator_type:
+            return
+
+        dra = values.setdefault("dra", {})
+        dra["enabled"] = True
+        dra["type"] = accelerator_type
+        if dra.get("claimTemplates"):
+            return
+
+        # The chart keys claim templates by accelerator type and otherwise
+        # falls back to a ``gpu.<type>.com`` DeviceClass that never exists.
+        # ``count`` stays unset so each role derives it from its own
+        # parallelism -- one entry has to serve both decode and prefill.
+        dra["claimTemplates"] = {accelerator_type: {"class": dra_driver}}
+        self.logger.log_info(
+            f"Enabled DRA claim template for {accelerator_type} "
+            f"(deviceClass={dra_driver})"
+        )
 
     def _resolve_network_resource(
         self,
