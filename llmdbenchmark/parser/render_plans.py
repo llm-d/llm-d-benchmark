@@ -1063,7 +1063,7 @@ class RenderPlans:
         """
         owned: dict[str, list[str]] = {}
         for section in self._METHOD_SECTIONS:
-            for key in (defaults.get(section) or {}):
+            for key in defaults.get(section) or {}:
                 if key not in self._COMMON_NOT_INHERITED:
                     owned.setdefault(key, []).append(section)
         return {k: tuple(v) for k, v in owned.items()}
@@ -1112,7 +1112,7 @@ class RenderPlans:
                 section_block = result.setdefault(dest[0], {})
                 if not isinstance(section_block, dict) or dest[1] in section_block:
                     continue
-                allowed = ((defaults.get(dest[0]) or {}).get(dest[1]) or {})
+                allowed = (defaults.get(dest[0]) or {}).get(dest[1]) or {}
                 section_block[dest[1]] = {
                     k: v for k, v in shared.items() if not allowed or k in allowed
                 }
