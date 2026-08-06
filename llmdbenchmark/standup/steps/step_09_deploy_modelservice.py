@@ -748,7 +748,7 @@ class DeployModelserviceStep(Step):
         per-stack ScaledObject so KEDA can query metrics and auto-generate
         the HPA. Multiple models scale independently via their own ScaledObjects.
         """
-        for stem in ("30_epp-keda-saturation-scaledobject",):
+        for stem in ("30_keda-scaledobject",):
             yaml_path = self._find_yaml(stack_path, stem)
             if not (yaml_path and self._has_yaml_content(yaml_path)):
                 continue

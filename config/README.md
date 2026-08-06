@@ -1365,6 +1365,10 @@ This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inf
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
 - `inference_extension_flow_control_queue_size` -- flow control queue depth
 - `inference_extension_flow_control_pool_saturation` -- pool saturation level
+- `llm_d_epp_flow_control_pool_saturation` -- pool saturation (0.0–1.0); KEDA
+  EPP-saturation scale trigger (`saturationThreshold`)
+- `llm_d_epp_request_running` -- running requests; KEDA EPP-saturation scale
+  trigger (`runningRequestsThreshold`)
 
 #### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 

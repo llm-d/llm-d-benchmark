@@ -547,6 +547,8 @@ monitoring:
     - inference_pool_average_queue_size
     - inference_pool_average_running_requests
     - inference_pool_ready_pods
+    - llm_d_epp_flow_control_pool_saturation
+    - llm_d_epp_request_running
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
@@ -1638,9 +1640,9 @@ wva:
 # ============================================================================
 # EPP+KEDA SATURATION AUTOSCALING
 # ============================================================================
-# Direct KEDA autoscaling using EPP pool metrics, without WVA controller.
-# Queries inference_pool_average_kv_cache_utilization and
-# inference_pool_average_queue_size directly.
+# Direct KEDA autoscaling using EPP flow-control metrics, without WVA controller.
+# Queries llm_d_epp_flow_control_pool_saturation and llm_d_epp_request_running
+# directly (see scaledObject.triggers below).
 eppKedaSaturation:
   enabled: false
   namespace: ""                 # defaults to namespace.name at render time
@@ -1658,10 +1660,21 @@ eppKedaSaturation:
     minReplicas: 1
     maxReplicas: 10
     pollingInterval: 15
-    kvCacheThreshold: "0.7"    # scale up when pool-avg KV cache > 70%
-    queueSizeThreshold: "2"    # scale up when pool-avg queue > 2 requests
-    activationThreshold: "0"
     unsafeSsl: true
+    # KEDA Prometheus triggers, fully defined here so new metrics/thresholds
+    # can be added without touching the Jinja. A scenario may redefine this
+    # entire list. Per entry: query (required), threshold, and optional
+    # name/metricType/activationThreshold. In `query`, ${poolName} and
+    # ${modelName} are substituted at render time.
+    triggers:
+      - name: pool-saturation
+        query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
+        threshold: "0.7"
+        activationThreshold: "0"
+      - name: running-requests
+        query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        threshold: "16"
+        activationThreshold: "0"
     behavior:
       scaleUp:
         stabilizationWindowSeconds: 0

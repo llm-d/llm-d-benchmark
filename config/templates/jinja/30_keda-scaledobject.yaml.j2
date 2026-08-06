@@ -1,12 +1,13 @@
 {# ============================================================================
-   30_epp-keda-saturation-scaledobject.yaml.j2
+   30_keda-scaledobject.yaml.j2
 
-   Per-stack KEDA ScaledObject for direct EPP saturation autoscaling.
-   KEDA queries Prometheus for pool-average metrics (KV cache utilization
-   and queue depth) and scales the Deployment accordingly.
+   Per-stack KEDA ScaledObject for direct EPP saturation autoscaling
+   (Prometheus triggers → HPA; no WVA/VariantAutoscaling/prometheus-adapter).
 
-   No WVA controller, no VariantAutoscaling, no prometheus-adapter.
-   Just dual Prometheus triggers → HPA.
+   Triggers come entirely from scaledObject.triggers (see defaults.yaml); a
+   scenario can redefine the whole list. Each entry: query (required),
+   threshold, optional name/metricType/activationThreshold. In `query`,
+   ${poolName} and ${modelName} are substituted at render time.
 
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
@@ -24,6 +25,7 @@
 {% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router', true) %}
 {% set prom_url = eppKedaSaturation.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local', true) %}
 {% set prom_url = prom_url ~ ':' ~ (eppKedaSaturation.prometheus.port | default(9091, true)) %}
+{% set triggers = eppKedaSaturation.scaledObject.triggers | default([], true) %}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -41,33 +43,20 @@ spec:
   maxReplicaCount: {{ eppKedaSaturation.scaledObject.maxReplicas | default(10) }}
   pollingInterval: {{ eppKedaSaturation.scaledObject.pollingInterval | default(15) }}
   triggers:
-  # Pool-average KV cache utilization (0.0–1.0)
-  # Queries Prometheus/thanos directly (configurable via eppKedaSaturation.prometheus.baseUrl)
+{% for t in triggers %}
   - type: prometheus
-    name: kv-cache
-    metricType: AverageValue
+    name: {{ t.name | default('trigger-' ~ loop.index) }}
+    metricType: {{ t.metricType | default('AverageValue') }}
     authenticationRef:
       name: prometheus-auth
     metadata:
       serverAddress: "{{ prom_url }}"
       authModes: bearer
       query: |
-        max(inference_pool_average_kv_cache_utilization{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
-      threshold: "{{ eppKedaSaturation.scaledObject.kvCacheThreshold | default('0.7') }}"
-      activationThreshold: "{{ eppKedaSaturation.scaledObject.activationThreshold | default('0') }}"
-  # Pool-average request queue size
-  - type: prometheus
-    name: queue-size
-    metricType: AverageValue
-    authenticationRef:
-      name: prometheus-auth
-    metadata:
-      serverAddress: "{{ prom_url }}"
-      authModes: bearer
-      query: |
-        max(inference_pool_average_queue_size{name="{{ pool_name }}",namespace="{{ epp_ns }}"})
-      threshold: "{{ eppKedaSaturation.scaledObject.queueSizeThreshold | default('2') }}"
-      activationThreshold: "{{ eppKedaSaturation.scaledObject.activationThreshold | default('0') }}"
+        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) }}
+      threshold: "{{ t.threshold | default('1') }}"
+      activationThreshold: "{{ t.activationThreshold | default('0') }}"
+{% endfor %}
 {% if eppKedaSaturation.scaledObject.behavior is defined %}
   advanced:
     horizontalPodAutoscalerConfig:
