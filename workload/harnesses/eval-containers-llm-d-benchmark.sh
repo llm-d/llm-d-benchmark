@@ -36,7 +36,15 @@ endpoint="${endpoint%/}"
 endpoint="${endpoint%/v1}"
 export OPENAI_API_BASE="$endpoint"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-llm-d}"  # pragma: allowlist secret (placeholder; llm-d ignores it)
-export EVAL_MODEL="openai/${LLMDBENCH_DEPLOY_CURRENT_MODEL:?model not provided}"
+# EVAL_MODEL must be the BARE served model handle, with NO provider prefix.
+# /opt/gateway/start documents it as "a BARE handle" and renders it into a
+# bifrost routing rule that carries the provider SEPARATELY:
+#   "targets": [{ "provider": "<wire>", "model": "<EVAL_MODEL>" }]
+# So an `openai/` prefix here is not a provider selector -- it becomes part of
+# the model NAME. bifrost then looks up `openai/<model>` in the OpenAI catalog,
+# finds nothing, and returns 404 "The model ... does not exist" for every agent
+# call: reward 0.0, empty agent stdout, harness rc 0. Silent green.
+export EVAL_MODEL="${LLMDBENCH_DEPLOY_CURRENT_MODEL:?model not provided}"
 
 echo "eval-containers: task=$EVAL_TASK_ID model=$EVAL_MODEL endpoint=$OPENAI_API_BASE"
 
