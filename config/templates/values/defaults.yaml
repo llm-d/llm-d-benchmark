@@ -966,8 +966,14 @@ decode:
   # Probe configuration
   probes:
     startup: *probe_startup
-    liveness: *probe_liveness
-    readiness: *probe_readiness
+    liveness:
+      <<: *probe_liveness
+      failureThreshold: 10
+      timeoutSeconds: 15
+    readiness:
+      <<: *probe_readiness
+      failureThreshold: 10
+      timeoutSeconds: 15
 
   # vLLM configuration
   vllm:
