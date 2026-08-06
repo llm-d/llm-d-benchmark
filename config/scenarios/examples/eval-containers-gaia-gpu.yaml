@@ -32,7 +32,6 @@
 scenario:
   - name: "eval-gaia-gpu"
 
-<<<<<<< HEAD
     common:
       model:
         name: Qwen/Qwen3.6-27B
@@ -40,24 +39,14 @@ scenario:
         path: models/Qwen/Qwen3.6-27B
         huggingfaceId: Qwen/Qwen3.6-27B
         size: 1Ti
-        maxModelLen: 16000
+        # 32768, not 16000: at 16k, tasks that carry a repo's worth of context
+        # plus a <think> block hit the ceiling mid-solution and the request is
+        # rejected rather than answered. Note this HALVES per-pod concurrency --
+        # KV cache is a fixed token budget, so doubling context doubles the
+        # per-request reservation. Size -j off free GPUs accordingly.
+        maxModelLen: 32768
         blockSize: 64
         gpuMemoryUtilization: 0.95
-=======
-    # -------------------------------------------------------------------------
-    # Model -- the SERVED model. model.name flows to EVAL_MODEL=<name>,
-    # so it MUST be the id the agent calls.
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3.6-27B
-      shortName: qwen-qwen36-27b
-      path: models/Qwen/Qwen3.6-27B
-      huggingfaceId: Qwen/Qwen3.6-27B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
->>>>>>> 9df43bf (fix(eval-containers): EVAL_MODEL must be a bare model handle)
 
       storage:
         modelPvc:
@@ -159,6 +148,11 @@ scenario:
             - --enable-auto-tool-choice
             - --tool-call-parser
             - qwen3_coder
+            # --reasoning-parser qwen3: Qwen3.6-27B is a hybrid-reasoning model.
+            # Without this flag vLLM returns the <think> trace as ordinary content,
+            # so the agent receives reasoning prose where it expects a tool call.
+            - --reasoning-parser
+            - qwen3
 
     harness:
       name: eval-containers
