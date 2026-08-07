@@ -32,116 +32,117 @@
 scenario:
   - name: "eval-gaia-gpu"
 
-    # -------------------------------------------------------------------------
-    # Model -- the SERVED model. model.name flows to EVAL_MODEL=openai/<name>,
-    # so it MUST be the id the agent calls.
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3.6-27B
-      shortName: qwen-qwen36-27b
-      path: models/Qwen/Qwen3.6-27B
-      huggingfaceId: Qwen/Qwen3.6-27B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
+    common:
+      model:
+        name: Qwen/Qwen3.6-27B
+        shortName: qwen-qwen36-27b
+        path: models/Qwen/Qwen3.6-27B
+        huggingfaceId: Qwen/Qwen3.6-27B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
 
-    # -------------------------------------------------------------------------
-    # Affinity / Node Selection -- target GPU nodes.
-    # -------------------------------------------------------------------------
-    affinity:
-      enabled: true
-      nodeSelector:
-        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+      storage:
+        modelPvc:
+          size: 1Ti
+        uriProtocol: hf
 
-    # NOTE: deliberately NO top-level `accelerator:` block. A top-level
-    # accelerator.count:0 forces accelerator.type=cpu in 13_ms-values.yaml.j2
-    # and NO nvidia.com/gpu limit gets stamped. GPU/pod = decode.parallelism
-    # .tensor * dataLocal = 1.
+      images:
+        vllm:
+          repository: docker.io/vllm/vllm-openai
+          tag: latest
+        benchmark:
+          # codex agent: client-side web search, works on non-Anthropic models.
+          repository: ghcr.io/exgentic/evals/gaia--codex-standalone
+          tag: latest
+          pullPolicy: Always
 
-    images:
-      vllm:
-        repository: docker.io/vllm/vllm-openai
-        tag: latest
-      benchmark:
-        # codex agent: client-side web search, works on non-Anthropic models.
-        repository: ghcr.io/exgentic/evals/gaia--codex-standalone
-        tag: latest
-        pullPolicy: Always
-
-    modelservice:
-      enabled: true
+      vllmCommon:
+        shmMemory: 2Gi
+        volumes:
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 2Gi
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # =========================================================================
     standalone:
       enabled: false
 
-    inferenceExtension:
-      monitoring:
-        prometheus:
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, router, and gateway.
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      inferenceExtension:
+        monitoring:
+          prometheus:
+            enabled: false
+
+      routing:
+        proxy:
           enabled: false
 
-    vllmCommon:
-      shmMemory: 2Gi
-      volumes:
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 2Gi
-      volumeMounts:
-        - name: dshm
-          mountPath: /dev/shm
+      # epponly (llm-d "Standalone Mode" router): no k8s Gateway; clients hit the
+      # EPP service directly. step_03 discovers this via find_epponly_endpoint().
+      gateway:
+        className: epponly
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
 
-    # Decode-only (aggregated serving); prefill disabled. Scale serving capacity
-    # via decode.replicas below, not prefill.
-    prefill:
-      enabled: false
+      # Decode-only (aggregated serving); prefill disabled. Scale serving capacity
+      # via decode.replicas below, not prefill.
+      prefill:
+        enabled: false
 
-    decode:
-      enabled: true
-      # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
-      # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
-      replicas: 10
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-H100-80GB-HBM3
-      parallelism:
-        tensor: 1
-        data: 1
-        dataLocal: 1
-        workers: 1
-      resources:
-        limits:
-          memory: 64Gi
-          cpu: "16"
-        requests:
-          memory: 16Gi
-          cpu: "4"
-      vllm:
-        # `custom` auto-generates the full vLLM serve command (build_vllm_command)
-        # honoring model.maxModelLen (--max-model-len), gpuMemoryUtilization, and
-        # parallelism.tensor (--tensor-parallel-size), plus additionalFlags below.
-        # `imageDefault` renders only --model/--port/--served-model-name and lets
-        # the image entrypoint pick the ctx -> vLLM would use Qwen3's native 40960
-        # and OOM the KV cache on one H100.
-        modelCommand: custom
-        # build_vllm_command already emits --max-model-len/--gpu-memory-utilization
-        # /--tensor-parallel-size; only add flags it does NOT emit:
-        additionalFlags:
-          - --enable-auto-tool-choice
-          - --tool-call-parser
-          - qwen3_coder
-
-    # -------------------------------------------------------------------------
-    # Storage -- accessModes/storageClassName come from --cluster-config.
-    # (Qwen3-32B ~65GB; give the model PVC room.)
-    # -------------------------------------------------------------------------
-    storage:
-      modelPvc:
-        size: 1Ti
-      uriProtocol: hf
-
-    timeouts:
-      controlWait: 300
+      decode:
+        enabled: true
+        # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
+        # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
+        replicas: 10
+        acceleratorType:
+          labelKey: nvidia.com/gpu.product
+          labelValue: NVIDIA-H100-80GB-HBM3
+        parallelism:
+          tensor: 1
+          data: 1
+          dataLocal: 1
+          workers: 1
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 16Gi
+            cpu: "4"
+        vllm:
+          # `custom` auto-generates the full vLLM serve command (build_vllm_command)
+          # honoring model.maxModelLen (--max-model-len), gpuMemoryUtilization, and
+          # parallelism.tensor (--tensor-parallel-size), plus additionalFlags below.
+          # `imageDefault` renders only --model/--port/--served-model-name and lets
+          # the image entrypoint pick the ctx -> vLLM would use Qwen3's native 40960
+          # and OOM the KV cache on one H100.
+          modelCommand: custom
+          # build_vllm_command already emits --max-model-len/--gpu-memory-utilization
+          # /--tensor-parallel-size; only add flags it does NOT emit:
+          additionalFlags:
+            - --enable-auto-tool-choice
+            - --tool-call-parser
+            - qwen3_coder
 
     harness:
       name: eval-containers
@@ -153,19 +154,4 @@ scenario:
         cpu: "2"
         memory: 6Gi
 
-    routing:
-      proxy:
-        enabled: false
-
-    # epponly (llm-d "Standalone Mode" router): no k8s Gateway; clients hit the
-    # EPP service directly. step_03 discovers this via find_epponly_endpoint().
-    gateway:
-      className: epponly
-      resources:
-        requests:
-          cpu: "500m"
-          memory: 512Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
     workDir: "~/data/eval-gaia-gpu"

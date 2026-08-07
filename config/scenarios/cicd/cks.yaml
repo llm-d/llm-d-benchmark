@@ -60,4 +60,4 @@ scenario:
       experimentProfile: sanity_random.yaml
 #      executable: llm-d-benchmark.py
 
-    workDir: /tmp/llmdbenchcicd-cks/
+#    workDir: /tmp/llmdbenchcicd-cks/

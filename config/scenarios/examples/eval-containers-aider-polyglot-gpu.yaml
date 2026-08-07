@@ -31,105 +31,101 @@
 scenario:
   - name: "eval-aider-polyglot-gpu"
 
-    # -------------------------------------------------------------------------
-    # Model -- the SERVED model. model.name flows to EVAL_MODEL=openai/<name>.
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3.6-27B
-      shortName: qwen-qwen36-27b
-      path: models/Qwen/Qwen3.6-27B
-      huggingfaceId: Qwen/Qwen3.6-27B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
+    common:
+      model:
+        name: Qwen/Qwen3.6-27B
+        shortName: qwen-qwen36-27b
+        path: models/Qwen/Qwen3.6-27B
+        huggingfaceId: Qwen/Qwen3.6-27B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
 
-    affinity:
-      enabled: true
-      nodeSelector:
-        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+      storage:
+        modelPvc:
+          size: 1Ti
+        uriProtocol: hf
 
-    # NOTE: deliberately NO top-level `accelerator:` block (a count:0 would force
-    # accelerator.type=cpu and stamp no GPU). GPU/pod = decode.parallelism.tensor
-    # * dataLocal = 1 (TP=1, single GPU).
+        images:
+          vllm:
+            repository: docker.io/vllm/vllm-openai
+            tag: latest
+          benchmark:
+            repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
+            tag: latest
+            pullPolicy: Always
 
-    images:
-      vllm:
-        repository: docker.io/vllm/vllm-openai
-        tag: latest
-      benchmark:
-        repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
-        tag: latest
-        pullPolicy: Always
+      vllmCommon:
+        shmMemory: 4Gi
+        volumes:
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 4Gi
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
 
-    # Qwen3-32B weights are public; the eval itself pulls nothing from HF, so
-    # skip the framework's HF_TOKEN injection (no llm-d-hf-token secret needed).
-    huggingface:
+    standalone:
       enabled: false
 
     modelservice:
       enabled: true
-    standalone:
-      enabled: false
 
-    inferenceExtension:
-      monitoring:
-        prometheus:
+      inferenceExtension:
+        monitoring:
+          prometheus:
+            enabled: false
+
+      routing:
+        proxy:
           enabled: false
 
-    vllmCommon:
-      shmMemory: 4Gi
-      volumes:
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 4Gi
-      volumeMounts:
-        - name: dshm
-          mountPath: /dev/shm
+      gateway:
+        className: epponly
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
 
-    prefill:
-      enabled: false
+      prefill:
+        enabled: false
 
-    decode:
-      enabled: true
-      # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
-      # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
-      replicas: 10
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-H100-80GB-HBM3
-      # TP=1 => 1 GPU per decode pod (tensor * dataLocal = 1).
-      parallelism:
-        tensor: 1
-        data: 1
-        dataLocal: 1
-        workers: 1
-      resources:
-        limits:
-          memory: 64Gi
-          cpu: "16"
-        requests:
-          memory: 16Gi
-          cpu: "4"
-      vllm:
-        # `custom` auto-generates the full serve command honoring maxModelLen,
-        # gpuMemoryUtilization, and tensor-parallel-size.
-        modelCommand: custom
-        # Qwen3.6 tool/function calling: qwen3_coder parser.
-        additionalFlags:
-          - --enable-auto-tool-choice
-          - --tool-call-parser
-          - qwen3_coder
-
-    storage:
-      modelPvc:
-        size: 1Ti
-      uriProtocol: hf
-
-    timeouts:
-      controlWait: 300
+      decode:
+        enabled: true
+        # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
+        # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
+        replicas: 10
+        acceleratorType:
+          labelKey: nvidia.com/gpu.product
+          labelValue: NVIDIA-H100-80GB-HBM3
+        # TP=1 => 1 GPU per decode pod (tensor * dataLocal = 1).
+        parallelism:
+          tensor: 1
+          data: 1
+          dataLocal: 1
+          workers: 1
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 16Gi
+            cpu: "4"
+        vllm:
+          # `custom` auto-generates the full serve command honoring maxModelLen,
+          # gpuMemoryUtilization, and tensor-parallel-size.
+          modelCommand: custom
+          # Qwen3.6 tool/function calling: qwen3_coder parser.
+          additionalFlags:
+            - --enable-auto-tool-choice
+            - --tool-call-parser
+            - qwen3_coder
 
     harness:
       name: eval-containers
@@ -148,17 +144,4 @@ scenario:
         - name: EVAL_TIMEOUT
           value: "1500"
 
-    routing:
-      proxy:
-        enabled: false
-
-    gateway:
-      className: epponly
-      resources:
-        requests:
-          cpu: "500m"
-          memory: 512Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
     workDir: "~/data/eval-aider-polyglot-gpu"

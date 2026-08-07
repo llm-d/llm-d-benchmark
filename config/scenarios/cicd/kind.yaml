@@ -81,6 +81,9 @@ scenario:
       monitoring:
         installPrometheusCrds: true
 
+      control:
+        waitTimeout: 20
+
     # Standalone deployment config (disabled -- deploy method is modelservice)
     # Standalone config is kept as fallback for standalone testing
     standalone:
@@ -96,7 +99,14 @@ scenario:
           cpu: "0"
 
       vllm:
-        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port 8000 --served-model-name ${model.name}"
+        modelCommand: imageDefault
+        args:
+          - "--model"
+          - "/model-cache/$(MODEL_PATH)"
+          - "--port"
+          - "$(VLLM_INFERENCE_PORT)"
+          - "--served-model-name"
+          - "$(MODEL_NAME)"
 
     # Modelservice configuration
     modelservice:
@@ -115,6 +125,10 @@ scenario:
           requests:
             cpu: "250m"
             memory: 256Mi
+
+      routing:
+        proxy:
+          enabled: false
 
       # Minimal EPP + Envoy resources for Kind. The llm-d-router chart's
       # upstream defaults (EPP: 4 CPU / 8 GiB req, 16 GiB limit; Envoy
@@ -163,6 +177,7 @@ scenario:
 
         vllm:
           modelCommand: imageDefault
+          additionalFlags: []
 
       # Prefill configuration -- use image's default entrypoint (inference-sim)
       prefill:
@@ -185,10 +200,7 @@ scenario:
 
         vllm:
           modelCommand: imageDefault
-
-    # Short timeout for Kind clusters
-    control:
-      waitTimeout: 20
+          additionalFlags: []
 
     # Workload -- minimal resources for Kind
     harness:
@@ -203,3 +215,5 @@ scenario:
     # FMA config is kept as fallback for fma testing
     fma:
       enabled: false
+
+    workDir: /tmp/llmdbenchcicd-kind/
