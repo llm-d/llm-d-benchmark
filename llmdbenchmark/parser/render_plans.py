@@ -1102,7 +1102,20 @@ class RenderPlans:
                     section_block = result.setdefault(section, {})
                     if not isinstance(section_block, dict) or key in section_block:
                         continue  # author set it explicitly for this method
-                    section_block[key] = deepcopy(value)
+                    inherited = deepcopy(value)
+                    # A section may own only part of the shared block --
+                    # `monitoring` at the root carries installPrometheusCrds
+                    # and friends, while decode/prefill model only
+                    # `podmonitor`. Copying the whole thing trips the
+                    # schema's extra="forbid". Keep what the section models.
+                    allowed = (defaults.get(section) or {}).get(key)
+                    if isinstance(allowed, dict) and isinstance(inherited, dict):
+                        inherited = {
+                            k: v for k, v in inherited.items() if k in allowed
+                        }
+                        if not inherited:
+                            continue
+                    section_block[key] = inherited
             for source, dest in self._COMMON_ALIASES:
                 shared = common
                 for part in source:
