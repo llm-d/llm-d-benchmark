@@ -769,9 +769,10 @@ class DeployModelserviceStep(Step):
     ) -> None:
         """Apply per-stack generic KEDA ScaledObjects (template 31).
 
-        TriggerAuthentication was already applied once per namespace by step_03.
-        This method only applies the ScaledObjects template for this stack.
-        Not gated on is_openshift.
+        step_03 applied the TriggerAuthentication (bearer-secret) and the
+        ScaledObjects template once for the first stack in each namespace.
+        This method re-applies the ScaledObjects template for each additional
+        stack (idempotent kubectl apply). Not gated on is_openshift.
         """
         yaml_path = self._find_yaml(stack_path, "31_keda-scaledobjects")
         if not (yaml_path and self._has_yaml_content(yaml_path)):
