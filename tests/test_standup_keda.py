@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from llmdbenchmark.standup.keda import stacks_enabling_keda, install_keda_for_namespace
+from llmdbenchmark.standup.lib.keda import stacks_enabling_keda, install_keda_for_namespace
 from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
     WorkloadMonitoringStep,
 )
