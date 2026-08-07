@@ -642,7 +642,7 @@ class UninstallHelmStep(Step):
         if not pairs:
             return
 
-        # Per-stack: delete ScaledObject (rendered as 30_epp-keda-saturation-scaledobject.yaml.j2).
+        # Per-stack: delete ScaledObject (rendered as 30_keda-scaledobject.yaml.j2).
         # These are not Helm-managed; `kubectl delete` is idempotent.
         context.logger.log_info("Deleting EPP+KEDA ScaledObjects...")
         for stack_path, cfg in pairs:
@@ -653,9 +653,7 @@ class UninstallHelmStep(Step):
             if not epp_keda_ns:
                 continue
 
-            scaledobject_yaml = _find_yaml(
-                stack_path, "30_epp-keda-saturation-scaledobject"
-            )
+            scaledobject_yaml = _find_yaml(stack_path, "30_keda-scaledobject")
             if scaledobject_yaml and _has_yaml_content(scaledobject_yaml):
                 result = cmd.kube(
                     "delete",

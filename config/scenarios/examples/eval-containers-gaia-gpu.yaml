@@ -161,15 +161,11 @@ scenario:
     # EPP service directly. step_03 discovers this via find_epponly_endpoint().
     gateway:
       className: epponly
-
-    infrastructure:
-      gateway:
-        resources:
-          requests:
-            cpu: "500m"
-            memory: 512Mi
-          limits:
-            cpu: "2"
-            memory: 2Gi
-
+      resources:
+        requests:
+          cpu: "500m"
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
     workDir: "~/data/eval-gaia-gpu"

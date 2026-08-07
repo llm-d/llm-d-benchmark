@@ -179,11 +179,23 @@ class DeployHarnessLocalStep(Step):
                     force=True,
                 )
                 for name in names:
+                    # In debug mode the container runs 'sleep infinity', so the
+                    # wait always times out -- there is no harness status to read.
+                    if not context.harness_debug:
+                        error = self._exit_status_error(cmd, runtime, name, timeout)
+                        if error:
+                            errors.append(error)
                     self._capture_and_remove(cmd, runtime, name, results_dir)
 
             context.experiment_ids.append(experiment_id)
 
         if errors:
+            # Non-fatal in the same sense as the k8s wait step: partial results
+            # are already on the host via the /requests bind-mount.
+            context.logger.log_warning(
+                f"Harness container(s) did not complete cleanly; partial "
+                f"results and .log files may still be under {results_dir}"
+            )
             return self._fail(stack_path, "; ".join(errors), errors)
 
         return StepResult(
@@ -205,6 +217,38 @@ class DeployHarnessLocalStep(Step):
         if tname:
             return f"{harness_name}-{tname}-{timestamp}-{rand}"
         return f"{harness_name}-{timestamp}-{rand}"
+
+    def _exit_status_error(self, cmd, runtime, name, timeout) -> str | None:
+        """Return an error string if harness container *name* did not exit 0.
+
+        ``<runtime> wait`` prints the exit code(s) to stdout and exits 0 itself,
+        so the wait's own status says nothing about the harness. Ask the runtime
+        for the container's terminal state instead. Must be called before
+        _capture_and_remove(), which removes the container.
+        """
+        result = cmd.execute(
+            f"{runtime} inspect "
+            f"-f '{{{{.State.Status}}}} {{{{.State.ExitCode}}}}' {name}",
+            check=False,
+            force=True,
+        )
+        fields = (result.stdout or "").strip().split()
+        if not result.success or len(fields) != 2:
+            return f"Could not read exit status of harness container {name}"
+
+        status, exit_code = fields
+        if status != "exited":
+            return (
+                f"Harness container {name} did not finish within {timeout}s "
+                f"(status={status}); raise --wait-timeout or check that "
+                f"'{name}.log' shows progress"
+            )
+        if exit_code != "0":
+            return (
+                f"Harness container {name} exited {exit_code}; "
+                f"see '{name}.log' in the results dir"
+            )
+        return None
 
     def _capture_and_remove(self, cmd, runtime, name, results_dir: Path) -> None:
         result = cmd.execute(f"{runtime} logs {name}", check=False, force=True)

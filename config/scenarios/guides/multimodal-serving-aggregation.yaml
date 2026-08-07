@@ -1,0 +1,445 @@
+# MULTIMODAL OPTIMIZED BASELINE (AGGREGATION) WELL LIT PATH for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/multimodal-serving/aggregation
+#
+# Routes multimodal (text + image) traffic with the token-based stack, matching
+# the optimized-baseline reference:
+#   * prefix-cache-affinity-filter selects the endpoint set by estimating
+#     multimodal prompt prefix-cache reuse (text + image content hashes).
+#   * token-load-scorer picks within the set on queued prefill token load; the
+#     multimodal token-producer feeds it per-request token counts, estimating
+#     each image's contribution from its resolution.
+#
+# Notes:
+# - Default model is Qwen/Qwen3-VL-32B-Instruct with TP=2 (2 GPUs per replica).
+# - Prefix caching is left ENABLED (the affinity filter depends on it) -- unlike
+#   the text optimized-baseline, this scenario does NOT pass
+#   --no-enable-prefix-caching.
+
+scenario:
+  # ============================================================================
+  # Multimodal Optimized Baseline - Qwen3-VL-32B-Instruct with 8 decode pods (TP=2)
+  # ============================================================================
+  - name: "multimodal-serving-aggregation"
+
+    # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
+    # -------------------------------------------------------------------------
+    # When kustomize.enabled is true (or `-t kustomize` is passed) this
+    # scenario is deployed by applying the UPSTREAM llm-d guide directly
+    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
+    # defined ENTIRELY by the guide's own manifests:
+    #
+    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
+    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
+    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
+    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
+    #     (only run/workload treatments still apply).
+    #
+    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
+    # below:
+    #   patches / overlayPath           -> modelserver (the workload pods)
+    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
+    #   guideVariableOverrides          -> override the guide README's ${VAR}
+    # See docs/kustomize.md for the full reference and worked examples.
+    #
+    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
+    # (the deploy is keyed on guideName with no per-stack uniquification --
+    # stacks would collide). Use the modelservice method for multi-model.
+    #
+    # When kustomize.enabled is false (the DEFAULT) this whole block is
+    # inert and the scenario deploys via modelservice/standalone as
+    # configured further below.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      # The multimodal aggregation guide is nested under guides/multimodal-serving/;
+      # guideName is the path segment beneath guides/ (README + modelserver live at
+      # guides/multimodal-serving/aggregation/).
+      guideName: "multimodal-serving/aggregation"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+      # Inline kustomize strategic merge patches applied on top of the
+      # guide's modelserver base. Default is empty -- the upstream guide
+      # already injects HF_TOKEN from the `llm-d-hf-token` Secret (which
+      # the benchmark's standup auto-creates from the HF_TOKEN env var),
+      # so no patch is needed for gated-model access.
+      #
+      # Use this list to override anything else upstream sets -- e.g.
+      # bump/drop replicas or pin a priorityClassName:
+      #
+      #   patches:
+      #     - patch: |
+      #         apiVersion: apps/v1
+      #         kind: Deployment
+      #         metadata:
+      #           name: decode
+      #         spec:
+      #           replicas: 2
+      #           template:
+      #             spec:
+      #               priorityClassName: nightly-gpu-critical
+      patches: []
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-VL-32B-Instruct
+      shortName: qwen-qwen3-vl-32b-instruct
+      path: models/Qwen/Qwen3-VL-32B-Instruct
+      huggingfaceId: Qwen/Qwen3-VL-32B-Instruct
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # -------------------------------------------------------------------------
+    # Note: inferenceModel is enabled via the modelservice chart when this
+    # scenario is deployed. The routing is handled through the gaie values.
+
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # -------------------------------------------------------------------------
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H200-141GB-HBM3e      # OpenShift
+    #     # gpu.nvidia.com/model: H200                          # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-h200-141gb # GKE
+
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      gateway:
+        className: epponly
+
+      # -------------------------------------------------------------------------
+      # Routing / GAIE Configuration
+      # -------------------------------------------------------------------------
+      router:
+        extraServicePorts:
+          - name: http
+            port: 80
+            protocol: TCP
+            targetPort: 8081
+        epp:
+          replicas: 1
+          flags:
+            v: 2
+          pluginsConfigFile: "multimodal-aggregation-plugins.yaml"
+          pluginsCustomConfig:
+            multimodal-aggregation-plugins.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
+              # Token-based routing, matching the aggregation reference stack:
+              # prefix-cache-affinity-filter selects the endpoint set, token-load-scorer
+              # picks within it on queued prefill token load. The multimodal token-producer
+              # stays in the pipeline -- the scorer needs per-request token counts, and
+              # image inputs have no text length to read, so each image is estimated
+              # from its resolution and folded in as a content-hash-weighted block.
+              plugins:
+              - type: token-producer
+                parameters:
+                  estimate:
+                    image:
+                      mode: dynamic
+                      defaultResolution:
+                        width: 1280
+                        height: 720
+                      dynamic:
+                        # Count-correct for Qwen3-VL: one visual token per 32x32-pixel
+                        # region (patch 16 x spatial merge 2 -- measured 880 tokens for
+                        # a 1280x720 image against the served model). Derive from your
+                        # model's preprocessor config for other architectures.
+                        factor: 1024
+                    video:
+                      defaultResolution:
+                        width: 1280
+                        height: 720
+                      defaultDuration: 10
+                      maxVideoTokens: 12288
+                      tokensPerFrame:
+                        mode: dynamic
+                        dynamic:
+                          factor: 1024
+                      frames:
+                        mode: sampled
+                        maxFrames: 768
+                        minFrames: 4
+                        sampled:
+                          sampleFPS: 2
+                          temporalPatchSize: 2
+              - type: approx-prefix-cache-producer
+              - type: inflight-load-producer
+              - type: prefix-cache-affinity-filter
+                parameters:
+                  # Measured for Qwen3-VL-32B-Instruct on H200 141 GB (TP=2) with
+                  # guides/recipes/router/calibration (text prefill; vision-encoder
+                  # prefill is not exercised by the calibration workload).
+                  peakPrefillThroughput: 15751
+                  # The workload's cacheable fraction caps at ~0.70 (the unique question
+                  # is never a cache hit), so the plugin's 0.8 default can never engage
+                  # affinity for multimodal prompts of this shape. Set the threshold
+                  # below the maximum cacheable fraction of your traffic.
+                  affinityThreshold: 0.6
+                  # 2x the plugin default (18000). Token counts price an image token
+                  # like a text token, but vision-encoder time makes image-heavy
+                  # prefill slower per token than the text-calibrated
+                  # peakPrefillThroughput implies, so the filter's predicted-TTFT
+                  # milliseconds run light of wall-clock on this workload. Doubling
+                  # the gate restores the intended pinning depth. Reduce toward the
+                  # default for text-dominant traffic.
+                  maxTTFTPenaltyMs: 36000
+              - type: token-load-scorer
+              schedulingProfiles:
+              - name: default
+                plugins:
+                - pluginRef: prefix-cache-affinity-filter
+                - pluginRef: token-load-scorer
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        proxy:
+          # CLI args for the Envoy sidecar. Override the chart's defaults of
+          # `--log-level trace` (very expensive under load) and no `--concurrency`
+          # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+          # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+          # equivalent below; trace-level logging would burn a meaningful share of
+          # the sidecar's CPU at high QPS.
+          args:
+            - "--service-node"
+            - "envoy-sidecar"
+            - "--log-level"
+            - "warn"
+            - "--concurrency"
+            - "8"
+            - "--drain-strategy"
+            - "immediate"
+            - "--drain-time-s"
+            - "60"
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+          # Resource requests and limits for the Envoy sidecar.
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        inferencePool:
+          failureMode: "FailOpen"
+          providerConfig:
+            destinationRule:
+              trafficPolicy:
+                connectionPool:
+                  http:
+                    http1MaxPendingRequests: 256000
+                    maxRequestsPerConnection: 256000
+                    http2MaxRequests: 256000
+                    idleTimeout: "900s"
+                  tcp:
+                    maxConnections: 256000
+                    maxConnectionDuration: "1800s"
+                    connectTimeout: "900s"
+        modelServers:
+          protocol: http
+          matchLabels:
+            llm-d.ai/guide: "multimodal-aggregation"
+        tracing:
+          otelExporterEndpoint: "http://localhost:4317"
+          sampling:
+            sampler: "parentbased_traceidratio"
+            samplerArg: "0.1"
+
+      # -------------------------------------------------------------------------
+      # HTTPRoute Configuration
+      # requestTimeout: end-to-end Gateway-API HTTPRoute timeout the istio
+      # gateway enforces per request. Long agentic turns that exceed it are
+      # aborted by the gateway with a 502 (surfaces as "connection reset by
+      # peer" on the decode routing-proxy loopback hop). Set "0s" to disable.
+      # -------------------------------------------------------------------------
+      httpRoute:
+        requestTimeout: "300s"
+        backendRequestTimeout: "0s"
+
+    standalone:
+      enabled: false
+
+    # NOTE: the `kustomize` deploy method is configured at the TOP of this
+    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
+    # because enabling it overrides this entire scenario -- see
+    # docs/kustomize.md.
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 8
+      vllm:
+        # Prefix caching is left ON (the prefix-cache-affinity-filter relies on
+        # it). --mm-processor-cache-gb sizes the multimodal (image) preprocessor
+        # cache; --tensor-parallel-size follows $TP_SIZE (parallelism.tensor: 2).
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --tensor-parallel-size $TP_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --mm-processor-cache-gb 20 \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      # TP=2 -- two GPUs per decode pod (16 GPUs across 8 replicas). The
+      # per-pod accelerator count is derived from parallelism.tensor.
+      parallelism:
+        tensor: 2
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      # Resource configuration (2 GPUs per replica, per the guide's GPU overlay).
+      resources:
+        limits:
+          memory: 256Gi
+          cpu: "16"
+        requests:
+          memory: 128Gi
+          cpu: "8"
+
+      # No customCommand -- the vLLM serve command is auto-generated
+      # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # No custom env vars for this scenario -- uses default ENVVARS_TO_YAML
+      # mechanism. Auto-populated vars (UCX_TLS, VLLM_NIXL_*, etc.) are set
+      # by the preprocess script at pod runtime.
+      # -----------------------------------------------------------------------
+      extraEnvVars: []
+
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557  # NIXL side channel port
+            protocol: TCP
+          - containerPort: 8200  # Metrics port
+            name: metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+
+      # -----------------------------------------------------------------------
+      # Additional Volume Mounts
+      # -----------------------------------------------------------------------
+      additionalVolumeMounts: []
+
+      # -----------------------------------------------------------------------
+      # Additional Volumes
+      # -----------------------------------------------------------------------
+      additionalVolumes: []
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+    vllmCommon:
+#      priorityClassName: nightly-gpu-critical
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 20Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # -------------------------------------------------------------------------
+    storage:
+      modelPvc:
+        size: 1Ti
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # -------------------------------------------------------------------------
+    workDir: "~/data/multimodal-serving-aggregation"
+
+    harness:
+      name: inference-perf
+      experimentProfile: guide_multimodal-serving_1.yaml

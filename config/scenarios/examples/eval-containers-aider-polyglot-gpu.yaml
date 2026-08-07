@@ -154,15 +154,11 @@ scenario:
 
     gateway:
       className: epponly
-
-    infrastructure:
-      gateway:
-        resources:
-          requests:
-            cpu: "500m"
-            memory: 512Mi
-          limits:
-            cpu: "2"
-            memory: 2Gi
-
+      resources:
+        requests:
+          cpu: "500m"
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
     workDir: "~/data/eval-aider-polyglot-gpu"

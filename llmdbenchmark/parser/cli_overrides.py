@@ -23,13 +23,18 @@ same thing they would inside the scenario YAML.
 
 from __future__ import annotations
 
+import re
 import datetime
 import fnmatch
 from typing import Any
 
 import yaml
 
-from llmdbenchmark.experiment.parser import dotted_to_nested
+from llmdbenchmark.experiment.parser import (
+    DOT_SENTINEL,
+    dotted_to_nested,
+    restore_dots,
+)
 
 # Selector that matches every stack -- what a pair with no ``stack:`` prefix
 # gets. Also the bucket the ``--cluster-config`` file is folded into, so the
@@ -42,6 +47,28 @@ _GLOB_CHARS = "*?["
 
 class OverrideParseError(ValueError):
     """Raised when a ``--set`` expression cannot be parsed."""
+
+
+def protect_internal_dotting(raw: str) -> str:
+    """Let a key segment carry a literal dot, e.g. a K8s annotation name.
+
+    A double-quoted run inside the key has its dots swapped for
+    :data:`~llmdbenchmark.experiment.parser.DOT_SENTINEL`, so path splitting
+    leaves them alone; ``dotted_to_nested`` restores them afterwards::
+
+        annotations.pod."k8s.v1.cni.cncf.io/networks"=multi-nic
+        -> {"annotations": {"pod": {"k8s.v1.cni.cncf.io/networks": ...}}}
+
+    Applied to the KEY half only. Quoting is load-bearing on the value side
+    too -- it protects commas from the pair splitter and is the documented
+    escape hatch for YAML's octal reading (``"012"``) and for multi-line
+    folding (``"a\\nb"``) -- so stripping quotes across a whole expression
+    would silently break those.
+    """
+    processed = raw
+    for match in re.findall(r'"([^"]*)"', raw):
+        processed = processed.replace(f'"{match}"', match.replace(".", DOT_SENTINEL))
+    return processed
 
 
 def split_override_pairs(raw: str) -> list[str]:
@@ -150,7 +177,9 @@ def parse_override_pair(pair: str) -> tuple[str, str, Any]:
         )
 
     key_part, raw_value = pair.split("=", 1)
-    key_part = key_part.strip()
+    # Protect quoted dots in the KEY only -- the value keeps its quoting,
+    # which YAML still needs (see protect_internal_dotting).
+    key_part = protect_internal_dotting(key_part.strip())
 
     selector = GLOBAL_SELECTOR
     if ":" in key_part:
@@ -194,16 +223,19 @@ def parse_cli_overrides(
         for pair in split_override_pairs(raw):
             selector, key, value = parse_override_pair(pair)
             bucket = flat_by_selector.setdefault(selector, {})
-            secret = is_secret_path(key)
+            # `key` still carries the sentinel so dotted_to_nested can split
+            # it correctly; everything user-facing uses the restored form.
+            shown_key = restore_dots(key)
+            secret = is_secret_path(shown_key)
             if key in bucket:
                 shown = f"({REDACTED})" if secret else f"({bucket[key]!r} -> {value!r})"
                 warnings.append(
-                    f"override '{key}' set more than once for "
+                    f"override '{shown_key}' set more than once for "
                     f"'{selector}' -- last value wins {shown}"
                 )
             if value is None:
                 warnings.append(
-                    f"override '{key}' resolves to null, which cannot clear a "
+                    f"override '{shown_key}' resolves to null, which cannot clear a "
                     "value (null is treated as 'no value' by the config merge) "
                     "-- use an explicit empty string ('') instead"
                 )
@@ -213,7 +245,7 @@ def parse_cli_overrides(
             ):
                 # The message quotes the raw value, so it is suppressed
                 # entirely for credential paths rather than redacted.
-                warnings.append(f"override '{key}': {surprise}")
+                warnings.append(f"override '{shown_key}': {surprise}")
             bucket[key] = value
 
     nested_by_selector: dict[str, dict] = {}
@@ -337,20 +369,37 @@ def redact(dotted_path: str, value: Any) -> Any:
 _MISSING = object()
 
 
-def dotted_leaves(nested: dict, prefix: str = "") -> list[tuple[str, Any]]:
-    """Flatten a nested override dict to ``(dotted.path, value)`` pairs.
+def leaf_entries(
+    nested: dict, prefix: tuple[str, ...] = ()
+) -> list[tuple[tuple[str, ...], Any]]:
+    """Flatten a nested override dict to ``(segments, value)`` pairs.
+
+    Segments rather than a joined path: a key may itself contain a dot
+    (``k8s.v1.cni.cncf.io/networks``), so a string built by joining on ``.``
+    cannot be split back into the original segments. Callers that need to
+    look the path up in another dict must use these.
 
     An empty mapping is itself a leaf -- ``kustomize.extraHelmSets={}`` is a
     meaningful assignment, not an empty branch to recurse into.
     """
-    leaves: list[tuple[str, Any]] = []
+    leaves: list[tuple[tuple[str, ...], Any]] = []
     for key, value in nested.items():
-        path = f"{prefix}.{key}" if prefix else key
+        path = prefix + (key,)
         if isinstance(value, dict) and value:
-            leaves.extend(dotted_leaves(value, path))
+            leaves.extend(leaf_entries(value, path))
         else:
             leaves.append((path, value))
     return leaves
+
+
+def dotted_leaves(nested: dict, prefix: str = "") -> list[tuple[str, Any]]:
+    """Flatten to ``(dotted.path, value)`` pairs, for display only.
+
+    Lossy when a key contains a dot -- use :func:`leaf_entries` for anything
+    that has to address the config.
+    """
+    root = tuple(prefix.split(".")) if prefix else ()
+    return [(".".join(segs), value) for segs, value in leaf_entries(nested, root)]
 
 
 def resolve_dotted(values: dict, dotted_path: str) -> Any:
@@ -360,8 +409,17 @@ def resolve_dotted(values: dict, dotted_path: str) -> Any:
     against :data:`MISSING` rather than ``None`` (a key explicitly set to
     ``None`` is not the same as an absent key).
     """
+    return resolve_segments(values, dotted_path.split("."))
+
+
+def resolve_segments(values: dict, segments: tuple[str, ...] | list[str]) -> Any:
+    """Return the value at ``segments``, or :data:`MISSING` if absent.
+
+    The segment-wise counterpart of :func:`resolve_dotted`; correct for keys
+    that contain a literal dot.
+    """
     current: Any = values
-    for part in dotted_path.split("."):
+    for part in segments:
         if not isinstance(current, dict) or part not in current:
             return _MISSING
         current = current[part]

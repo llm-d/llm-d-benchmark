@@ -73,6 +73,11 @@ shared:
   # --------------------------------------------------------------------------
   modelservice:
     enabled: true
+    # Pinned explicitly: this scenario is multi-stack, and `epponly` (the
+    # default) is single-stack only -- it has no shared Gateway / HTTPRoute
+    # to multiplex several models behind one address.
+    gateway:
+      className: istio
   standalone:
     enabled: false
 

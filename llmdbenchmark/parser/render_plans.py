@@ -21,10 +21,10 @@ from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.parser.cli_overrides import (
     MISSING,
     REDACTED,
-    dotted_leaves,
     find_broken_parent_paths,
     is_secret_path,
-    resolve_dotted,
+    leaf_entries,
+    resolve_segments,
     selectors_for_stack,
     validate_selectors,
 )
@@ -335,7 +335,10 @@ class RenderPlans:
 
         if profile and profile != "auto":
             profile_names = [profile]
-            if profile.startswith("intel-") and profile != "intel-gaudi":
+            if profile.startswith("intel-") and profile not in (
+                "intel-gaudi",
+                "intel-xpu",
+            ):
                 profile_names.append("intel-xpu")
 
             for profile_name in reversed(profile_names):
@@ -1033,6 +1036,99 @@ class RenderPlans:
             cur = cur[part]
         cur[path[-1]] = value
 
+    #: Stack sections that describe one deploy method. A value the author
+    #: puts in ``common:`` is seeded into these when the section itself owns
+    #: that key (per ``defaults.yaml``), so ``acceleratorType`` need not be
+    #: repeated under decode and prefill.
+    _METHOD_SECTIONS = ("decode", "prefill", "standalone", "fma")
+
+    #: Never inherited from ``common:`` -- ``enabled`` is the per-method
+    #: on/off switch, so broadcasting it would turn every method on at once.
+    _COMMON_NOT_INHERITED = frozenset({"enabled"})
+
+    #: Genuine renames, where the shared spelling and the per-method spelling
+    #: differ so the link cannot be derived from key names. Keep this small:
+    #: anything whose names already agree is handled automatically.
+    _COMMON_ALIASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+        # the vLLM serving image; standalone/fma call it `image`
+        (("images", "vllmOpenai"), ("standalone", "image")),
+    )
+
+    def _method_owned_keys(self, defaults: dict) -> dict[str, tuple[str, ...]]:
+        """Map ``key -> sections that own it``, read from ``defaults.yaml``.
+
+        Derived rather than hand-maintained: a new per-method key added to
+        defaults becomes inheritable from ``common:`` with no code change.
+        """
+        owned: dict[str, list[str]] = {}
+        for section in self._METHOD_SECTIONS:
+            for key in defaults.get(section) or {}:
+                if key not in self._COMMON_NOT_INHERITED:
+                    owned.setdefault(key, []).append(section)
+        return {k: tuple(v) for k, v in owned.items()}
+
+    def _expand_stack_common(self, values: dict, defaults: dict | None = None) -> dict:
+        """Expand a scenario layer's ``common`` section to the config root.
+
+        Scenario stacks group settings shared by every standup method under
+        ``common``.  The renderer and templates still consume one flattened
+        effective config, so expand that authoring structure before merging
+        the layer with defaults.  Expanding the scenario layer (rather than
+        the merged config) is important because defaults.yaml has its own
+        top-level ``common`` value that is passed to the modelservice chart.
+
+        A nested value wins over the legacy flat spelling when both are
+        present, matching the precedence used for modelservice-nested
+        sections.  The input is never mutated.
+        """
+        result = deepcopy(values)
+        common = result.pop("common", None)
+        if common is None:
+            return result
+        if not isinstance(common, dict):
+            raise TypeError("'common' must be a mapping when present")
+
+        # Seed the per-method sections BEFORE the root expansion, and only
+        # where this scenario layer did not set the key itself. Done at the
+        # authoring layer (not after defaults are merged), absence here
+        # genuinely means "the author did not set this", so no comparison
+        # against shipped defaults is needed and an explicit per-method
+        # value always wins.
+        if defaults:
+            owned = self._method_owned_keys(defaults)
+            for key, value in common.items():
+                for section in owned.get(key, ()):
+                    section_block = result.setdefault(section, {})
+                    if not isinstance(section_block, dict) or key in section_block:
+                        continue  # author set it explicitly for this method
+                    inherited = deepcopy(value)
+                    # A section may own only part of the shared block --
+                    # `monitoring` at the root carries installPrometheusCrds
+                    # and friends, while decode/prefill model only
+                    # `podmonitor`. Copying the whole thing trips the
+                    # schema's extra="forbid". Keep what the section models.
+                    allowed = (defaults.get(section) or {}).get(key)
+                    if isinstance(allowed, dict) and isinstance(inherited, dict):
+                        inherited = {k: v for k, v in inherited.items() if k in allowed}
+                        if not inherited:
+                            continue
+                    section_block[key] = inherited
+            for source, dest in self._COMMON_ALIASES:
+                shared = common
+                for part in source:
+                    shared = shared.get(part) if isinstance(shared, dict) else None
+                if not isinstance(shared, dict):
+                    continue
+                section_block = result.setdefault(dest[0], {})
+                if not isinstance(section_block, dict) or dest[1] in section_block:
+                    continue
+                allowed = (defaults.get(dest[0]) or {}).get(dest[1]) or {}
+                section_block[dest[1]] = {
+                    k: v for k, v in shared.items() if not allowed or k in allowed
+                }
+
+        return self.deep_merge(result, common)
+
     # Sections a scenario may nest under `modelservice:` for clarity. They
     # are consumed only on the modelservice path (see step_08_deploy_router
     # and the modelservice-guarded templates), but every template, resolver
@@ -1040,10 +1136,20 @@ class RenderPlans:
     # to the top level before any resolver runs. Nesting is purely a
     # scenario-authoring convenience; the flat top-level spelling keeps
     # working unchanged.
-    _MODELSERVICE_HOISTED = ("gateway", "router", "routing", "httpRoute")
+    _MODELSERVICE_HOISTED = (
+        "common",
+        "gateway",
+        "router",
+        "routing",
+        "httpRoute",
+        "inferenceExtension",
+        "prefill",
+        "decode",
+        "multinode",
+    )
 
     def _hoist_modelservice_sections(self, values: dict) -> dict:
-        """Lift ``modelservice.{gateway,router,routing,httpRoute}`` to the top level.
+        """Lift method-specific ``modelservice`` sections to the top level.
 
         Scenarios may nest these under ``modelservice:`` to document that
         they only apply on the modelservice deploy path. Templates,
@@ -1570,15 +1676,18 @@ class RenderPlans:
         deferring to template time keeps the label computation in exactly
         one place.
         """
-        shared_standalone = (shared or {}).get("standalone", {}).get("enabled")
+        normalized_shared = self._expand_stack_common(shared or {})
+        shared_standalone = (normalized_shared.get("standalone") or {}).get("enabled")
         siblings: list[dict] = []
         for stack in stacks:
             if not isinstance(stack, dict):
                 continue
-            model_name = (stack.get("model") or {}).get("name", "")
+            normalized_stack = self._expand_stack_common(stack)
+            sibling_config = self.deep_merge(normalized_shared, normalized_stack)
+            model_name = (sibling_config.get("model") or {}).get("name", "")
             # Stack-level standalone.enabled wins; otherwise shared-level;
             # otherwise None (undetermined -> treat as non-standalone).
-            stack_standalone = (stack.get("standalone") or {}).get("enabled")
+            stack_standalone = (normalized_stack.get("standalone") or {}).get("enabled")
             is_standalone = bool(
                 stack_standalone if stack_standalone is not None else shared_standalone
             )
@@ -1661,8 +1770,12 @@ class RenderPlans:
         with CLI overrides is auditable from the log alone, without diffing
         the rendered config against the scenario file.
         """
-        for path, new_value in dotted_leaves(overrides):
-            old_value = resolve_dotted(base_values, path)
+        for segments, new_value in leaf_entries(overrides):
+            # Look up by segments, not by a joined string: an override key
+            # may itself contain a dot (a Kubernetes annotation), and a
+            # joined path cannot be split back into the original segments.
+            old_value = resolve_segments(base_values, segments)
+            path = ".".join(segments)
             if is_secret_path(path):
                 # Never echo a credential, not even the value it replaced.
                 previous, current = REDACTED, REDACTED
@@ -1734,15 +1847,18 @@ class RenderPlans:
         stack_errors = StackErrors()
         result.stacks[stack_name] = stack_errors
 
-        stack_config = {k: v for k, v in stack.items() if k != "name"}
+        stack_config = self._expand_stack_common(
+            {k: v for k, v in stack.items() if k != "name"}, defaults
+        )
+        shared_config = self._expand_stack_common(shared or {}, defaults)
         # Merge order: defaults -> shared (scenario-wide) -> stack -> CLI/setup
         # overrides. Per-stack always wins so a stack can opt out of any
         # shared value by setting it explicitly.
-        merged_values = self.deep_merge(defaults, shared or {})
+        merged_values = self.deep_merge(defaults, shared_config)
         merged_values = self.deep_merge(merged_values, stack_config)
 
-        # Hoist scenario-nested modelservice.{gateway,router,routing} to the
-        # top level BEFORE setup overrides are merged. Templates, resolvers
+        # Hoist scenario-nested modelservice-only sections to the top level
+        # BEFORE setup overrides are merged. Templates, resolvers
         # and standup steps read these as top-level keys, and DoE treatment /
         # CLI overrides target the top-level dotted paths (e.g.
         # `router.epp.pluginsConfigFile`). Hoisting first preserves the
@@ -1961,6 +2077,18 @@ class RenderPlans:
             result.global_errors.append(msg)
             return result
 
+        for index, stack in enumerate(stacks, 1):
+            if not isinstance(stack, dict):
+                msg = f"Stack {index} must be a mapping"
+                self.logger.log_error(msg)
+                result.global_errors.append(msg)
+                return result
+            if "common" in stack and not isinstance(stack["common"], dict):
+                msg = f"Stack {index} 'common' section must be a mapping"
+                self.logger.log_error(msg)
+                result.global_errors.append(msg)
+                return result
+
         # Validate --stack filter against known stack names BEFORE rendering
         # anything, so typos fail with a clear error at the start of the
         # pipeline rather than silently passing through render and dying
@@ -2006,6 +2134,11 @@ class RenderPlans:
         shared = scenario.get("shared") or {}
         if not isinstance(shared, dict):
             msg = "'shared' must be a mapping when present"
+            self.logger.log_error(msg)
+            result.global_errors.append(msg)
+            return result
+        if "common" in shared and not isinstance(shared["common"], dict):
+            msg = "'shared.common' must be a mapping when present"
             self.logger.log_error(msg)
             result.global_errors.append(msg)
             return result

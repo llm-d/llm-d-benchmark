@@ -14,9 +14,110 @@ scenario:
   # ============================================================================
   - name: "pd-disaggregation"
 
-    accelerator:
-      profile: auto
-      resource: auto
+    common:
+      accelerator:
+        profile: auto
+        resource: auto
+
+      # -------------------------------------------------------------------------
+      # Affinity / Node Selection
+      # By default, affinity is disabled and pods schedule on any available node.
+      # Options:
+      #   1. Leave commented out -- no node selection constraint
+      #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+      #   3. Set explicit labels -- pods only schedule on matching nodes
+      # -------------------------------------------------------------------------
+      # affinity:
+      #   enabled: true
+      #   nodeSelector:
+      #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+      #     # gpu.nvidia.com/model: H200                        # Kubernetes
+      #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+
+      # -------------------------------------------------------------------------
+      # Multinode Configuration (LeaderWorkerSet)
+      # -------------------------------------------------------------------------
+      #multinode:
+      #  enabled: true
+
+      # -------------------------------------------------------------------------
+      # Scheduler Configuration
+      # (commented out in original -- uncomment to enable)
+      # -------------------------------------------------------------------------
+      # schedulerName: custom-binpack-scheduler
+
+      # -------------------------------------------------------------------------
+      # Model Configuration
+      # Alternative models (commented out in original):
+      #   - Qwen/Qwen3-0.6B
+      #   - facebook/opt-125m
+      #   - meta-llama/Llama-3.1-8B-Instruct
+      #   - meta-llama/Llama-3.1-70B-Instruct
+      #   - deepseek-ai/DeepSeek-R1-0528
+      # -------------------------------------------------------------------------
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+  #      name: openai/gpt-oss-120b
+  #      shortName: openai-gpt-oss-120b
+  #      path: models/openai/gpt-oss-120b
+  #      huggingfaceId: openai/gpt-oss-120b
+        size: 1Ti
+        maxModelLen: 16384
+        blockSize: 128
+        gpuMemoryUtilization: 0.90
+        cacheBase: /model-cache
+
+      # -------------------------------------------------------------------------
+      # Storage Configuration
+      # -------------------------------------------------------------------------
+      storage:
+        modelPvc:
+          size: 1Ti
+          # Uncomment to specify storage class:
+          # storageClassName: standard-rwx
+          # storageClassName: shared-vast
+          # storageClassName: ocs-storagecluster-cephfs
+
+      vllmCommon:
+#        priorityClassName: nightly-gpu-critical
+#        ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+#        ucxTls: "cuda,rc,sm"
+        networkResource: "auto"   # auto-detect from cluster nodes
+        networkNr: "1"            # number of network devices
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+          - name: dshm
+            mountPath: /dev/shm
+
+#     annotations:
+#       prefill:
+#         pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#       decode:
+#         pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      prefill:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
+      decode:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
@@ -49,12 +150,12 @@ scenario:
     # =========================================================================
     kustomize:
       enabled: false
-
       guideName: "pd-disaggregation"
       repoPath: ""
       repoRef: "main"
       gaieVersion: ""
       acceleratorBackend: "gpu/vllm"
+# Alternative: use --set kustomize.acceleratorBackend=gpu/sglang on the CLI to switch sglang
       monitoring: false
       overlayPath: ""
       extraHelmValues: []
@@ -71,53 +172,9 @@ scenario:
       patches: []
 
     # =========================================================================
-    # COMMON -- Applies to all deployment methods
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Model Configuration
-    # Alternative models (commented out in original):
-    #   - Qwen/Qwen3-0.6B
-    #   - facebook/opt-125m
-    #   - meta-llama/Llama-3.1-8B-Instruct
-    #   - meta-llama/Llama-3.1-70B-Instruct
-    #   - deepseek-ai/DeepSeek-R1-0528
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3-32B
-      shortName: qwen-qwen3-32b
-      path: models/Qwen/Qwen3-32B
-      huggingfaceId: Qwen/Qwen3-32B
-#      name: openai/gpt-oss-120b
-#      shortName: openai-gpt-oss-120b
-#      path: models/openai/gpt-oss-120b
-#      huggingfaceId: openai/gpt-oss-120b
-      size: 1Ti
-      maxModelLen: 16384
-      blockSize: 128
-      gpuMemoryUtilization: 0.90
-      cacheBase: /model-cache
-
-    # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Multinode Configuration (LeaderWorkerSet)
-    # -------------------------------------------------------------------------
-    #multinode:
-    #  enabled: true
-
-    # -------------------------------------------------------------------------
-    # Scheduler Configuration
-    # (commented out in original -- uncomment to enable)
-    # -------------------------------------------------------------------------
-    # schedulerName: custom-binpack-scheduler
-
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # deployment including decode pods, prefill pods, router, and gateway.
     # =========================================================================
     modelservice:
       enabled: true
@@ -250,262 +307,189 @@ scenario:
         requestTimeout: "300s"
         backendRequestTimeout: "0s"
 
-    standalone:
-      enabled: false
+      # -------------------------------------------------------------------------
+      # Prefill Configuration
+      # -------------------------------------------------------------------------
+      prefill:
+        enabled: true
+        replicas: 1
+  #      replicas: 8
+        vllm:
+          customCommand: |
+            ${accelerator.runtimePreamble}
+            . /shared-config/llmdbench_env.sh
+            vllm serve /model-cache/$MODEL_PATH \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_INFERENCE_PORT \
+            ${accelerator.blockSizeArgs} \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            ${accelerator.memoryUtilizationArgs} \
+            --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"${accelerator.kvBufferDeviceJson}}' \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+            --no-enable-prefix-caching \
+            ${accelerator.dtypeArgs} \
+            ${accelerator.executionArgs} \
+            --no-disable-hybrid-kv-cache-manager
 
-    # -------------------------------------------------------------------------
-    # Affinity / Node Selection
-    # By default, affinity is disabled and pods schedule on any available node.
-    # Options:
-    #   1. Leave commented out -- no node selection constraint
-    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
-    #   3. Set explicit labels -- pods only schedule on matching nodes
-    # -------------------------------------------------------------------------
-    # affinity:
-    #   enabled: true
-    #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
-    #     # gpu.nvidia.com/model: H200                        # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
 
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
+        parallelism:
+          tensor: 1
+          data: 1
+          dataLocal: 1
+          workers: 1
 
-    # -------------------------------------------------------------------------
-    # Storage Configuration
-    # -------------------------------------------------------------------------
-    storage:
-      modelPvc:
-        size: 1Ti
-        # Uncomment to specify storage class:
-        # storageClassName: standard-rwx
-        # storageClassName: shared-vast
-        # storageClassName: ocs-storagecluster-cephfs
+        # Resource configuration
+        resources:
+          limits:
+            memory: 16Gi
+            cpu: "8"
+          requests:
+            memory: 16Gi
+            cpu: "8"
 
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
-    # The following sections configure prefill and decode pods.
-    # =========================================================================
+        # -----------------------------------------------------------------------
+        # Extra Environment Variables
+        # -----------------------------------------------------------------------
+        extraEnvVars:
+          - name: NCCL_EXCLUDE_IB_HCA
+            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+          - name: NVSHMEM_DEBUG
+            value: "none"
+          - name: NCCL_DEBUG
+            value: "WARN"
+          - name: NIXL_LOG_LEVEL
+            value: debug
+          - name: UCX_MAX_RMA_RAILS
+            value: "1"
 
-    # -------------------------------------------------------------------------
-    # Prefill Configuration
-    # -------------------------------------------------------------------------
-    prefill:
-      enabled: true
-      replicas: 1
-#      replicas: 8
-      vllm:
-        customCommand: |
-          ${accelerator.runtimePreamble}
-          . /shared-config/llmdbench_env.sh
-          vllm serve /model-cache/$MODEL_PATH \
-          --host 0.0.0.0 \
-          --served-model-name $MODEL_NAME \
-          --port $VLLM_INFERENCE_PORT \
-          ${accelerator.blockSizeArgs} \
-          --max-model-len $VLLM_MAX_MODEL_LEN \
-          --max-num-seq $VLLM_MAX_NUM_SEQ \
-          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
-          --tensor-parallel-size $TP_SIZE \
-          ${accelerator.memoryUtilizationArgs} \
-          --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"${accelerator.kvBufferDeviceJson}}' \
-          --disable-uvicorn-access-log \
-          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
-          --no-enable-prefix-caching \
-          ${accelerator.dtypeArgs} \
-          ${accelerator.executionArgs} \
-          --no-disable-hybrid-kv-cache-manager
-
-      initContainers:
-        - name: preprocess
-          imageKey: benchmark
+        # -----------------------------------------------------------------------
+        # Extra Container Configuration
+        # -----------------------------------------------------------------------
+        extraContainerConfig:
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+                - "NET_ADMIN"
+                - "NET_RAW"
+            runAsGroup: 0
+            runAsUser: 0
           imagePullPolicy: Always
-          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          volumeMounts:
-            - name: shared-config
-              mountPath: /shared-config
 
-      parallelism:
-        tensor: 1
-        data: 1
-        dataLocal: 1
-        workers: 1
+        # -----------------------------------------------------------------------
+        # Additional Volume Mounts
+        # -----------------------------------------------------------------------
+        additionalVolumeMounts: []
 
-      # Resource configuration
-      resources:
-        limits:
-          memory: 16Gi
-          cpu: "8"
-        requests:
-          memory: 16Gi
-          cpu: "8"
+        # -----------------------------------------------------------------------
+        # Additional Volumes
+        # -----------------------------------------------------------------------
+        additionalVolumes: []
 
-      # -----------------------------------------------------------------------
-      # Extra Environment Variables
-      # -----------------------------------------------------------------------
-      extraEnvVars:
-        - name: NCCL_EXCLUDE_IB_HCA
-          value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
-        - name: NVSHMEM_DEBUG
-          value: "none"
-        - name: NCCL_DEBUG
-          value: "WARN"
-        - name: NIXL_LOG_LEVEL
-          value: debug
-        - name: UCX_MAX_RMA_RAILS
-          value: "1"
+      # -------------------------------------------------------------------------
+      # Decode Configuration
+      # -------------------------------------------------------------------------
+      decode:
+        replicas: 2
+        vllm:
+          customCommand: |
+            ${accelerator.runtimePreamble}
+            . /shared-config/llmdbench_env.sh
+            vllm serve /model-cache/$MODEL_PATH \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_METRICS_PORT \
+            ${accelerator.blockSizeArgs} \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            ${accelerator.memoryUtilizationArgs} \
+            --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"${accelerator.kvBufferDeviceJson}}' \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+            --no-enable-prefix-caching \
+            ${accelerator.dtypeArgs} \
+            ${accelerator.executionArgs} \
+            --no-disable-hybrid-kv-cache-manager
 
-      # -----------------------------------------------------------------------
-      # Extra Container Configuration
-      # -----------------------------------------------------------------------
-      extraContainerConfig:
-        securityContext:
-          capabilities:
-            add:
-              - "IPC_LOCK"
-              - "SYS_RAWIO"
-              - "NET_ADMIN"
-              - "NET_RAW"
-          runAsGroup: 0
-          runAsUser: 0
-        imagePullPolicy: Always
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
 
-      # -----------------------------------------------------------------------
-      # Additional Volume Mounts
-      # -----------------------------------------------------------------------
-      additionalVolumeMounts: []
+        parallelism:
+          tensor: 2
+          data: 1
+          dataLocal: 1
+          workers: 1
 
-      # -----------------------------------------------------------------------
-      # Additional Volumes
-      # -----------------------------------------------------------------------
-      additionalVolumes: []
+        # Resource configuration
+        resources:
+          limits:
+            memory: 128Gi
+            cpu: "32"
+          requests:
+            memory: 128Gi
+            cpu: "32"
 
-    # -------------------------------------------------------------------------
-    # Decode Configuration
-    # -------------------------------------------------------------------------
-    decode:
-      replicas: 2
-      vllm:
-        customCommand: |
-          ${accelerator.runtimePreamble}
-          . /shared-config/llmdbench_env.sh
-          vllm serve /model-cache/$MODEL_PATH \
-          --host 0.0.0.0 \
-          --served-model-name $MODEL_NAME \
-          --port $VLLM_METRICS_PORT \
-          ${accelerator.blockSizeArgs} \
-          --max-model-len $VLLM_MAX_MODEL_LEN \
-          --max-num-seq $VLLM_MAX_NUM_SEQ \
-          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
-          --tensor-parallel-size $TP_SIZE \
-          ${accelerator.memoryUtilizationArgs} \
-          --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"${accelerator.kvBufferDeviceJson}}' \
-          --disable-uvicorn-access-log \
-          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
-          --no-enable-prefix-caching \
-          ${accelerator.dtypeArgs} \
-          ${accelerator.executionArgs} \
-          --no-disable-hybrid-kv-cache-manager
+        # -----------------------------------------------------------------------
+        # Extra Environment Variables
+        # -----------------------------------------------------------------------
+        extraEnvVars:
+          - name: NCCL_EXCLUDE_IB_HCA
+            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+          - name: NVSHMEM_DEBUG
+            value: "none"
+          - name: NCCL_DEBUG
+            value: "WARN"
+          - name: NIXL_LOG_LEVEL
+            value: debug
+          - name: UCX_MAX_RMA_RAILS
+            value: "1"
 
-      initContainers:
-        - name: preprocess
-          imageKey: benchmark
+        # -----------------------------------------------------------------------
+        # Extra Container Configuration
+        # -----------------------------------------------------------------------
+        extraContainerConfig:
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+                - "NET_ADMIN"
+                - "NET_RAW"
+            runAsGroup: 0
+            runAsUser: 0
           imagePullPolicy: Always
-          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          volumeMounts:
-            - name: shared-config
-              mountPath: /shared-config
 
-      parallelism:
-        tensor: 2
-        data: 1
-        dataLocal: 1
-        workers: 1
+        # -----------------------------------------------------------------------
+        # Additional Volume Mounts
+        # -----------------------------------------------------------------------
+        additionalVolumeMounts: []
 
-      # Resource configuration
-      resources:
-        limits:
-          memory: 128Gi
-          cpu: "32"
-        requests:
-          memory: 128Gi
-          cpu: "32"
-
-      # -----------------------------------------------------------------------
-      # Extra Environment Variables
-      # -----------------------------------------------------------------------
-      extraEnvVars:
-        - name: NCCL_EXCLUDE_IB_HCA
-          value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
-        - name: NVSHMEM_DEBUG
-          value: "none"
-        - name: NCCL_DEBUG
-          value: "WARN"
-        - name: NIXL_LOG_LEVEL
-          value: debug
-        - name: UCX_MAX_RMA_RAILS
-          value: "1"
-
-      # -----------------------------------------------------------------------
-      # Extra Container Configuration
-      # -----------------------------------------------------------------------
-      extraContainerConfig:
-        securityContext:
-          capabilities:
-            add:
-              - "IPC_LOCK"
-              - "SYS_RAWIO"
-              - "NET_ADMIN"
-              - "NET_RAW"
-          runAsGroup: 0
-          runAsUser: 0
-        imagePullPolicy: Always
-
-      # -----------------------------------------------------------------------
-      # Additional Volume Mounts
-      # -----------------------------------------------------------------------
-      additionalVolumeMounts: []
-
-      # -----------------------------------------------------------------------
-      # Additional Volumes
-      # -----------------------------------------------------------------------
-      additionalVolumes: []
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-#####    annotations:
-#####      prefill:
-#####        pod:
-#####          k8s.v1.cni.cncf.io/networks: multi-nic-compute
-#####      decode:
-#####        pod:
-#####          k8s.v1.cni.cncf.io/networks: multi-nic-compute
-
-    vllmCommon:
-#      priorityClassName: nightly-gpu-critical
-######      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
-#####      ucxTls: "cuda,rc,sm"
-      networkResource: "auto"   # auto-detect from cluster nodes
-      networkNr: "1"            # number of network devices
-
-      volumes:
-        - name: shared-config
-          type: emptyDir
-          emptyDir: {}
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 16Gi
-
-      volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
-        - name: dshm
-          mountPath: /dev/shm
+        # -----------------------------------------------------------------------
+        # Additional Volumes
+        # -----------------------------------------------------------------------
+        additionalVolumes: []
 
     # -------------------------------------------------------------------------
     # Timeout Configuration
@@ -514,15 +498,8 @@ scenario:
       controlWait: 900000
       harnessWait: 900000
 
-    # =========================================================================
-    # WORKLOAD / HARNESS -- Benchmark execution configuration
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Workload/Harness Configuration
-    # -------------------------------------------------------------------------
-    workDir: "~/data/pd-disaggregation"
-
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
+
+    workDir: "~/data/pd-disaggregation"

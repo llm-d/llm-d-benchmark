@@ -12,9 +12,82 @@
 scenario:
   - name: "precise-prefix-cache-routing"
 
-    accelerator:
-      profile: auto
-      resource: auto
+    common:
+      accelerator:
+        profile: auto
+        resource: auto
+
+      # -------------------------------------------------------------------------
+      # Affinity / Node Selection
+      # By default, affinity is disabled and pods schedule on any available node.
+      # Options:
+      #   1. Leave commented out -- no node selection constraint
+      #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+      #   3. Set explicit labels -- pods only schedule on matching nodes
+      # -------------------------------------------------------------------------
+      # affinity:
+      #   enabled: true
+      #   nodeSelector:
+      #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+      #     # gpu.nvidia.com/model: H200                        # Kubernetes
+      #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+
+      # -------------------------------------------------------------------------
+      # Model Configuration
+      # -------------------------------------------------------------------------
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+
+      # -------------------------------------------------------------------------
+      # Storage Configuration
+      # -------------------------------------------------------------------------
+      storage:
+        modelPvc:
+          size: 1Ti
+          # Uncomment to specify storage class:
+          # storageClassName: standard-rwx
+          # storageClassName: shared-vast
+          # storageClassName: ocs-storagecluster-cephfs
+
+      vllmCommon:
+#      priorityClassName: nightly-gpu-critical
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 20Gi
+
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+          - name: dshm
+            mountPath: /dev/shm
+
+      annotations:
+        prefill:
+          pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+        decode:
+          pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      prefill:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
+      decode:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
@@ -53,6 +126,7 @@ scenario:
       repoRef: "main"
       gaieVersion: ""
       acceleratorBackend: "gpu/vllm"
+# Alternative: use --set kustomize.acceleratorBackend=gpu/sglang on the CLI to switch sglang
       monitoring: false
       overlayPath: ""
       extraHelmValues: []
@@ -69,24 +143,9 @@ scenario:
       patches: []
 
     # =========================================================================
-    # COMMON -- Applies to all deployment methods
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Model Configuration
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3-32B
-      shortName: qwen-qwen3-32b
-      path: models/Qwen/Qwen3-32B
-      huggingfaceId: Qwen/Qwen3-32B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
-
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, router, and gateway.
     # =========================================================================
     modelservice:
       enabled: true
@@ -239,7 +298,6 @@ scenario:
             llm-d.ai/guide: "precise-prefix-cache-routing"
 
       # -------------------------------------------------------------------------
-      # -------------------------------------------------------------------------
       # HTTPRoute Configuration
       # requestTimeout: end-to-end Gateway-API HTTPRoute timeout the istio
       # gateway enforces per request. Long agentic turns that exceed it are
@@ -249,186 +307,109 @@ scenario:
       httpRoute:
         requestTimeout: "300s"
         backendRequestTimeout: "0s"
-    standalone:
-      enabled: false
 
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Affinity / Node Selection
-    # By default, affinity is disabled and pods schedule on any available node.
-    # Options:
-    #   1. Leave commented out -- no node selection constraint
-    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
-    #   3. Set explicit labels -- pods only schedule on matching nodes
-    # -------------------------------------------------------------------------
-    # affinity:
-    #   enabled: true
-    #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
-    #     # gpu.nvidia.com/model: H200                        # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-
-    # -------------------------------------------------------------------------
-    # Prefill Configuration
-    # -------------------------------------------------------------------------
-    prefill:
-      enabled: false
-      replicas: 0
-
-    # -------------------------------------------------------------------------
-    # Decode Configuration
-    # -------------------------------------------------------------------------
-    decode:
-      replicas: 2
-      vllm:
-        customCommand: |
-          ${accelerator.runtimePreamble}
-          . /shared-config/llmdbench_env.sh
-          vllm serve /model-cache/$MODEL_PATH \
-          --host 0.0.0.0 \
-          --served-model-name $MODEL_NAME \
-          --port $VLLM_INFERENCE_PORT \
-          ${accelerator.blockSizeArgs} \
-          --max-model-len $VLLM_MAX_MODEL_LEN \
-          --max-num-seq $VLLM_MAX_NUM_SEQ \
-          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
-          --tensor-parallel-size $TP_SIZE \
-          ${accelerator.memoryUtilizationArgs} \
-          ${accelerator.dtypeArgs} \
-          ${accelerator.executionArgs} \
-          --prefix-caching-hash-algo sha256_cbor \
-          --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(VLLM_INFERENCE_PORT)@$(MODEL_NAME)"}' \
-          --disable-uvicorn-access-log \
-          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
-
-      initContainers:
-        - name: preprocess
-          imageKey: benchmark
-          imagePullPolicy: Always
-          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          volumeMounts:
-            - name: shared-config
-              mountPath: /shared-config
-
-      parallelism:
-        tensor: 2
-        data: 1
-        dataLocal: 1
-        workers: 1
-
-      # Resource configuration
-      resources:
-        limits:
-          memory: 64Gi
-          cpu: "16"
-        requests:
-          memory: 64Gi
-          cpu: "16"
-
-      extraEnvVars:
-        - name: KV_EVENTS_ENDPOINT
-          value: "tcp://*:5556"
-        - name: DO_NOT_TRACK
-          value: "1"
-
-      # -----------------------------------------------------------------------
-      # Extra Container Configuration
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
-      # -----------------------------------------------------------------------
-      extraContainerConfig:
-        ports:
-          - containerPort: 5557  # NIXL side channel port
-            protocol: TCP
-          - containerPort: 8200  # Metrics port
-            name: metrics
-            protocol: TCP
-        securityContext:
-          capabilities:
-            add:
-              - "IPC_LOCK"
-              - "SYS_RAWIO"
-              - "NET_ADMIN"
-              - "NET_RAW"
-          runAsGroup: 0
-          runAsUser: 0
-        imagePullPolicy: Always
-
-      # -----------------------------------------------------------------------
-      # Additional Volume Mounts
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
-      # -----------------------------------------------------------------------
-      additionalVolumeMounts: []
-
-      # -----------------------------------------------------------------------
-      # Additional Volumes
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
-      # -----------------------------------------------------------------------
-      additionalVolumes: []
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-    annotations:
+      # -------------------------------------------------------------------------
+      # Prefill Configuration
+      # -------------------------------------------------------------------------
       prefill:
-        pod:
-#          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+        enabled: false
+        replicas: 0
+
+      # -------------------------------------------------------------------------
+      # Decode Configuration
+      # -------------------------------------------------------------------------
       decode:
-        pod:
-#          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+        replicas: 2
+        vllm:
+          customCommand: |
+            ${accelerator.runtimePreamble}
+            . /shared-config/llmdbench_env.sh
+            vllm serve /model-cache/$MODEL_PATH \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_INFERENCE_PORT \
+            ${accelerator.blockSizeArgs} \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            ${accelerator.memoryUtilizationArgs} \
+            ${accelerator.dtypeArgs} \
+            ${accelerator.executionArgs} \
+            --prefix-caching-hash-algo sha256_cbor \
+            --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(VLLM_INFERENCE_PORT)@$(MODEL_NAME)"}' \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models
 
-      resources:
-        prefill:
-#          networkResource: "rdma/roce_gdr"
-#          networkNr: 1
-        decode:
-#          networkResource: "rdma/roce_gdr"
-#          networkNr: 1
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
 
-    vllmCommon:
-#      priorityClassName: nightly-gpu-critical
+        parallelism:
+          tensor: 2
+          data: 1
+          dataLocal: 1
+          workers: 1
 
-      volumes:
-        - name: shared-config
-          type: emptyDir
-          emptyDir: {}
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 20Gi
+        # Resource configuration
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 64Gi
+            cpu: "16"
 
-      volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
-        - name: dshm
-          mountPath: /dev/shm
+        extraEnvVars:
+          - name: KV_EVENTS_ENDPOINT
+            value: "tcp://*:5556"
+          - name: DO_NOT_TRACK
+            value: "1"
 
-    # -------------------------------------------------------------------------
-    # Storage Configuration
-    # -------------------------------------------------------------------------
-    storage:
-      modelPvc:
-        size: 1Ti
-        # Uncomment to specify storage class:
-        # storageClassName: standard-rwx
-        # storageClassName: shared-vast
-        # storageClassName: ocs-storagecluster-cephfs
+        # -----------------------------------------------------------------------
+        # Extra Container Configuration
+        # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
+        # -----------------------------------------------------------------------
+        extraContainerConfig:
+          ports:
+            - containerPort: 5557  # NIXL side channel port
+              protocol: TCP
+            - containerPort: 8200  # Metrics port
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+                - "NET_ADMIN"
+                - "NET_RAW"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        # -----------------------------------------------------------------------
+        # Additional Volume Mounts
+        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+        # -----------------------------------------------------------------------
+        additionalVolumeMounts: []
+
+        # -----------------------------------------------------------------------
+        # Additional Volumes
+        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+        # -----------------------------------------------------------------------
+        additionalVolumes: []
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Workload/Harness Configuration
-    # -------------------------------------------------------------------------
-    workDir: "~/data/precise_prefix_cache_aware"
-
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic.yaml
+
+    workDir: "~/data/precise_prefix_cache_aware"

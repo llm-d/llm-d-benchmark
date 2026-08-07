@@ -1,12 +1,12 @@
 name: CI - Run Benchmark on OCP ("EPP+KEDA+FMA" autoscaling path)
 
-# Drives the EPP+KEDA saturation autoscaling path: KEDA scales on EPP pool
-# metrics (inference_pool_average_kv_cache_utilization / _average_queue_size).
+# Drives the EPP+KEDA saturation autoscaling path: KEDA scales on EPP flow-control
+# metrics (llm_d_epp_flow_control_pool_saturation / llm_d_epp_request_running).
 # Enabled purely via `eppKedaSaturation.enabled: true`.
 #
 # Three passes for direct comparison, under inference-perf load
-# (shared_prefix_synthetic_heavy.yaml, sized to push the EPP KV-cache / queue
-# gauges past the KEDA ScaledObject thresholds so it scales out):
+# (shared_prefix_synthetic_heavy.yaml, sized to push the EPP saturation / running-
+# requests gauges past the KEDA ScaledObject thresholds so it scales out):
 #   1. baseline (EPP+KEDA, no FMA)   -- `cicd/ocp-keda`
 #   2. FMA warm-start with EPP+KEDA  -- `cicd/ocp-keda-fma-warmstart`
 #   3. FMA hot-start with EPP+KEDA   -- `cicd/ocp-keda-fma-hotstart`
@@ -129,7 +129,8 @@ jobs:
   # Pass 1: EPP+KEDA without FMA
   #
   # EPP-only path — decode.replicas: 1 at idle, scaled by the KEDA-managed HPA
-  # on EPP pool metrics (kv-cache / queue). No FMA controllers, no launchers.
+  # on EPP flow-control metrics (pool saturation / running requests). No FMA
+  # controllers, no launchers.
   # =========================================================================
   baseline:
     name: Baseline (EPP+KEDA, no FMA)

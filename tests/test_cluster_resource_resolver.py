@@ -6,8 +6,11 @@ Pins the contract that:
   are skipped silently when their ``acceleratorType.labelValue`` is the
   inherited ``"auto"`` default — they don't need a GPU node selector at all,
   and the template gates ``acceleratorTypes`` rendering on the same count.
-- Disabled sections (``enabled: False``) are skipped silently regardless of
-  whether ``labelValue`` was set to ``"auto"``.
+- Disabled sections (``enabled: False``) never fail the render when the
+  cluster has nothing to discover, but they ARE resolved when it does:
+  ``enabled`` is decided after this resolver runs (``-t standalone`` over a
+  scenario shipping ``standalone.enabled: false``), so skipping them outright
+  would leave a literal ``"auto"`` in the plan.
 - GPU-requesting sections still fail loudly when ``"auto"`` is requested
   but the cluster has no GPU labels — the scenario asked for accelerators
   the cluster cannot supply.
@@ -111,7 +114,8 @@ class TestResolveAcceleratorTypeLabelsSkipping:
         assert values["decode"]["acceleratorType"]["labelValue"] == "auto"
         assert values["prefill"]["acceleratorType"]["labelValue"] == "auto"
 
-    def test_disabled_section_skipped_silently(self, resolver):
+    def test_disabled_section_on_gpuless_cluster_never_errors(self, resolver):
+        """A section the scenario doesn't deploy must not fail the render."""
         resolver._node_resources = self._no_gpu_resources()
         values = {
             "standalone": {
@@ -127,6 +131,30 @@ class TestResolveAcceleratorTypeLabelsSkipping:
         resolver._resolve_accelerator_type_labels(values, unresolved)
 
         assert unresolved == []
+        assert values["standalone"]["acceleratorType"]["labelValue"] == "auto"
+
+    def test_disabled_section_still_resolves_when_cluster_has_labels(self, resolver):
+        """``enabled`` is not yet final here -- ``-t standalone`` flips it on
+        after this resolver runs, so a discoverable label must be applied."""
+        resolver._node_resources = self._gpu_resources()
+        values = {
+            "standalone": {
+                "enabled": False,
+                "parallelism": {"tensor": 2},
+                "acceleratorType": {
+                    "labelKey": "nvidia.com/gpu.product",
+                    "labelValue": "auto",
+                },
+            },
+        }
+        unresolved: list[str] = []
+        resolver._resolve_accelerator_type_labels(values, unresolved)
+
+        assert unresolved == []
+        assert values["standalone"]["acceleratorType"] == {
+            "labelKey": "gpu.nvidia.com/class",
+            "labelValue": "H200",
+        }
 
     def test_gpu_requesting_section_with_no_cluster_gpus_still_errors(self, resolver):
         """A real GPU scenario on a GPU-less cluster must still fail fast."""
@@ -320,6 +348,68 @@ class TestDraGracefulDegradation:
         assert unresolved == []
         assert values["decode"]["acceleratorType"]["labelKey"] == "gpu.intel.com/family"
         assert values["decode"]["acceleratorType"]["labelValue"] == "Data Center Max"
+
+
+class TestDraAcceleratorResourceResolution:
+    def test_resolves_from_stable_dra_driver_name(self, resolver):
+        resolver._node_resources = NodeResources(
+            dra_drivers=["gpu.intel.com"],
+        )
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+        unresolved: list[str] = []
+
+        resolver._resolve_accelerator_resource(values, unresolved)
+        resolver._resolve_accelerator_profile(values, unresolved)
+
+        assert unresolved == []
+        assert "resource" not in values["accelerator"]
+        assert values["accelerator"]["draDriver"] == "gpu.intel.com"
+        assert values["accelerator"]["profile"] == "intel-xpu"
+        assert values["accelerator"]["type"] == "intel-xpu"
+
+    def test_multiple_dra_drivers_require_explicit_selection(self, resolver):
+        resolver._node_resources = NodeResources(
+            dra_drivers=["gpu.intel.com", "gpu.nvidia.com"],
+        )
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+
+        with pytest.raises(RuntimeError, match="Multiple DRA accelerator drivers"):
+            resolver._resolve_accelerator_resource(values, [])
+
+    def test_detected_driver_becomes_a_chart_claim_template(self, resolver):
+        resolver._node_resources = NodeResources(dra_drivers=["gpu.intel.com"])
+        values = {"accelerator": {"resource": "auto", "profile": "auto"}}
+
+        resolver._resolve_accelerator_resource(values, [])
+        resolver._resolve_accelerator_profile(values, [])
+        resolver._apply_dra_claim_defaults(values)
+
+        assert values["dra"]["enabled"] is True
+        assert values["dra"]["type"] == "intel-xpu"
+        assert values["dra"]["claimTemplates"] == {
+            "intel-xpu": {"class": "gpu.intel.com"}
+        }
+
+    def test_user_supplied_claim_templates_are_not_overwritten(self, resolver):
+        custom = {"intel-xpu": {"class": "gpu.intel.com", "count": 4}}
+        values = {
+            "accelerator": {"draDriver": "gpu.intel.com", "type": "intel-xpu"},
+            "dra": {"enabled": False, "claimTemplates": custom},
+        }
+
+        resolver._apply_dra_claim_defaults(values)
+
+        assert values["dra"]["enabled"] is True
+        assert values["dra"]["claimTemplates"] == custom
+
+    def test_device_plugin_clusters_get_no_dra_claim(self, resolver):
+        values = {
+            "accelerator": {"resource": "gpu.intel.com/xe", "type": "intel-xe"},
+        }
+
+        resolver._apply_dra_claim_defaults(values)
+
+        assert "dra" not in values
 
 
 class TestGpuSkuLabelHeuristic:

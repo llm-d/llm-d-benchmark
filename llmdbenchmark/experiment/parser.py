@@ -53,11 +53,28 @@ class ExperimentPlan:
         return setup_count * max(self.run_treatments_count, 1)
 
 
+#: Placeholder standing in for a literal ``.`` inside a single key segment,
+#: so path splitting does not treat it as a separator. Written by the CLI's
+#: quoted-segment handling and unwound by :func:`restore_dots`.
+DOT_SENTINEL = "_PROTECTDOT_"
+
+
+def restore_dots(text: str) -> str:
+    """Turn :data:`DOT_SENTINEL` back into literal dots."""
+    return text.replace(DOT_SENTINEL, ".")
+
+
 def dotted_to_nested(flat: dict[str, Any]) -> dict[str, Any]:
     """Convert a flat dict with dotted keys to a nested dict.
 
     Raises ``ValueError`` if dotted keys conflict (e.g. ``a.b: 1`` and
     ``a.b.c: 2`` where ``a.b`` would need to be both a scalar and a dict).
+
+    A segment may carry a literal dot in its name (Kubernetes annotations
+    such as ``k8s.v1.cni.cncf.io/networks``). The CLI protects those by
+    swapping the dots for :data:`DOT_SENTINEL` before the path is split;
+    every segment is restored here, so a dotted key works in a parent
+    position as well as at the leaf.
 
     Example::
 
@@ -66,22 +83,23 @@ def dotted_to_nested(flat: dict[str, Any]) -> dict[str, Any]:
     """
     nested: dict[str, Any] = {}
     for dotted_key, value in flat.items():
-        parts = dotted_key.split(".")
+        parts = [restore_dots(part) for part in dotted_key.split(".")]
         target = nested
         for part in parts[:-1]:
             existing = target.get(part)
             if existing is not None and not isinstance(existing, dict):
                 raise ValueError(
-                    f"Key conflict: '{dotted_key}' requires '{part}' to be a "
-                    f"dict, but it was already set to {existing!r}"
+                    f"Key conflict: '{restore_dots(dotted_key)}' requires "
+                    f"'{part}' to be a dict, but it was already set to "
+                    f"{existing!r}"
                 )
             target = target.setdefault(part, {})
         leaf = parts[-1]
         existing_leaf = target.get(leaf)
         if isinstance(existing_leaf, dict) and not isinstance(value, dict):
             raise ValueError(
-                f"Key conflict: '{dotted_key}' would overwrite a nested dict "
-                f"with scalar value {value!r}"
+                f"Key conflict: '{restore_dots(dotted_key)}' would overwrite "
+                f"a nested dict with scalar value {value!r}"
             )
         target[leaf] = value
     return nested

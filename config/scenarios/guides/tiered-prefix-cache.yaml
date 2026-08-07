@@ -13,6 +13,89 @@ scenario:
   # ============================================================================
   - name: "tiered-prefix-cache"
 
+    common:
+      # -------------------------------------------------------------------------
+      # Affinity / Node Selection
+      # By default, affinity is disabled and pods schedule on any available node.
+      # Options:
+      #   1. Leave commented out -- no node selection constraint
+      #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+      #   3. Set explicit labels -- pods only schedule on matching nodes
+      # -------------------------------------------------------------------------
+      # affinity:
+      #   enabled: true
+      #   nodeSelector:
+      #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+      #     # gpu.nvidia.com/model: H200                        # Kubernetes
+      #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+      # -------------------------------------------------------------------------
+
+      # Model Configuration
+      # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+      # Alternative models (commented out in original):
+      #   - Qwen/Qwen3-0.6B
+      #   - facebook/opt-125m
+      #   - meta-llama/Llama-3.1-70B-Instruct
+      #   - deepseek-ai/DeepSeek-R1-0528
+      # -------------------------------------------------------------------------
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+        cacheBase: /model-cache
+
+      # -------------------------------------------------------------------------
+      # Storage Configuration
+      # -------------------------------------------------------------------------
+      storage:
+        modelPvc:
+          size: 1Ti
+          # Uncomment to specify storage class:
+          # storageClassName: standard-rwx
+          # storageClassName: shared-vast
+          # storageClassName: ocs-storagecluster-cephfs
+
+      vllmCommon:
+  #      priorityClassName: nightly-gpu-critical
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM (using default 16Gi)
+              sizeLimit: 16Gi
+
+        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+          - name: dshm
+            mountPath: /dev/shm
+
+#     annotations:
+#       prefill:
+#         pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#       decode:
+#         pod:
+#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      prefill:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
+      decode:
+#        networkResource: "rdma/roce_gdr"
+#        networkNr: 1
+
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
     # -------------------------------------------------------------------------
@@ -50,6 +133,7 @@ scenario:
       repoRef: "main"
       gaieVersion: ""
       acceleratorBackend: "gpu/vllm"
+# Alternative: use --set kustomize.acceleratorBackend=gpu/sglang on the CLI to switch sglang
       monitoring: false
       overlayPath: ""
       extraHelmValues: []
@@ -66,52 +150,9 @@ scenario:
       patches: []
 
     # =========================================================================
-    # COMMON -- Applies to all deployment methods
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
-    # Alternative models (commented out in original):
-    #   - Qwen/Qwen3-0.6B
-    #   - facebook/opt-125m
-    #   - meta-llama/Llama-3.1-70B-Instruct
-    #   - deepseek-ai/DeepSeek-R1-0528
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3-32B
-      shortName: qwen-qwen3-32b
-      path: models/Qwen/Qwen3-32B
-      huggingfaceId: Qwen/Qwen3-32B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
-      cacheBase: /model-cache
-
-    # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Affinity / Node Selection
-    # By default, affinity is disabled and pods schedule on any available node.
-    # Options:
-    #   1. Leave commented out -- no node selection constraint
-    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
-    #   3. Set explicit labels -- pods only schedule on matching nodes
-    # -------------------------------------------------------------------------
-    # affinity:
-    #   enabled: true
-    #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
-    #     # gpu.nvidia.com/model: H200                        # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # deployment including decode pods, prefill pods, router, and gateway.
     # =========================================================================
     modelservice:
       enabled: true
@@ -243,30 +284,6 @@ scenario:
     standalone:
       enabled: false
 
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
-    # The following sections configure routing, GAIE, prefill, and decode.
-    # =========================================================================
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Storage Configuration
-    # -------------------------------------------------------------------------
-    storage:
-      modelPvc:
-        size: 1Ti
-        # Uncomment to specify storage class:
-        # storageClassName: standard-rwx
-        # storageClassName: shared-vast
-        # storageClassName: ocs-storagecluster-cephfs
-
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
-    # =========================================================================
-
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # -------------------------------------------------------------------------
@@ -367,68 +384,11 @@ scenario:
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
-      # -----------------------------------------------------------------------
-      # Multi-NIC Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
-      # -----------------------------------------------------------------------
-      # To enable multi-nic, add to annotations.decode.pod:
-      # annotations:
-      #   decode:
-      #     pod:
-      #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
-
-      # -----------------------------------------------------------------------
-      # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
-      # -----------------------------------------------------------------------
-      # To enable roce/gdr, add to resources:
-      # resources:
-      #   limits:
-      #     rdma/roce_gdr: "16"
-      #   requests:
-      #     rdma/roce_gdr: "16"
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-    vllmCommon:
-#      priorityClassName: nightly-gpu-critical
-
-      volumes:
-        - name: shared-config
-          type: emptyDir
-          emptyDir: {}
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM (using default 16Gi)
-            sizeLimit: 16Gi
-
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
-      volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
-        - name: dshm
-          mountPath: /dev/shm
-
-    # -------------------------------------------------------------------------
-    # Custom Image Configuration (optional)
-    # Corresponds to commented out LLMDBENCH_LLMD_IMAGE_* variables
-    # -------------------------------------------------------------------------
-    # Uncomment to use lmcache image:
-    # images:
-    #   vllm:
-    #     repository: docker.io/lmcache/vllm-openai
-    #     tag: v0.3.7
-
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
-    workDir: "~/data/tiered-prefix-cache"
-
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic.yaml
+
+    workDir: "~/data/tiered-prefix-cache"

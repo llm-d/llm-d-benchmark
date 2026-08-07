@@ -49,7 +49,7 @@
 # dual-pods controller propagates them to the launcher pod at BIND time, so
 # only launchers actually serving traffic show up in the InferencePool.
 #
-# How KEDA scales FMA: the KEDA ScaledObject (30_epp-keda-saturation-scaledobject.yaml.j2)
+# How KEDA scales FMA: the KEDA ScaledObject (30_keda-scaledobject.yaml.j2)
 # targets the FMA requester Deployment (`fma-requester-<id>`) and scales it on EPP
 # pool saturation metrics (pool-average KV-cache utilization and queue size)
 # scraped from the EPP via Prometheus/Thanos.
@@ -154,10 +154,20 @@ scenario:
         minReplicas: 1
         maxReplicas: 6
         pollingInterval: 15
-        kvCacheThreshold: "0.7"  # scale up when pool-avg KV cache > 70%
-        queueSizeThreshold: "2"  # scale up when pool-avg queue > 2 requests
-        activationThreshold: "0"
         unsafeSsl: true
+        # Defaults come from defaults.yaml; override the whole set here, e.g.
+        # (metricType + activationThreshold optional, default AverageValue/"0"):
+        # triggers:
+        #   - name: pool-saturation
+        #     query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
+        #     threshold: "0.7"
+        #     metricType: AverageValue
+        #     activationThreshold: "0"
+        #   - name: running-requests
+        #     query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        #     threshold: "16"
+        #     metricType: AverageValue
+        #     activationThreshold: "0"
         behavior:
           scaleUp:
             stabilizationWindowSeconds: 0

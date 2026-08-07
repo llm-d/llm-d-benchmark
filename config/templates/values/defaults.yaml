@@ -554,10 +554,12 @@ monitoring:
     - inference_pool_average_queue_size
     - inference_pool_average_running_requests
     - inference_pool_ready_pods
+    - llm_d_epp_flow_control_pool_saturation
+    - llm_d_epp_request_running
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
-# Supports: nvidia, intel-i915, intel-xe, intel-gaudi, amd, google
+# Supports: nvidia, intel-xpu, intel-i915, intel-xe, intel-gaudi, amd, google
 # ============================================================================
 accelerator:
   type: nvidia
@@ -576,6 +578,8 @@ accelerator:
   memoryUtilizationArgs: "--gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL"
   kvBufferDeviceJson: ""
   # Resource names for different accelerator types (optional override)
+  # DRA drivers are tracked separately as accelerator.draDriver and are not
+  # rendered into container resource limits or requests.
   # resources:
   #   nvidia: "nvidia.com/gpu"
   #   intel-i915: "gpu.intel.com/i915"
@@ -595,8 +599,12 @@ accelerator:
 dra:
   enabled: false
   type: nvidia
+  # Keyed by accelerator type -- the chart looks the entry up by
+  # accelerator.type and builds one ResourceClaimTemplate per role.
+  # Omit `count` to let each role derive it from its own parallelism.
   # claimTemplates:
-  #   - name: nvidia
+  #   nvidia:
+  #     name: nvidia-claim-template
   #     class: gpu.nvidia.com
   #     match: "exactly"
   #     count: 1
@@ -683,7 +691,7 @@ gateway:
   #                                HTTP directly (single-stack only).
   #   none                       - plain ClusterIP Service to decode vLLM;
   #                                no Gateway, EPP, Envoy, or routing proxy.
-  className: istio
+  className: epponly
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
   logLevel: error
@@ -973,8 +981,14 @@ decode:
   # Probe configuration
   probes:
     startup: *probe_startup
-    liveness: *probe_liveness
-    readiness: *probe_readiness
+    liveness:
+      <<: *probe_liveness
+      failureThreshold: 10
+      timeoutSeconds: 15
+    readiness:
+      <<: *probe_readiness
+      failureThreshold: 10
+      timeoutSeconds: 15
 
   # vLLM configuration
   vllm:
@@ -1276,6 +1290,32 @@ standalone:
     preprocessCommand: /bin/true
     customPreprocessCommand: null
     customCommand: null
+    # How the container is launched. Mirrors decode/prefill `vllm.modelCommand`
+    # on the modelservice path.
+    #   custom       -- render `command: [<vllmCommon.shell>, -c]` plus the
+    #                   generated (or customCommand) shell script. Requires a
+    #                   shell in the server image.
+    #   imageDefault -- emit no `command:`; the image entrypoint runs and
+    #                   `args` below is passed verbatim. Required for
+    #                   distroless images, which have no shell to exec --
+    #                   e.g. llm-d-inference-sim v0.9+ ships only
+    #                   /app/llm-d-inference-sim (v0.8.2 still had bash).
+    modelCommand: custom
+    # Argument list for `modelCommand: imageDefault`. Ignored when
+    # modelCommand is `custom`. Supports ${dotted.path} substitution.
+    # Rendered as `args:`, so the image ENTRYPOINT supplies argv[0] (both
+    # server images have one: vllm-openai is `vllm serve`, inference-sim is
+    # /app/llm-d-inference-sim). For a CMD-only image with no ENTRYPOINT,
+    # make the binary the first element -- `args` replaces CMD outright.
+    args: []
+    # Example:
+    # args:
+    #   - "--model"
+    #   - "/model-cache/${model.path}"
+    #   - "--port"
+    #   - "8000"
+    #   - "--served-model-name"
+    #   - "${model.name}"
     # Use these if wanted to use default command but add additional
     # flags
     additionalFlags: []
@@ -1633,9 +1673,9 @@ wva:
 # ============================================================================
 # EPP+KEDA SATURATION AUTOSCALING
 # ============================================================================
-# Direct KEDA autoscaling using EPP pool metrics, without WVA controller.
-# Queries inference_pool_average_kv_cache_utilization and
-# inference_pool_average_queue_size directly.
+# Direct KEDA autoscaling using EPP flow-control metrics, without WVA controller.
+# Queries llm_d_epp_flow_control_pool_saturation and llm_d_epp_request_running
+# directly (see scaledObject.triggers below).
 eppKedaSaturation:
   enabled: false
   namespace: ""                 # defaults to namespace.name at render time
@@ -1653,10 +1693,21 @@ eppKedaSaturation:
     minReplicas: 1
     maxReplicas: 10
     pollingInterval: 15
-    kvCacheThreshold: "0.7"    # scale up when pool-avg KV cache > 70%
-    queueSizeThreshold: "2"    # scale up when pool-avg queue > 2 requests
-    activationThreshold: "0"
     unsafeSsl: true
+    # KEDA Prometheus triggers, fully defined here so new metrics/thresholds
+    # can be added without touching the Jinja. A scenario may redefine this
+    # entire list. Per entry: query (required), threshold, and optional
+    # name/metricType/activationThreshold. In `query`, ${poolName} and
+    # ${modelName} are substituted at render time.
+    triggers:
+      - name: pool-saturation
+        query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
+        threshold: "0.7"
+        activationThreshold: "0"
+      - name: running-requests
+        query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        threshold: "16"
+        activationThreshold: "0"
     behavior:
       scaleUp:
         stabilizationWindowSeconds: 0

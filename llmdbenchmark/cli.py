@@ -538,8 +538,10 @@ def _execute_standup(args, logger, render_plan_errors):
     _print_standup_summary(context, result, logger)
 
     # Auto-chain smoketest after standup unless --skip-smoketest.
-    # nok8s has no cluster/namespace for the smoketest pod and the deploy step
-    # already curls /v1/models for readiness, so skip the chained smoketest.
+    # nok8s stays opt-out here: its deploy step already curls /v1/models for
+    # readiness, so the chained run would only add the inference probe. Run
+    # `llmdbenchmark ... smoketest` (or `experiment`, which chains it) to get
+    # that probe; it no longer needs a cluster.
     skip_smoketest = getattr(args, "skip_smoketest", False) or (
         "nok8s" in (context.deployed_methods or [])
     )
@@ -570,7 +572,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         plan_info,
     )
 
-    if not namespace:
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
         raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
@@ -591,6 +594,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -1769,7 +1774,13 @@ def _extract_workspace_from_scenario(
 
         scenarios = scenario_data.get("scenario", [])
         if scenarios and isinstance(scenarios, list):
-            return scenarios[0].get("workDir")
+            first_stack = scenarios[0]
+            if not isinstance(first_stack, dict):
+                return None
+            common = first_stack.get("common")
+            if isinstance(common, dict) and common.get("workDir") is not None:
+                return common["workDir"]
+            return first_stack.get("workDir")
     except Exception:  # noqa: BLE001 -- best-effort; fall through to temp dir
         pass
     return None
@@ -1946,7 +1957,6 @@ def cli() -> None:
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
-
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)

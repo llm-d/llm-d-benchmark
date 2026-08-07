@@ -250,7 +250,7 @@ Checks for required and optional CLI tools on `$PATH`.
 
 ```python
 REQUIRED_TOOLS = ["kubectl", "helm", "helmfile", "jq", "yq"]
-OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "rsync", "make"]
+OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "crane", "rsync", "make"]
 
 
 def check_system_dependencies(

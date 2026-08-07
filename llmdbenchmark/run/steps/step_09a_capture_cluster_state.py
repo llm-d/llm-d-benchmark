@@ -84,6 +84,7 @@ class CaptureClusterStateStep(Step):
         epp_keda_enabled = self._resolve(
             plan_config, "eppKedaSaturation.enabled", default=False
         )
+        fma_enabled = self._resolve(plan_config, "fma.enabled", default=False)
         if not (wva_enabled or epp_keda_enabled):
             return StepResult(
                 step_number=self.number,
@@ -242,6 +243,41 @@ class CaptureClusterStateStep(Step):
             warnings.append(
                 f"logs wva-controller-manager failed: {result.stderr[:200]}"
             )
+
+        # 5b. Dual-pods-controller log — its klog lines anchor each FMA actuation
+        # (wake / create_instance / launcher-create), the signal the hit-rate
+        # computation parses. A dedicated high-tail capture (vs. the generic
+        # per-pod dump in section 9, which is tail=5000) keeps the full run's
+        # actuation events. FMA-only.
+        if fma_enabled:
+            result = _kube_logs_with_retry(
+                cmd,
+                "-l",
+                "app.kubernetes.io/component=dual-pods-controller",
+                "--namespace",
+                deploy_ns,
+                "--tail=50000",
+            )
+            if (
+                result.success
+                and result.stdout
+                and not _is_kubelet_log_sentinel(result.stdout)
+            ):
+                (out_dir / "dual-pods-controller.log").write_text(
+                    result.stdout, encoding="utf-8"
+                )
+                captured.append("dual-pods-controller.log")
+            elif result.success and result.stdout:
+                (out_dir / "dual-pods-controller.kubelet-error").write_text(
+                    result.stdout, encoding="utf-8"
+                )
+                warnings.append(
+                    "logs dual-pods-controller: kubelet sentinel after retries"
+                )
+            else:
+                warnings.append(
+                    f"logs dual-pods-controller failed or empty: {result.stderr[:200]}"
+                )
 
         # 6. Pod snapshot — replica count + node placement at end-of-run.
         result = cmd.kube(

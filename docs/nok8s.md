@@ -95,6 +95,9 @@ export HUGGING_FACE_HUB_TOKEN=hf_...     # for gated models
 # Bring up vLLM + EPP + Envoy as local containers (step 00 runs the preflight).
 llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . standup --methods nok8s
 
+# Probe the stack over HTTP (no cluster needed); standup does not chain this one.
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . smoketest
+
 # Benchmark it — the harness runs as a local container against http://localhost:8081.
 llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . run
 
@@ -174,6 +177,7 @@ device and image match yourself.
 | standup step 00 | Preflight: runtime / GPU / ports / token (replaces helm/kubectl checks) |
 | standup steps 02–05 | Skipped (no namespace, PVC, model-download Job) |
 | standup step 06 | `step_06_nok8s_deploy` launches the containers, waits for `/v1/models`, records `http://localhost:<listenPort>` |
+| smoketest steps 00–01 | Cluster-free probes: `GET /v1/models` and `POST /v1/completions` against the Envoy front door, read from the rendered `34_nok8s-containers.yaml` (no pods, Service or route) |
 | run step 03 | Endpoint resolves to the local Envoy URL (no cluster query) |
 | run step 07 | `step_07_deploy_harness_local` runs the harness image locally with `--network host`; results land in `workspace/results/` via a bind-mount |
 | teardown step 06 | `step_06_nok8s_teardown` removes the containers |

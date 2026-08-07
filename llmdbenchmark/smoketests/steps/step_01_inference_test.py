@@ -37,8 +37,10 @@ class InferenceTestStep(Step):
         validator = get_validator(stack_name)
         report = validator.run_inference_test(context, stack_path)
 
-        # Clean up ephemeral curl pods left behind by health + inference checks
-        if not context.dry_run:
+        # Clean up ephemeral curl pods left behind by health + inference checks.
+        # nok8s never creates one (and has no cluster to talk to), but it does
+        # carry a namespace, so the container_only guard is load-bearing.
+        if not context.dry_run and not context.container_only:
             namespace = context.harness_namespace or context.namespace
             if namespace:
                 cmd = context.require_cmd()

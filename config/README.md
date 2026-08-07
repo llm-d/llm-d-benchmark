@@ -94,15 +94,28 @@ Create a scenario YAML under `config/scenarios/` that overrides only the values 
 ```yaml
 scenario:
   - name: "my-deployment"
-    model:
-      name: Qwen/Qwen3-32B
-    decode:
-      replicas: 4
-    namespace:
-      name: my-namespace
+    common:
+      model:
+        name: Qwen/Qwen3-32B
+      namespace:
+        name: my-namespace
+    modelservice:
+      enabled: true
+      decode:
+        replicas: 4
+    standalone:
+      enabled: false
+    fma:
+      enabled: false
 ```
 
 Only the keys you specify are overridden. Everything else comes from `defaults.yaml`.
+The `common` section is inherited by every standup method. Method-specific
+settings belong under `standalone`, `modelservice`, or `fma`. Legacy flat
+scenario keys remain supported for backward compatibility.
+
+`modelservice.common` is distinct from the stack-level `common` section: it
+is passed through as the modelservice Helm chart's `common` values block.
 
 **Multi-stack scenarios - the `shared:` block.** The scenario file also
 accepts an optional top-level `shared:` key that's merged into every stack
@@ -836,15 +849,26 @@ affinity:
 
 ## Scenario Organization
 
-Scenario files use comment headers to organize settings into three categories:
+Each stack is organized into four YAML sections:
 
-- **COMMON** -- settings that apply to all deployment methods (model config, namespace, decode/prefill resources, vllmCommon, monitoring, etc.)
-- **STANDALONE** -- settings that only apply when `standalone.enabled: true` (standalone image, replicas, volumes)
-- **MODELSERVICE** -- settings that only apply when `modelservice.enabled: true` (Helm chart values, gateway config, GAIE settings)
+- **`common`** -- settings inherited by every deployment method (model,
+  namespace, storage, vllmCommon, harness, images, and workDir)
+- **`standalone`** -- settings used when `standalone.enabled: true`
+- **`modelservice`** -- settings used when `modelservice.enabled: true`,
+  including decode, prefill, gateway, router, routing, httpRoute,
+  inferenceExtension, and multinode
+- **`fma`** -- settings used when `fma.enabled: true`
+
+The renderer expands `common` and method-specific sub-sections to the flat
+effective `config.yaml` consumed internally. If a scenario contains both a
+legacy flat key and its sectioned spelling, the sectioned spelling wins.
+Treatment and CLI overrides are applied afterward and therefore take highest
+precedence.
 
 Each scenario must set exactly one of `standalone.enabled: true` or `modelservice.enabled: true`. Only one deployment method can be active at a time. The CLI `-t` flag overrides the scenario value (e.g., `-t standalone` forces standalone even if the scenario says modelservice). If both are passed via CLI, a warning is logged and modelservice is used. Templates use Jinja2 conditionals to skip rendering when the corresponding flag is `false`.
 
-A fifth section header, **WORKLOAD / HARNESS**, groups the `workDir` and `harness` fields that configure benchmark execution (which harness, workload profile, and where results are stored).
+Workload settings such as `workDir` and `harness` belong under `common` because
+they apply regardless of the selected standup method.
 
 ---
 
@@ -1341,6 +1365,10 @@ This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inf
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
 - `inference_extension_flow_control_queue_size` -- flow control queue depth
 - `inference_extension_flow_control_pool_saturation` -- pool saturation level
+- `llm_d_epp_flow_control_pool_saturation` -- pool saturation (0.0–1.0); KEDA
+  EPP-saturation scale trigger (`saturationThreshold`)
+- `llm_d_epp_request_running` -- running requests; KEDA EPP-saturation scale
+  trigger (`runningRequestsThreshold`)
 
 #### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 

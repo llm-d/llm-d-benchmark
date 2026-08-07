@@ -15,7 +15,7 @@ MIN_HELMFILE_VERSION = (1, 5, 0)
 
 
 REQUIRED_TOOLS = ["kubectl", "helm", "helmfile", "jq", "yq"]
-OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "rsync", "make"]
+OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "crane", "rsync", "make"]
 
 
 @dataclass

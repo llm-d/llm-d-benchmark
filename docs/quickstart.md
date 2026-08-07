@@ -55,7 +55,7 @@ You need these installed before starting:
 
 > **Resource note:** The `cicd/kind` scenario deploys ~7 pods on a single Kind node. With the default 2 CPUs that Docker Desktop, Colima, and Podman ship with, the harness pod (and sometimes the gateway) cannot schedule due to `Insufficient cpu`. Bump your container runtime to **4 CPUs** before creating the Kind cluster. See [Troubleshooting](#pods-stuck-in-pending-during-standup-or-run) if you hit this.
 
-Everything else - `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` - will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs.
+Everything else - `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` - will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs. `skopeo`, `crane` and `kustomize` are installed best-effort: they are optional, so a failure there is reported and the install continues.
 
 ## 1. Install Kind locally
 

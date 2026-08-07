@@ -3,6 +3,7 @@
 import posixpath
 import shutil
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -370,10 +371,10 @@ class RenderProfilesStep(Step):
                 with open(exp_path, encoding="utf-8") as f:
                     exp_data = yaml.safe_load(f)
                 if isinstance(exp_data, dict):
-                    constants: dict[str, str] = {}
+                    constants: dict[str, Any] = {}
                     raw_constants = exp_data.get("constants")
                     if isinstance(raw_constants, dict):
-                        constants = {k: str(v) for k, v in raw_constants.items()}
+                        constants = {str(k): v for k, v in raw_constants.items()}
 
                     # Look for 'treatments' or 'run' key
                     raw = exp_data.get("treatments") or exp_data.get("run", [])
@@ -383,7 +384,7 @@ class RenderProfilesStep(Step):
                                 # Constants first, then treatment overrides
                                 overrides = dict(constants)
                                 overrides.update(
-                                    {k: str(v) for k, v in item.items() if k != "name"}
+                                    {str(k): v for k, v in item.items() if k != "name"}
                                 )
                                 treatments.append(
                                     {

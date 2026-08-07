@@ -15,6 +15,23 @@
 
 scenario:
   - name: "fast-model-actuation"
+    common:
+      # -----------------------------------------------------------------------
+      # Model metadata. Under kustomize the deployed model is fixed by the
+      # guide's manifests, so these values do NOT drive the deployment. They
+      # MUST, however, match the model the guide actually serves -- the
+      # post-standup smoketest validates the /v1/models endpoint against
+      # model.name (the guide serves Qwen/Qwen3-0.6B via its InferenceServerConfig).
+      # -----------------------------------------------------------------------
+      model:
+        name: Qwen/Qwen3-0.6B
+        shortName: qwen-qwen3-0-6b
+        path: models/Qwen/Qwen3-0.6B
+        huggingfaceId: Qwen/Qwen3-0.6B
+        size: 10Gi
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.9
 
     # =======================================================================
     # KUSTOMIZE DEPLOY METHOD -- pre-enabled. This block defines the ENTIRE
@@ -34,29 +51,9 @@ scenario:
       extraHelmSets: {}
       guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
 
-    # -----------------------------------------------------------------------
-    # Model metadata. Under kustomize the deployed model is fixed by the
-    # guide's manifests, so these values do NOT drive the deployment. They
-    # MUST, however, match the model the guide actually serves -- the
-    # post-standup smoketest validates the /v1/models endpoint against
-    # model.name (the guide serves Qwen/Qwen3-0.6B via its InferenceServerConfig).
-    # -----------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3-0.6B
-      shortName: qwen-qwen3-0-6b
-      path: models/Qwen/Qwen3-0.6B
-      huggingfaceId: Qwen/Qwen3-0.6B
-      size: 10Gi
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.9
-
-    # =======================================================================
-    # WORKLOAD / HARNESS -- Benchmark execution configuration
-    # =======================================================================
-    workDir: "~/data/fast-model-actuation"
-
     harness:
       name: nop
       experimentProfile: nop.yaml
       executable: llm-d-benchmark.py
+
+    workDir: "~/data/fast-model-actuation"

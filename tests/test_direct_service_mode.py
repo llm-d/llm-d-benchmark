@@ -253,24 +253,31 @@ def test_gpu_example_renders_plain_service_without_router(tmp_path: Path) -> Non
 def test_direct_service_uses_gateway_namespace_and_decode_target_port(
     tmp_path: Path,
 ) -> None:
-    scenario_file = tmp_path / "scenario.yaml"
-    scenario_file.write_text(
-        (_REPO / "config/scenarios/examples/gpu.yaml")
-        .read_text(encoding="utf-8")
-        .replace(
-            "gateway:\n      className: epponly",
-            "gateway:\n      className: none\n      namespace: model-serving",
-        )
-        .replace(
-            "    decode:\n      # replicas: 1",
-            "    decode:\n      vllm:\n        servicePort: 8100\n      # replicas: 1",
-        )
-        .replace(
-            "    # Decode Configuration",
-            "    routing:\n      servicePort: 8000\n\n    # Decode Configuration",
-        ),
-        encoding="utf-8",
+    # Build the fixture by editing the parsed scenario, not its text. A
+    # string patch silently no-ops when the scenario is re-indented, which
+    # leaves the test asserting against an unmodified scenario.
+    document = yaml.safe_load(
+        (_REPO / "config/scenarios/examples/gpu.yaml").read_text(encoding="utf-8")
     )
+
+    def _branch(node: dict, key: str) -> dict:
+        """setdefault that also replaces an explicit `key:` with no value."""
+        child = node.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            node[key] = child
+        return child
+
+    stack = document["scenario"][0]
+    section = _branch(stack, "modelservice")
+    gateway = _branch(section, "gateway")
+    gateway["className"] = "none"
+    gateway["namespace"] = "model-serving"
+    _branch(_branch(section, "decode"), "vllm")["servicePort"] = 8100
+    _branch(section, "routing")["servicePort"] = 8000
+
+    scenario_file = tmp_path / "scenario.yaml"
+    scenario_file.write_text(yaml.dump(document, sort_keys=False), encoding="utf-8")
     output_dir = tmp_path / "rendered"
     logger = MagicMock()
 

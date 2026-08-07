@@ -20,6 +20,19 @@ import argparse
 import glob
 import json
 import os
+import sys
+
+# Reuse the dual-pods-controller log parser (workload/harnesses) so hit-rate
+# classification matches the authoritative FMA actuation logic. The script runs
+# from the repo root ($GITHUB_WORKSPACE) in CI, so add that to sys.path.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+try:
+    from workload.harnesses.dpc_log_parser import _parse_rfc3339_nano, parse_dpc_log
+except ImportError:
+    parse_dpc_log = None
+    _parse_rfc3339_nano = None
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +113,68 @@ def pod_startup_mean(rdir):
     data = load_json(_find_one(rdir, "pod_startup_times.json")) or {}
     agg = data.get("requester_runtime_aggregate") or data.get("aggregate") or {}
     return agg.get("mean")
+
+
+def fma_hit_rates(rdir):
+    """(hot_rate, warm_rate, cold_rate) of the run's FMA scale-up actuations, or
+    (None, None, None) when this isn't an FMA pass / no DPC log was captured.
+
+    Classifies each requester the dual-pods-controller acted on during the run
+    from ``dual-pods-controller.log`` (captured by step_09a): a ``wake`` anchor
+    is a HOT actuation (woke a sleeping vLLM), ``create_instance`` is WARM
+    (existing launcher, new vLLM), and a launcher-create is COLD. Rates are each
+    category over the total classified actuations.
+
+    Only RUN-phase actuations count: those whose anchor time is at/after the run
+    start (first replica-status snapshot). Standup/warmup actuations are excluded
+    -- matching aggregate_requester_startup_stats' "runtime requester" filter in
+    process_metrics.py."""
+    if parse_dpc_log is None:
+        return (None, None, None)
+    log_path = _find_one(rdir, "dual-pods-controller.log")
+    if not log_path:
+        return (None, None, None)
+    try:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
+            records = parse_dpc_log(f)
+    except OSError:
+        return (None, None, None)
+
+    # Run start = first replica-status snapshot timestamp, as an epoch float to
+    # compare against the DPC anchor times (also epoch). None => no filtering.
+    run_start = None
+    ts_data = load_json(_find_one(rdir, "replica_status_timeseries.json"))
+    snaps = (ts_data or {}).get("snapshots", [])
+    if snaps and _parse_rfc3339_nano is not None:
+        run_start = _parse_rfc3339_nano(snaps[0].get("timestamp"))
+
+    hot = warm = cold = 0
+    for rec in records.values():
+        # Precedence mirrors fma_functions' classification: a wake anchor means
+        # the actuation woke a sleeping vLLM (hot); else an instance-create is
+        # warm; else a launcher was created cold. The chosen anchor's start time
+        # is the actuation time used for the run-phase filter.
+        if rec.wake_start_time is not None:
+            category, anchor = "hot", rec.wake_start_time
+        elif rec.instance_create_start_time is not None:
+            category, anchor = "warm", rec.instance_create_start_time
+        elif rec.launcher_create_start_time is not None:
+            category, anchor = "cold", rec.launcher_create_start_time
+        else:
+            continue
+        # Skip standup/warmup actuations (before the run started).
+        if run_start is not None and anchor is not None and anchor < run_start:
+            continue
+        if category == "hot":
+            hot += 1
+        elif category == "warm":
+            warm += 1
+        else:
+            cold += 1
+    total = hot + warm + cold
+    if total == 0:
+        return (None, None, None)
+    return (hot / total, warm / total, cold / total)
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +340,9 @@ def main():
     qd = [epp_gauge_mean(r, QUEUE_SIZE_METRIC) for r in rdirs]
     kv_pct = [(v * 100 if v is not None and v <= 1.0 else v) for v in kv]
     cost = [(a * args.gpu_hourly_cost if a is not None else None) for a in avg_repl]
+    hit = [fma_hit_rates(r) for r in rdirs]
+    hot_pct = [(h[0] * 100 if h[0] is not None else None) for h in hit]
+    warm_pct = [(h[1] * 100 if h[1] is not None else None) for h in hit]
 
     out.append("| Avg replicas | " + " | ".join(fmt(v, "", 2) for v in avg_repl) + " |")
     out.append("| Max replicas | " + " | ".join(fmt(v, "", 0) for v in max_repl) + " |")
@@ -283,6 +361,10 @@ def main():
         "| Cost (avg replicas × GPU/hr) | "
         + " | ".join(fmt(v, "", 2) for v in cost)
         + " |"
+    )
+    out.append("| Hot hit rate | " + " | ".join(fmt(v, "%", 1) for v in hot_pct) + " |")
+    out.append(
+        "| Warm hit rate | " + " | ".join(fmt(v, "%", 1) for v in warm_pct) + " |"
     )
 
     if bl is None:
