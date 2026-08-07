@@ -89,6 +89,9 @@ def fmt(v, unit="", precision=1):
 
 KV_CACHE_METRIC = "inference_pool_average_kv_cache_utilization"
 QUEUE_SIZE_METRIC = "inference_pool_average_queue_size"
+# EPP flow-control metrics that drive the KEDA saturation scale triggers.
+POOL_SATURATION_METRIC = "llm_d_epp_flow_control_pool_saturation"
+RUNNING_REQUESTS_METRIC = "llm_d_epp_request_running"
 
 
 def replica_stats(rdir):
@@ -338,6 +341,8 @@ def main():
     startup = [pod_startup_mean(r) for r in rdirs]
     kv = [epp_gauge_mean(r, KV_CACHE_METRIC) for r in rdirs]
     qd = [epp_gauge_mean(r, QUEUE_SIZE_METRIC) for r in rdirs]
+    sat = [epp_gauge_mean(r, POOL_SATURATION_METRIC) for r in rdirs]
+    rr = [epp_gauge_mean(r, RUNNING_REQUESTS_METRIC) for r in rdirs]
     kv_pct = [(v * 100 if v is not None and v <= 1.0 else v) for v in kv]
     cost = [(a * args.gpu_hourly_cost if a is not None else None) for a in avg_repl]
     hit = [fma_hit_rates(r) for r in rdirs]
@@ -353,6 +358,12 @@ def main():
     )
     out.append(
         "| Avg queue depth (EPP) | " + " | ".join(fmt(v, "", 1) for v in qd) + " |"
+    )
+    out.append(
+        "| Avg pool saturation (EPP) | " + " | ".join(fmt(v, "", 2) for v in sat) + " |"
+    )
+    out.append(
+        "| Avg running requests (EPP) | " + " | ".join(fmt(v, "", 1) for v in rr) + " |"
     )
     out.append(
         "| Avg pod startup (s) | " + " | ".join(fmt(v, "", 0) for v in startup) + " |"

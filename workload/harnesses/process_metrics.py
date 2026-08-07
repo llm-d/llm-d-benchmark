@@ -55,6 +55,9 @@ LEGACY_AGGREGATE_METRICS = {
     "inference_pool_average_queue_size",
     "inference_pool_average_running_requests",
     "inference_pool_ready_pods",
+    # EPP flow-control metrics (KEDA saturation scale triggers)
+    "llm_d_epp_flow_control_pool_saturation",
+    "llm_d_epp_request_running",
 }
 AGGREGATE_METRICS = (
     TIME_SERIES_METRIC_SET
@@ -120,6 +123,8 @@ METRIC_UNITS = {
     "inference_pool_average_queue_size": "count",
     "inference_pool_average_running_requests": "count",
     "inference_pool_ready_pods": "count",
+    "llm_d_epp_flow_control_pool_saturation": "ratio",
+    "llm_d_epp_request_running": "count",
     "inference_extension_scheduler_e2e_duration_seconds_bucket": "seconds",
     "inference_extension_scheduler_e2e_duration_seconds_sum": "seconds",
     "inference_extension_scheduler_e2e_duration_seconds_count": "count",
