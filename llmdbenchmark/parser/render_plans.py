@@ -1109,9 +1109,7 @@ class RenderPlans:
                     # schema's extra="forbid". Keep what the section models.
                     allowed = (defaults.get(section) or {}).get(key)
                     if isinstance(allowed, dict) and isinstance(inherited, dict):
-                        inherited = {
-                            k: v for k, v in inherited.items() if k in allowed
-                        }
+                        inherited = {k: v for k, v in inherited.items() if k in allowed}
                         if not inherited:
                             continue
                     section_block[key] = inherited

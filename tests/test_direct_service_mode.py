@@ -259,6 +259,7 @@ def test_direct_service_uses_gateway_namespace_and_decode_target_port(
     document = yaml.safe_load(
         (_REPO / "config/scenarios/examples/gpu.yaml").read_text(encoding="utf-8")
     )
+
     def _branch(node: dict, key: str) -> dict:
         """setdefault that also replaces an explicit `key:` with no value."""
         child = node.get(key)
