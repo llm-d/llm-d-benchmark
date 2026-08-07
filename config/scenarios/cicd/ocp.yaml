@@ -12,11 +12,11 @@ scenario:
     common:
       # Model
       model:
-        name: Qwen/Qwen2.5-3B
-        shortName: qwen-qwen2-5-3b
-        path: models/Qwen/Qwen2.5-3B
-        huggingfaceId: Qwen/Qwen2.5-3B
-        # Qwen2.5-3B native context is 32768; keep maxModelLen within it (only
+        name: Qwen/Qwen3-4B
+        shortName: qwen-qwen3-4b
+        path: models/Qwen/Qwen3-4B
+        huggingfaceId: Qwen/Qwen3-4B
+        # Qwen3-4B native context is 32768; keep maxModelLen within it (only
         # the standalone/modelservice paths read this -- the FMA launcher in
         # 24_fma-deployment.yaml.j2 passes no --max-model-len).
         maxModelLen: 32768
