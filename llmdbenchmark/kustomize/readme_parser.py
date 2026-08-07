@@ -12,6 +12,7 @@ class CommandPhase(str, Enum):
     PREREQUISITES = "prerequisites"
     ROUTER = "router"
     MODELSERVER = "modelserver"
+    RENDER = "render"
     MONITORING = "monitoring"
     VERIFY = "verify"
     CLEANUP = "cleanup"
@@ -79,11 +80,12 @@ class ParsedGuide:
     def get_deploy_commands(
         self, mode: DeployMode = DeployMode.STANDALONE
     ) -> list[GuideCommand]:
-        """Return all deployment commands (prerequisites + router + modelserver + monitoring)."""
+        """Return all deployment commands (prerequisites + router + modelserver + render + monitoring)."""
         phases = (
             CommandPhase.PREREQUISITES,
             CommandPhase.ROUTER,
             CommandPhase.MODELSERVER,
+            CommandPhase.RENDER,
             CommandPhase.MONITORING,
         )
         return [
@@ -114,6 +116,7 @@ class _Section(str, Enum):
     ROUTER_STANDALONE = "router_standalone"
     ROUTER_GATEWAY = "router_gateway"
     MODELSERVER = "modelserver"
+    RENDER = "render"
     MONITORING = "monitoring"
     VERIFICATION = "verification"
     CLEANUP = "cleanup"
@@ -170,6 +173,10 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         return _Section.VERIFICATION
     if "monitoring" in lower:
         return _Section.MONITORING
+    # Checked before the model-server branch: without its own section the render
+    # step inherits MODELSERVER, where only one command is ever applied.
+    if "render" in lower:
+        return _Section.RENDER
     if "deploy the model server" in lower or "model server" in lower:
         return _Section.MODELSERVER
     if "standalone mode" in lower or "standalone" in lower:
@@ -198,6 +205,7 @@ def _section_to_phase_mode(
         _Section.ROUTER_STANDALONE: (CommandPhase.ROUTER, DeployMode.STANDALONE),
         _Section.ROUTER_GATEWAY: (CommandPhase.ROUTER, DeployMode.GATEWAY),
         _Section.MODELSERVER: (CommandPhase.MODELSERVER, DeployMode.ANY),
+        _Section.RENDER: (CommandPhase.RENDER, DeployMode.ANY),
         _Section.MONITORING: (CommandPhase.MONITORING, DeployMode.ANY),
         _Section.VERIFICATION: (CommandPhase.VERIFY, DeployMode.ANY),
         _Section.CLEANUP: (CommandPhase.CLEANUP, DeployMode.ANY),

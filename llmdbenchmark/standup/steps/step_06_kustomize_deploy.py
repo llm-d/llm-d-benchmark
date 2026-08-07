@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import shlex
 import tempfile
 from pathlib import Path
@@ -18,6 +19,29 @@ from llmdbenchmark.kustomize.readme_parser import (
     parse_guide_readme,
 )
 from llmdbenchmark.kustomize.variable_resolver import GuideVariableResolver
+
+
+# Accelerator names that may appear as `router/<name>.values.yaml` in a guide
+# README, grouped with the spellings that refer to the same hardware.
+_ACCELERATOR_ALIASES = {
+    "gpu": {"gpu", "cuda", "nvidia"},
+    "xpu": {"xpu", "intel"},
+    "amd": {"amd", "rocm"},
+    "tpu": {"tpu"},
+    "cpu": {"cpu"},
+    "gaudi": {"gaudi"},
+}
+_ALL_ACCELERATOR_TOKENS = {t for group in _ACCELERATOR_ALIASES.values() for t in group}
+_ROUTER_VALUES_FILE_RE = re.compile(r"router/([A-Za-z0-9_-]+)\.values\.ya?ml")
+
+
+def _accelerator_family(accel_backend: str) -> str:
+    """Reduce e.g. ``"xpu/vllm"`` to the accelerator family ``"xpu"``."""
+    head = (accel_backend or "").split("/")[0].strip().lower()
+    for family, aliases in _ACCELERATOR_ALIASES.items():
+        if head in aliases:
+            return family
+    return head
 
 
 class KustomizeDeployStep(Step):
@@ -193,7 +217,12 @@ class KustomizeDeployStep(Step):
                 )
 
         # --- 2. Router ---
-        router_cmds = parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE)
+        router_cmds = self._select_router_commands(
+            parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE),
+            accel_backend,
+            resolver,
+            context,
+        )
         for gc in router_cmds:
             resolved = resolver.resolve(gc.raw)
             resolved = self._inject_extra_helm_args(
@@ -261,7 +290,19 @@ class KustomizeDeployStep(Step):
                 errors, stack_path, "Model server deployment failed", context=context
             )
 
-        # --- 4. Monitoring ---
+        # --- 4. Render (tokenizer) ---
+        for gc in parsed.get_commands(CommandPhase.RENDER, DeployMode.ANY):
+            resolved_render = resolver.resolve(gc.raw)
+            result = self._run_resolved(
+                cmd, resolved_render, check=False, context=context, phase="render"
+            )
+            if not result.success:
+                errors.append(f"Render deploy failed: {result.stderr}")
+                return self._fail(
+                    errors, stack_path, "Render deployment failed", context=context
+                )
+
+        # --- 5. Monitoring ---
         if monitoring:
             mon_path = (
                 Path(repo_path)
@@ -282,7 +323,7 @@ class KustomizeDeployStep(Step):
                     f"Monitoring apply failed (non-fatal): {result.stderr}"
                 )
 
-        # --- 5. Wait ---
+        # --- 6. Wait ---
         context.logger.log_info(f"Waiting for pods (timeout={deploy_timeout}s)...")
         wait_result = cmd.wait_for_pods(
             label=f"llm-d.ai/guide={guide_name}",
@@ -643,6 +684,35 @@ class KustomizeDeployStep(Step):
         if commands:
             return commands[0]
         return None
+
+    @staticmethod
+    def _select_router_commands(commands, accel_backend, resolver, context):
+        """Drop router commands that layer another accelerator's values file.
+
+        Guide READMEs document accelerator-specific router overrides as extra
+        ``helm`` blocks (e.g. ``router/xpu.values.yaml``). Every router block is
+        executed, so without this filter a GPU run also applies the XPU override
+        and the EPP ends up selecting no model servers.
+        """
+        family = _accelerator_family(accel_backend)
+        aliases = _ACCELERATOR_ALIASES.get(family, {family})
+
+        selected = []
+        for gc in commands:
+            resolved = resolver.resolve(gc.raw)
+            foreign = {
+                token
+                for token in _ROUTER_VALUES_FILE_RE.findall(resolved)
+                if token in _ALL_ACCELERATOR_TOKENS and token not in aliases
+            }
+            if foreign:
+                context.logger.log_info(
+                    f"[router] skipping command for accelerator(s) "
+                    f"{', '.join(sorted(foreign))} (running on '{family}')"
+                )
+                continue
+            selected.append(gc)
+        return selected
 
     @staticmethod
     def _inject_extra_helm_args(
