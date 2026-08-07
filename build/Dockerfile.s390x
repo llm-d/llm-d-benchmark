@@ -413,13 +413,12 @@ COPY llmdbenchmark/analysis/scripts/guidellm-analyze_results.sh /usr/local/bin/g
 COPY llmdbenchmark/analysis/scripts/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
 COPY llmdbenchmark/analysis/scripts/lm-eval-analyze_results.sh /usr/local/bin/lm-eval-analyze_results.sh
 COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
-COPY llmdbenchmark/analysis/benchmark_report/ /opt/benchmark_report/
-RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
+COPY benchmark-report/ /opt/benchmark-report/
 
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
-RUN pip install -e /opt
+RUN pip install --no-cache-dir /opt/benchmark-report
 ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
 RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
 

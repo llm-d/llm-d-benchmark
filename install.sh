@@ -965,6 +965,17 @@ print_pkg() {
     printf "  %-22s %-14s %s\n" "$name" "$ver" "$status"
 }
 
+# 0. Install the in-repo Benchmark Report library first, so the
+#    llmd-benchmark-report requirement below resolves against the local
+#    checkout rather than PyPI (works pre-publish and for unreleased
+#    schema changes).
+if _pip_isolated install -e "${SCRIPT_DIR}/benchmark-report" --quiet; then
+    print_pkg llmd-benchmark-report "(installed)"
+else
+    echo "ERROR: Failed to install llmd-benchmark-report!"
+    exit 1
+fi
+
 # 1. Install llmdbenchmark (editable)
 if grep -q "llmdbenchmark is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg llmdbenchmark ""

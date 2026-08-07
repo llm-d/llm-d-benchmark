@@ -2,10 +2,10 @@
 
 import unittest
 
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
+from llmd_benchmark_report.schema_v0_2 import (
     Component as ReportComponent,
 )
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2_components import HostType
+from llmd_benchmark_report.schema_v0_2_components import HostType
 
 from llm_d_stack_discovery.models.components import (
     Component,

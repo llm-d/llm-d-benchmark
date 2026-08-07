@@ -1,0 +1,60 @@
+name: CI - Release - llmd-benchmark-report (PyPI)
+
+on:
+  push:
+    tags:
+      - 'br-v*'  # e.g. br-v0.2.1 releases benchmark-report/ as 0.2.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify tag matches package version
+        run: |
+          tag_version="${GITHUB_REF_NAME#br-v}"
+          pkg_version=$(python -c "import tomllib; print(tomllib.load(open('benchmark-report/pyproject.toml','rb'))['project']['version'])")
+          if [[ "$tag_version" != "$pkg_version" ]]; then
+            echo "Tag version ($tag_version) does not match benchmark-report/pyproject.toml version ($pkg_version)" >&2
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: |
+          pip install build
+          python -m build benchmark-report/
+
+      - name: Smoke-test the wheel
+        run: |
+          pip install benchmark-report/dist/*.whl
+          python -c "import llmd_benchmark_report, benchmark_report; print(llmd_benchmark_report.__name__, 'ok')"
+          benchmark-report --help > /dev/null
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: br-dist
+          path: benchmark-report/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # required for PyPI trusted publishing (OIDC)
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: br-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

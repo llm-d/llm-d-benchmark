@@ -1410,12 +1410,12 @@ scenario:
 
 #### Benchmark report integration
 
-The analysis pipeline converts collected results into v0.2 benchmark reports (`llmdbenchmark/analysis/benchmark_report/`). Reports include:
+The analysis pipeline converts collected results into v0.2 benchmark reports (`benchmark-report/llmd_benchmark_report/`). Reports include:
 - **Performance metrics**: TTFT, TPOT, ITL, request latency, throughput
 - **Resource metrics**: KV cache usage, GPU/CPU memory, GPU utilization
 - **Time series data**: Per-interval metric snapshots
 
-Reports are generated in both YAML and JSON formats. See `llmdbenchmark/analysis/benchmark_report/README.md` for the full schema reference.
+Reports are generated in both YAML and JSON formats. See `benchmark-report/README.md` for the full schema reference.
 
 #### Prometheus adapter (for autoscaling)
 

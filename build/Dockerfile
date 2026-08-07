@@ -135,12 +135,11 @@ COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metric
 
 RUN rsync -az --exclude "__pycache__" /tmp/analysis/ /usr/local/bin/; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
 
-COPY llmdbenchmark/analysis/benchmark_report/ /opt/benchmark_report/
-RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
+COPY benchmark-report/ /opt/benchmark-report/
 
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .
-RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install -e /opt
+RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install --no-cache-dir /opt/benchmark-report
 
 ADD install.sh /usr/local/bin/llmdbench_install.sh
 RUN chmod +x /usr/local/bin/*; \

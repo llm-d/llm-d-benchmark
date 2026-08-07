@@ -853,7 +853,7 @@ one requires files in three areas.
    ```
 
 4. **Benchmark report converter** (optional but recommended):
-   Add conversion functions to `llmdbenchmark/analysis/benchmark_report/`
+   Add conversion functions to `benchmark-report/llmd_benchmark_report/`
    in both `native_to_br0_1.py` and `native_to_br0_2.py` so raw output
    can be normalized to the standard benchmark report format.
 

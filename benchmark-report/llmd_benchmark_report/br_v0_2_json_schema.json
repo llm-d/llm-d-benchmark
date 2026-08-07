@@ -1719,6 +1719,18 @@
           "default": null,
           "description": "Request-level performance metrics."
         },
+        "session_performance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionPerformance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Session-level performance metrics."
+        },
         "observability": {
           "anyOf": [
             {
@@ -2025,6 +2037,185 @@
         "value"
       ],
       "title": "SequenceLength",
+      "type": "object"
+    },
+    "SessionPerformance": {
+      "additionalProperties": false,
+      "description": "Session-level performance metrics.",
+      "properties": {
+        "sessions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionRequests"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Session counts and per-session distributions."
+        }
+      },
+      "title": "SessionPerformance",
+      "type": "object"
+    },
+    "SessionRequests": {
+      "additionalProperties": false,
+      "description": "Session-level request statistics.",
+      "properties": {
+        "total": {
+          "description": "Total number of sessions.",
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "succeeded": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of sessions that completed successfully.",
+          "title": "Succeeded"
+        },
+        "failed": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of sessions that failed.",
+          "title": "Failed"
+        },
+        "total_events": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total number of events (requests) across all sessions.",
+          "title": "Total Events"
+        },
+        "total_events_completed": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total number of events that completed successfully.",
+          "title": "Total Events Completed"
+        },
+        "total_events_cancelled": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total number of events that were cancelled.",
+          "title": "Total Events Cancelled"
+        },
+        "session_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rate of session completions per second."
+        },
+        "session_duration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Distribution of session durations in seconds."
+        },
+        "events_per_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Distribution of event (request) counts per session."
+        },
+        "events_cancelled_per_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Distribution of cancelled event counts per session."
+        },
+        "input_tokens_per_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Distribution of total input tokens consumed per session."
+        },
+        "output_tokens_per_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Distribution of total output tokens produced per session."
+        }
+      },
+      "required": [
+        "total"
+      ],
+      "title": "SessionRequests",
       "type": "object"
     },
     "Statistics": {
@@ -2846,10 +3037,13 @@
       "description": "Enumeration of units\n\nAttributes\n    COUNT: str\n        Count\n    MS: str\n        Milliseconds\n    S: str\n        Seconds\n    MB: str\n        Megabytes\n    GB: str\n        Gigabytes\n    TB: str\n        Terabytes\n    MIB: str\n        Mebibytes\n    GIB: str\n        Gibibytes\n    TIB: str\n        Tebibytes\n    MBIT_PER_S: str\n        Megabbits per second\n    GBIT_PER_S: str\n        Gigabits per second\n    TBIT_PER_S: str\n        Terabits per second\n    MB_PER_S: str\n        Megabytes per second\n    GB_PER_S: str\n        Gigabytes per second\n    TB_PER_S: str\n        Terabytes per second\n    GIB_PER_S: str\n        GiB per second\n    MS_PER_TOKEN: str\n        Milliseconds per token\n    S_PER_TOKEN: str\n        Seconds per token\n    TOKEN_PER_S: str\n        Tokens per second\n    WATTS: str\n        Watts",
       "enum": [
         "count",
+        "pixels",
         "percent",
         "fraction",
+        "ratio",
         "ms",
         "s",
+        "bytes",
         "MB",
         "GB",
         "TB",
@@ -2867,6 +3061,9 @@
         "s/token",
         "tokens/s",
         "queries/s",
+        "images/s",
+        "videos/s",
+        "audios/s",
         "Watts"
       ],
       "title": "Units",

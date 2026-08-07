@@ -198,7 +198,7 @@
       "type": "object"
     },
     "HostType": {
-      "description": "Enumeration of supported workload generators\n\nAttributes\n    REPLICA: str\n        Standard instance of an inference service\n    PREFILL: str\n        Prefill instance of an inference service\n    DECODE: str\n        Decode instance of an inference service",
+      "description": "Enumeration of host types.\n\nAttributes\n    REPLICA: str\n        Standard instance of an inference service\n    PREFILL: str\n        Prefill instance of an inference service\n    DECODE: str\n        Decode instance of an inference service",
       "enum": [
         "replica",
         "prefill",
@@ -1032,13 +1032,16 @@
       "type": "object"
     },
     "Units": {
-      "description": "Enumeration of units\n\nAttributes\n    COUNT: str\n        Count\n    MS: str\n        Milliseconds\n    S: str\n        Seconds\n    MB: str\n        Megabytes\n    GB: str\n        Gigabytes\n    TB: str\n        Terabytes\n    MIB: str\n        Mebibytes\n    GIB: str\n        Gibibytes\n    TIB: str\n        Tebibytes\n    MBIT_PER_S: str\n        Megabbits per second\n    GBIT_PER_S: str\n        Gigabits per second\n    TBIT_PER_S: str\n        Terabits per second\n    MB_PER_S: str\n        Megabytes per second\n    GB_PER_S: str\n        Gigabytes per second\n    TB_PER_S: str\n        Terabytes per second\n    GIB_PER_S: str\n        GiB per second\n    MS_PER_TOKEN: str\n        Milliseconds per token\n    S_PER_TOKEN: str\n        Seconds per token\n    WATTS: str\n        Watts",
+      "description": "Enumeration of units\n\nAttributes\n    COUNT: str\n        Count\n    MS: str\n        Milliseconds\n    S: str\n        Seconds\n    MB: str\n        Megabytes\n    GB: str\n        Gigabytes\n    TB: str\n        Terabytes\n    MIB: str\n        Mebibytes\n    GIB: str\n        Gibibytes\n    TIB: str\n        Tebibytes\n    MBIT_PER_S: str\n        Megabbits per second\n    GBIT_PER_S: str\n        Gigabits per second\n    TBIT_PER_S: str\n        Terabits per second\n    MB_PER_S: str\n        Megabytes per second\n    GB_PER_S: str\n        Gigabytes per second\n    TB_PER_S: str\n        Terabytes per second\n    GIB_PER_S: str\n        GiB per second\n    MS_PER_TOKEN: str\n        Milliseconds per token\n    S_PER_TOKEN: str\n        Seconds per token\n    TOKEN_PER_S: str\n        Tokens per second\n    WATTS: str\n        Watts",
       "enum": [
         "count",
+        "pixels",
         "percent",
         "fraction",
+        "ratio",
         "ms",
         "s",
+        "bytes",
         "MB",
         "GB",
         "TB",
@@ -1054,15 +1057,22 @@
         "TB/s",
         "ms/token",
         "s/token",
+        "tokens/s",
+        "queries/s",
+        "images/s",
+        "videos/s",
+        "audios/s",
         "Watts"
       ],
       "title": "Units",
       "type": "string"
     },
     "WorkloadGenerator": {
-      "description": "Enumeration of supported workload generators\n\nAttributes\n    GUIDELLM: str\n        GuideLLM\n    INFERENCE_PERF: str\n        Inference Perf\n    VLLM_BENCHMARK: str\n        benchmark_serving from vLLM\n    NOP: str\n        vLLM Load times",
+      "description": "Enumeration of supported workload generators\n\nAttributes\n    AIPERF: str\n        AIPerf\n    GUIDELLM: str\n        GuideLLM\n    INFERENCE_MAX: str\n        InferenceMAX\n    INFERENCE_PERF: str\n        Inference Perf\n    VLLM_BENCHMARK: str\n        benchmark_serving from vLLM\n    NOP: str\n        vLLM Load times",
       "enum": [
+        "aiperf",
         "guidellm",
+        "inferencemax",
         "inference-perf",
         "vllm-benchmark",
         "nop"
@@ -1099,6 +1109,6 @@
     "scenario",
     "metrics"
   ],
-  "title": "BenchmarkReport",
+  "title": "BenchmarkReportV01",
   "type": "object"
 }
