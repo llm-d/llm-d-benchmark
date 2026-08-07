@@ -12,6 +12,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.parser.cluster_resource_resolver import effective_accelerator_count
 from llmdbenchmark.standup import wva as wva_mod
 from llmdbenchmark.standup import keda_saturation as keda_sat_mod
+from llmdbenchmark.standup import keda as keda_mod
 from llmdbenchmark.utilities.capacity_validator import run_capacity_planner
 
 
@@ -69,6 +70,8 @@ class WorkloadMonitoringStep(Step):
 
         if context.is_openshift and self._is_modelservice(context):
             self._apply_monitoring(cmd, context, errors)
+
+        self._install_keda_if_enabled(cmd, context, errors)
 
         if errors:
             for e in errors:
@@ -656,5 +659,37 @@ class WorkloadMonitoringStep(Step):
                 stack_path=stack_path,
                 epp_keda_namespace=epp_keda_ns,
                 prom_ca_cert=prom_ca_cert,
+                errors=errors,
+            )
+
+    def _install_keda_if_enabled(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+    ) -> None:
+        """Apply TriggerAuthentication and ScaledObjects for stacks with keda.scaledObjects.
+
+        Runs on any platform (not gated on is_openshift). One install call per
+        unique keda namespace — namespace comes from namespace.name in config.yaml.
+        """
+        pairs = keda_mod.stacks_enabling_keda(context.rendered_stacks or [])
+        if not pairs:
+            return
+
+        seen_namespaces: set[str] = set()
+        for stack_path, cfg in pairs:
+            ns = cfg.get("namespace", {}).get("name", "")
+            if not ns or ns in seen_namespaces:
+                continue
+            seen_namespaces.add(ns)
+            context.logger.log_info(
+                f"Setting up generic KEDA ScaledObjects for ns/{ns}"
+            )
+            keda_mod.install_keda_for_namespace(
+                cmd=cmd,
+                context=context,
+                stack_path=stack_path,
+                namespace=ns,
                 errors=errors,
             )

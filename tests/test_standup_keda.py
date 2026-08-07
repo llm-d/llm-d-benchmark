@@ -9,6 +9,9 @@ from typing import Any
 import yaml
 
 from llmdbenchmark.standup.keda import stacks_enabling_keda, install_keda_for_namespace
+from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
+    WorkloadMonitoringStep,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -292,3 +295,58 @@ class TestInstallKedaForNamespace:
 
         assert len(errors) == 1
         assert "permission denied" in errors[0]
+
+
+# ---------------------------------------------------------------------------
+# Tests: step_03 integration — _install_keda_if_enabled
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FullStubContext:
+    rendered_stacks: list[Path] = field(default_factory=list)
+    is_openshift: bool = False  # deliberately False to test non-OCP path
+    platform_type: str = "kind"
+    logger: _StubLogger = field(default_factory=_StubLogger)
+    dry_run: bool = False
+    non_admin: bool = False
+
+
+class TestInstallKedaIfEnabled:
+    def test_runs_on_non_openshift(self, tmp_path: Path) -> None:
+        """_install_keda_if_enabled runs even when is_openshift is False."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {
+                    "prometheus": {"authMode": "none"},
+                    "scaledObjects": [{"name": "x"}],
+                },
+                "namespace": {"name": "ns1"},
+            },
+        )
+        _write_so_template(stack)
+        step = WorkloadMonitoringStep()
+        ctx = _FullStubContext(rendered_stacks=[stack], is_openshift=False)
+        cmd = _StubCmd()
+        errors: list = []
+
+        step._install_keda_if_enabled(cmd, ctx, errors)
+
+        applied = [args for args in cmd.kube_calls if args[0] == "apply"]
+        assert len(applied) == 1, (
+            f"Expected ScaledObjects apply on non-OCP; kube_calls={cmd.kube_calls}"
+        )
+
+    def test_no_keda_stacks_is_noop(self, tmp_path: Path) -> None:
+        stack = _write_stack(tmp_path, "s1", cfg={"namespace": {"name": "ns1"}})
+        step = WorkloadMonitoringStep()
+        ctx = _FullStubContext(rendered_stacks=[stack])
+        cmd = _StubCmd()
+        errors: list = []
+
+        step._install_keda_if_enabled(cmd, ctx, errors)
+
+        assert cmd.kube_calls == []
+        assert errors == []
