@@ -39,11 +39,12 @@ spec:
     name: {{ trigger.name }}
 {% endif %}
     metricType: {{ trigger.metricType | default('AverageValue') }}
-{% if auth_mode == 'bearer-secret' %}
+{% if trigger.type == 'prometheus' and auth_mode == 'bearer-secret' %}
     authenticationRef:
       name: keda-prometheus-auth
 {% endif %}
     metadata:
+{% if trigger.type == 'prometheus' %}
       serverAddress: "{{ prom_addr }}"
 {% if auth_mode == 'bearer-secret' %}
       authModes: bearer
@@ -55,12 +56,15 @@ spec:
         {{ trigger.query | trim | indent(8) }}
       threshold: "{{ trigger.threshold | default('1') }}"
       activationThreshold: "{{ trigger.activationThreshold | default('0') }}"
+{% elif trigger.metadata is defined %}
+{{ trigger.metadata | toyaml | indent(6, first=True) }}
+{% endif %}
 {% endfor %}
 {% if so.behavior is defined %}
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
-{{ so.behavior | toyaml | indent(6, first=True) }}
+{{ so.behavior | toyaml | indent(8, first=True) }}
 {% endif %}
 {% endfor %}
 {% endif %}

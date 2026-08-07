@@ -150,6 +150,27 @@ _KEDA_BEARER_AUTH = """\
               activationThreshold: "0"
 """
 
+_KEDA_NON_PROMETHEUS_TRIGGER = """\
+    keda:
+      prometheus:
+        baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
+        port: 9090
+        authMode: none
+      scaledObjects:
+        - name: cpu-scaler
+          targetRef:
+            kind: Deployment
+            name: my-deploy
+          minReplicas: 1
+          maxReplicas: 5
+          triggers:
+            - type: cpu
+              metricType: Utilization
+              metadata:
+                type: Utilization
+                value: "50"
+"""
+
 _SCENARIO_NO_KEDA = _SCENARIO_HEADER  # no keda key at all
 
 
@@ -159,6 +180,10 @@ def _scenario_none_auth() -> str:
 
 def _scenario_bearer_auth() -> str:
     return _SCENARIO_HEADER + _KEDA_BEARER_AUTH
+
+
+def _scenario_non_prometheus_trigger() -> str:
+    return _SCENARIO_HEADER + _KEDA_NON_PROMETHEUS_TRIGGER
 
 
 # ---------------------------------------------------------------------------
@@ -218,6 +243,24 @@ class TestAuthModeNone:
                 assert "authenticationRef" not in trigger, (
                     f"Unexpected authenticationRef in trigger: {trigger}"
                 )
+
+    def test_non_prometheus_trigger_uses_metadata_block(self, tmp_path: Path) -> None:
+        """A non-prometheus trigger renders trigger.metadata as-is, no serverAddress injected."""
+        result = _render_with_overrides(tmp_path, _scenario_non_prometheus_trigger())
+        stack_dir = result.rendered_paths[0]
+        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
+        assert so_file is not None
+        docs = [d for d in yaml.safe_load_all(so_file.read_text(encoding="utf-8")) if d]
+        assert len(docs) >= 1
+        trigger = docs[0]["spec"]["triggers"][0]
+        assert trigger["type"] == "cpu"
+        assert "serverAddress" not in trigger.get("metadata", {}), (
+            "serverAddress must not be injected for non-prometheus triggers"
+        )
+        assert trigger["metadata"]["value"] == "50"
+        assert "authenticationRef" not in trigger, (
+            "authenticationRef must not appear on non-prometheus triggers"
+        )
 
     def test_no_trigger_authentication_template(self, tmp_path: Path) -> None:
         """authMode=none: template 32 should be empty."""
