@@ -1,9 +1,9 @@
-"""Render-pipeline integration tests for templates 31 and 32.
+"""Render-pipeline integration tests for templates 27 and 27a.
 
 Verifies that:
-- A scenario with keda.scaledObjects renders 31_keda-scaledobjects.yaml
+- A scenario with keda.scaledObjects renders 27_keda-scaledobjects.yaml
 - authMode=none renders no TriggerAuthentication and no authenticationRef
-- authMode=bearer-secret renders 32_keda-triggerauthentication.yaml
+- authMode=bearer-secret renders 27a_keda-triggerauthentication.yaml
   and adds authenticationRef to each prometheus trigger
 - A scenario without keda.scaledObjects renders neither template
 """
@@ -192,22 +192,22 @@ def _scenario_non_prometheus_trigger() -> str:
 
 
 class TestScaledObjectsTemplate:
-    """Template 31: generic ScaledObjects renderer."""
+    """Template 27: generic ScaledObjects renderer."""
 
     def test_scaledobjects_rendered_with_keda_block(self, tmp_path: Path) -> None:
-        """A scenario with keda.scaledObjects produces a non-empty template 31."""
+        """A scenario with keda.scaledObjects produces a non-empty template 27."""
         result = _render_with_overrides(tmp_path, _scenario_none_auth())
         assert len(result.rendered_paths) >= 1, "Expected at least one rendered stack"
         stack_dir = result.rendered_paths[0]
-        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
-        assert so_file is not None, "31_keda-scaledobjects*.yaml not found in stack dir"
-        assert _has_yaml_content(so_file), "31_keda-scaledobjects*.yaml is empty"
+        so_file = _find_yaml(stack_dir, "27_keda-scaledobjects")
+        assert so_file is not None, "27_keda-scaledobjects*.yaml not found in stack dir"
+        assert _has_yaml_content(so_file), "27_keda-scaledobjects*.yaml is empty"
 
     def test_scaledobjects_contains_expected_resource(self, tmp_path: Path) -> None:
         """The rendered ScaledObject has the correct kind and name."""
         result = _render_with_overrides(tmp_path, _scenario_none_auth())
         stack_dir = result.rendered_paths[0]
-        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
+        so_file = _find_yaml(stack_dir, "27_keda-scaledobjects")
         assert so_file is not None
         docs = list(yaml.safe_load_all(so_file.read_text(encoding="utf-8")))
         docs = [d for d in docs if d]  # drop None separators
@@ -215,15 +215,15 @@ class TestScaledObjectsTemplate:
         assert docs[0]["kind"] == "ScaledObject"
         assert docs[0]["metadata"]["name"] == "decode-saturation"
 
-    def test_no_keda_block_produces_empty_template_31(self, tmp_path: Path) -> None:
-        """A scenario without keda.scaledObjects produces an empty template 31."""
+    def test_no_keda_block_produces_empty_template_27(self, tmp_path: Path) -> None:
+        """A scenario without keda.scaledObjects produces an empty template 27."""
         result = _render_with_overrides(tmp_path, _SCENARIO_NO_KEDA)
         assert len(result.rendered_paths) >= 1
         stack_dir = result.rendered_paths[0]
-        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
+        so_file = _find_yaml(stack_dir, "27_keda-scaledobjects")
         # File may exist but must have no YAML content
         assert so_file is None or not _has_yaml_content(so_file), (
-            "Template 31 should be empty when keda.scaledObjects is absent"
+            "Template 27 should be empty when keda.scaledObjects is absent"
         )
 
 
@@ -234,7 +234,7 @@ class TestAuthModeNone:
         """authMode=none: no trigger should have an authenticationRef field."""
         result = _render_with_overrides(tmp_path, _scenario_none_auth())
         stack_dir = result.rendered_paths[0]
-        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
+        so_file = _find_yaml(stack_dir, "27_keda-scaledobjects")
         assert so_file is not None
         docs = list(yaml.safe_load_all(so_file.read_text(encoding="utf-8")))
         docs = [d for d in docs if d]
@@ -248,7 +248,7 @@ class TestAuthModeNone:
         """A non-prometheus trigger renders trigger.metadata as-is, no serverAddress injected."""
         result = _render_with_overrides(tmp_path, _scenario_non_prometheus_trigger())
         stack_dir = result.rendered_paths[0]
-        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
+        so_file = _find_yaml(stack_dir, "27_keda-scaledobjects")
         assert so_file is not None
         docs = [d for d in yaml.safe_load_all(so_file.read_text(encoding="utf-8")) if d]
         assert len(docs) >= 1
@@ -263,23 +263,23 @@ class TestAuthModeNone:
         )
 
     def test_no_trigger_authentication_template(self, tmp_path: Path) -> None:
-        """authMode=none: template 32 should be empty."""
+        """authMode=none: template 27a should be empty."""
         result = _render_with_overrides(tmp_path, _scenario_none_auth())
         stack_dir = result.rendered_paths[0]
-        ta_file = _find_yaml(stack_dir, "32_keda-triggerauthentication")
+        ta_file = _find_yaml(stack_dir, "27a_keda-triggerauthentication")
         assert ta_file is None or not _has_yaml_content(ta_file), (
-            "Template 32 should be empty when authMode=none"
+            "Template 27a should be empty when authMode=none"
         )
 
 
 class TestAuthModeBearerSecret:
-    """authMode=bearer-secret: authenticationRef injected; template 32 rendered."""
+    """authMode=bearer-secret: authenticationRef injected; template 27a rendered."""
 
     def test_authentication_ref_in_all_triggers(self, tmp_path: Path) -> None:
         """authMode=bearer-secret: every prometheus trigger has authenticationRef."""
         result = _render_with_overrides(tmp_path, _scenario_bearer_auth())
         stack_dir = result.rendered_paths[0]
-        so_file = _find_yaml(stack_dir, "31_keda-scaledobjects")
+        so_file = _find_yaml(stack_dir, "27_keda-scaledobjects")
         assert so_file is not None
         assert _has_yaml_content(so_file)
         docs = list(yaml.safe_load_all(so_file.read_text(encoding="utf-8")))
@@ -295,18 +295,18 @@ class TestAuthModeBearerSecret:
                 assert trigger["authenticationRef"]["name"] == "keda-prometheus-auth"
 
     def test_trigger_authentication_rendered(self, tmp_path: Path) -> None:
-        """authMode=bearer-secret: template 32 renders a TriggerAuthentication."""
+        """authMode=bearer-secret: template 27a renders a TriggerAuthentication."""
         result = _render_with_overrides(tmp_path, _scenario_bearer_auth())
         stack_dir = result.rendered_paths[0]
-        ta_file = _find_yaml(stack_dir, "32_keda-triggerauthentication")
-        assert ta_file is not None, "32_keda-triggerauthentication*.yaml not found"
-        assert _has_yaml_content(ta_file), "Template 32 is empty for bearer-secret"
+        ta_file = _find_yaml(stack_dir, "27a_keda-triggerauthentication")
+        assert ta_file is not None, "27a_keda-triggerauthentication*.yaml not found"
+        assert _has_yaml_content(ta_file), "Template 27a is empty for bearer-secret"
 
     def test_trigger_authentication_secret_ref(self, tmp_path: Path) -> None:
         """authMode=bearer-secret: TriggerAuthentication references the secret name."""
         result = _render_with_overrides(tmp_path, _scenario_bearer_auth())
         stack_dir = result.rendered_paths[0]
-        ta_file = _find_yaml(stack_dir, "32_keda-triggerauthentication")
+        ta_file = _find_yaml(stack_dir, "27a_keda-triggerauthentication")
         assert ta_file is not None
         doc = yaml.safe_load(ta_file.read_text(encoding="utf-8"))
         assert doc is not None
@@ -315,11 +315,11 @@ class TestAuthModeBearerSecret:
         assert len(refs) >= 1
         assert refs[0]["name"] == "keda-prom-secret"
 
-    def test_no_keda_block_produces_empty_template_32(self, tmp_path: Path) -> None:
-        """A scenario without keda produces an empty template 32."""
+    def test_no_keda_block_produces_empty_template_27a(self, tmp_path: Path) -> None:
+        """A scenario without keda produces an empty template 27a."""
         result = _render_with_overrides(tmp_path, _SCENARIO_NO_KEDA)
         stack_dir = result.rendered_paths[0]
-        ta_file = _find_yaml(stack_dir, "32_keda-triggerauthentication")
+        ta_file = _find_yaml(stack_dir, "27a_keda-triggerauthentication")
         assert ta_file is None or not _has_yaml_content(ta_file), (
-            "Template 32 should be empty when keda is absent"
+            "Template 27a should be empty when keda is absent"
         )

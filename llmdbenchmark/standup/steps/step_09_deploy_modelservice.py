@@ -774,7 +774,7 @@ class DeployModelserviceStep(Step):
         This method re-applies the ScaledObjects template for each additional
         stack (idempotent kubectl apply). Not gated on is_openshift.
         """
-        yaml_path = self._find_yaml(stack_path, "31_keda-scaledobjects")
+        yaml_path = self._find_yaml(stack_path, "27_keda-scaledobjects")
         if not (yaml_path and self._has_yaml_content(yaml_path)):
             return
         result = cmd.kube("apply", "-f", str(yaml_path), check=False)

@@ -57,7 +57,7 @@ def install_keda_for_namespace(
     auth_mode = cfg.get("keda", {}).get("prometheus", {}).get("authMode", "none")
 
     if auth_mode == "bearer-secret":
-        ta_yaml = _find_yaml(stack_path, "32_keda-triggerauthentication")
+        ta_yaml = _find_yaml(stack_path, "27a_keda-triggerauthentication")
         if ta_yaml and _has_yaml_content(ta_yaml):
             result = cmd.kube("apply", "-f", str(ta_yaml), "-n", namespace, check=False)
             if not result.success:
@@ -68,11 +68,11 @@ def install_keda_for_namespace(
                 return
         else:
             context.logger.log_warning(
-                f"keda TriggerAuthentication template (32_keda-triggerauthentication) "
+                f"keda TriggerAuthentication template (27a_keda-triggerauthentication) "
                 f"not found for ns/{namespace}. KEDA bearer-secret auth will not work."
             )
 
-    so_yaml = _find_yaml(stack_path, "31_keda-scaledobjects")
+    so_yaml = _find_yaml(stack_path, "27_keda-scaledobjects")
     if not so_yaml or not _has_yaml_content(so_yaml):
         return
 

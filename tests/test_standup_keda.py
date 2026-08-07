@@ -86,7 +86,7 @@ spec:
     name: {secret_name}
     key: ca.crt
 """
-    (stack_dir / "32_keda-triggerauthentication.yaml").write_text(content)
+    (stack_dir / "27a_keda-triggerauthentication.yaml").write_text(content)
 
 
 def _write_so_template(stack_dir: Path) -> None:
@@ -105,7 +105,7 @@ spec:
   maxReplicaCount: 5
   triggers: []
 """
-    (stack_dir / "31_keda-scaledobjects.yaml").write_text(content)
+    (stack_dir / "27_keda-scaledobjects.yaml").write_text(content)
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ class TestInstallKedaForNamespace:
         applied = [args for args in cmd.kube_calls if args[0] == "apply"]
         # Only the ScaledObjects template applied — no TA
         assert len(applied) == 1
-        assert "31_keda-scaledobjects" in applied[0][2]
+        assert "27_keda-scaledobjects" in applied[0][2]
 
     def test_bearer_secret_auth_applies_ta_then_scaledobjects(
         self, tmp_path: Path
@@ -215,11 +215,11 @@ class TestInstallKedaForNamespace:
         applied = [args for args in cmd.kube_calls if args[0] == "apply"]
         assert len(applied) == 2
         paths_applied = [args[2] for args in applied]
-        assert any("32_keda-triggerauthentication" in p for p in paths_applied)
-        assert any("31_keda-scaledobjects" in p for p in paths_applied)
+        assert any("27a_keda-triggerauthentication" in p for p in paths_applied)
+        assert any("27_keda-scaledobjects" in p for p in paths_applied)
         # TA must be applied before ScaledObjects
-        ta_idx = next(i for i, p in enumerate(paths_applied) if "32_keda" in p)
-        so_idx = next(i for i, p in enumerate(paths_applied) if "31_keda" in p)
+        ta_idx = next(i for i, p in enumerate(paths_applied) if "27a_keda" in p)
+        so_idx = next(i for i, p in enumerate(paths_applied) if "27_keda-scaledobjects" in p)
         assert ta_idx < so_idx
 
     def test_bearer_secret_missing_ta_template_warns(self, tmp_path: Path) -> None:
@@ -427,7 +427,7 @@ class TestApplyKedaStackResources:
 
         applied = [args for args in cmd.kube_calls if args[0] == "apply"]
         assert len(applied) == 1
-        assert "31_keda-scaledobjects" in applied[0][2]
+        assert "27_keda-scaledobjects" in applied[0][2]
         assert errors == []
 
     def test_missing_template_is_noop(self, tmp_path: Path) -> None:

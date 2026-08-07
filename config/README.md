@@ -1436,7 +1436,7 @@ The `21_prometheus-adapter-values.yaml.j2` template configures a Prometheus adap
 
 Renders one or more `ScaledObject` resources from a user-defined list. Works on any Kubernetes cluster. KEDA must already be installed in the cluster.
 
-**Templates rendered:** `31_keda-scaledobjects.yaml.j2`, `32_keda-triggerauthentication.yaml.j2`
+**Templates rendered:** `27_keda-scaledobjects.yaml.j2`, `27a_keda-triggerauthentication.yaml.j2`
 
 **Standup wiring:**
 - `step_03` (workload monitoring) applies the `TriggerAuthentication` once per namespace (bearer-secret mode only), then the `ScaledObjects` template.
