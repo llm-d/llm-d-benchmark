@@ -354,6 +354,60 @@ class TestInstallKedaIfEnabled:
         assert cmd.kube_calls == []
         assert errors == []
 
+    def test_keda_crd_check_issued_when_stacks_present(self, tmp_path: Path) -> None:
+        """verify_keda_installed is called when keda-enabled stacks are found."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {"prometheus": {"authMode": "none"}, "scaledObjects": [{"name": "x"}]},
+                "namespace": {"name": "ns1"},
+            },
+        )
+        _write_so_template(stack)
+        step = WorkloadMonitoringStep()
+        ctx = _FullStubContext(rendered_stacks=[stack])
+        cmd = _StubCmd()
+
+        step._install_keda_if_enabled(cmd, ctx, [])
+
+        crd_checks = [args for args in cmd.kube_calls if "scaledobjects.keda.sh" in args]
+        assert len(crd_checks) == 1, f"Expected KEDA CRD check; kube_calls={cmd.kube_calls}"
+
+    def test_keda_crd_missing_logs_warning(self, tmp_path: Path) -> None:
+        """A missing KEDA CRD logs a warning but does not abort or append an error."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {"prometheus": {"authMode": "none"}, "scaledObjects": [{"name": "x"}]},
+                "namespace": {"name": "ns1"},
+            },
+        )
+        _write_so_template(stack)
+
+        @dataclass
+        class _CrdMissingCmd:
+            kube_calls: list = field(default_factory=list)
+
+            def kube(self, *args: str, **_: Any) -> _StubResult:
+                self.kube_calls.append(args)
+                if "scaledobjects.keda.sh" in args:
+                    return _StubResult(success=False, stderr="not found")
+                return _StubResult(success=True)
+
+        step = WorkloadMonitoringStep()
+        ctx = _FullStubContext(rendered_stacks=[stack])
+        cmd = _CrdMissingCmd()
+        errors: list = []
+
+        step._install_keda_if_enabled(cmd, ctx, errors)
+
+        assert any("WARN" in m for m in ctx.logger.messages), (
+            f"Expected KEDA-not-installed warning; messages={ctx.logger.messages}"
+        )
+        assert errors == [], "Missing KEDA CRD should warn, not error"
+
 
 # ---------------------------------------------------------------------------
 # Tests: step_09 integration — _apply_keda_stack_resources

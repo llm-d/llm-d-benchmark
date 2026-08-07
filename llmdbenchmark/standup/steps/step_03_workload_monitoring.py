@@ -677,6 +677,8 @@ class WorkloadMonitoringStep(Step):
         if not pairs:
             return
 
+        keda_sat_mod.verify_keda_installed(cmd, context)
+
         seen_namespaces: set[str] = set()
         for stack_path, cfg in pairs:
             ns = cfg.get("namespace", {}).get("name", "")
