@@ -2,11 +2,12 @@
 
 import hashlib
 import time
+from datetime import UTC
 from pathlib import Path
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
 
 
@@ -832,7 +833,8 @@ class DeployModelserviceStep(Step):
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
     ):
         """Persist deploy metadata as a ConfigMap so run-phase steps can read it."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from llmdbenchmark import __version__
 
         harness_ns = context.harness_namespace or context.require_namespace()
@@ -842,7 +844,7 @@ class DeployModelserviceStep(Step):
             "tool_name": "llm-d-benchmark",
             "tool_version": __version__,
             "deployed_by": context.username or "unknown",
-            "deployed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "deployed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "cluster_name": context.cluster_name or "",
             "platform_type": context.platform_type,
             "namespace": context.namespace or "",

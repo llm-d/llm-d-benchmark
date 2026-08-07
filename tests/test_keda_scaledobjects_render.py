@@ -19,7 +19,6 @@ from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolv
 from llmdbenchmark.parser.render_plans import RenderPlans
 from llmdbenchmark.parser.version_resolver import VersionResolver
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = PROJECT_ROOT / "config" / "templates" / "jinja"
 DEFAULTS = PROJECT_ROOT / "config" / "templates" / "values" / "defaults.yaml"

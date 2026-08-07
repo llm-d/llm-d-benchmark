@@ -8,14 +8,16 @@ from typing import Any
 
 import yaml
 
-from llmdbenchmark.standup.lib.keda import stacks_enabling_keda, install_keda_for_namespace
+from llmdbenchmark.standup.lib.keda import (
+    install_keda_for_namespace,
+    stacks_enabling_keda,
+)
 from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
     WorkloadMonitoringStep,
 )
 from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
     DeployModelserviceStep,
 )
-
 
 # ---------------------------------------------------------------------------
 # Stubs
@@ -219,7 +221,9 @@ class TestInstallKedaForNamespace:
         assert any("27_keda-scaledobjects" in p for p in paths_applied)
         # TA must be applied before ScaledObjects
         ta_idx = next(i for i, p in enumerate(paths_applied) if "27a_keda" in p)
-        so_idx = next(i for i, p in enumerate(paths_applied) if "27_keda-scaledobjects" in p)
+        so_idx = next(
+            i for i, p in enumerate(paths_applied) if "27_keda-scaledobjects" in p
+        )
         assert ta_idx < so_idx
 
     def test_bearer_secret_missing_ta_template_warns(self, tmp_path: Path) -> None:
@@ -360,7 +364,10 @@ class TestInstallKedaIfEnabled:
             tmp_path,
             "s1",
             cfg={
-                "keda": {"prometheus": {"authMode": "none"}, "scaledObjects": [{"name": "x"}]},
+                "keda": {
+                    "prometheus": {"authMode": "none"},
+                    "scaledObjects": [{"name": "x"}],
+                },
                 "namespace": {"name": "ns1"},
             },
         )
@@ -371,8 +378,12 @@ class TestInstallKedaIfEnabled:
 
         step._install_keda_if_enabled(cmd, ctx, [])
 
-        crd_checks = [args for args in cmd.kube_calls if "scaledobjects.keda.sh" in args]
-        assert len(crd_checks) == 1, f"Expected KEDA CRD check; kube_calls={cmd.kube_calls}"
+        crd_checks = [
+            args for args in cmd.kube_calls if "scaledobjects.keda.sh" in args
+        ]
+        assert len(crd_checks) == 1, (
+            f"Expected KEDA CRD check; kube_calls={cmd.kube_calls}"
+        )
 
     def test_keda_crd_missing_logs_warning(self, tmp_path: Path) -> None:
         """A missing KEDA CRD logs a warning but does not abort or append an error."""
@@ -380,7 +391,10 @@ class TestInstallKedaIfEnabled:
             tmp_path,
             "s1",
             cfg={
-                "keda": {"prometheus": {"authMode": "none"}, "scaledObjects": [{"name": "x"}]},
+                "keda": {
+                    "prometheus": {"authMode": "none"},
+                    "scaledObjects": [{"name": "x"}],
+                },
                 "namespace": {"name": "ns1"},
             },
         )

@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
-from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.parser.cluster_resource_resolver import effective_accelerator_count
-from llmdbenchmark.standup import wva as wva_mod
 from llmdbenchmark.standup import keda_saturation as keda_sat_mod
+from llmdbenchmark.standup import wva as wva_mod
 from llmdbenchmark.standup.lib import keda as keda_mod
 from llmdbenchmark.utilities.capacity_validator import run_capacity_planner
 
