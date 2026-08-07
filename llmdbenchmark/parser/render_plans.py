@@ -1052,7 +1052,6 @@ class RenderPlans:
     _COMMON_ALIASES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
         # the vLLM serving image; standalone/fma call it `image`
         (("images", "vllmOpenai"), ("standalone", "image")),
-        (("images", "vllmOpenai"), ("fma", "image")),
     )
 
     def _method_owned_keys(self, defaults: dict) -> dict[str, tuple[str, ...]]:
