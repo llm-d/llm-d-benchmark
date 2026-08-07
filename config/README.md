@@ -28,6 +28,8 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Harness Entrypoint Configuration](#harness-entrypoint-configuration)
 - [Flow Control Configuration](#flow-control-configuration)
 - [Monitoring and Metrics](#monitoring-and-metrics)
+- [KEDA Autoscaling](#keda-autoscaling)
+  - [Generic KEDA ScaledObjects (`keda`)](#generic-keda-scaledobjects-keda)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -395,6 +397,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes) |
 | `harness` | Benchmark harness configuration |
 | `wva` | Workload Variant Autoscaler settings |
+| `keda` | Generic KEDA ScaledObjects with configurable Prometheus auth (any cluster) |
 | `control` | Context secret name |
 | `lws` | LeaderWorkerSet configuration |
 | `agentgateway` | agentgateway provider configuration |
@@ -1424,6 +1427,111 @@ Reports are generated in both YAML and JSON formats. See `llmdbenchmark/analysis
 #### Prometheus adapter (for autoscaling)
 
 The `21_prometheus-adapter-values.yaml.j2` template configures a Prometheus adapter that bridges WVA (Workload Variant Autoscaler) metrics to the Kubernetes external metrics API. This is only needed when using WVA-based autoscaling.
+
+---
+
+## KEDA Autoscaling
+
+### Generic KEDA ScaledObjects (`keda`)
+
+Renders one or more `ScaledObject` resources from a user-defined list. Works on any Kubernetes cluster. KEDA must already be installed in the cluster.
+
+**Templates rendered:** `27_keda-scaledobjects.yaml.j2`, `27a_keda-triggerauthentication.yaml.j2`
+
+**Standup wiring:**
+- `step_03` (workload monitoring) applies the `TriggerAuthentication` once per namespace (bearer-secret mode only), then the `ScaledObjects` template.
+- `step_09` (deploy modelservice) re-applies the `ScaledObjects` template per stack (idempotent).
+- Neither step is gated on `is_openshift`.
+
+#### `keda.prometheus` — shared Prometheus connection
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `keda.prometheus.baseUrl` | `http://prometheus` | Base URL of the Prometheus instance (no trailing port) |
+| `keda.prometheus.port` | `9090` | Prometheus port; assembled with `baseUrl` as `baseUrl:port` |
+| `keda.prometheus.authMode` | `none` | Auth mode: `none` or `bearer-secret` |
+| `keda.prometheus.secretName` | `""` | Name of a pre-existing Secret in the **deploy namespace** containing `bearerToken` and `ca.crt` keys (`bearer-secret` only) |
+| `keda.prometheus.unsafeSsl` | `false` | Skip TLS verification; also omits the `ca` secretTargetRef entry from the TriggerAuthentication |
+
+**Auth modes:**
+
+| `authMode` | TriggerAuthentication created? | Secret required? |
+|------------|-------------------------------|-----------------|
+| `none` | No | No |
+| `bearer-secret` | Yes (`keda-prometheus-auth`) | Yes — user must pre-create it in the deploy namespace |
+
+> **Note:** KEDA's `secretTargetRef` does not support cross-namespace Secret references. The Secret must be in the same namespace as the ScaledObject.
+
+#### `keda.scaledObjects` — list of ScaledObjects to create
+
+Each entry in the list produces one `ScaledObject`. The list is empty by default (no ScaledObjects rendered).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | _(required)_ | `metadata.name` of the ScaledObject |
+| `targetRef.kind` | `Deployment` | Kind of the scale target |
+| `targetRef.name` | `model_id_label + "-decode"` | Name of the scale target; defaults to the model's decode Deployment |
+| `minReplicas` | `1` | Minimum replica count |
+| `maxReplicas` | `10` | Maximum replica count |
+| `pollingInterval` | `15` | Seconds between KEDA polls |
+| `triggers` | `[]` | List of KEDA trigger objects (see below) |
+| `behavior` | _(omitted)_ | Optional HPA behavior block rendered under `spec.advanced.horizontalPodAutoscalerConfig.behavior` |
+
+Each entry in `triggers` is a raw KEDA trigger. For Prometheus triggers, `serverAddress` is injected automatically from `keda.prometheus`; you do not set it manually.
+
+| Trigger field | Default | Description |
+|---------------|---------|-------------|
+| `type` | _(required)_ | KEDA trigger type, e.g. `prometheus` |
+| `name` | _(omitted)_ | Optional trigger name |
+| `metricType` | `AverageValue` | HPA metric type |
+| `query` | _(required)_ | PromQL query string |
+| `threshold` | `"1"` | Scale-up threshold |
+| `activationThreshold` | `"0"` | Activation threshold (KEDA `activationThreshold`) |
+
+#### Example
+
+```yaml
+keda:
+  prometheus:
+    baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
+    port: 9090
+    authMode: none
+
+  scaledObjects:
+    - name: decode-saturation
+      targetRef:
+        kind: Deployment
+        name: ""              # defaults to model_id_label + "-decode"
+      minReplicas: 1
+      maxReplicas: 10
+      pollingInterval: 15
+      triggers:
+        - type: prometheus
+          name: kv-cache
+          metricType: AverageValue
+          query: |
+            max(inference_pool_average_kv_cache_utilization{namespace="my-ns"})
+          threshold: "0.7"
+          activationThreshold: "0"
+```
+
+For `bearer-secret` auth, first create a Secret in the deploy namespace:
+
+```bash
+kubectl create secret generic prometheus-bearer \
+  --from-literal=bearerToken="<token>" \
+  --from-file=ca.crt=/path/to/ca.crt \
+  -n <deploy-namespace>
+```
+
+Then set:
+
+```yaml
+keda:
+  prometheus:
+    authMode: bearer-secret
+    secretName: prometheus-bearer
+```
 
 ---
 

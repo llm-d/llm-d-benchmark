@@ -1,0 +1,70 @@
+{# ============================================================================
+   27_keda-scaledobjects.yaml.j2
+
+   Generic KEDA ScaledObject renderer. One YAML document per entry in
+   keda.scaledObjects, separated by ---. All prometheus triggers share the
+   serverAddress from keda.prometheus. Auth is injected based on authMode:
+     none         -- no authenticationRef, no authModes
+     bearer-secret -- authModes: bearer + authenticationRef: keda-prometheus-auth
+
+   Only rendered when keda.scaledObjects is defined and non-empty.
+   ============================================================================ #}
+{% if keda is defined and keda.scaledObjects | default([]) %}
+{% set prom = keda.prometheus | default({}) %}
+{% set auth_mode = prom.authMode | default('none') %}
+{% set prom_addr = (prom.baseUrl | default('http://prometheus')) ~ ':' ~ (prom.port | default(9090)) %}
+{% for so in keda.scaledObjects %}
+{% set target_name = so.targetRef.name if so.targetRef is defined and so.targetRef.name else model_id_label ~ '-decode' %}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ so.name }}
+  namespace: {{ namespace.name }}
+  annotations:
+    llm-d.ai/managed: "true"
+    llm-d.ai/model-id: "{{ model.name }}"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ so.targetRef.kind | default('Deployment') if so.targetRef is defined else 'Deployment' }}
+    name: {{ target_name }}
+  minReplicaCount: {{ so.minReplicas | default(1) }}
+  maxReplicaCount: {{ so.maxReplicas | default(10) }}
+  pollingInterval: {{ so.pollingInterval | default(15) }}
+  triggers:
+{% for trigger in so.triggers | default([]) %}
+  - type: {{ trigger.type }}
+{% if trigger.name is defined %}
+    name: {{ trigger.name }}
+{% endif %}
+    metricType: {{ trigger.metricType | default('AverageValue') }}
+{% if trigger.type == 'prometheus' and auth_mode == 'bearer-secret' %}
+    authenticationRef:
+      name: keda-prometheus-auth
+{% endif %}
+    metadata:
+{% if trigger.type == 'prometheus' %}
+      serverAddress: "{{ prom_addr }}"
+{% if auth_mode == 'bearer-secret' %}
+      authModes: bearer
+{% if prom.unsafeSsl | default(false) %}
+      unsafeSsl: "true"
+{% endif %}
+{% endif %}
+      query: |
+        {{ trigger.query | trim | indent(8) }}
+      threshold: "{{ trigger.threshold | default('1') }}"
+      activationThreshold: "{{ trigger.activationThreshold | default('0') }}"
+{% elif trigger.metadata is defined %}
+{{ trigger.metadata | toyaml | indent(6, first=True) }}
+{% endif %}
+{% endfor %}
+{% if so.behavior is defined %}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+{{ so.behavior | toyaml | indent(8, first=True) }}
+{% endif %}
+{% endfor %}
+{% endif %}

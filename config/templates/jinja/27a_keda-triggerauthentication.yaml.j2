@@ -1,0 +1,26 @@
+{# ============================================================================
+   27a_keda-triggerauthentication.yaml.j2
+
+   KEDA TriggerAuthentication for keda.prometheus.authMode=bearer-secret.
+   References a user-supplied Secret (must be in the deploy namespace).
+   The Secret must contain keys: bearerToken, ca.crt.
+
+   Only rendered when keda.prometheus.authMode == 'bearer-secret'.
+   ============================================================================ #}
+{% if keda is defined and keda.prometheus is defined and keda.prometheus.authMode | default('none') == 'bearer-secret' %}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-prometheus-auth
+  namespace: {{ namespace.name }}
+spec:
+  secretTargetRef:
+  - parameter: bearerToken
+    name: {{ keda.prometheus.secretName }}
+    key: bearerToken
+{% if not (keda.prometheus.unsafeSsl | default(false)) %}
+  - parameter: ca
+    name: {{ keda.prometheus.secretName }}
+    key: ca.crt
+{% endif %}
+{% endif %}

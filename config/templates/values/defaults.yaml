@@ -1671,6 +1671,23 @@ wva:
     scheme: http
 
 # ============================================================================
+# GENERIC KEDA SCALEDOBJECTS
+# ============================================================================
+# Platform-agnostic KEDA autoscaling. Renders one ScaledObject per entry in
+# keda.scaledObjects. Works on any Kubernetes cluster (not gated on OpenShift).
+# KEDA must already be installed. The TriggerAuthentication name used by this
+# path is "keda-prometheus-auth" -- distinct from "prometheus-auth" used by
+# eppKedaSaturation below, so both paths can coexist in the same namespace.
+keda:
+  prometheus:
+    baseUrl: http://prometheus      # host only -- port is appended separately
+    port: 9090
+    authMode: none                  # "none" | "bearer-secret"
+    secretName: ""                  # pre-existing Secret in deploy namespace (bearer-secret only)
+    unsafeSsl: false
+  scaledObjects: []                 # list of ScaledObject definitions; see config/README.md
+
+# ============================================================================
 # EPP+KEDA SATURATION AUTOSCALING
 # ============================================================================
 # Direct KEDA autoscaling using EPP flow-control metrics, without WVA controller.

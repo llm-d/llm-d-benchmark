@@ -2,11 +2,12 @@
 
 import hashlib
 import time
+from datetime import UTC
 from pathlib import Path
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
-from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
 
 
@@ -397,6 +398,11 @@ class DeployModelserviceStep(Step):
             self._apply_epp_keda_stack_resources(cmd, stack_path, errors)
             self._log_epp_keda_stack_state(cmd, context, plan_config)
 
+        # Generic KEDA path — not gated on is_openshift
+        keda_config = plan_config.get("keda", {})
+        if keda_config.get("scaledObjects"):
+            self._apply_keda_stack_resources(cmd, stack_path, errors)
+
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if not errors:
@@ -756,6 +762,29 @@ class DeployModelserviceStep(Step):
             if not result.success:
                 errors.append(f"Failed to apply {stem}: {result.stderr}")
 
+    def _apply_keda_stack_resources(
+        self,
+        cmd: CommandExecutor,
+        stack_path: Path,
+        errors: list,
+    ) -> None:
+        """Apply per-stack generic KEDA ScaledObjects (template 31).
+
+        step_03 applied the TriggerAuthentication (bearer-secret) and the
+        ScaledObjects template once for the first stack in each namespace.
+        This method re-applies the ScaledObjects template for each additional
+        stack (idempotent kubectl apply). Not gated on is_openshift.
+        """
+        yaml_path = self._find_yaml(stack_path, "27_keda-scaledobjects")
+        if not (yaml_path and self._has_yaml_content(yaml_path)):
+            return
+        result = cmd.kube("apply", "-f", str(yaml_path), check=False)
+        if not result.success:
+            errors.append(
+                f"Failed to apply keda ScaledObjects for {stack_path.name}: "
+                f"{result.stderr}"
+            )
+
     def _log_epp_keda_stack_state(
         self,
         cmd: CommandExecutor,
@@ -804,7 +833,8 @@ class DeployModelserviceStep(Step):
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
     ):
         """Persist deploy metadata as a ConfigMap so run-phase steps can read it."""
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from llmdbenchmark import __version__
 
         harness_ns = context.harness_namespace or context.require_namespace()
@@ -814,7 +844,7 @@ class DeployModelserviceStep(Step):
             "tool_name": "llm-d-benchmark",
             "tool_version": __version__,
             "deployed_by": context.username or "unknown",
-            "deployed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "deployed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "cluster_name": context.cluster_name or "",
             "platform_type": context.platform_type,
             "namespace": context.namespace or "",
