@@ -397,6 +397,11 @@ class DeployModelserviceStep(Step):
             self._apply_epp_keda_stack_resources(cmd, stack_path, errors)
             self._log_epp_keda_stack_state(cmd, context, plan_config)
 
+        # Generic KEDA path — not gated on is_openshift
+        keda_config = plan_config.get("keda", {})
+        if keda_config.get("scaledObjects"):
+            self._apply_keda_stack_resources(cmd, stack_path, errors)
+
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if not errors:
@@ -755,6 +760,28 @@ class DeployModelserviceStep(Step):
             result = cmd.kube("apply", "-f", str(yaml_path))
             if not result.success:
                 errors.append(f"Failed to apply {stem}: {result.stderr}")
+
+    def _apply_keda_stack_resources(
+        self,
+        cmd: CommandExecutor,
+        stack_path: Path,
+        errors: list,
+    ) -> None:
+        """Apply per-stack generic KEDA ScaledObjects (template 31).
+
+        TriggerAuthentication was already applied once per namespace by step_03.
+        This method only applies the ScaledObjects template for this stack.
+        Not gated on is_openshift.
+        """
+        yaml_path = self._find_yaml(stack_path, "31_keda-scaledobjects")
+        if not (yaml_path and self._has_yaml_content(yaml_path)):
+            return
+        result = cmd.kube("apply", "-f", str(yaml_path), check=False)
+        if not result.success:
+            errors.append(
+                f"Failed to apply keda ScaledObjects for {stack_path.name}: "
+                f"{result.stderr}"
+            )
 
     def _log_epp_keda_stack_state(
         self,

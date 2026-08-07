@@ -12,6 +12,9 @@ from llmdbenchmark.standup.keda import stacks_enabling_keda, install_keda_for_na
 from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
     WorkloadMonitoringStep,
 )
+from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
+    DeployModelserviceStep,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -350,3 +353,58 @@ class TestInstallKedaIfEnabled:
 
         assert cmd.kube_calls == []
         assert errors == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: step_09 integration — _apply_keda_stack_resources
+# ---------------------------------------------------------------------------
+
+
+class TestApplyKedaStackResources:
+    def test_applies_scaledobjects_template(self, tmp_path: Path) -> None:
+        stack = tmp_path / "s1"
+        stack.mkdir()
+        _write_so_template(stack)
+        step = DeployModelserviceStep()
+        cmd = _StubCmd()
+        errors: list = []
+
+        step._apply_keda_stack_resources(cmd, stack, errors)
+
+        applied = [args for args in cmd.kube_calls if args[0] == "apply"]
+        assert len(applied) == 1
+        assert "31_keda-scaledobjects" in applied[0][2]
+        assert errors == []
+
+    def test_missing_template_is_noop(self, tmp_path: Path) -> None:
+        stack = tmp_path / "s1"
+        stack.mkdir()
+        step = DeployModelserviceStep()
+        cmd = _StubCmd()
+        errors: list = []
+
+        step._apply_keda_stack_resources(cmd, stack, errors)
+
+        assert cmd.kube_calls == []
+        assert errors == []
+
+    def test_apply_failure_appends_error(self, tmp_path: Path) -> None:
+        stack = tmp_path / "s1"
+        stack.mkdir()
+        _write_so_template(stack)
+
+        @dataclass
+        class _FailCmd:
+            kube_calls: list = field(default_factory=list)
+
+            def kube(self, *args: str, **_: Any) -> _StubResult:
+                self.kube_calls.append(args)
+                return _StubResult(success=False, stderr="forbidden")
+
+        step = DeployModelserviceStep()
+        errors: list = []
+
+        step._apply_keda_stack_resources(_FailCmd(), stack, errors)
+
+        assert len(errors) == 1
+        assert "forbidden" in errors[0]
