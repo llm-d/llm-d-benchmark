@@ -12,7 +12,7 @@
 {% if keda is defined and keda.scaledObjects | default([]) %}
 {% set prom = keda.prometheus | default({}) %}
 {% set auth_mode = prom.authMode | default('none') %}
-{% set prom_addr = (prom.baseUrl | default('http://prometheus:9090')) ~ ':' ~ (prom.port | default(9090)) %}
+{% set prom_addr = (prom.baseUrl | default('http://prometheus')) ~ ':' ~ (prom.port | default(9090)) %}
 {% for so in keda.scaledObjects %}
 {% set target_name = so.targetRef.name if so.targetRef is defined and so.targetRef.name else model_id_label ~ '-decode' %}
 ---
