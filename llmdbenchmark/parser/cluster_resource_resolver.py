@@ -709,11 +709,10 @@ class ClusterResourceResolver:
         When ``labelValue`` is ``"auto"``, detect the GPU product label from
         the cluster and set both ``labelKey`` and ``labelValue``.
 
-        Sections that are disabled or don't actually request accelerators
-        (CPU-only / sim scenarios such as ``cicd/kind``) are skipped silently:
-        the inherited default ``labelValue: "auto"`` is meaningless to them
-        and a failure to discover would be a false positive. This matches
-        the skip logic in ``step_03_workload_monitoring._validate_node_selectors``.
+        Sections requesting no accelerators are skipped. ``enabled: false``
+        does not skip resolution -- it only suppresses the hard error when
+        nothing is detectable, since ``_resolve_deploy_method`` runs after
+        this resolver and ``-t standalone`` can still turn the section on.
         """
         resources = self._node_resources or NodeResources()
 
@@ -729,12 +728,7 @@ class ClusterResourceResolver:
             if accel_type.get("labelValue") != "auto":
                 continue
 
-            if section_dict.get("enabled") is False:
-                self.logger.log_debug(
-                    f"Skipping {section}.acceleratorType resolution: "
-                    f"{section}.enabled is false"
-                )
-                continue
+            section_enabled = section_dict.get("enabled") is not False
 
             accel_count, count_source = effective_accelerator_count(section_dict)
             if accel_count == 0:
@@ -790,6 +784,12 @@ class ClusterResourceResolver:
                 accel_type.pop("labelKey", None)
                 accel_type.pop("labelValue", None)
                 accel_type.pop("labelValues", None)
+            elif not section_enabled:
+                self.logger.log_debug(
+                    f"Skipping {section}.acceleratorType resolution: no GPU "
+                    f"labels or resources on the cluster and {section}.enabled "
+                    "is false"
+                )
             else:
                 unresolved.append(f"{section}.acceleratorType.labelValue")
 

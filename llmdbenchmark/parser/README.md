@@ -37,7 +37,7 @@ class RenderPlans:
         cli_model=None,
         cli_methods=None,
         cli_monitoring=False,
-        setup_overrides=None,           # unscoped; applied last (DoE treatments)
+        setup_overrides=None,  # unscoped; applied last (DoE treatments)
         setup_overrides_by_stack=None,  # {selector: overrides}; --cluster-config + --set
     ): ...
     def eval(self) -> RenderResult: ...  # Run full rendering pipeline
