@@ -237,12 +237,20 @@ spec:
       - name: vllm-standalone-{{ model_id_label }}
         image: {{ standalone.image.repository }}:{{ standalone.image.tag }}
         imagePullPolicy: {{ standalone.image.pullPolicy }}
+{% set standalone_model_command = standalone.vllm.modelCommand | default('custom') %}
+{% if standalone_model_command == 'custom' %}
         command:
         - {{ vllmCommon.shell }}
         - "-c"
         args:
         - |
 {{ build_standalone_vllm_command() | indent(10, first=True) }}
+{% elif standalone.vllm.args is defined and standalone.vllm.args %}
+{# imageDefault: no `command:` -- the image entrypoint runs. Required for
+   distroless server images that ship no shell to exec `<shell> -c`. #}
+        args:
+{{ standalone.vllm.args | toyaml | indent(8, true) }}
+{% endif %}
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
           value: "{{ model.name }}"

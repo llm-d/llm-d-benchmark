@@ -1281,6 +1281,32 @@ standalone:
     preprocessCommand: /bin/true
     customPreprocessCommand: null
     customCommand: null
+    # How the container is launched. Mirrors decode/prefill `vllm.modelCommand`
+    # on the modelservice path.
+    #   custom       -- render `command: [<vllmCommon.shell>, -c]` plus the
+    #                   generated (or customCommand) shell script. Requires a
+    #                   shell in the server image.
+    #   imageDefault -- emit no `command:`; the image entrypoint runs and
+    #                   `args` below is passed verbatim. Required for
+    #                   distroless images, which have no shell to exec --
+    #                   e.g. llm-d-inference-sim v0.9+ ships only
+    #                   /app/llm-d-inference-sim (v0.8.2 still had bash).
+    modelCommand: custom
+    # Argument list for `modelCommand: imageDefault`. Ignored when
+    # modelCommand is `custom`. Supports ${dotted.path} substitution.
+    # Rendered as `args:`, so the image ENTRYPOINT supplies argv[0] (both
+    # server images have one: vllm-openai is `vllm serve`, inference-sim is
+    # /app/llm-d-inference-sim). For a CMD-only image with no ENTRYPOINT,
+    # make the binary the first element -- `args` replaces CMD outright.
+    args: []
+    # Example:
+    # args:
+    #   - "--model"
+    #   - "/model-cache/${model.path}"
+    #   - "--port"
+    #   - "8000"
+    #   - "--served-model-name"
+    #   - "${model.name}"
     # Use these if wanted to use default command but add additional
     # flags
     additionalFlags: []
