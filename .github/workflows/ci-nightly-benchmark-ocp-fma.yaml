@@ -60,7 +60,11 @@ on:
 
 jobs:
   nightly:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    # TEMP (do not merge): use the LOCAL reusable (this branch = fmablog) instead of
+    # llm-d-infra@main, so fmablog's scenario config (model = Qwen/Qwen2.5-3B) takes
+    # effect. With the upstream @main reusable the runner re-clones llm-d-benchmark
+    # main and silently runs main's model (Qwen3-8B).
+    uses: ./.github/workflows/reusable-ci-nightly-benchmark.yaml
     with:
       scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
       standup_method: ${{ inputs.standup_method || 'fma' }}
