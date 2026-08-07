@@ -30,7 +30,6 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Monitoring and Metrics](#monitoring-and-metrics)
 - [KEDA Autoscaling](#keda-autoscaling)
   - [Generic KEDA ScaledObjects (`keda`)](#generic-keda-scaledobjects-keda)
-  - [EPP+KEDA Saturation (`eppKedaSaturation`)](#eppkeda-saturation-eppkedasaturation)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -398,7 +397,6 @@ The base configuration file containing every configurable parameter with sensibl
 | `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes) |
 | `harness` | Benchmark harness configuration |
 | `wva` | Workload Variant Autoscaler settings |
-| `eppKedaSaturation` | OpenShift-only KEDA autoscaling via EPP pool metrics |
 | `keda` | Generic KEDA ScaledObjects with configurable Prometheus auth (any cluster) |
 | `control` | Context secret name |
 | `lws` | LeaderWorkerSet configuration |
@@ -1434,13 +1432,6 @@ The `21_prometheus-adapter-values.yaml.j2` template configures a Prometheus adap
 
 ## KEDA Autoscaling
 
-Two independent paths support KEDA-based autoscaling. They share the namespace but use different TriggerAuthentication names and can coexist in the same deployment.
-
-| Path | Key | Platform | TriggerAuthentication name |
-|------|-----|----------|---------------------------|
-| Generic ScaledObjects | `keda` | Any Kubernetes cluster | `keda-prometheus-auth` |
-| EPP saturation | `eppKedaSaturation` | OpenShift only | `prometheus-auth` |
-
 ### Generic KEDA ScaledObjects (`keda`)
 
 Renders one or more `ScaledObject` resources from a user-defined list. Works on any Kubernetes cluster. KEDA must already be installed in the cluster.
@@ -1541,27 +1532,6 @@ keda:
     authMode: bearer-secret
     secretName: prometheus-bearer
 ```
-
-### EPP+KEDA Saturation (`eppKedaSaturation`)
-
-OpenShift-only path. Creates one fixed ScaledObject per stack using two hardwired Prometheus triggers: KV cache utilization and queue size. Auth is handled automatically via OpenShift service account token minting and CA cert extraction from `thanos-querier-tls`.
-
-**Templates rendered:** `30_epp-keda-saturation-scaledobject.yaml.j2` (ScaledObject), `21_keda-triggerauthentication.yaml.j2` (TriggerAuthentication `prometheus-auth`)
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `eppKedaSaturation.enabled` | `false` | Enable this path |
-| `eppKedaSaturation.namespace` | `""` | Namespace (defaults to `namespace.name`) |
-| `eppKedaSaturation.prometheus.baseUrl` | `https://thanos-querier.openshift-monitoring.svc.cluster.local` | Thanos Querier URL |
-| `eppKedaSaturation.prometheus.port` | `9091` | Thanos Querier port |
-| `eppKedaSaturation.epp.poolName` | `""` | InferencePool name (defaults to `model_id_label`) |
-| `eppKedaSaturation.scaledObject.minReplicas` | `1` | Minimum replica count |
-| `eppKedaSaturation.scaledObject.maxReplicas` | `10` | Maximum replica count |
-| `eppKedaSaturation.scaledObject.kvCacheThreshold` | `"0.7"` | Scale up when pool-avg KV cache > threshold |
-| `eppKedaSaturation.scaledObject.queueSizeThreshold` | `"2"` | Scale up when pool-avg queue size > threshold |
-| `eppKedaSaturation.scaledObject.unsafeSsl` | `true` | Skip TLS verification for Thanos Querier |
-
-This path is gated on `context.is_openshift` and will not run on non-OpenShift clusters.
 
 ---
 
