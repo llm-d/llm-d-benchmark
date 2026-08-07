@@ -1,5 +1,5 @@
 """
-Benchmark FMA functions
+Benchmarkk FMA functions
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from kubernetes.client.exceptions import ApiException
 
 from dpc_log_parser import parse_dpc_log_file
 from nop_functions import (
-    BenchmarkResult,
-    BenchmarkScenario,
-    BenchmarkVllmMetrics,
+    BenchmarkkResult,
+    BenchmarkkScenario,
+    BenchmarkkVllmMetrics,
     PlatformEngineScenario,
     get_log_list,
     get_server_status_sleep,
@@ -224,9 +224,9 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
     requester_infos: list[FMARequesterInfo],
     namespace: str,
     fma_launcher_port: str,
-    benchmark_result: BenchmarkResult,
+    benchmark_result: BenchmarkkResult,
 ) -> list[FMALauncherInfo]:
-    """returns connected launchers info and populates BenchmarResult engine"""
+    """returns connected launchers info and populates BenchmarkResult engine"""
 
     launcher_infos = []
 
@@ -328,7 +328,7 @@ def is_owned_by_rs(pod, rs_uid):
 
 
 def get_ready_timestamp(pod: Any) -> float:
-    """returns pod ready timestemp"""
+    """returns pod ready timestamp"""
     if pod.status.phase == "Running":
         for cond in pod.status.conditions or []:
             if cond.type == "Ready" and cond.status == "True":
@@ -729,7 +729,7 @@ def calculate_vllm_ttft(base_url: str, model: str, timeout: float) -> float:
                 logger.info("TTFT (Time To First vLLM Token): %.4f seconds", ttft)
                 return ttft
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("Error ocurred when calculating vLLM ttft.")
+        logger.exception("Error occurred when calculating vLLM ttft.")
 
     logger.info("No vLLM token received.")
     return 0.0
@@ -752,9 +752,9 @@ def inspect_vllm_instances(
             instance_id,
             False,
         ).get_vllm_logs()
-        scenario = BenchmarkScenario()
+        scenario = BenchmarkkScenario()
         engine = PlatformEngineScenario()
-        metrics = BenchmarkVllmMetrics()
+        metrics = BenchmarkkVllmMetrics()
         parse_logs(scenario, engine, metrics, get_log_list(pod_logs.decode("utf-8")))
         port = int(engine.args.get("port", 0))
         logger.info("Instance id '%s' info start:", instance_id)
@@ -806,7 +806,7 @@ def write_controller_log(
                     )
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception(
-            "Error ocurred when writing logs for controller with label selector '%s'.",
+            "Error occurred when writing logs for controller with label selector '%s'.",
             label_selector,
         )
 
@@ -818,7 +818,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
     namespace: str,
     endpoint_url: str,
     fma_launcher_port: str,
-    benchmark_result: BenchmarkResult,
+    benchmark_result: BenchmarkkResult,
     load_format: LoadFormat,
     requests_dir: str,
     iterations: int,
@@ -857,7 +857,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
         benchmark_result.extra_metrics.append(fma_metrics)
         for iteration in range(1, iterations + 1):  # pylint: disable=too-many-nested-blocks
             try:
-                logger.info("Benchmark FMA iteration '%d' start...", iteration)
+                logger.info("Benchmarkk FMA iteration '%d' start...", iteration)
                 # scale the requester Deployment to 1
                 requester_infos = scale_deployment(
                     v1, apps_v1, deployment_name, namespace, 1, FMA_TIMEOUT
@@ -1048,7 +1048,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                 )
                 fma_metrics.iterations.append(fma_metrics_iteration)
             finally:
-                logger.info("Benchmark FMA iteration '%d' end.", iteration)
+                logger.info("Benchmarkk FMA iteration '%d' end.", iteration)
     finally:
         write_controller_log(
             v1,
