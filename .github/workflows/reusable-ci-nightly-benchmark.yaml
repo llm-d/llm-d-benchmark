@@ -715,9 +715,13 @@ jobs:
             mkdir -p ~/work/llm-d-benchmark/
             cd ~/work/llm-d-benchmark/
             echo "### llm-d-benchmark code NOT found, will clone now"
-            git clone https://github.com/llm-d/llm-d-benchmark.git
+            # TEMP (do not merge): clone fmablog so the runner uses fmablog's scenarios
+            # (model = Qwen/Qwen2.5-3B). Default clone pulls main (Qwen3-8B).
+            git clone -b fmablog https://github.com/llm-d/llm-d-benchmark.git
           fi
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
+          # TEMP (do not merge): force fmablog even if the runner already had a main checkout
+          git fetch origin fmablog && git checkout fmablog && git reset --hard origin/fmablog
           if [[ ! -f install.sh ]]; then
             curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh -o install.sh
             chmod +x install.sh
