@@ -1090,8 +1090,11 @@ class DeployHarnessStep(Step):
         treatment_name = treatment.get("name", "")
         if not treatment_name:
             return base_name
-        stem = Path(base_name).stem
-        suffix = Path(base_name).suffix
+        source_name = treatment.get("profile") or base_name
+        if source_name.endswith(".in"):
+            source_name = source_name[:-3]
+        stem = Path(source_name).stem
+        suffix = Path(source_name).suffix
         return f"{stem}-{treatment_name}{suffix}"
 
     def _load_plan_config(self, context: ExecutionContext) -> dict | None:
