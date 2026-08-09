@@ -138,6 +138,120 @@ else
   echo "eval-containers: note gateway template not present/writable; provider default applies"
 fi
 
+# --- preserve the grader's test output (opt-in: EVAL_GRADE_VERBOSE=1) ---------
+# The image's /grade.sh discards the entire test phase:
+#
+#   if timeout 120 sh -c "$TEST_CMD" >/dev/null 2>&1; then
+#
+# so a failed task leaves ONLY "0.0" in logs/verifier/reward.txt -- no compiler
+# error, no failing assertion, no stack trace. A zero is then undiagnosable:
+# "wrong answer", "solution written to the wrong path", and "toolchain missing
+# from the image" are indistinguishable, and all three produce uniform zeros.
+#
+# It also logs grade.sh's SOLUTION COPY. grade.sh copies each solution file from
+# /app/$f and skips it SILENTLY when absent (`if [ -f "$src" ]`), so if the agent
+# wrote elsewhere the suite grades the untouched STUB and every task scores 0.0
+# no matter how good the solution was -- invisible in the shipped script.
+#
+# It also copies each solution file to logs/verifier/solution/. The agent writes
+# into /app and the graded copy lands in $EXERCISE_DIR, both inside the container
+# -- so once the pod exits, the code that was actually graded is gone and only
+# the compiler's complaint about it survives. That made one class of failure
+# undiagnosable: a Go task failed with "syntax error: non-declaration statement
+# outside function body" at lines 15 and 76, which is what raw markdown fences or
+# prose in a .go file look like -- but with the file gone and the agent's stdout
+# showing no fences, the cause could not be established either way.
+#
+# Grading semantics are unchanged: same TEST_CMD, same 120s timeout, same
+# 1.0/0.0 from the same exit status to the same path. Only the output is kept.
+# Guarded by `|| true` throughout: a patch failure must never fail the eval, and
+# an image whose grade.sh has changed shape is left strictly alone.
+if [[ "${EVAL_GRADE_VERBOSE:-0}" == "1" && -f /grade.sh ]]; then
+  cp -a /grade.sh /grade.sh.orig 2>/dev/null || true
+  python3 - <<'PY' || echo "eval-containers: grade.sh patch skipped (see above)" >&2
+import sys
+p = "/grade.sh"
+try:
+    src = open(p).read()
+except OSError as e:
+    sys.exit("cannot read %s: %s" % (p, e))
+
+old_run = 'if timeout 120 sh -c "$TEST_CMD" >/dev/null 2>&1; then'
+new_run = ('echo "=== TEST_CMD: $TEST_CMD" > /logs/verifier/test_output.log\n'
+           'echo "=== LANGUAGE: $LANGUAGE  EXERCISE: $EXERCISE" >> /logs/verifier/test_output.log\n'
+           'echo "=== EXERCISE_DIR: $EXERCISE_DIR  cwd: $(pwd)" >> /logs/verifier/test_output.log\n'
+           'echo "=== files in cwd:" >> /logs/verifier/test_output.log\n'
+           'ls -la >> /logs/verifier/test_output.log 2>&1\n'
+           'echo "=== test run:" >> /logs/verifier/test_output.log\n'
+           'if timeout 120 sh -c "$TEST_CMD" >>/logs/verifier/test_output.log 2>&1; then')
+old_cp = ('  if [ -f "$src" ]; then\n'
+          '    cp "$src" "$dst"\n'
+          '  fi')
+new_cp = ('  if [ -f "$src" ]; then\n'
+          '    cp "$src" "$dst"\n'
+          '    echo "COPIED  $src -> $dst ($(wc -c < "$src") bytes)" >> /logs/verifier/copy.log\n'
+          '    mkdir -p /logs/verifier/solution\n'
+          '    cp "$src" "/logs/verifier/solution/$(basename "$f")" 2>/dev/null || true\n'
+          '  else\n'
+          '    echo "MISSING $src (agent did not write it; tests grade the STUB)" >> /logs/verifier/copy.log\n'
+          '  fi')
+
+if old_run not in src or old_cp not in src:
+    sys.exit("grade.sh does not match the expected shape; refusing to patch blind")
+
+src = src.replace(old_run, new_run, 1).replace(old_cp, new_cp, 1)
+src = src.replace("mkdir -p /logs/verifier",
+                  "mkdir -p /logs/verifier\n: > /logs/verifier/copy.log", 1)
+open(p, "w").write(src)
+print("eval-containers: grade.sh patched (test output + copy log preserved)")
+PY
+  # A syntax error here would make every task score 0.0 for a NEW reason, so
+  # revert rather than grade with a broken script.
+  if ! bash -n /grade.sh 2>/dev/null; then
+    echo "eval-containers: patched grade.sh failed syntax check -- reverting" >&2
+    cp -a /grade.sh.orig /grade.sh 2>/dev/null || true
+  fi
+fi
+
+# --- LOCAL WORKAROUND: disable codex's live web search ------------------------
+# NOT FOR UPSTREAM. Tracked as an exgentic issue; delete when the image stops
+# hardcoding this.
+#
+# The gaia--codex image's /run.sh passes `-c 'web_search="live"'` to
+# `codex exec`, enabling the native Responses web_search tool. There is no
+# search backend reachable from the cluster, so every task that tries to search
+# errors instead of falling back to offline reasoning.
+#
+# It cannot be turned off from the outside: /usr/local/bin/run-agent invokes the
+# agent under `env -i` with a strict allow-list, so no env var survives into the
+# codex process. The setting exists only in /run.sh.
+#
+# DELETE the flag rather than setting web_search="off"/false. Deletion lands on
+# codex's own documented default -- `--search` is opt-in ("Enable live web
+# search", codex-cli 0.120.0) -- whereas the disable enum is NOT verifiable:
+# `codex exec -c web_search=bogus --help` exits 0 because --help short-circuits
+# before config validation, so a wrong value would fail at task time.
+#
+# Separate lever from EVAL_GAIA_SUBSET=no-search, which is task SELECTION. Do
+# both: the subset stops us grading tasks that need a search engine, this stops
+# codex reaching for one on the tasks that remain.
+if [[ "${EVAL_DISABLE_WEB_SEARCH:-1}" == "1" && -f /run.sh ]]; then
+  if grep -q "web_search=" /run.sh; then
+    cp -a /run.sh /run.sh.orig 2>/dev/null || true
+    before=$(grep -c "web_search=" /run.sh || true)
+    # Drop just the `-c 'web_search="live"'` argument, leaving the rest of the
+    # codex invocation (including its line continuations) intact.
+    sed -i "s/[[:space:]]*-c[[:space:]]*'web_search=\"live\"'//g" /run.sh || true
+    after=$(grep -c "web_search=" /run.sh || true)
+    if [[ "$after" -lt "$before" ]] && bash -n /run.sh 2>/dev/null; then
+      echo "eval-containers: codex web_search disabled (removed $((before-after)) flag(s) from /run.sh)"
+    else
+      echo "eval-containers: WARNING web_search patch failed syntax check or matched nothing; reverting" >&2
+      cp -a /run.sh.orig /run.sh 2>/dev/null || true
+    fi
+  fi
+fi
+
 # --- run the eval ------------------------------------------------------------
 # image ENTRYPOINT stages /app for EVAL_TASK_ID, then execs the pipeline.
 rc=0
@@ -147,6 +261,27 @@ rc=0
 # --- hand results back to llm-d-benchmark's collector ------------------------
 output_dir="${EVAL_OUTPUT_DIR:-/output}"
 if [[ -d "$output_dir" ]]; then cp -a "$output_dir/." "$results_dir/"; fi
+
+# Report what traces were captured, so a run that silently lost them is visible
+# in the harness log instead of only discoverable by digging afterwards.
+if [[ -s "$results_dir/traces.jsonl" ]]; then
+  span_lines=$(wc -l < "$results_dir/traces.jsonl" | tr -d ' ')
+  echo "eval-containers: captured traces.jsonl ($span_lines OTLP records)"
+else
+  echo "eval-containers: WARNING no traces captured for task $EVAL_TASK_ID" >&2
+fi
+
+# Collect the verifier's own logs. The eval writes grading output to
+# /logs/verifier, which is OUTSIDE /output and so was otherwise discarded with
+# the pod. Without it a `reward: 0.0` is unattributable: there is no way to tell
+# a genuinely wrong answer from a build/test-harness mismatch (missing file,
+# wrong path, compile error) after the fact -- the agent's own stdout only says
+# what it *believed* it did.
+if [[ -d /logs ]]; then
+  mkdir -p "$results_dir/logs"
+  cp -a /logs/. "$results_dir/logs/" 2>/dev/null || true
+fi
+
 printf 'harness_name: eval-containers\nharness_rc: %s\ntask_id: %s\nmodel: %s\n' \
   "$rc" "$EVAL_TASK_ID" "$EVAL_MODEL" > "$results_dir/run_metadata.yaml"
 
