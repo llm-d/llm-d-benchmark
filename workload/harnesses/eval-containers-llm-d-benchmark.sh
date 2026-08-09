@@ -48,6 +48,73 @@ export EVAL_MODEL="${LLMDBENCH_DEPLOY_CURRENT_MODEL:?model not provided}"
 
 echo "eval-containers: task=$EVAL_TASK_ID model=$EVAL_MODEL endpoint=$OPENAI_API_BASE"
 
+# --- raise the in-pod gateway's per-request timeout --------------------------
+# bifrost's built-in per-request timeout is 30s, which is SHORTER than a
+# reasoning model's generation latency (the model emits a <think> block before
+# the answer). Measured 2026-07-30 over two 20-task waves: 65/198 (33%) and
+# 55/156 (35%) of gateway requests returned 504 with durations pinned at
+# 30002-30064 ms -- a fixed client deadline, not model variance. A successful
+# call landed at 26460 ms, i.e. 3.5s under the wire. No task with 3+ 504s ever
+# passed, so this silently depresses the score rather than failing the run.
+#
+# bifrost names the fix in its own error body ("increase it by setting the
+# default_request_timeout_in_seconds in the network_config"), and
+# config.json.template already writes a network_config block per provider
+# holding base_url + allow_private_network. /opt/gateway/start renders that
+# template with plain sed and never parses the JSON, so an injected field
+# passes straight through -- no image rebuild needed.
+#
+# Keyed on "allow_private_network": true, which appears in all three provider
+# blocks (anthropic, openai, gemini), so it survives base_url differences.
+# 600s is comfortably above the worst observed generation and still bounded
+# well under EVAL_TIMEOUT, so a wedged request cannot outlive its own task.
+gw_timeout="${EVAL_GATEWAY_TIMEOUT:-600}"
+gw_template=/opt/gateway/data/config.json.template
+# Saved copy lives under $HOME, not /tmp: /tmp is not guaranteed to survive
+# (macOS has wiped it mid-run) and this file's whole job is to be there for
+# the revert below, so a cleared /tmp would turn a loud-skip patch into a
+# silent, unrevertable one.
+gw_template_orig="${HOME:-/tmp}/eval-containers-gw-config.json.template.orig"
+if [[ -f "$gw_template" && -w "$(dirname "$gw_template")" ]]; then
+  if grep -q 'default_request_timeout_in_seconds' "$gw_template"; then
+    echo "eval-containers: gateway template already sets a request timeout; leaving it alone"
+  elif ! cp "$gw_template" "$gw_template_orig"; then
+    # Without a saved copy we cannot revert, so patching would be
+    # unguarded -- skip it and leave the provider default in place. This is
+    # the same degrade-gracefully outcome as the "not present/writable"
+    # branch below, just discovered one step later.
+    echo "eval-containers: WARNING could not save gateway template backup to ${gw_template_orig}; skipping timeout patch, provider default applies" >&2
+  else
+    gw_restore() {
+      if ! cp "$gw_template_orig" "$gw_template"; then
+        echo "eval-containers: WARNING revert failed; ${gw_template} may be left in a half-patched state" >&2
+      fi
+    }
+    if ! sed -i "s/\"allow_private_network\": true/\"allow_private_network\": true, \"default_request_timeout_in_seconds\": ${gw_timeout}/g" \
+      "$gw_template"; then
+      # A disk-full temp-file write or a permissions race after the -w
+      # dirname check above can make sed itself fail. Restore rather than
+      # leave a possibly half-patched template in place.
+      echo "eval-containers: WARNING timeout patch sed failed; reverting" >&2
+      gw_restore
+    else
+      n=$(grep -c 'default_request_timeout_in_seconds' "$gw_template") || n=0
+      if [[ "$n" -eq 3 ]]; then
+        echo "eval-containers: gateway request timeout set to ${gw_timeout}s for 3 providers"
+        rm -f "$gw_template_orig"
+      else
+        # Restore rather than run with a half-patched template: a malformed
+        # config.json makes bifrost fail to boot, which surfaces later as an
+        # opaque startup failure rather than as this patch's fault.
+        echo "eval-containers: WARNING timeout patch hit $n/3 providers; reverting" >&2
+        gw_restore
+      fi
+    fi
+  fi
+else
+  echo "eval-containers: note gateway template not present/writable; provider default applies"
+fi
+
 # --- run the eval ------------------------------------------------------------
 # image ENTRYPOINT stages /app for EVAL_TASK_ID, then execs the pipeline.
 rc=0
