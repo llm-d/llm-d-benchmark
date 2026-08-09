@@ -153,5 +153,24 @@ scenario:
       extraEnvVars:
         - name: EVAL_TIMEOUT
           value: "1500"
+        # Force the OpenAI wire. gemini-cli speaks the Gemini v1beta protocol
+        # (`/v1beta/models/<model>:generateContent`), but llm-d/vLLM serves the
+        # OpenAI wire only. Without this, /opt/gateway/start renders its NATIVE
+        # ROUTING mode -- caddy stamps X-Eval-Wire from the inbound path and one
+        # governance rule per provider keys on it -- so gemini-cli's requests are
+        # routed to bifrost's gemini provider and every call fails with:
+        #   BadRequest - no parser registered matching path suffix for:
+        #   /v1beta/models/Qwen/Qwen3.6-27B:generateContent
+        # The agent then silently writes a stub solution (observed: a literal
+        # `???` where a Rust type belonged), so the task scores 0 for what looks
+        # like a model-quality failure rather than a transport one.
+        #
+        # Setting EVAL_MODEL_API selects the image's WIRE OVERRIDE mode instead:
+        # a single cel_expression="true" rule pinning provider=openai and
+        # model=EVAL_MODEL. EVAL_MODEL itself stays the bare slashed handle.
+        # Verified against the image: renders id=pin, cel="true",
+        # provider="openai", model="Qwen/Qwen3.6-27B".
+        - name: EVAL_MODEL_API
+          value: openai
 
     workDir: "~/data/eval-aider-polyglot-gpu"
