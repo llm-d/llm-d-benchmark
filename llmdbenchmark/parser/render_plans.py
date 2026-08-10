@@ -2033,7 +2033,9 @@ class RenderPlans:
 
         if self.version_resolver:
             try:
-                merged_values = self.version_resolver.resolve_all(merged_values)
+                merged_values = self.version_resolver.resolve_all(
+                    merged_values, skip_kubernetes=is_nok8s
+                )
             except Exception as e:
                 self.logger.log_warning(
                     f"Version resolution had issues for stack {stack_name}: {e}"

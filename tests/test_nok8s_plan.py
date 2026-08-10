@@ -29,7 +29,7 @@ class _Logger:
         pass
 
 
-def _render(tmp_path: Path, cli_methods: str | None = None):
+def _render(tmp_path: Path, cli_methods: str | None = None, version_resolver=None):
     return RenderPlans(
         template_dir=TEMPLATE_DIR,
         defaults_file=DEFAULTS_FILE,
@@ -37,6 +37,7 @@ def _render(tmp_path: Path, cli_methods: str | None = None):
         output_dir=tmp_path / "plan",
         logger=_Logger(),
         cli_methods=cli_methods,
+        version_resolver=version_resolver,
     ).eval()
 
 
@@ -495,3 +496,51 @@ def test_nok8s_teardown_leaves_siblings_alone_without_a_spec(tmp_path: Path) -> 
     solo.rendered_stacks = [specless]
     NoK8sTeardownStep().execute(solo, specless)
     assert solo.cmd.removed() == {"envoy", "epp", "vllm-0"}
+
+
+class _RecordingVersionResolver:
+    """Records how the renderer invokes version resolution."""
+
+    def __init__(self) -> None:
+        self.calls: list[bool] = []
+
+    def resolve_all(self, values: dict, skip_kubernetes: bool = False) -> dict:
+        self.calls.append(skip_kubernetes)
+        return values
+
+
+def test_nok8s_skips_kubernetes_version_resolution(tmp_path: Path) -> None:
+    """nok8s must not try to resolve helm chart versions or the WVA image.
+
+    Resolving them needs helm/skopeo, which docs/nok8s.md says are not
+    required, and nothing on this path consumes the results.
+    """
+    resolver = _RecordingVersionResolver()
+    _render(tmp_path, version_resolver=resolver)
+
+    assert resolver.calls, "version resolver was never invoked"
+    assert all(resolver.calls), (
+        f"expected skip_kubernetes=True for every nok8s stack, got {resolver.calls}"
+    )
+
+
+def test_kubernetes_scenario_still_resolves_versions(tmp_path: Path) -> None:
+    """Guard the test above: the flag is not unconditionally True."""
+    resolver = _RecordingVersionResolver()
+    RenderPlans(
+        template_dir=TEMPLATE_DIR,
+        defaults_file=DEFAULTS_FILE,
+        scenarios_file=REPO_ROOT
+        / "config"
+        / "scenarios"
+        / "guides"
+        / "optimized-baseline.yaml",
+        output_dir=tmp_path / "plan-k8s",
+        logger=_Logger(),
+        version_resolver=resolver,
+    ).eval()
+
+    assert resolver.calls, "version resolver was never invoked"
+    assert not any(resolver.calls), (
+        f"expected skip_kubernetes=False off the nok8s path, got {resolver.calls}"
+    )
