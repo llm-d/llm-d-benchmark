@@ -41,10 +41,13 @@ except ImportError:
 def newest_run_dir(root):
     """Return the newest run directory under ``root`` (or "").
 
-    Runs are ``runner-<UTC YYYYMMDD-HHMMSS>-<id>`` dirs holding a ``results/``,
-    so the newest is simply the latest-sorting ``runner-*`` match. (Lexical, not
-    mtime: these are GCS-downloaded, so mtimes are the download time.)"""
-    runs = glob.glob(os.path.join(root, "**", "runner-*", "results"), recursive=True)
+    A run dir is any directory holding a ``results/`` subdir -- CI names them
+    ``runner-<UTC>-<id>`` and local runs ``<user>-<UTC>-<id>``, so match any
+    ``*/results`` rather than only ``runner-*``. ``root`` may itself be a run dir
+    (its own ``results/`` matches). Newest = latest-sorting name (lexical, since
+    GCS-downloaded mtimes are download time). Timestamped names sort chronologically."""
+    runs = glob.glob(os.path.join(root, "**", "results"), recursive=True)
+    runs = [r for r in runs if os.path.isdir(r)]
     return os.path.dirname(sorted(runs)[-1]) if runs else ""
 
 
