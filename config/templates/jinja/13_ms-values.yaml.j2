@@ -407,6 +407,9 @@ decode:
     args:
       - |
 {{ build_vllm_command('decode') | indent(8, first=True) }}
+{% elif decode_model_command == 'imageDefault' and decode.vllm.additionalFlags is defined and decode.vllm.additionalFlags %}
+    args:
+{{ decode.vllm.additionalFlags | toyaml | indent(6, true) }}
 {% endif %}
     env:
 {{ build_ms_env_vars('decode') | indent(6, true) }}
@@ -824,6 +827,9 @@ prefill:
     args:
       - |
 {{ build_vllm_command('prefill') | indent(8, first=True) }}
+{% elif prefill_model_command == 'imageDefault' and prefill.vllm.additionalFlags is defined and prefill.vllm.additionalFlags %}
+    args:
+{{ prefill.vllm.additionalFlags | toyaml | indent(6, true) }}
 {% endif %}
     env:
 {{ build_ms_env_vars('prefill') | indent(6, true) }}
