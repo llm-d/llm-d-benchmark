@@ -226,6 +226,100 @@ def test_pin_env_per_replica() -> None:
     )
 
 
+class _RecordingCmd(_FakeCmd):
+    """_FakeCmd that records every command it was asked to run."""
+
+    def __init__(self, fail_substrings=(), stdout_for=None) -> None:
+        super().__init__(fail_substrings, stdout_for)
+        self.commands: list[str] = []
+
+    def execute(self, cmd, *args, **kwargs):
+        self.commands.append(cmd)
+        return super().execute(cmd, *args, **kwargs)
+
+    def removed(self) -> set[str]:
+        return {c.split()[-1] for c in self.commands if " rm -f " in c}
+
+    def launched(self) -> set[str]:
+        return {
+            c.split("--name ")[1].split()[0] for c in self.commands if "--name " in c
+        }
+
+
+def _nok8s_stack(tmp_path: Path) -> Path:
+    """Minimal rendered stack dir with a three-container launch spec."""
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    spec = {
+        "runtime": "docker",
+        "workspaceHostDir": str(tmp_path / "ws"),
+        "model": "Qwen/Qwen2.5-0.5B-Instruct",
+        "endpoint": "http://localhost:8081",
+        "containers": [
+            {
+                "name": "vllm-0",
+                "kind": "vllm",
+                "image": "nonexistent:v0",
+                "hostPort": 8000,
+            },
+            {
+                "name": "epp",
+                "kind": "epp",
+                "image": "epp:v0",
+                "grpcPort": 9002,
+                "grpcHealthPort": 9003,
+                "metricsPort": 9090,
+            },
+            {"name": "envoy", "kind": "envoy", "image": "envoy:v0"},
+        ],
+    }
+    (stack / "34_nok8s-containers.yaml").write_text(yaml.safe_dump(spec), "utf-8")
+    return stack
+
+
+def test_nok8s_launch_failure_stops_and_rolls_back(tmp_path: Path) -> None:
+    """A container that fails to start aborts the launch and removes the rest."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _nok8s_stack(tmp_path)
+    # vllm-0 is launched first and fails.
+    cmd = _RecordingCmd(fail_substrings=("--name vllm-0",))
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is False
+    assert "vllm-0" in result.message
+    # Nothing after the failing container is launched.
+    assert not any("run -d --name epp" in c for c in cmd.commands)
+    assert not any("run -d --name envoy" in c for c in cmd.commands)
+
+
+def test_nok8s_rollback_dumps_logs_before_removing(tmp_path: Path) -> None:
+    """Already-launched containers are removed, with logs captured first."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _nok8s_stack(tmp_path)
+    # vllm-0 and epp come up; envoy (launched last) fails.
+    cmd = _RecordingCmd(fail_substrings=("--name envoy",))
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is False
+    for name in ("vllm-0", "epp"):
+        logs = cmd.commands.index(f"docker logs {name} --tail 100")
+        # rm -f appears twice per container: the idempotency wipe before the
+        # launch, and the rollback afterwards. The rollback one must come after
+        # the log dump, or the evidence is gone.
+        removals = [
+            i for i, c in enumerate(cmd.commands) if c == f"docker rm -f {name}"
+        ]
+        assert len(removals) == 2, cmd.commands
+        assert removals[-1] > logs, f"{name} removed before its logs were dumped"
+        assert (ctx.setup_logs_dir() / f"nok8s-{name}.log").exists()
+
+
 def test_resolve_deploy_method_forces_nok8s() -> None:
     """--methods nok8s wins and disables the other methods (mutual exclusion)."""
     rp = RenderPlans(
@@ -435,25 +529,6 @@ def test_nok8s_run_endpoint_needs_one_stack() -> None:
         assert "--stack" in str(e) and "8181" in str(e)
     else:
         raise AssertionError("expected a PhaseError for a multi-stack nok8s run")
-
-
-class _RecordingCmd:
-    """CommandExecutor stand-in that records every command it is handed."""
-
-    def __init__(self) -> None:
-        self.commands: list[str] = []
-
-    def execute(self, cmd, *_: Any, **__: Any):
-        self.commands.append(cmd)
-        return _FakeResult(True)
-
-    def removed(self) -> set[str]:
-        return {c.split()[-1] for c in self.commands if " rm -f " in c}
-
-    def launched(self) -> set[str]:
-        return {
-            c.split("--name ")[1].split()[0] for c in self.commands if "--name " in c
-        }
 
 
 def test_nok8s_deploy_never_removes_a_sibling_stacks_containers(
