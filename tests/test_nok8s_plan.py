@@ -130,7 +130,17 @@ class _FakeCmd:
         return _FakeResult(ok, out)
 
 
-def _nok8s_ctx(tmp_path: Path, cmd):
+class _CapturingLogger(_Logger):
+    """Logger that keeps the warning lines the preflight emits."""
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+
+    def log_warning(self, msg: str, *_: Any, **__: Any) -> None:
+        self.warnings.append(msg)
+
+
+def _nok8s_ctx(tmp_path: Path, cmd, nok8s: dict | None = None):
     from llmdbenchmark.executor.context import ExecutionContext
 
     ctx = ExecutionContext(
@@ -141,7 +151,14 @@ def _nok8s_ctx(tmp_path: Path, cmd):
         container_runtime="docker",
     )
     ctx.cmd = cmd
-    ctx.logger = _Logger()
+    ctx.logger = _CapturingLogger()
+    if nok8s is not None:
+        stack = tmp_path / "stack"
+        stack.mkdir(exist_ok=True)
+        (stack / "config.yaml").write_text(
+            yaml.safe_dump({"nok8s": nok8s}), encoding="utf-8"
+        )
+        ctx.rendered_stacks = [stack]
     return ctx
 
 
@@ -167,6 +184,68 @@ def test_nok8s_preflight_passes_when_runtime_and_gpu_present(tmp_path: Path) -> 
     finally:
         os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
     assert result.success is True
+
+
+def _busy_warning(ctx) -> str:
+    return next((w for w in ctx.logger.warnings if "already in use" in w), "")
+
+
+def test_nok8s_preflight_checks_every_replica_port(tmp_path: Path) -> None:
+    """Replicas occupy hostPort..hostPort+N-1, not just hostPort."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ss_out = "LISTEN 0 4096 0.0.0.0:8002 0.0.0.0:*\n"
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(stdout_for={"ss -ltn": ss_out}),
+        nok8s={"vllm": {"replicas": 3, "hostPort": 8000, "accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert "8002" in _busy_warning(ctx)
+
+
+def test_nok8s_preflight_checks_envoy_admin_port(tmp_path: Path) -> None:
+    """19000 is hard-coded in the Envoy bootstrap and must be free."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ss_out = "LISTEN 0 4096 127.0.0.1:19000 0.0.0.0:*\n"
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(stdout_for={"ss -ltn": ss_out}),
+        nok8s={"vllm": {"accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert "19000" in _busy_warning(ctx)
+
+
+def test_nok8s_preflight_falls_back_to_lsof(tmp_path: Path) -> None:
+    """Hosts without iproute2 (macOS) still get a real port check."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    lsof_out = "envoy 42 u 10u IPv4 0t0 TCP 127.0.0.1:8081 (LISTEN)\n"
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(
+            fail_substrings=("command -v ss",),
+            stdout_for={"lsof": lsof_out},
+        ),
+        nok8s={"vllm": {"accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert "8081" in _busy_warning(ctx)
+
+
+def test_nok8s_preflight_warns_when_no_port_probe_available(tmp_path: Path) -> None:
+    """Neither ss nor lsof present -> say so instead of silently passing."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(fail_substrings=("command -v ss", "command -v lsof")),
+        nok8s={"vllm": {"accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert any("Cannot verify host ports" in w for w in ctx.logger.warnings)
 
 
 def test_device_args_per_accelerator() -> None:
