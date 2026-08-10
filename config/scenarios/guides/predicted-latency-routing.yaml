@@ -49,7 +49,6 @@ scenario:
           size: 1Ti
 
       vllmCommon:
-#        priorityClassName: nightly-gpu-critical
         volumes:
           - name: shared-config
             type: emptyDir

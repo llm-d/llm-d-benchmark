@@ -21,6 +21,40 @@ scenario:
   # Multimodal Optimized Baseline - Qwen3-VL-32B-Instruct with 8 decode pods (TP=2)
   # ============================================================================
   - name: "multimodal-serving-aggregation"
+    common:
+      model:
+        name: Qwen/Qwen3-VL-32B-Instruct
+        shortName: qwen-qwen3-vl-32b-instruct
+        path: models/Qwen/Qwen3-VL-32B-Instruct
+        huggingfaceId: Qwen/Qwen3-VL-32B-Instruct
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+
+      storage:
+        modelPvc:
+          size: 1Ti
+
+      vllmCommon:
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 20Gi
+
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: shared-config
+            mountPath: /shared-config
+
+    standalone:
+      enabled: false
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
@@ -91,45 +125,9 @@ scenario:
       patches: []
 
     # =========================================================================
-    # COMMON -- Applies to all deployment methods
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Model Configuration
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3-VL-32B-Instruct
-      shortName: qwen-qwen3-vl-32b-instruct
-      path: models/Qwen/Qwen3-VL-32B-Instruct
-      huggingfaceId: Qwen/Qwen3-VL-32B-Instruct
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
-
-    # -------------------------------------------------------------------------
-    # Routing Configuration
-    # -------------------------------------------------------------------------
-    # Note: inferenceModel is enabled via the modelservice chart when this
-    # scenario is deployed. The routing is handled through the gaie values.
-
-    # -------------------------------------------------------------------------
-    # Affinity / Node Selection
-    # By default, affinity is disabled and pods schedule on any available node.
-    # Options:
-    #   1. Leave commented out -- no node selection constraint
-    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
-    #   3. Set explicit labels -- pods only schedule on matching nodes
-    # -------------------------------------------------------------------------
-    # affinity:
-    #   enabled: true
-    #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H200-141GB-HBM3e      # OpenShift
-    #     # gpu.nvidia.com/model: H200                          # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-h200-141gb # GKE
-
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, router, and gateway.
     # =========================================================================
     modelservice:
       enabled: true
@@ -289,157 +287,106 @@ scenario:
         requestTimeout: "300s"
         backendRequestTimeout: "0s"
 
-    standalone:
-      enabled: false
 
-    # NOTE: the `kustomize` deploy method is configured at the TOP of this
-    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
-    # because enabling it overrides this entire scenario -- see
-    # docs/kustomize.md.
+      prefill:
+        enabled: false
+        replicas: 0
 
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
+      decode:
+        replicas: 8
+        vllm:
+          # Prefix caching is left ON (the prefix-cache-affinity-filter relies on
+          # it). --mm-processor-cache-gb sizes the multimodal (image) preprocessor
+          # cache; --tensor-parallel-size follows $TP_SIZE (parallelism.tensor: 2).
+          customCommand: |
+            export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+            export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+            vllm serve /model-cache/$MODEL_PATH \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_METRICS_PORT \
+            --block-size $VLLM_BLOCK_SIZE \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+            --mm-processor-cache-gb 20 \
+            --no-enable-log-requests \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models
 
-    # -------------------------------------------------------------------------
-    # Prefill Configuration
-    # -------------------------------------------------------------------------
-    prefill:
-      enabled: false
-      replicas: 0
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
 
-    # -------------------------------------------------------------------------
-    # Decode Configuration
-    # -------------------------------------------------------------------------
-    decode:
-      replicas: 8
-      vllm:
-        # Prefix caching is left ON (the prefix-cache-affinity-filter relies on
-        # it). --mm-processor-cache-gb sizes the multimodal (image) preprocessor
-        # cache; --tensor-parallel-size follows $TP_SIZE (parallelism.tensor: 2).
-        customCommand: |
-          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
-          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
-          vllm serve /model-cache/$MODEL_PATH \
-          --host 0.0.0.0 \
-          --served-model-name $MODEL_NAME \
-          --port $VLLM_METRICS_PORT \
-          --block-size $VLLM_BLOCK_SIZE \
-          --max-model-len $VLLM_MAX_MODEL_LEN \
-          --max-num-seq $VLLM_MAX_NUM_SEQ \
-          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
-          --tensor-parallel-size $TP_SIZE \
-          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
-          --mm-processor-cache-gb 20 \
-          --no-enable-log-requests \
-          --disable-uvicorn-access-log \
-          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+        # TP=2 -- two GPUs per decode pod (16 GPUs across 8 replicas). The
+        # per-pod accelerator count is derived from parallelism.tensor.
+        parallelism:
+          tensor: 2
+          data: 1
+          dataLocal: 1
+          workers: 1
 
-      initContainers:
-        - name: preprocess
-          imageKey: benchmark
+        # Resource configuration (2 GPUs per replica, per the guide's GPU overlay).
+        resources:
+          limits:
+            memory: 256Gi
+            cpu: "16"
+          requests:
+            memory: 128Gi
+            cpu: "8"
+
+        # No customCommand -- the vLLM serve command is auto-generated
+        # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+        # -----------------------------------------------------------------------
+        # Extra Environment Variables
+        # No custom env vars for this scenario -- uses default ENVVARS_TO_YAML
+        # mechanism. Auto-populated vars (UCX_TLS, VLLM_NIXL_*, etc.) are set
+        # by the preprocess script at pod runtime.
+        # -----------------------------------------------------------------------
+        extraEnvVars: []
+
+        # -----------------------------------------------------------------------
+        # Extra Container Configuration
+        # -----------------------------------------------------------------------
+        extraContainerConfig:
+          ports:
+            - containerPort: 5557  # NIXL side channel port
+              protocol: TCP
+            - containerPort: 8200  # Metrics port
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+            runAsGroup: 0
+            runAsUser: 0
           imagePullPolicy: Always
-          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          volumeMounts:
-            - name: shared-config
-              mountPath: /shared-config
 
-      # TP=2 -- two GPUs per decode pod (16 GPUs across 8 replicas). The
-      # per-pod accelerator count is derived from parallelism.tensor.
-      parallelism:
-        tensor: 2
-        data: 1
-        dataLocal: 1
-        workers: 1
+        # -----------------------------------------------------------------------
+        # Additional Volume Mounts
+        # -----------------------------------------------------------------------
+        additionalVolumeMounts: []
 
-      # Resource configuration (2 GPUs per replica, per the guide's GPU overlay).
-      resources:
-        limits:
-          memory: 256Gi
-          cpu: "16"
-        requests:
-          memory: 128Gi
-          cpu: "8"
-
-      # No customCommand -- the vLLM serve command is auto-generated
-      # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
-      # -----------------------------------------------------------------------
-      # Extra Environment Variables
-      # No custom env vars for this scenario -- uses default ENVVARS_TO_YAML
-      # mechanism. Auto-populated vars (UCX_TLS, VLLM_NIXL_*, etc.) are set
-      # by the preprocess script at pod runtime.
-      # -----------------------------------------------------------------------
-      extraEnvVars: []
-
-      # -----------------------------------------------------------------------
-      # Extra Container Configuration
-      # -----------------------------------------------------------------------
-      extraContainerConfig:
-        ports:
-          - containerPort: 5557  # NIXL side channel port
-            protocol: TCP
-          - containerPort: 8200  # Metrics port
-            name: metrics
-            protocol: TCP
-        securityContext:
-          capabilities:
-            add:
-              - "IPC_LOCK"
-              - "SYS_RAWIO"
-          runAsGroup: 0
-          runAsUser: 0
-        imagePullPolicy: Always
-
-      # -----------------------------------------------------------------------
-      # Additional Volume Mounts
-      # -----------------------------------------------------------------------
-      additionalVolumeMounts: []
-
-      # -----------------------------------------------------------------------
-      # Additional Volumes
-      # -----------------------------------------------------------------------
-      additionalVolumes: []
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-    vllmCommon:
-#      priorityClassName: nightly-gpu-critical
-
-      volumes:
-        - name: shared-config
-          type: emptyDir
-          emptyDir: {}
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 20Gi
-
-      volumeMounts:
-        - name: dshm
-          mountPath: /dev/shm
-        - name: shared-config
-          mountPath: /shared-config
-
-    # -------------------------------------------------------------------------
-    # Storage Configuration
-    # -------------------------------------------------------------------------
-    storage:
-      modelPvc:
-        size: 1Ti
+        # -----------------------------------------------------------------------
+        # Additional Volumes
+        # -----------------------------------------------------------------------
+        additionalVolumes: []
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
 
-    # -------------------------------------------------------------------------
-    # Workload/Harness Configuration
-    # -------------------------------------------------------------------------
-    workDir: "~/data/multimodal-serving-aggregation"
-
     harness:
       name: inference-perf
       experimentProfile: guide_multimodal-serving_1.yaml
+
+    workDir: "~/data/multimodal-serving-aggregation"

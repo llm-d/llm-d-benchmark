@@ -61,7 +61,10 @@ scenario:
           # storageClassName: ocs-storagecluster-cephfs
 
       vllmCommon:
-  #      priorityClassName: nightly-gpu-critical
+#        ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+#        ucxTls: "cuda,rc,sm"
+        networkResource: "auto"   # auto-detect from cluster nodes
+        networkNr: "1"            # number of network devices
 
         volumes:
           - name: shared-config
@@ -81,20 +84,14 @@ scenario:
           - name: dshm
             mountPath: /dev/shm
 
-#     annotations:
-#       prefill:
-#         pod:
+# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode..pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
+      annotations:
+        prefill:
+          pod:
 #            k8s.v1.cni.cncf.io/networks: multi-nic-inference
-#       decode:
-#         pod:
+        decode:
+          pod:
 #            k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
-      prefill:
-#        networkResource: "rdma/roce_gdr"
-#        networkNr: 1
-      decode:
-#        networkResource: "rdma/roce_gdr"
-#        networkNr: 1
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)

@@ -77,7 +77,6 @@ scenario:
           # storageClassName: ocs-storagecluster-cephfs
 
     vllmCommon:
-#      priorityClassName: nightly-gpu-critical
 #      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
       networkResource: "auto"   # auto-detect from cluster nodes
       networkNr: "1"            # number of network devices
@@ -98,20 +97,18 @@ scenario:
         - name: dshm
           mountPath: /dev/shm
 
-#     annotations:
-#       prefill:
-#         pod:
+# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode..pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
+      annotations:
+        prefill:
+          pod:
 #            k8s.v1.cni.cncf.io/networks: multi-nic-inference
-#       decode:
-#         pod:
+        decode:
+          pod:
 #            k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
-      prefill:
-#        networkResource: "rdma/roce_gdr"
-#        networkNr: 1
-      decode:
-#        networkResource: "rdma/roce_gdr"
-#        networkNr: 1
+      timeouts:
+        controlWait: 900000
+        harnessWait: 900000
 
     # =========================================================================
     # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
@@ -590,13 +587,6 @@ scenario:
       # Additional Volumes
       # -----------------------------------------------------------------------
       additionalVolumes: []
-
-    # -------------------------------------------------------------------------
-    # Timeout Configuration
-    # -------------------------------------------------------------------------
-    timeouts:
-      controlWait: 900000
-      harnessWait: 900000
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration

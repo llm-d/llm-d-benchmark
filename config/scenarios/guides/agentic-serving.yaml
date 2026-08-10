@@ -57,7 +57,11 @@ scenario:
           # storageClassName: ocs-storagecluster-cephfs
 
       vllmCommon:
-#        priorityClassName: nightly-gpu-critical
+#        ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+#        ucxTls: "cuda,rc,sm"
+        networkResource: "auto"   # auto-detect from cluster nodes
+        networkNr: "1"            # number of network devices
+
         volumes:
           - name: shared-config
             type: emptyDir
@@ -76,20 +80,14 @@ scenario:
           - name: dshm
             mountPath: /dev/shm
 
-#     annotations:
-#       prefill:
-#         pod:
+# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode..pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
+      annotations:
+        prefill:
+          pod:
 #            k8s.v1.cni.cncf.io/networks: multi-nic-inference
-#       decode:
-#         pod:
+        decode:
+          pod:
 #            k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
-      prefill:
-#        networkResource: "rdma/roce_gdr"
-#        networkNr: 1
-      decode:
-#        networkResource: "rdma/roce_gdr"
-#        networkNr: 1
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
@@ -116,54 +114,36 @@ scenario:
           replicas: 1
           flags:
             v: 2
-          pluginsConfigFile: "custom-plugins.yaml"
+          pluginsConfigFile: agentic-serving-plugins.yaml
           pluginsCustomConfig:
-            custom-plugins.yaml: |
+            agentic-serving-plugins.yaml: |
               apiVersion: llm-d.ai/v1alpha1
               kind: EndpointPickerConfig
-              featureGates:
-              - flowControl
               plugins:
-              - type: queue-scorer
-              - type: kv-cache-utilization-scorer
-              - type: prefix-cache-scorer
-              - type: round-robin-fairness-policy
-              - type: fcfs-ordering-policy
-              - type: concurrency-detector
+              - type: token-load-scorer
+              - type: inflight-load-producer
+              - type: approx-prefix-cache-producer
                 parameters:
-                  maxConcurrency: 132
-                  concurrencyMode: requests
-                  headroom: 0.0
-
+                  maxPrefixTokensToMatch: 262144
+                  # WORKAROUND: autoTune is disabled and the LRU is sized manually.
+                  # autoTune derives lruCapacityPerServer from on-device (HBM) blocks
+                  # only (num_gpu_blocks) and ignores the KV-cache offload tier. With
+                  # offloading enabled this under-counts cached prefixes.
+                  # We size the LRU for the offload-extended cache
+                  # (~num_gpu_blocks x 1000). Remove once autoTune is made offload-aware
+                  # upstream — tracked by the llm-d-router offload-aware-LRU issue.
+                  # https://github.com/llm-d/llm-d-router/issues/1650
+                  autoTune: false
+                  lruCapacityPerServer: 1570000
+                  blockSizeTokens: 256
+              - type: prefix-cache-affinity-filter
+                parameters:
+                  peakPrefillThroughput: 16444
               schedulingProfiles:
               - name: default
                 plugins:
-                - pluginRef: queue-scorer
-                  weight: 2
-                - pluginRef: kv-cache-utilization-scorer
-                  weight: 2
-                - pluginRef: prefix-cache-scorer
-                  weight: 3
-
-              flowControl:
-                maxBytes: "10Gi"
-                maxRequests: "1k"
-                defaultRequestTTL: "60s"
-                saturationDetector:
-                  pluginRef: concurrency-detector
-                priorityBands:
-                - priority: 100
-                  maxRequests: "500"
-                  fairnessPolicyRef: round-robin-fairness-policy
-                  orderingPolicyRef: fcfs-ordering-policy
-                - priority: 0
-                  maxRequests: "200"
-                  fairnessPolicyRef: round-robin-fairness-policy
-                  orderingPolicyRef: fcfs-ordering-policy
-                - priority: -10
-                  maxRequests: "50"
-                  fairnessPolicyRef: round-robin-fairness-policy
-                  orderingPolicyRef: fcfs-ordering-policy
+                - pluginRef: prefix-cache-affinity-filter
+                - pluginRef: token-load-scorer
           resources:
             requests:
               cpu: "4"
