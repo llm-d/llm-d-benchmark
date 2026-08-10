@@ -291,7 +291,7 @@ class KustomizeDeployStep(Step):
             )
 
         # --- 4. Render (tokenizer) ---
-        for gc in parsed.get_commands(CommandPhase.RENDER, DeployMode.ANY):
+for gc in parsed.get_commands(CommandPhase.RENDER):
             resolved_render = resolver.resolve(gc.raw)
             result = self._run_resolved(
                 cmd, resolved_render, check=False, context=context, phase="render"
