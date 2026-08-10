@@ -1469,11 +1469,11 @@ Each entry in the list produces one `ScaledObject`. The list is empty by default
 | Field | Default | Description |
 |-------|---------|-------------|
 | `name` | _(required)_ | `metadata.name` of the ScaledObject |
-| `targetRef.kind` | `Deployment` | Kind of the scale target |
-| `targetRef.name` | `model_id_label + "-decode"` | Name of the scale target; defaults to the model's decode Deployment |
+| `scaleTargetRef.kind` | `Deployment` | Kind of the scale target |
+| `scaleTargetRef.name` | `model_id_label + "-decode"` | Name of the scale target; defaults to the model's decode Deployment |
 | `minReplicas` | `1` | Minimum replica count |
 | `maxReplicas` | `10` | Maximum replica count |
-| `pollingInterval` | `15` | Seconds between KEDA polls |
+| `pollingInterval` | _(omitted)_ | Seconds between KEDA polls; omit to use KEDA's default (15 s) |
 | `triggers` | `[]` | List of KEDA trigger objects (see below) |
 | `behavior` | _(omitted)_ | Optional HPA behavior block rendered under `spec.advanced.horizontalPodAutoscalerConfig.behavior` |
 
@@ -1499,7 +1499,7 @@ keda:
 
   scaledObjects:
     - name: decode-saturation
-      targetRef:
+      scaleTargetRef:
         kind: Deployment
         name: ""              # defaults to model_id_label + "-decode"
       minReplicas: 1

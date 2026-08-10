@@ -102,7 +102,8 @@ scenario:
         workers: 1
 """
 
-_KEDA_NONE_AUTH = """\
+_KEDA_NONE_AUTH = (  # pragma: allowlist secret
+    """\
     keda:
       prometheus:
         baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
@@ -110,7 +111,7 @@ _KEDA_NONE_AUTH = """\
         authMode: none
       scaledObjects:
         - name: decode-saturation
-          targetRef:
+          scaleTargetRef:
             kind: Deployment
             name: ""
           minReplicas: 1
@@ -124,17 +125,19 @@ _KEDA_NONE_AUTH = """\
               threshold: "0.7"
               activationThreshold: "0"
 """
+)
 
-_KEDA_BEARER_AUTH = """\
+_KEDA_BEARER_AUTH = (  # pragma: allowlist secret
+    """\
     keda:
       prometheus:
         baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
         port: 9090
         authMode: bearer-secret
-        secretName: keda-prom-secret  # pragma: allowlist secret
+        secretName: keda-prom-secret
       scaledObjects:
         - name: decode-saturation
-          targetRef:
+          scaleTargetRef:
             kind: Deployment
             name: ""
           minReplicas: 1
@@ -148,6 +151,7 @@ _KEDA_BEARER_AUTH = """\
               threshold: "0.7"
               activationThreshold: "0"
 """
+)
 
 _KEDA_NON_PROMETHEUS_TRIGGER = """\
     keda:
@@ -157,7 +161,7 @@ _KEDA_NON_PROMETHEUS_TRIGGER = """\
         authMode: none
       scaledObjects:
         - name: cpu-scaler
-          targetRef:
+          scaleTargetRef:
             kind: Deployment
             name: my-deploy
           minReplicas: 1

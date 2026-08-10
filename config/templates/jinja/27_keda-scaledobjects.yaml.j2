@@ -14,7 +14,7 @@
 {% set auth_mode = prom.authMode | default('none') %}
 {% set prom_addr = (prom.baseUrl | default('http://prometheus')) ~ ':' ~ (prom.port | default(9090)) %}
 {% for so in keda.scaledObjects %}
-{% set target_name = so.targetRef.name if so.targetRef is defined and so.targetRef.name else model_id_label ~ '-decode' %}
+{% set target_name = so.scaleTargetRef.name if so.scaleTargetRef is defined and so.scaleTargetRef.name else model_id_label ~ '-decode' %}
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -27,11 +27,13 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: {{ so.targetRef.kind | default('Deployment') if so.targetRef is defined else 'Deployment' }}
+    kind: {{ so.scaleTargetRef.kind | default('Deployment') if so.scaleTargetRef is defined else 'Deployment' }}
     name: {{ target_name }}
   minReplicaCount: {{ so.minReplicas | default(1) }}
   maxReplicaCount: {{ so.maxReplicas | default(10) }}
-  pollingInterval: {{ so.pollingInterval | default(15) }}
+{% if so.pollingInterval is defined %}
+  pollingInterval: {{ so.pollingInterval }}
+{% endif %}
   triggers:
 {% for trigger in so.triggers | default([]) %}
   - type: {{ trigger.type }}
