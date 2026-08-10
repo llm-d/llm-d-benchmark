@@ -124,7 +124,14 @@ class TestScenarioValidation:
 
 
 class TestTypoDetection:
-    """Misspelled keys in modeled sections should be caught."""
+    """Misspelled keys in modeled sections should be caught.
+
+    The misspellings below are DELIBERATE -- each test feeds an unknown key
+    to the schema and asserts ``extra="forbid"`` rejects it. Correcting one
+    to its real spelling makes the key legitimate, so validation returns no
+    warnings and the test fails. Do not let a spell-checker "fix" them; the
+    sentinels are allow-listed in ``_typos.toml``.
+    """
 
     def test_decode_typo_caught(self, defaults_copy: dict) -> None:
         defaults_copy["decode"]["replicsa"] = 2
@@ -134,10 +141,10 @@ class TestTypoDetection:
         )
 
     def test_model_typo_caught(self, defaults_copy: dict) -> None:
-        defaults_copy["model"]["name"] = "test"
+        defaults_copy["model"]["naem"] = "test"
         warnings = validate_config(defaults_copy)
-        assert any("name" in w for w in warnings), (
-            f"Expected 'name' typo to be caught, got: {warnings}"
+        assert any("naem" in w for w in warnings), (
+            f"Expected 'naem' typo to be caught, got: {warnings}"
         )
 
     def test_vllm_common_typo_caught(self, defaults_copy: dict) -> None:
@@ -148,17 +155,17 @@ class TestTypoDetection:
         )
 
     def test_harness_typo_caught(self, defaults_copy: dict) -> None:
-        defaults_copy["harness"]["waitTimeout"] = 3600
+        defaults_copy["harness"]["waitTimout"] = 3600
         warnings = validate_config(defaults_copy)
-        assert any("waitTimeout" in w for w in warnings), (
-            f"Expected 'waitTimeout' typo to be caught, got: {warnings}"
+        assert any("waitTimout" in w for w in warnings), (
+            f"Expected 'waitTimout' typo to be caught, got: {warnings}"
         )
 
     def test_prefill_vllm_typo_caught(self, defaults_copy: dict) -> None:
-        defaults_copy["prefill"]["vllm"]["additionalFlags"] = []
+        defaults_copy["prefill"]["vllm"]["addtionalFlags"] = []
         warnings = validate_config(defaults_copy)
-        assert any("additionalFlags" in w for w in warnings), (
-            f"Expected 'additionalFlags' typo to be caught, got: {warnings}"
+        assert any("addtionalFlags" in w for w in warnings), (
+            f"Expected 'addtionalFlags' typo to be caught, got: {warnings}"
         )
 
 
@@ -203,7 +210,7 @@ class TestNonBlocking:
         assert isinstance(result, list)
 
     def test_returns_list_on_invalid(self, defaults_copy: dict) -> None:
-        defaults_copy["model"]["name"] = "bad"
+        defaults_copy["model"]["naem"] = "bad"
         result = validate_config(defaults_copy)
         assert isinstance(result, list)
         assert len(result) > 0

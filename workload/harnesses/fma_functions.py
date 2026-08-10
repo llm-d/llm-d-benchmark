@@ -1,5 +1,5 @@
 """
-Benchmarkk FMA functions
+Benchmark FMA functions
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from kubernetes.client.exceptions import ApiException
 
 from dpc_log_parser import parse_dpc_log_file
 from nop_functions import (
-    BenchmarkkResult,
-    BenchmarkkScenario,
-    BenchmarkkVllmMetrics,
+    BenchmarkResult,
+    BenchmarkScenario,
+    BenchmarkVllmMetrics,
     PlatformEngineScenario,
     get_log_list,
     get_server_status_sleep,
@@ -224,7 +224,7 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
     requester_infos: list[FMARequesterInfo],
     namespace: str,
     fma_launcher_port: str,
-    benchmark_result: BenchmarkkResult,
+    benchmark_result: BenchmarkResult,
 ) -> list[FMALauncherInfo]:
     """returns connected launchers info and populates BenchmarkResult engine"""
 
@@ -752,9 +752,9 @@ def inspect_vllm_instances(
             instance_id,
             False,
         ).get_vllm_logs()
-        scenario = BenchmarkkScenario()
+        scenario = BenchmarkScenario()
         engine = PlatformEngineScenario()
-        metrics = BenchmarkkVllmMetrics()
+        metrics = BenchmarkVllmMetrics()
         parse_logs(scenario, engine, metrics, get_log_list(pod_logs.decode("utf-8")))
         port = int(engine.args.get("port", 0))
         logger.info("Instance id '%s' info start:", instance_id)
@@ -818,7 +818,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
     namespace: str,
     endpoint_url: str,
     fma_launcher_port: str,
-    benchmark_result: BenchmarkkResult,
+    benchmark_result: BenchmarkResult,
     load_format: LoadFormat,
     requests_dir: str,
     iterations: int,
@@ -857,7 +857,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
         benchmark_result.extra_metrics.append(fma_metrics)
         for iteration in range(1, iterations + 1):  # pylint: disable=too-many-nested-blocks
             try:
-                logger.info("Benchmarkk FMA iteration '%d' start...", iteration)
+                logger.info("Benchmark FMA iteration '%d' start...", iteration)
                 # scale the requester Deployment to 1
                 requester_infos = scale_deployment(
                     v1, apps_v1, deployment_name, namespace, 1, FMA_TIMEOUT
@@ -1048,7 +1048,7 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                 )
                 fma_metrics.iterations.append(fma_metrics_iteration)
             finally:
-                logger.info("Benchmarkk FMA iteration '%d' end.", iteration)
+                logger.info("Benchmark FMA iteration '%d' end.", iteration)
     finally:
         write_controller_log(
             v1,
