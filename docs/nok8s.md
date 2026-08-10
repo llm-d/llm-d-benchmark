@@ -22,6 +22,11 @@ equivalent of the upstream
 Use it for HPC/Slurm nodes, bare-metal boxes, or a single GPU workstation
 where standing up Kubernetes is not worth it.
 
+**One stack per host.** Container names, host ports and
+`nok8s.workspaceHostDir` are fixed, so a scenario with more than one stack on
+this method is rejected during plan rendering. Run one scenario per stack, or
+use a cluster-based method, to compare multiple stacks.
+
 ## Prerequisites
 
 `llmdbenchmark standup` validates these automatically in step 00; a missing or

@@ -29,11 +29,15 @@ class _Logger:
         pass
 
 
-def _render(tmp_path: Path, cli_methods: str | None = None):
+def _render(
+    tmp_path: Path,
+    cli_methods: str | None = None,
+    scenarios_file: Path = NOK8S_SCENARIO,
+):
     return RenderPlans(
         template_dir=TEMPLATE_DIR,
         defaults_file=DEFAULTS_FILE,
-        scenarios_file=NOK8S_SCENARIO,
+        scenarios_file=scenarios_file,
         output_dir=tmp_path / "plan",
         logger=_Logger(),
         cli_methods=cli_methods,
@@ -224,6 +228,28 @@ def test_pin_env_per_replica() -> None:
     assert (
         pin({"replicas": 2, "replicaIndex": 1, "deviceArgs": ["--device", "x"]}) == ""
     )
+
+
+def test_two_nok8s_stacks_are_rejected(tmp_path: Path) -> None:
+    """Two nok8s stacks would collide on container names/ports/workspace dir."""
+    scenario = yaml.safe_load(NOK8S_SCENARIO.read_text(encoding="utf-8"))
+    second = dict(scenario["scenario"][0])
+    second["name"] = "nok8s-second"
+    scenario["scenario"].append(second)
+    scenario_file = tmp_path / "two-nok8s.yaml"
+    scenario_file.write_text(yaml.safe_dump(scenario), encoding="utf-8")
+
+    result = _render(tmp_path, scenarios_file=scenario_file)
+
+    assert result.has_errors
+    for name in ("nok8s-single", "nok8s-second"):
+        assert any(
+            "one stack per host" in e for e in result.stacks[name].render_errors
+        ), f"stack {name} was not rejected"
+
+
+def test_single_nok8s_stack_still_renders(tmp_path: Path) -> None:
+    assert not _render(tmp_path).has_errors
 
 
 def test_resolve_deploy_method_forces_nok8s() -> None:

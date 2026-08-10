@@ -846,6 +846,30 @@ class RenderPlans:
         return errors
 
     @staticmethod
+    def _validate_nok8s_single_stack(
+        values: dict,
+        total_stacks: int,
+        stack_name: str,
+    ) -> list[str]:
+        """Reject multi-stack scenarios on the ``nok8s`` deploy method.
+
+        nok8s launches plain host containers with fixed names (``vllm-N``,
+        ``epp``, ``envoy``), fixed host ports and a single staged config
+        directory (``nok8s.workspaceHostDir``). A second nok8s stack on the
+        same host reuses all three, and standup's ``rm -f`` idempotency step
+        tears down the first stack's containers before launching its own.
+        There is nothing to multiplex the stacks over, so refuse up front
+        instead of letting them silently clobber each other.
+        """
+        if total_stacks <= 1 or not (values.get("nok8s") or {}).get("enabled"):
+            return []
+        return [
+            f"[{stack_name}] the nok8s method supports one stack per host "
+            "(container names, host ports and nok8s.workspaceHostDir are "
+            f"shared). This scenario has {total_stacks} stacks."
+        ]
+
+    @staticmethod
     def _normalize_direct_service_mode(values: dict) -> dict:
         """Make ``gateway.className=none`` a true direct-vLLM baseline.
 
@@ -1969,6 +1993,15 @@ class RenderPlans:
             stack_name=stack_name,
         )
         for msg in direct_service_errors:
+            self.logger.log_error(msg)
+            stack_errors.render_errors.append(msg)
+
+        nok8s_errors = self._validate_nok8s_single_stack(
+            merged_values,
+            total_stacks=total_stacks,
+            stack_name=stack_name,
+        )
+        for msg in nok8s_errors:
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 
