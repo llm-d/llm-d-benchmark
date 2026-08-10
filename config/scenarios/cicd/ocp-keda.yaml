@@ -265,3 +265,8 @@ scenario:
       # Heavy variant -- matched RPS across the baseline and FMA passes.
       experimentProfile: shared_prefix_synthetic_heavy.yaml
       waitTimeout: 5400
+
+    # Match the FMA passes' benchmark image.
+    images:
+      benchmark:
+        tag: nightly
