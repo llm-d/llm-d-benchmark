@@ -52,51 +52,6 @@ on:
         required: false
         default: 'true'
         type: string
-      tpu_topology:
-        description: 'GKE TPU topology (e.g. 2x4, 2x2x1)'
-        required: false
-        type: 'string'
-        default: '2x4'
-      tpu_chips:
-        description: 'Total TPU chips to request (0 for simulated)'
-        required: false
-        type: 'string'
-        default: '0'
-      tpu_wait_timeout:
-        description: 'Minutes to wait for TPU chips to become available (0 = no wait, fail immediately)'
-        required: false
-        type: 'string'
-        default: '0'
-      tpu_nodepool:
-        description: 'Target TPU node pool name (empty = do not override)'
-        required: false
-        type: 'string'
-        default: ''
-      data_access_timeout:
-        description: 'Timeout in seconds for data access and harness run execution'
-        required: false
-        type: 'string'
-        default: '1200'
-      wait_timeout:
-        description: 'Timeout in seconds to wait for benchmark pods to complete'
-        required: false
-        type: 'string'
-        default: '1200'
-      pvc_bind_timeout:
-        description: 'Timeout in seconds to wait for a pvc to be bound'
-        required: false
-        type: 'string'
-        default: '1200'
-      job_timeout:
-        description: 'Timeout for the Kubernetes job itself (e.g. 2700s)'
-        required: false
-        type: 'string'
-        default: '2700s'
-      standup_timeout:
-        description: 'Timeout in seconds for standup of a new llm-d stack'
-        required: false
-        type: 'string'
-        default: '2400'
 
 #  push:
 #    branches:
