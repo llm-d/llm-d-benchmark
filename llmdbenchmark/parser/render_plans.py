@@ -1340,6 +1340,9 @@ class RenderPlans:
         - Default ``router.modelServers.matchLabels`` and
           ``targetPorts`` to the benchmark conventions when the scenario
           hasn't overridden them.
+        - Mirror ``router.monitoring.secretName`` into
+          ``router.monitoring.prometheus.auth.secretName``, the spelling
+          the router chart reads.
         - Lift ``router.inferencePool.providerConfig`` to the root-level
           ``provider.{gatewayClassName}`` block expected by the
           gateway chart (gke / istio only).
@@ -1485,7 +1488,28 @@ class RenderPlans:
             if decode_port:
                 model_servers["targetPorts"] = [{"number": decode_port}]
 
-        # --- 8. Lift providerConfig to root-level provider.<gw_class>
+        # --- 8. Mirror the metrics-reader Secret name into the path the
+        # router chart actually reads.
+        #
+        # The benchmark's knob is ``router.monitoring.secretName`` -- it is
+        # what ``_STACK_SCOPED_DEFAULTS`` per-stack-suffixes, and what
+        # 05_namespace_sa_rbac_secret.yaml.j2 (RBAC resourceNames) and
+        # 20_harness_pod.yaml.j2 read. The chart moved its own spelling to
+        # ``router.monitoring.prometheus.auth.secretName``
+        # (charts/router/templates/_sa-token-secret.yaml), so without this
+        # copy the chart silently falls back to its packaged default. In a
+        # multi-stack scenario that default is identical for every stack,
+        # and the second router release fails to install with "Secret ...
+        # exists and cannot be imported into the current release".
+        monitoring = router.get("monitoring")
+        if isinstance(monitoring, dict):
+            secret_name = monitoring.get("secretName")
+            if secret_name:
+                auth = monitoring.setdefault("prometheus", {}).setdefault("auth", {})
+                if isinstance(auth, dict) and not auth.get("secretName"):
+                    auth["secretName"] = secret_name
+
+        # --- 9. Lift providerConfig to root-level provider.<gw_class>
         # for the gateway chart (gke / istio). The standalone chart's
         # epponly mode doesn't need this.
         inference_pool = router.get("inferencePool") or {}

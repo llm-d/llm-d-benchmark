@@ -432,7 +432,8 @@ class TestPrintEndpointsTable:
             (),
             {
                 "specification_file": Path(
-                    "/abs/path/config/specification/guides/multi-model-wva.yaml.j2"
+                    "/abs/path/config/specification/examples/"
+                    "multi-model-optimized-baseline.yaml.j2"
                 )
             },
         )()
@@ -441,7 +442,7 @@ class TestPrintEndpointsTable:
 
         # Table (logger) + copy-paste block (stdout) combined.
         combined = "\n".join(lines) + "\n" + capsys.readouterr().out
-        assert "guides/multi-model-wva" in combined
+        assert "examples/multi-model-optimized-baseline" in combined
         assert "http://gw:80/pool-a" in combined
         assert "Qwen/Qwen3-0.6B" in combined
 
@@ -456,11 +457,13 @@ class TestPrintEndpointsTable:
             ],
         )
         logger, lines = self._capturing_logger()
-        args = type("A", (), {"specification_file": "guides/multi-model-wva"})()
+        args = type(
+            "A", (), {"specification_file": "examples/multi-model-optimized-baseline"}
+        )()
 
         _print_endpoints_table(ctx, logger, args)
         combined = "\n".join(lines) + "\n" + capsys.readouterr().out
-        assert "guides/multi-model-wva" in combined
+        assert "examples/multi-model-optimized-baseline" in combined
 
     def test_no_endpoints_warns(self, tmp_path):
         """Empty endpoints dict -> warn the user to stand up first."""
@@ -713,3 +716,58 @@ class TestParseEndpoint:
 
     def test_root_only_is_empty_prefix(self, parse):
         assert parse("http://10.0.0.1:80/") == ("10.0.0.1", "80", "")
+
+
+class TestExtractWorkspaceFromScenario:
+    """cli._extract_workspace_from_scenario - workDir lookup precedence.
+
+    Multi-stack scenarios put the scenario-wide `workDir` in the top-level
+    `shared:` block (the workload PVC it names is scenario-wide), so the
+    lookup has to fall back there. Per-stack still wins, matching the
+    render-time merge order defaults -> shared -> stack.
+    """
+
+    @staticmethod
+    def _spec_for(tmp_path, scenario_body: str):
+        scenario = tmp_path / "scenario.yaml"
+        scenario.write_text(scenario_body)
+        spec = tmp_path / "spec.yaml.j2"
+        spec.write_text(f"scenario_file:\n  path: {scenario}\n")
+        return spec
+
+    def _extract(self, tmp_path, scenario_body: str):
+        from llmdbenchmark.cli import _extract_workspace_from_scenario
+
+        return _extract_workspace_from_scenario(
+            self._spec_for(tmp_path, scenario_body), tmp_path
+        )
+
+    def test_flat_key_on_the_first_stack(self, tmp_path):
+        assert self._extract(
+            tmp_path, "scenario:\n  - name: a\n    workDir: /w/a\n"
+        ) == ("/w/a")
+
+    def test_sectioned_key_on_the_first_stack(self, tmp_path):
+        body = "scenario:\n  - name: a\n    common:\n      workDir: /w/common\n"
+        assert self._extract(tmp_path, body) == "/w/common"
+
+    def test_falls_back_to_the_shared_block(self, tmp_path):
+        body = "shared:\n  workDir: /w/shared\nscenario:\n  - name: a\n  - name: b\n"
+        assert self._extract(tmp_path, body) == "/w/shared"
+
+    def test_falls_back_to_a_sectioned_shared_block(self, tmp_path):
+        body = (
+            "shared:\n  common:\n    workDir: /w/shared\n"
+            "scenario:\n  - name: a\n  - name: b\n"
+        )
+        assert self._extract(tmp_path, body) == "/w/shared"
+
+    def test_first_stack_beats_shared(self, tmp_path):
+        body = (
+            "shared:\n  workDir: /w/shared\n"
+            "scenario:\n  - name: a\n    workDir: /w/a\n  - name: b\n"
+        )
+        assert self._extract(tmp_path, body) == "/w/a"
+
+    def test_absent_everywhere_is_none(self, tmp_path):
+        assert self._extract(tmp_path, "scenario:\n  - name: a\n") is None

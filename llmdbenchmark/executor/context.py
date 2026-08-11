@@ -25,8 +25,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # Optional CLI filter: if set, per-stack steps only execute for stacks
     # whose name appears here. Useful in multi-stack scenarios to run
     # (or re-run) just one pool - e.g. `--stack pool-a` when benchmarking
-    # a single model in the multi-model-wva scenario. Global steps are
-    # unaffected. Empty / None means "all stacks" (existing behavior).
+    # a single model in the multi-model-optimized-baseline scenario. Global
+    # steps are unaffected. Empty / None means "all stacks" (existing
+    # behavior).
     stack_filter: list[str] | None = None
 
     # Execution flags

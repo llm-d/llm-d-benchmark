@@ -127,15 +127,16 @@ a shared value:
 
 ```yaml
 shared:
-  modelservice: { enabled: true }
-  wva:
+  modelservice:
     enabled: true
-    image: { tag: v0.6.0 }
+    gateway: { className: istio }
   httpRoute:
     mode: shared
     name: multi-model-route
     pathPrefix: /{stack.name}
     rewriteTo: /
+  router:
+    epp: { pluginsConfigFile: "optimized-baseline-plugins.yaml", ... }
 
 scenario:
   - name: pool-a
@@ -164,8 +165,8 @@ Render-time conveniences that activate only when `len(scenario) >= 2`:
   against the shared PVC. Downloads run in parallel - total wall time
   ~ slowest model, not sum.
 
-See [examples/multi-model-wva.yaml](scenarios/examples/multi-model-wva.yaml) for a
-complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+See [examples/multi-model-optimized-baseline.yaml](scenarios/examples/multi-model-optimized-baseline.yaml)
+for a complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
 section for the merge semantics.
 
 **Example: GPU scenario with a custom vLLM image**
@@ -283,12 +284,13 @@ glob) to scope it; unprefixed applies to every stack:
 
 ```bash
 # Different value per pool, both still deployed
-llmdbenchmark --spec examples/multi-model-wva standup \
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
   --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
 
 # A common floor with one exception (exact name beats the global)
-llmdbenchmark --spec examples/multi-model-wva standup \
-  --set 'wva.hpa.maxReplicas=6' --set 'llama-31-8b:wva.hpa.maxReplicas=2'
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'decode.resources.limits.memory=64Gi' \
+  --set 'llama-31-8b:decode.resources.limits.memory=32Gi'
 ```
 
 A selector matching no stack is a hard error, not a silent no-op. Every

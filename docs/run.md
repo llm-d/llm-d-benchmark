@@ -145,11 +145,13 @@ The following table displays a comprehensive list of environment variables (and 
 ## Multi-Stack Runs
 
 When a scenario defines more than one stack (e.g.
-[`examples/multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml)),
+[`examples/multi-model-optimized-baseline`](../config/scenarios/examples/multi-model-optimized-baseline.yaml)),
 every per-stack step in the `run` phase executes once per rendered stack -
 endpoint detection, model verification, profile rendering, configmap creation,
 harness deploy, wait, and collect. Each stack's results are collected into
-its own experiment-ID-keyed subdirectory under the workspace.
+its own experiment-ID-keyed subdirectory under the workspace. For
+copy-paste recipes covering the whole multi-model lifecycle, see
+[multi-model.md](multi-model.md).
 
 **Per-stack endpoints.** For shared-HTTPRoute scenarios (`httpRoute.mode: shared`
 in the scenario file), step 03 `detect_endpoint` bakes the stack's path prefix
@@ -180,7 +182,7 @@ and a copy-paste block of ready-to-run invocations - no harness pods
 launched:
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> --list-endpoints
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <namespace> --list-endpoints
 ```
 
 Useful when you've forgotten the stack names, the gateway IP, or just want
@@ -197,7 +199,7 @@ pass `--endpoint-url` manually:
 
 ```bash
 # Benchmark qwen3-06b only with guidellm, two parallel harness pods
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <namespace> \
   --stack qwen3-06b \
   -l guidellm -w sanity_random.yaml -j 2
 ```
@@ -224,7 +226,7 @@ names fail loudly with a list of valid ones. Available via
 So the clean pattern for "rerun pool A against a different model":
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p <ns> \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <ns> \
   --stack qwen3-06b \
   --model meta-llama/Llama-3.2-3B \
   -l inference-perf -w sanity_random.yaml
@@ -243,8 +245,8 @@ harness, workload) uniformly across every stack - or, when combined with
 Preferred - use `--stack`, endpoint auto-resolves:
 
 ```bash
-# After standup of guides/multi-model-wva
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+# After standup of examples/multi-model-optimized-baseline
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <namespace> \
   --stack qwen3-06b \
   -l inference-perf -w sanity_random.yaml
 ```
