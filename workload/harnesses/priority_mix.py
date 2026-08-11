@@ -417,9 +417,12 @@ def write_run_metadata(
             "LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", ""
         ),
         "harness_rc": str(rc),
+        "experiment_id": os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID", ""),
         "model": os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", ""),
         "endpoint_url": os.environ.get("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", ""),
         "namespace": os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE", ""),
+        "description_text": os.environ.get("LLMDBENCH_DESCRIPTION_TEXT", ""),
+        "description_keywords": os.environ.get("LLMDBENCH_DESCRIPTION_KEYWORDS", ""),
     }
     with (results_dir / "run_metadata.yaml").open(
         "w", encoding="utf-8"

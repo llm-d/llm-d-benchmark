@@ -1621,6 +1621,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WORKSPACE": ("workspace", "--workspace"),
         "LLMDBENCH_BASE_DIR": ("base_dir", "--base-dir"),
         "LLMDBENCH_SPEC": ("specification_file", "--spec"),
+        "LLMDBENCH_DESCRIPTION_TEXT": ("run_description", "--run-description"),
+        "LLMDBENCH_DESCRIPTION_KEYWORDS": ("run_keywords", "--run-keywords"),
         "LLMDBENCH_TELEMETRY_ENABLED": ("telemetry_enabled", "--telemetry-enabled"),
         "LLMDBENCH_TELEMETRY_PROVIDER": ("telemetry_provider", "--telemetry-provider"),
         "LLMDBENCH_TELEMETRY_ENDPOINT": ("telemetry_endpoint", "--telemetry-endpoint"),
@@ -1733,6 +1735,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--workspace": ["--workspace", "--ws"],
         "--base-dir": ["--base-dir", "--bd"],
         "--spec": ["--specification_file", "--spec"],
+        "--run-description": ["--run-description"],
+        "--run-keywords": ["--run-keywords"],
         "--dry-run": ["--dry-run", "-n"],
         "--verbose": ["--verbose", "-v"],
         "--non-admin": ["--non-admin", "-i"],
@@ -1870,6 +1874,18 @@ def cli() -> None:
         action="store_true",
         help="Run as non-cluster-level admin user.",
     )
+    parser.add_argument(
+        "--run-description",
+        default=env("LLMDBENCH_DESCRIPTION_TEXT"),
+        help="Description of this run, recorded as run.description in the "
+        "benchmark report. Overrides the generated '<model> [<experiment id>]'.",
+    )
+    parser.add_argument(
+        "--run-keywords",
+        default=env("LLMDBENCH_DESCRIPTION_KEYWORDS"),
+        help="Comma-separated keywords recorded as run.keywords in the "
+        "benchmark report. Left unset unless supplied.",
+    )
 
     benchmark_parser = argparse.ArgumentParser(add_help=False)
     benchmark_parser.add_argument(
@@ -1887,6 +1903,18 @@ def cli() -> None:
         help="Base directory containing templates and scenarios. "
         'The default base directory is the cwd "." - we highly suggest enforcing a '
         'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
+    )
+    benchmark_parser.add_argument(
+        "--run-description",
+        default=argparse.SUPPRESS,
+        help="Description of this run, recorded as run.description in the "
+        "benchmark report. Overrides the generated '<model> [<experiment id>]'.",
+    )
+    benchmark_parser.add_argument(
+        "--run-keywords",
+        default=argparse.SUPPRESS,
+        help="Comma-separated keywords recorded as run.keywords in the "
+        "benchmark report. Left unset unless supplied.",
     )
     benchmark_parser.add_argument(
         "--specification_file",
@@ -2179,6 +2207,22 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
 
     for warning in warnings:
         logger.log_warning(warning)
+
+    # Scenario-wide, so global-only; an explicit --set of the same path wins.
+    description_overrides = {}
+    text = getattr(args, "run_description", None)
+    if text:
+        description_overrides["text"] = text
+    keywords = getattr(args, "run_keywords", None)
+    if keywords:
+        description_overrides["keywords"] = [
+            keyword.strip() for keyword in keywords.split(",") if keyword.strip()
+        ]
+    if description_overrides:
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            {"description": description_overrides},
+            by_selector.get(GLOBAL_SELECTOR, {}),
+        )
 
     cluster_overrides = getattr(args, "cluster_config_overrides", None)
     if cluster_overrides:

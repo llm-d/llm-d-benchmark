@@ -94,7 +94,61 @@ def _get_harness_meta(key: str, env_name: str, default: str = "") -> str:
         return val
     if not hasattr(_get_harness_meta, "_cache"):
         _get_harness_meta._cache = _load_run_metadata()
-    return str(_get_harness_meta._cache.get(key, default))
+    # A valueless YAML key parses to None; str() would make it the text "None".
+    cached = _get_harness_meta._cache.get(key)
+    return default if cached is None else str(cached)
+
+
+# Producers build every experiment ID as <harness>[-<treatment>]-<timestamp>-<rand>.
+_EXPERIMENT_ID_TAIL = re.compile(r"-\d{10,}-[a-z0-9]+$")
+
+
+def _resolve_experiment_id() -> str:
+    """Return the experiment ID, or "" when no source provides one."""
+    # An unset envar arrives as "", so strip: whitespace would still be truthy.
+    experiment_id = _get_harness_meta(
+        "experiment_id", "LLMDBENCH_RUN_EXPERIMENT_ID"
+    ).strip()
+    if experiment_id:
+        return experiment_id
+    results_dir = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "")
+    if not results_dir:
+        return ""
+    experiment_id = re.sub(
+        r"_\d+$", "", os.path.basename(results_dir.strip().rstrip("/"))
+    ).strip()
+    # A dir renamed to 'results' or a bare harness name would otherwise mint a
+    # plausible eid shared by unrelated runs.
+    if not _EXPERIMENT_ID_TAIL.search(experiment_id):
+        return ""
+    return experiment_id
+
+
+def _user_description() -> str:
+    """Return the submitter-supplied description, or "" when none was given."""
+    return _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+
+
+def _user_keywords() -> list[str]:
+    """Return the submitter-supplied keywords, or [] when none were given."""
+    raw = _get_harness_meta("description_keywords", "LLMDBENCH_DESCRIPTION_KEYWORDS")
+    return [keyword.strip() for keyword in raw.split(",") if keyword.strip()]
+
+
+def _run_description(experiment_id: str) -> str:
+    """Return the run label, e.g. 'Qwen/Qwen3-32B [inference-perf-conc32-...]'.
+
+    A submitter-supplied description wins; the generated label carries the model
+    for readability and the experiment ID to stay unique across a sweep.
+    """
+    user_description = _user_description()
+    if user_description:
+        return user_description
+
+    model = _get_harness_meta("model", "LLMDBENCH_DEPLOY_CURRENT_MODEL")
+    if not model:
+        return experiment_id
+    return f"{model} [{experiment_id}]" if experiment_id else model
 
 
 def config_hash(config: dict) -> str:
@@ -290,6 +344,39 @@ def _resolve_accelerator_model(ev_dict: dict) -> str:
     return accelerator or _detect_accelerator_model(ev_dict)
 
 
+def _populate_run_identity() -> dict:
+    """Create the run identity fields derived from the experiment ID.
+
+    Needs no kubernetes context, so it also applies when analysis runs on the
+    driver rather than in the harness pod. SUBMISSION_POLICY.md reserves
+    run.keywords for curated tags, so it stays absent unless the submitter sets it.
+    """
+    run = {}
+    # Submitter-supplied values stand on their own: neither needs an experiment
+    # ID to be correct, and keywords have no other source at all.
+    user_description = _user_description()
+    if user_description:
+        run["description"] = user_description
+    keywords = _user_keywords()
+    if keywords:
+        run["keywords"] = keywords
+
+    experiment_id = _resolve_experiment_id()
+    if not experiment_id:
+        # Otherwise this surfaces only as an empty dashboard column, long after
+        # the cluster is gone.
+        sys.stderr.write(
+            "WARNING: no experiment ID from LLMDBENCH_RUN_EXPERIMENT_ID, "
+            "run_metadata.yaml:experiment_id, or the results directory name; "
+            "run.eid will be omitted, and run.description too unless supplied\n"
+        )
+        return {"run": run} if run else {}
+
+    run["eid"] = str(uuid.uuid5(uuid.NAMESPACE_URL, experiment_id))
+    run.setdefault("description", _run_description(experiment_id))
+    return {"run": run}
+
+
 def _populate_run(ev_dict: dict) -> dict:
     """Create a benchmark report with run details from environment variables.
 
@@ -301,8 +388,6 @@ def _populate_run(ev_dict: dict) -> dict:
     """
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
-    # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, ev_dict.get("run_experiment_id", "")))
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
@@ -334,7 +419,6 @@ def _populate_run(ev_dict: dict) -> dict:
 
     br_dict = {
         "run": {
-            "eid": eid,
             "cid": cid,
             "pid": pid,
             "user": "namespace=" + namespace,
@@ -347,6 +431,8 @@ def _populate_run(ev_dict: dict) -> dict:
             },
         },
     }
+    update_dict(br_dict, _populate_run_identity())
+
     return br_dict
 
 
@@ -847,7 +933,9 @@ def _populate_benchmark_report_from_envars() -> dict:
     # We make the assumption that if the environment variable
     # LLMDBENCH_MAGIC_ENVAR is defined, then we are inside a harness pod.
     if "LLMDBENCH_MAGIC_ENVAR" not in os.environ:
-        # We are not in a harness pod
+        # No kubernetes context here, but the run identity comes from the
+        # results directory, which the driver does have.
+        update_dict(br_dict, _populate_run_identity())
         return br_dict
 
     # Get Kubernetes context

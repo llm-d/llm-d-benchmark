@@ -408,6 +408,8 @@ llmdbenchmark --version
 | `--non-admin` / `-i` | `LLMDBENCH_NON_ADMIN` | Skip admin-only steps |
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
+| `--run-description TEXT` | `LLMDBENCH_DESCRIPTION_TEXT` | Human-readable label for the run, recorded as `run.description` in the benchmark report. Defaults to `<model> [<experiment id>]`. Also settable as `description.text` under a scenario's `common:` (or top-level `shared:`) block, or per treatment in an experiment. |
+| `--run-keywords LIST` | `LLMDBENCH_DESCRIPTION_KEYWORDS` | Comma-separated tags recorded as `run.keywords`. Never auto-populated; omitted entirely when unset. Also settable as `description.keywords` in the same places. |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
 | `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. Available on every subcommand that renders templates. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile — the two can be combined.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set). |
 | `--version` | | Show version |

@@ -49,7 +49,30 @@ rc=0
 # --- hand results back to llm-d-benchmark's collector ------------------------
 output_dir="${EVAL_OUTPUT_DIR:-/output}"
 if [[ -d "$output_dir" ]]; then cp -a "$output_dir/." "$results_dir/"; fi
-printf 'harness_name: eval-containers\nharness_rc: %s\ntask_id: %s\nmodel: %s\n' \
-  "$rc" "$EVAL_TASK_ID" "$EVAL_MODEL" > "$results_dir/run_metadata.yaml"
+# Escape free text for the double-quoted YAML scalars below. Backslash first, or
+# the quote escapes get double-escaped. Control characters are illegal in a
+# double-quoted scalar at all, and an unparseable file loses every key in it, not
+# just this one.
+_yaml_escape() {
+  local text="${1:-}" out="" index character
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//$'\t'/\\t}"
+  text="${text//$'\n'/\\n}"
+  for (( index=0; index<${#text}; index++ )); do
+    character="${text:index:1}"
+    if [[ "$character" == [[:cntrl:]] ]]; then
+      printf -v character '\\x%02x' "'$character"
+    fi
+    out+="$character"
+  done
+  printf '%s' "$out"
+}
+_description_text="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_TEXT:-}")"
+_description_keywords="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_KEYWORDS:-}")"
+printf 'harness_name: eval-containers\nharness_rc: %s\ntask_id: %s\nmodel: %s\nexperiment_id: "%s"\ndescription_text: "%s"\ndescription_keywords: "%s"\n' \
+  "$rc" "$EVAL_TASK_ID" "$EVAL_MODEL" "${LLMDBENCH_RUN_EXPERIMENT_ID:-}" \
+  "$_description_text" "$_description_keywords" \
+  > "$results_dir/run_metadata.yaml"
 
 exit "$rc"

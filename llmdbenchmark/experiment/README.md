@@ -35,6 +35,15 @@ Each setup treatment provides config overrides that are deep-merged into the bas
 
 Each setup treatment triggers a complete standup to run to teardown cycle.
 
+`description.text` works as a treatment key like any other dotted override, and takes precedence over a sweep-wide `--run-description`. Since a single `--run-description` labels every treatment identically, set it per treatment when the reports need to be told apart by label rather than by experiment ID:
+
+```yaml
+  treatments:
+    - name: tp2
+      decode.parallelism.tensor: 2
+      description.text: "TP2 baseline"
+```
+
 ### Run Treatments (Workload)
 
 Run treatments (under `treatments` or `run`) are consumed by the run phase's profile renderer. Multiple run treatments execute against a single stood-up stack. Each treatment can optionally set `profile:` to select a different source file than the one resolved from the stack config or `--workload`, enabling a workload sweep across structurally different profiles without needing separate experiment files. Non-`name`/non-`profile` keys are dotted-path overrides applied to the rendered YAML.

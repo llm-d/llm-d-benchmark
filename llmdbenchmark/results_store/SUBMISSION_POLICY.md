@@ -71,7 +71,7 @@ Storage Location: gs://llm-d-benchmarks/
 
 ## 4. Attribution & Verification Metadata
 
-To ensure full transparency, every benchmark report must include the following metadata in the run block:
+To ensure full transparency, every benchmark report submitted to the results store must include the following metadata in the run block. `keywords` is curated by the submitter and is never machine-generated, so a report produced by a run that set no keywords omits the key entirely -- add it when submitting:
 
 ```yaml
 run:

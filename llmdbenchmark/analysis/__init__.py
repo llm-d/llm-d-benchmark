@@ -56,6 +56,36 @@ _WRITER_NAMES: dict[str, str] = {
 }
 
 
+def _reset_harness_meta_cache() -> None:
+    """Drop the memoized run_metadata.yaml; one process analyses many subdirs."""
+    from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+        _get_harness_meta,
+    )
+
+    if hasattr(_get_harness_meta, "_cache"):
+        del _get_harness_meta._cache
+
+
+def _recorded_for(results_dir: Path, key: str) -> str:
+    """Read one of this directory's own metadata values, ignoring the ambient envar.
+
+    Args:
+        results_dir (Path): directory being converted.
+        key (str): run_metadata.yaml key to read.
+
+    Returns:
+        str: the recorded value, or "" for a run that predates it.
+    """
+    import yaml
+
+    try:
+        with (results_dir / "run_metadata.yaml").open(encoding="utf-8") as meta_file:
+            metadata = yaml.safe_load(meta_file) or {}
+    except (OSError, yaml.YAMLError):
+        return ""
+    return str(metadata.get(key) or "").strip()
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -96,27 +126,55 @@ def run_analysis(
         _log(context, f"No result files matching '{pattern}' in {results_dir.name}")
         return None  # Nothing to convert -- not an error
 
+    # The converters resolve run identity relative to these envars. The harness
+    # pod sets them, the driver does not, and these reports overwrite the in-pod
+    # ones. Each one outranks the per-directory metadata, so a stale one left in
+    # the driver's environment would stamp every treatment of a sweep with a
+    # single identity -- the bug this scoping exists to prevent. Every envar the
+    # converters consult has to be scoped, not just the identity pair.
+    scoped_env = {
+        "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(results_dir),
+        "LLMDBENCH_RUN_EXPERIMENT_ID": _recorded_for(results_dir, "experiment_id"),
+        "LLMDBENCH_DESCRIPTION_TEXT": _recorded_for(results_dir, "description_text"),
+        "LLMDBENCH_DESCRIPTION_KEYWORDS": _recorded_for(
+            results_dir, "description_keywords"
+        ),
+    }
+    previous_env = {name: os.environ.get(name) for name in scoped_env}
+    os.environ.update(scoped_env)
+    _reset_harness_meta_cache()
+
     errors: list[str] = []
-    for result_file in result_files:
-        result_path = Path(result_file)
-        fname = result_path.name
+    try:
+        for result_file in result_files:
+            result_path = Path(result_file)
+            fname = result_path.name
 
-        for br_version in ("0.1", "0.2"):
-            prefix = (
-                "benchmark_report" if br_version == "0.1" else "benchmark_report_v0.2"
-            )
-            output_name = f"{prefix},_{fname}.yaml"
-            output_path = results_dir / output_name
+            for br_version in ("0.1", "0.2"):
+                prefix = (
+                    "benchmark_report"
+                    if br_version == "0.1"
+                    else "benchmark_report_v0.2"
+                )
+                output_name = f"{prefix},_{fname}.yaml"
+                output_path = results_dir / output_name
 
-            err = _convert_to_benchmark_report(
-                result_path,
-                output_path,
-                writer_name,
-                br_version,
-                context,
-            )
-            if err:
-                errors.append(err)
+                err = _convert_to_benchmark_report(
+                    result_path,
+                    output_path,
+                    writer_name,
+                    br_version,
+                    context,
+                )
+                if err:
+                    errors.append(err)
+    finally:
+        for name, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+        _reset_harness_meta_cache()
 
     # --- 2. Extract summary from stdout.log ---
     marker = _SUMMARY_MARKERS.get(harness_name)
