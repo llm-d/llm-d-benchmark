@@ -157,7 +157,7 @@ def test_timeout_expired_container_still_running_fails(tmp_path: Path) -> None:
 
 
 def test_unreadable_exit_status_fails(tmp_path: Path) -> None:
-    """A failed or unparseable inspect is reported, not silently ignored."""
+    """A failed or unparsable inspect is reported, not silently ignored."""
     logger = _Logger()
     cmd = _Command({" inspect ": _Result(exit_code=1)})
     context, stack_path = _context(tmp_path, cmd, logger)

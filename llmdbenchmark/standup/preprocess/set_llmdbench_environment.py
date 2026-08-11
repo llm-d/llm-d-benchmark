@@ -89,7 +89,7 @@ _parser.add_option(
     "--omitenvvars",
     dest="omitenvvars",
     default="",
-    help="List of environment variables which should be ommitted",
+    help="List of environment variables which should be omitted",
 )
 
 _parser.set_defaults()

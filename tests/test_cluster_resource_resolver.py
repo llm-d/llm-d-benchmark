@@ -65,7 +65,7 @@ class TestEffectiveAcceleratorCount:
     def test_unset_returns_zero(self):
         assert effective_accelerator_count({}) == (0, "unset")
 
-    def test_unparseable_returns_zero_parse_error(self):
+    def test_unparsable_returns_zero_parse_error(self):
         assert effective_accelerator_count(
             {"accelerator": {"count": "not-a-number"}}
         ) == (0, "parse-error")

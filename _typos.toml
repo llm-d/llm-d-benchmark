@@ -7,6 +7,15 @@ extend-exclude = [
     "**/*.ipynb",
 ]
 
+[default]
+extend-ignore-re = [
+    # Hyphenated prefix: "mis-read" is split into `mis` + `read`
+    '\bmis-read\b',
+    # CamelCase splitting turns these into `AN`+`Ded` and `PN`+`Gs`
+    '\bANDed\b',
+    '\bPNGs?\b',
+]
+
 [default.extend-words]
 # Deliberate misspellings fed to the config schema by
 # tests/test_config_schema.py::TestTypoDetection to assert that
@@ -25,6 +34,17 @@ ba = "ba"
 nam = "nam"
 # Parameter abbreviation used in code
 parm = "parm"
+
+# OpenShift Data Foundation
+ODF = "ODF"
+# PyPI package name (docs/upstream-versions.md)
+certifi = "certifi"
+# Variable names: pandas_datas / metadatas (nop-analyze_results.py)
+datas = "datas"
+# Deliberate typos asserted on by the CLI-override tests
+queston = "queston"
+decod = "decod"
+resurces = "resurces"
 
 # Pre-existing typos in codebase (to be fixed separately)
 analagous = "analagous"

@@ -614,7 +614,7 @@ class DeployHarnessStep(Step):
         parallelism: int,
     ) -> list[str]:
         """otel_traces validator: fail if any per-pod
-        summary_lifecycle_metrics.json is missing, unparseable, or reports
+        summary_lifecycle_metrics.json is missing, unparsable, or reports
         failures.count > 0.
         """
         errs: list[str] = []

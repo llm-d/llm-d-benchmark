@@ -141,7 +141,7 @@ def test_validate_failures_analysis_fallback(tmp_path: Path):
     assert DeployHarnessStep()._validate_failures(ctx, eid, 1, _OTEL) == []
 
 
-def test_validate_failures_unparseable(tmp_path: Path):
+def test_validate_failures_unparsable(tmp_path: Path):
     ctx = _ctx(tmp_path)
     eid = "inference-perf-conc8-1-abc"
     pod_dir = ctx.run_results_dir() / f"{eid}_1"

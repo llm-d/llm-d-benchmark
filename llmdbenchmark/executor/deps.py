@@ -104,7 +104,7 @@ def _tool_version_output(cmd: list[str]) -> str | None:
 
 def check_helm_version(min_major: int = MIN_HELM_MAJOR) -> tuple[bool, str]:
     """Return (ok, version_string). ok is False if helm is missing, its
-    output is unparseable, or its major version is below *min_major*."""
+    output is unparsable, or its major version is below *min_major*."""
     raw = _tool_version_output(["helm", "version", "--short"])
     if not raw:
         return False, "not found"
@@ -118,7 +118,7 @@ def check_helmfile_version(
     min_version: tuple[int, int, int] = MIN_HELMFILE_VERSION,
 ) -> tuple[bool, str]:
     """Return (ok, version_string). ok is False if helmfile is missing,
-    unparseable, or older than *min_version*."""
+    unparsable, or older than *min_version*."""
     raw = _tool_version_output(["helmfile", "--version"])
     if not raw:
         return False, "not found"
