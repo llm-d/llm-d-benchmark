@@ -680,8 +680,10 @@ class FMADeployStep(Step):
         self, context: ExecutionContext, plan_config: dict, errors: list[str]
     ) -> None:
         if context.non_admin:
-            errors.append(
-                "❗No privileges to setup Fast Model Actuation API crds. "
+            # --non-admin: CI cannot create cluster-scoped CRDs, so skip
+            # installing them and assume a privileged user already did.
+            context.logger.log_warning(
+                "--non-admin: skipping Fast Model Actuation CRD setup. "
                 "Will assume a user with proper privileges already performed this action."
             )
             return
