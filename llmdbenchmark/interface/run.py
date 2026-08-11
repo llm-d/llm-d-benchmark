@@ -167,7 +167,7 @@ def add_subcommands(
         default=None,
         help=(
             "Fail (and retry) a treatment when its summary_lifecycle_metrics.json "
-            "reports failures.count > 0, or the file is missing/unparseable. "
+            "reports failures.count > 0, or the file is missing/unparsable. "
             "Only applies to the otel_traces workload; other workloads warn and "
             "fall back to Kubernetes pod state. Default: pod state only. "
             "Overrides the top-level validate_failures key in --experiments YAML."

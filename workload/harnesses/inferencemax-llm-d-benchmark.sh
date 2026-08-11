@@ -50,7 +50,7 @@ export LLMDBENCH_HARNESS_VERSION=$(cd /workspace/bench_serving; git rev-parse HE
 # so the file serves as the handoff mechanism to the analysis phase.
 # Escape free text for the double-quoted YAML scalars below. Backslash first, or
 # the quote escapes get double-escaped. Control characters are illegal in a
-# double-quoted scalar at all, and an unparseable file loses every key in it, not
+# double-quoted scalar at all, and an unparsable file loses every key in it, not
 # just this one.
 _yaml_escape() {
   local text="${1:-}" out="" index character

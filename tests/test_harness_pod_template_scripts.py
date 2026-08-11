@@ -188,7 +188,7 @@ def test_harness_pod_ships_the_run_description() -> None:
 
 def test_harness_pod_quotes_a_hostile_run_description() -> None:
     """Free text must not break the manifest: a bare "{{ ... }}" would produce
-    unparseable YAML for any of these, so the parse below is the assertion."""
+    unparsable YAML for any of these, so the parse below is the assertion."""
     hostile = 'has "quotes", a back\\slash, a: colon and #hash'
     values = _template_values()
     values["description"] = {"text": hostile, "keywords": ['k "1"']}

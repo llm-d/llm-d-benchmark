@@ -189,7 +189,7 @@ def read_run_controls(experiments_file: str | Path | None) -> dict:
     """Read the top-level run-loop control keys from an experiment YAML.
 
     Returns a dict keyed as in ``RUN_CONTROL_DEFAULTS``. Fail-open: any
-    unreadable/non-mapping file or absent/unparseable key falls back to the
+    unreadable/non-mapping file or absent/unparsable key falls back to the
     default, so a parse problem here never blocks a run.
     """
     controls = dict(RUN_CONTROL_DEFAULTS)

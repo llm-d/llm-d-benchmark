@@ -37,7 +37,7 @@ treatment_max_attempts: 5
 treatment_stop_on_error: true
 
 # Fail (and retry) a treatment when its summary_lifecycle_metrics.json
-# reports failures.count > 0 (or is missing/unparseable), even if the pod
+# reports failures.count > 0 (or is missing/unparsable), even if the pod
 # exited cleanly. Only applies to the otel_traces workload (the schema is
 # workload-specific); other workloads warn and fall back to pod state.
 # Opt-in. Default false.
