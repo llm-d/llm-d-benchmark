@@ -29,7 +29,7 @@ class _Logger:
         pass
 
 
-def _render(tmp_path: Path, cli_methods: str | None = None):
+def _render(tmp_path: Path, cli_methods: str | None = None, version_resolver=None):
     return RenderPlans(
         template_dir=TEMPLATE_DIR,
         defaults_file=DEFAULTS_FILE,
@@ -37,6 +37,7 @@ def _render(tmp_path: Path, cli_methods: str | None = None):
         output_dir=tmp_path / "plan",
         logger=_Logger(),
         cli_methods=cli_methods,
+        version_resolver=version_resolver,
     ).eval()
 
 
@@ -130,7 +131,17 @@ class _FakeCmd:
         return _FakeResult(ok, out)
 
 
-def _nok8s_ctx(tmp_path: Path, cmd):
+class _CapturingLogger(_Logger):
+    """Logger that keeps the warning lines the preflight emits."""
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+
+    def log_warning(self, msg: str, *_: Any, **__: Any) -> None:
+        self.warnings.append(msg)
+
+
+def _nok8s_ctx(tmp_path: Path, cmd, nok8s: dict | None = None):
     from llmdbenchmark.executor.context import ExecutionContext
 
     ctx = ExecutionContext(
@@ -141,7 +152,14 @@ def _nok8s_ctx(tmp_path: Path, cmd):
         container_runtime="docker",
     )
     ctx.cmd = cmd
-    ctx.logger = _Logger()
+    ctx.logger = _CapturingLogger()
+    if nok8s is not None:
+        stack = tmp_path / "stack"
+        stack.mkdir(exist_ok=True)
+        (stack / "config.yaml").write_text(
+            yaml.safe_dump({"nok8s": nok8s}), encoding="utf-8"
+        )
+        ctx.rendered_stacks = [stack]
     return ctx
 
 
@@ -167,6 +185,68 @@ def test_nok8s_preflight_passes_when_runtime_and_gpu_present(tmp_path: Path) -> 
     finally:
         os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
     assert result.success is True
+
+
+def _busy_warning(ctx) -> str:
+    return next((w for w in ctx.logger.warnings if "already in use" in w), "")
+
+
+def test_nok8s_preflight_checks_every_replica_port(tmp_path: Path) -> None:
+    """Replicas occupy hostPort..hostPort+N-1, not just hostPort."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ss_out = "LISTEN 0 4096 0.0.0.0:8002 0.0.0.0:*\n"
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(stdout_for={"ss -ltn": ss_out}),
+        nok8s={"vllm": {"replicas": 3, "hostPort": 8000, "accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert "8002" in _busy_warning(ctx)
+
+
+def test_nok8s_preflight_checks_envoy_admin_port(tmp_path: Path) -> None:
+    """19000 is hard-coded in the Envoy bootstrap and must be free."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ss_out = "LISTEN 0 4096 127.0.0.1:19000 0.0.0.0:*\n"
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(stdout_for={"ss -ltn": ss_out}),
+        nok8s={"vllm": {"accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert "19000" in _busy_warning(ctx)
+
+
+def test_nok8s_preflight_falls_back_to_lsof(tmp_path: Path) -> None:
+    """Hosts without iproute2 (macOS) still get a real port check."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    lsof_out = "envoy 42 u 10u IPv4 0t0 TCP 127.0.0.1:8081 (LISTEN)\n"
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(
+            fail_substrings=("command -v ss",),
+            stdout_for={"lsof": lsof_out},
+        ),
+        nok8s={"vllm": {"accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert "8081" in _busy_warning(ctx)
+
+
+def test_nok8s_preflight_warns_when_no_port_probe_available(tmp_path: Path) -> None:
+    """Neither ss nor lsof present -> say so instead of silently passing."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(fail_substrings=("command -v ss", "command -v lsof")),
+        nok8s={"vllm": {"accelerator": "cpu"}},
+    )
+    EnsureInfraStep().execute(ctx)
+    assert any("Cannot verify host ports" in w for w in ctx.logger.warnings)
 
 
 def test_device_args_per_accelerator() -> None:
@@ -224,6 +304,100 @@ def test_pin_env_per_replica() -> None:
     assert (
         pin({"replicas": 2, "replicaIndex": 1, "deviceArgs": ["--device", "x"]}) == ""
     )
+
+
+class _RecordingCmd(_FakeCmd):
+    """_FakeCmd that records every command it was asked to run."""
+
+    def __init__(self, fail_substrings=(), stdout_for=None) -> None:
+        super().__init__(fail_substrings, stdout_for)
+        self.commands: list[str] = []
+
+    def execute(self, cmd, *args, **kwargs):
+        self.commands.append(cmd)
+        return super().execute(cmd, *args, **kwargs)
+
+    def removed(self) -> set[str]:
+        return {c.split()[-1] for c in self.commands if " rm -f " in c}
+
+    def launched(self) -> set[str]:
+        return {
+            c.split("--name ")[1].split()[0] for c in self.commands if "--name " in c
+        }
+
+
+def _nok8s_stack(tmp_path: Path) -> Path:
+    """Minimal rendered stack dir with a three-container launch spec."""
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    spec = {
+        "runtime": "docker",
+        "workspaceHostDir": str(tmp_path / "ws"),
+        "model": "Qwen/Qwen2.5-0.5B-Instruct",
+        "endpoint": "http://localhost:8081",
+        "containers": [
+            {
+                "name": "vllm-0",
+                "kind": "vllm",
+                "image": "nonexistent:v0",
+                "hostPort": 8000,
+            },
+            {
+                "name": "epp",
+                "kind": "epp",
+                "image": "epp:v0",
+                "grpcPort": 9002,
+                "grpcHealthPort": 9003,
+                "metricsPort": 9090,
+            },
+            {"name": "envoy", "kind": "envoy", "image": "envoy:v0"},
+        ],
+    }
+    (stack / "34_nok8s-containers.yaml").write_text(yaml.safe_dump(spec), "utf-8")
+    return stack
+
+
+def test_nok8s_launch_failure_stops_and_rolls_back(tmp_path: Path) -> None:
+    """A container that fails to start aborts the launch and removes the rest."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _nok8s_stack(tmp_path)
+    # vllm-0 is launched first and fails.
+    cmd = _RecordingCmd(fail_substrings=("--name vllm-0",))
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is False
+    assert "vllm-0" in result.message
+    # Nothing after the failing container is launched.
+    assert not any("run -d --name epp" in c for c in cmd.commands)
+    assert not any("run -d --name envoy" in c for c in cmd.commands)
+
+
+def test_nok8s_rollback_dumps_logs_before_removing(tmp_path: Path) -> None:
+    """Already-launched containers are removed, with logs captured first."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _nok8s_stack(tmp_path)
+    # vllm-0 and epp come up; envoy (launched last) fails.
+    cmd = _RecordingCmd(fail_substrings=("--name envoy",))
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is False
+    for name in ("vllm-0", "epp"):
+        logs = cmd.commands.index(f"docker logs {name} --tail 100")
+        # rm -f appears twice per container: the idempotency wipe before the
+        # launch, and the rollback afterwards. The rollback one must come after
+        # the log dump, or the evidence is gone.
+        removals = [
+            i for i, c in enumerate(cmd.commands) if c == f"docker rm -f {name}"
+        ]
+        assert len(removals) == 2, cmd.commands
+        assert removals[-1] > logs, f"{name} removed before its logs were dumped"
+        assert (ctx.setup_logs_dir() / f"nok8s-{name}.log").exists()
 
 
 def test_resolve_deploy_method_forces_nok8s() -> None:
@@ -437,25 +611,6 @@ def test_nok8s_run_endpoint_needs_one_stack() -> None:
         raise AssertionError("expected a PhaseError for a multi-stack nok8s run")
 
 
-class _RecordingCmd:
-    """CommandExecutor stand-in that records every command it is handed."""
-
-    def __init__(self) -> None:
-        self.commands: list[str] = []
-
-    def execute(self, cmd, *_: Any, **__: Any):
-        self.commands.append(cmd)
-        return _FakeResult(True)
-
-    def removed(self) -> set[str]:
-        return {c.split()[-1] for c in self.commands if " rm -f " in c}
-
-    def launched(self) -> set[str]:
-        return {
-            c.split("--name ")[1].split()[0] for c in self.commands if "--name " in c
-        }
-
-
 def test_nok8s_deploy_never_removes_a_sibling_stacks_containers(
     tmp_path: Path,
 ) -> None:
@@ -495,3 +650,51 @@ def test_nok8s_teardown_leaves_siblings_alone_without_a_spec(tmp_path: Path) -> 
     solo.rendered_stacks = [specless]
     NoK8sTeardownStep().execute(solo, specless)
     assert solo.cmd.removed() == {"envoy", "epp", "vllm-0"}
+
+
+class _RecordingVersionResolver:
+    """Records how the renderer invokes version resolution."""
+
+    def __init__(self) -> None:
+        self.calls: list[bool] = []
+
+    def resolve_all(self, values: dict, skip_kubernetes: bool = False) -> dict:
+        self.calls.append(skip_kubernetes)
+        return values
+
+
+def test_nok8s_skips_kubernetes_version_resolution(tmp_path: Path) -> None:
+    """nok8s must not try to resolve helm chart versions or the WVA image.
+
+    Resolving them needs helm/skopeo, which docs/nok8s.md says are not
+    required, and nothing on this path consumes the results.
+    """
+    resolver = _RecordingVersionResolver()
+    _render(tmp_path, version_resolver=resolver)
+
+    assert resolver.calls, "version resolver was never invoked"
+    assert all(resolver.calls), (
+        f"expected skip_kubernetes=True for every nok8s stack, got {resolver.calls}"
+    )
+
+
+def test_kubernetes_scenario_still_resolves_versions(tmp_path: Path) -> None:
+    """Guard the test above: the flag is not unconditionally True."""
+    resolver = _RecordingVersionResolver()
+    RenderPlans(
+        template_dir=TEMPLATE_DIR,
+        defaults_file=DEFAULTS_FILE,
+        scenarios_file=REPO_ROOT
+        / "config"
+        / "scenarios"
+        / "guides"
+        / "optimized-baseline.yaml",
+        output_dir=tmp_path / "plan-k8s",
+        logger=_Logger(),
+        version_resolver=resolver,
+    ).eval()
+
+    assert resolver.calls, "version resolver was never invoked"
+    assert not any(resolver.calls), (
+        f"expected skip_kubernetes=False off the nok8s path, got {resolver.calls}"
+    )

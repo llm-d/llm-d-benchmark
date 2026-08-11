@@ -30,7 +30,7 @@ def _renderer() -> RenderPlans:
 def _passthrough_version_resolver() -> MagicMock:
     """Keep render tests deterministic and independent of image registries."""
     resolver = MagicMock()
-    resolver.resolve_all.side_effect = lambda values: values
+    resolver.resolve_all.side_effect = lambda values, **kwargs: values
     return resolver
 
 

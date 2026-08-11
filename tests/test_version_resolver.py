@@ -289,3 +289,72 @@ class TestResolveAllErrors:
         # The image should remain unchanged (still :auto)
         decode_ic = result["decode"]["initContainers"][0]
         assert decode_ic["image"] == "ghcr.io/foo/bar:auto"
+
+
+# ---------------------------------------------------------------------------
+# nok8s: Kubernetes-only resolutions are skipped
+# ---------------------------------------------------------------------------
+
+
+def _nok8s_values() -> dict:
+    """Values shaped like a rendered nok8s stack: container image plus the
+    Kubernetes-only WVA image and chart versions."""
+    return {
+        "images": {
+            "benchmark": {
+                "repository": "ghcr.io/llm-d/llm-d-benchmark",
+                "tag": "auto",
+            },
+        },
+        "wva": {
+            "image": {
+                "repository": "ghcr.io/llm-d/llm-d-workload-variant-autoscaler",
+                "tag": "auto",
+            }
+        },
+        "chartVersions": {"llmDInfra": "auto", "llmDModelservice": "auto"},
+    }
+
+
+class TestSkipKubernetes:
+    def test_nok8s_skips_wva_and_chart_warnings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No helm/skopeo warnings on the nok8s path: nothing consumes the
+        WVA image or the chart versions there."""
+        resolver = _make_resolver(monkeypatch)
+        monkeypatch.setattr(
+            VersionResolver,
+            "resolve_chart_version",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("helm missing")),
+        )
+
+        result = resolver.resolve_all(_nok8s_values(), skip_kubernetes=True)
+
+        assert resolver.logger.warnings == [], (
+            f"Expected no warnings on the nok8s path, got: {resolver.logger.warnings}"
+        )
+        # Kubernetes-only values are left untouched rather than resolved.
+        assert result["wva"]["image"]["tag"] == "auto"
+        assert result["chartVersions"] == {
+            "llmDInfra": "auto",
+            "llmDModelservice": "auto",
+        }
+        # The container image nok8s actually runs is still resolved.
+        assert result["images"]["benchmark"]["tag"] == "latest-stub"
+
+    def test_kubernetes_path_still_warns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The default path keeps warning, so the nok8s assertion above is
+        testing the skip and not an unreachable code path."""
+        resolver = _make_resolver(monkeypatch, fail=True)
+        monkeypatch.setattr(
+            VersionResolver,
+            "resolve_chart_version",
+            lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("helm missing")),
+        )
+
+        resolver.resolve_all(_nok8s_values())
+
+        warnings = " ".join(resolver.logger.warnings)
+        assert "Could not resolve WVA image tag" in warnings
+        assert "chartVersions.llmDInfra" in warnings

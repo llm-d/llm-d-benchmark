@@ -77,7 +77,6 @@ class NoK8sDeployStep(Step):
                 f"[dry-run] would stage nok8s configs under {workspace}"
             )
 
-        errors: list[str] = []
         launched: list[str] = []
         for c in containers:
             name = c["name"]
@@ -88,13 +87,15 @@ class NoK8sDeployStep(Step):
             )
             result = cmd.execute(run_cmd, check=False)
             if not result.success and not context.dry_run:
-                errors.append(f"Failed to start container {name}: {result.stderr}")
+                # The stack is unusable without every container, so stop at the
+                # first failure instead of launching the rest, and remove what
+                # is already up so it does not hold host ports (epp/envoy use
+                # --network host) against the next standup.
+                err = f"Failed to start container {name}: {result.stderr}"
                 self._dump_logs(cmd, runtime, name, context)
-            else:
-                launched.append(name)
-
-        if errors:
-            return self._fail(stack_path, "; ".join(errors), errors)
+                self._rollback(cmd, runtime, launched, context)
+                return self._fail(stack_path, err, [err])
+            launched.append(name)
 
         # Readiness: each vLLM worker, then Envoy.
         if not context.dry_run:
@@ -105,6 +106,7 @@ class NoK8sDeployStep(Step):
                 )
                 if envoy:
                     self._dump_logs(cmd, runtime, envoy, context)
+                self._rollback(cmd, runtime, launched, context)
                 return self._fail(stack_path, ready_err, [ready_err])
 
         return StepResult(
@@ -271,6 +273,25 @@ class NoK8sDeployStep(Step):
                 return f"Timed out waiting for {url} after {timeout}s"
             context.logger.log_info(f"nok8s endpoint ready: {url}")
         return None
+
+    def _rollback(
+        self,
+        cmd: CommandExecutor,
+        runtime: str,
+        launched: list[str],
+        context: ExecutionContext,
+    ) -> None:
+        """Remove the containers this standup already started, logs first.
+
+        ``rm -f`` destroys the container logs, and a failed standup is exactly
+        when they are needed, so every container is dumped before it is
+        removed. Removal is in reverse launch order and best-effort: a rollback
+        must not mask the failure that triggered it.
+        """
+        for name in reversed(launched):
+            self._dump_logs(cmd, runtime, name, context)
+            cmd.execute(f"{runtime} rm -f {name}", check=False)
+            context.logger.log_info(f"nok8s rollback: removed container {name}")
 
     def _dump_logs(
         self, cmd: CommandExecutor, runtime: str, name: str, context: ExecutionContext

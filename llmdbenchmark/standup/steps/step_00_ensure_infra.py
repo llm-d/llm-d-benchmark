@@ -15,6 +15,10 @@ from llmdbenchmark.executor.deps import (
 )
 from llmdbenchmark.utilities.cluster import print_phase_banner
 
+# Listening-socket probes, first one available wins. ss is iproute2 (Linux);
+# lsof covers macOS and hosts without iproute2.
+PORT_PROBES = ("ss -ltn", "lsof -nP -iTCP -sTCP:LISTEN")
+
 
 class EnsureInfraStep(Step):
     """Validate system dependencies and print cluster summary banner."""
@@ -143,7 +147,12 @@ class EnsureInfraStep(Step):
                 port
                 for cfg in stacks
                 for port in (
-                    cfg.get("vllm", {}).get("hostPort", 8000),
+                    # One worker per replica, hostPort .. hostPort+replicas-1
+                    # (34_nok8s-containers.yaml.j2).
+                    *(
+                        int(cfg.get("vllm", {}).get("hostPort", 8000)) + i
+                        for i in range(int(cfg.get("vllm", {}).get("replicas", 1) or 1))
+                    ),
                     cfg.get("envoy", {}).get("listenPort", 8081),
                     cfg.get("envoy", {}).get("adminPort", 19000),
                     cfg.get("epp", {}).get("grpcPort", 9002),
@@ -264,10 +273,27 @@ class EnsureInfraStep(Step):
                 f"download in the vLLM container."
             )
 
-        # 4. Required host ports free (warning).
-        res = cmd.execute("ss -ltn", check=False, force=True, silent=True)
-        if res.success and res.stdout:
-            busy = [p for p in ports if f":{p} " in res.stdout]
+        # 4. Required host ports free (warning). Pick the first probe tool that
+        #    exists; warn rather than pass silently when none does.
+        probe_cmd = next(
+            (
+                p
+                for p in PORT_PROBES
+                if cmd.execute(
+                    f"command -v {p.split()[0]}", check=False, force=True, silent=True
+                ).success
+            ),
+            None,
+        )
+        if probe_cmd is None:
+            warnings.append(
+                f"Cannot verify host ports {ports}: none of "
+                f"{', '.join(p.split()[0] for p in PORT_PROBES)} found on PATH. "
+                f"Install iproute2 or lsof, or check the ports yourself."
+            )
+        else:
+            res = cmd.execute(probe_cmd, check=False, force=True, silent=True)
+            busy = [p for p in ports if f":{p} " in (res.stdout or "")]
             if busy:
                 warnings.append(
                     f"Host ports already in use: {busy}. Free them, run "

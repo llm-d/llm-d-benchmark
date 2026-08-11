@@ -61,6 +61,10 @@ spec:
       value: "{{ harness.name }}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "{{ experiment_id }}"
+    - name: LLMDBENCH_DESCRIPTION_TEXT
+      value: {{ (description | default({}, true)).text | default('', true) | string | tojson }}
+    - name: LLMDBENCH_DESCRIPTION_KEYWORDS
+      value: {{ (description | default({}, true)).keywords | default([], true) | join(',') | tojson }}
     - name: RAYON_NUM_THREADS
       value: "{{ harness.inferencePerf.rayonNumThreads }}"
     - name: HOME
