@@ -556,6 +556,7 @@ monitoring:
     - inference_pool_average_running_requests
     - inference_pool_ready_pods
     - llm_d_epp_flow_control_pool_saturation
+    - llm_d_epp_flow_control_queue_size
     - llm_d_epp_request_running
 
 # ============================================================================
@@ -1725,10 +1726,11 @@ eppKedaSaturation:
     pollingInterval: 15
     unsafeSsl: true
     # KEDA Prometheus triggers, fully defined here so new metrics/thresholds
-    # can be added without touching the Jinja. A scenario may redefine this
-    # entire list. Per entry: query (required), threshold, and optional
-    # name/metricType/activationThreshold. In `query`, ${poolName} and
-    # ${modelName} are substituted at render time.
+    # can be added without touching the Jinja. These mirror the upstream llm-d
+    # workload-autoscaling keda-epp-saturation guide; a scenario may redefine
+    # this entire list (e.g. the keda-epp-queue guide). Per entry: query
+    # (required), threshold, and optional name/metricType/activationThreshold.
+    # In `query`, ${poolName} and ${modelName} are substituted at render time.
     triggers:
       - name: pool-saturation
         query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
