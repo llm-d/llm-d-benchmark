@@ -1034,8 +1034,11 @@ jobs:
             REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
             if [[ -n "$REG_RESULTS" && -d "$REG_RESULTS" ]]; then
               find $REG_RESULTS/ -name run_metadata.yaml -exec sh -c "echo 'github_run_id: \"${{ github.run_id }}\"' >> {}" \;
-              echo "Skipping data upload to official bucket, due to test in fork, instead uploading to igw_benchmark"
-              gcloud storage cp -r $REG_RESULTS/ gs://igw-e2e-benchmark-results/tpu/$LLMDBENCH_CICD_SCENARIO || true
+              echo "Uploading data from directory \"REG_RESULTS\" to \"$GCS_FULL_PATH\""
+              gcloud storage cp -r $REG_RESULTS/ "$GCS_FULL_PATH" || true
+              # Commenting out for now, this can be made into knob later.
+              #echo "Skipping data upload to official bucket, due to test in fork, instead uploading to igw_benchmark"
+              #gcloud storage cp -r $REG_RESULTS/ gs://igw-e2e-benchmark-results/tpu/$LLMDBENCH_CICD_SCENARIO || true
             else
               echo "### No benchmark results directory found to upload"
             fi
