@@ -91,13 +91,24 @@ Shipped examples: `config/scenarios/examples/eval-containers-{gaia,aider-polyglo
       entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh
       resources: { cpu: "2", memory: 6Gi }
     model:
-      name: <model-id>                      # becomes EVAL_MODEL=openai/<name>
+      name: <model-id>                      # becomes EVAL_MODEL=<name>, BARE
       huggingfaceId: <hf-id-or-served-id>
 ```
 
 Change `images.benchmark` + `harness.experimentProfile` to point at a different
 benchmark/agent. The `model`/`decode`/`prefill`/`storage` blocks describe **how
 the model is served** (next section).
+
+`EVAL_MODEL` must stay a **bare** handle: the in-pod gateway carries the provider
+separately, so an `openai/` prefix becomes part of the model *name*, is looked up
+in the OpenAI catalog, and 404s every agent call — reward `0.0`, empty agent
+stdout, harness rc `0`. Silent green.
+
+Useful `harness.extraEnvVars` (see the shipped examples): `EVAL_TIMEOUT` raises
+the image's 300s per-task cap, which truncates reasoning models — it is applied
+**per attempt**, so images with 2-attempt grading can run ~2x it;
+`EVAL_GAIA_SUBSET=no-search` keeps GAIA's 54 egress-free tasks; and for
+`gemini-cli` images `EVAL_MODEL_API=openai` is **required**, not optional.
 
 **Keep scenarios cluster-agnostic.** RWX storage class, service account, and root
 privilege belong in a `--cluster-config` file
@@ -166,9 +177,31 @@ Per task, `eval-containers-<id>_<n>/` contains:
 | `model/gateway.log` | The in-pod gateway — first place to look on a call failure. |
 | `traces.jsonl` | One OTel batch per model call. **0 lines = no calls reached the model.** |
 
-There is **no aggregate score**: each task writes its own `result.json`. A healthy run:
- gateway logs a successful startup, `traces.jsonl` has `llm.call` spans with status `200`, 
- and `stdout.log` is non-empty and free of `API Error`.
+A healthy run: gateway logs a successful startup, `traces.jsonl` has spans with
+status `200`, and `stdout.log` is non-empty and free of `API Error`.
+
+### Run-level aggregate
+
+`--analyze` also rolls every task up into `agentic-summary/` at the results root
+(one task per pod means the per-task reports alone can't answer "how did the run
+do"):
+
+| File | Contains |
+|---|---|
+| `agentic_run_report.yaml` | Benchmark-report v0.2 for the whole run: pass rate, pooled LLM-call latency, token totals, and per-language pass rates for `aider-polyglot`. |
+| `agentic_tasks.csv` | One row per task — score, exit code, call count, latency, tokens. Units are in the column names. |
+
+```bash
+grep -E 'tasks|passed_count|pass_rate|total_tokens' \
+  <results>/agentic-summary/agentic_run_report.yaml
+column -s, -t < <results>/agentic-summary/agentic_tasks.csv
+```
+
+Scores live under `results.observability` as `eval_containers_*` keys. Read
+`_tasks_exit_timeout` and `_tasks_exit_error` beside the pass rate: a task killed
+at `EVAL_TIMEOUT` scores 0 without the model having failed. `_ttft_discarded_calls`
+counts time-to-first-token values rejected as impossible (larger than their own
+call), so a low `_ttft_valid_calls` means treat that metric as thin.
 
 ### Debugging
 

@@ -72,6 +72,7 @@ scenario:
         # The harness pod runs THIS image: agent + in-pod gateway + grader + otel,
         # the single-container standalone bundle. Swap for any published
         # evals/<benchmark>--<agent>-standalone image to run a different eval.
+        # 2026-08-11 latest: 2-attempt grading (PR #337 + #347, Exgentic/eval-containers).
         benchmark:
           repository: ghcr.io/exgentic/evals/aider-polyglot--claude-code-standalone
           tag: latest
@@ -218,6 +219,21 @@ scenario:
       # runAsUser and serviceAccount are OpenShift-specific.
       # Set them in your --cluster-config file (see docs/openshift-setup.md).
       # A real agent + in-pod gateway runs here, not a load generator -- give it room.
+      extraEnvVars:
+        # Per-task agent wall-clock cap (seconds), read by the image's run-agent.
+        # The image default of 300 truncates a reasoning model mid-edit. NOTE this
+        # is PER ATTEMPT: images with 2-attempt grading re-invoke run-agent on a
+        # failed first try, so a task's wall-clock can reach ~2x this value.
+        - name: EVAL_TIMEOUT
+          value: "1500"
+        # If you swap the image above for the gemini-cli variant, ALSO set
+        #   - name: EVAL_MODEL_API
+        #     value: openai
+        # gemini-cli speaks the Gemini v1beta wire
+        # (/v1beta/models/<model>:generateContent), which bifrost cannot parse
+        # against an OpenAI-only upstream: every call 400s, the agent writes a
+        # stub solution, and the run scores ~0 -- looking like a model failure
+        # rather than a transport one. Not needed for claude-code (this image).
       resources:
         cpu: "2"
         memory: 6Gi
