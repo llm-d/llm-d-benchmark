@@ -368,13 +368,17 @@ def _metric_metadata(
 
 
 def _build_embedded_time_series(
-    obs: dict[str, Any], metrics_dir: str, max_points: int
+    obs: dict[str, Any],
+    metrics_dir: str,
+    max_points: int,
+    window: tuple[Any, Any] | None = None,
 ) -> set[str]:
     """Populate `observability.components[].time_series`, one entry per pod.
 
-    Returns the set of field names actually embedded.
+    Returns the field names to declare a version against.
     """
     from .timeseries import (
+        clip_to_window,
         collect_time_series_data,
         compute_ratio_series,
         series_points,
@@ -388,6 +392,9 @@ def _build_embedded_time_series(
     components = obs.setdefault("components", [])
     by_replica = {c.get("replica_id"): c for c in components}
     embedded: set[str] = set()
+    # Pre-clip field set: keying the version bump off the clipped one would make
+    # sibling reports in one sweep declare different versions.
+    available: set[str] = set()
 
     for pod_name in sorted(pod_data):
         pod_metrics = pod_data[pod_name]
@@ -399,6 +406,9 @@ def _build_embedded_time_series(
                 points = compute_ratio_series(pod_metrics, ratio[0], ratio[1])
             else:
                 points = pod_metrics.get(spec.get("metric", ""), [])
+            if points:
+                available.add(field)
+            points = clip_to_window(points, window)
             if not points:
                 continue
             series_by_field[field] = {
@@ -424,7 +434,7 @@ def _build_embedded_time_series(
     if not components:
         obs.pop("components", None)
 
-    return embedded
+    return available if window else embedded
 
 
 # ---------------------------------------------------------------------------
@@ -545,12 +555,18 @@ def _build_epp_entries(
 
 
 def add_metrics_to_benchmark_report(
-    br_dict: dict[str, Any], metrics_dir: str, component_label: str = "vllm-service"
+    br_dict: dict[str, Any],
+    metrics_dir: str,
+    component_label: str = "vllm-service",
+    time_series_window: tuple[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """Add metrics to an existing benchmark report dictionary.
 
     Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
     with per-component statistics, role, graph paths, and EPP metrics.
+
+    ``time_series_window`` restricts the embedded series to one stage's interval;
+    without it every report in a sweep gets the whole run's series.
     """
     obs = br_dict.setdefault("results", {}).setdefault("observability", {})
 
@@ -567,7 +583,7 @@ def add_metrics_to_benchmark_report(
         _build_aggregated_entries(metrics_summary, obs, metric_names)
         if _embed_time_series_enabled():
             embedded = _build_embedded_time_series(
-                obs, metrics_dir, _embed_time_series_max_points()
+                obs, metrics_dir, _embed_time_series_max_points(), time_series_window
             )
             if embedded - _V0_2_TIME_SERIES_FIELDS and br_dict.get("version") == "0.2":
                 br_dict["version"] = "0.2.1"

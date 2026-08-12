@@ -137,6 +137,9 @@ class DeployHarnessLocalStep(Step):
 
                 run_cmd = (
                     f"{runtime} run -d --name {name} --network host "
+                    # Stage markers are logged in local time, then compared against
+                    # `date -u` scrape timestamps when clipping per-stage series.
+                    f"-e TZ=UTC "
                     f"-e LLMDBENCH_RUN_EXPERIMENT_LAUNCHER=1 "
                     f"-e LLMDBENCH_HARNESS_STACK_ENDPOINT_URL={endpoint_url} "
                     f"-e LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod "

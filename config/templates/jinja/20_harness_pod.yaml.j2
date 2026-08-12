@@ -37,6 +37,10 @@ spec:
         cpu: "{{ harness.resources.cpu }}"
         memory: {{ harness.resources.memory }}
     env:
+    # Stage markers are logged in local time, then compared against `date -u`
+    # scrape timestamps when clipping per-stage series.
+    - name: TZ
+      value: "UTC"
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
     - name: LLMDBENCH_MAGIC_ENVAR

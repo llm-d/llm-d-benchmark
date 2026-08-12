@@ -7,7 +7,7 @@ copies that module to /usr/local/bin, outside this package.
 import glob
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 _METRIC_RE = re.compile(r"([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)")
@@ -75,6 +75,28 @@ def compute_ratio_series(
     return [
         (ts, (num_by_ts[ts] / den_by_ts[ts] * 100) if den_by_ts[ts] > 0 else 0.0)
         for ts in common_ts
+    ]
+
+
+def clip_to_window(points: list, window: tuple[datetime, datetime] | None) -> list:
+    """Restrict [(datetime, value), ...] to a half-open [start, end) window.
+
+    Half-open so a sample landing on the boundary between two consecutive stages
+    is attributed to one of them, not to both. Scrape timestamps are offset-aware
+    and the harness log markers are not, so naive values on either side are
+    treated as UTC rather than raising.
+    """
+    if not window:
+        return points
+    if len(window) != 2:
+        raise ValueError(f"window must be (start, end), got {len(window)} values")
+    start, end = (
+        t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t for t in window
+    )
+    return [
+        (ts, val)
+        for ts, val in points
+        if start <= (ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts) < end
     ]
 
 
