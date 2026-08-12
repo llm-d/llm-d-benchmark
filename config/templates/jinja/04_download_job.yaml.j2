@@ -15,6 +15,22 @@ spec:
       containers:
         - name: downloader
           image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+          # Without this, a :latest tag makes Kubernetes default to
+          # imagePullPolicy: Always, so the node re-pulls the whole image on every
+          # standup even when it is already cached. That is invisible for a small
+          # image but not for a large one: with an agentic harness image (an agent
+          # CLI plus a multi-language toolchain, several GB) the pull outlived the
+          # download job's own timeout, so the job failed before transferring a
+          # single byte of weights -- surfacing as a weight-download timeout that
+          # points at storage or HuggingFace rather than at an image pull.
+          #
+          # IfNotPresent rather than changing which image this job runs: the pull
+          # policy is the actual cause, it is one line, and it keeps working
+          # whatever image a user points images.benchmark at. A user can also pin
+          # a hard version tag to get the same effect, but that is a workaround
+          # for a default that is wrong for this job -- nothing here needs a fresh
+          # pull, since the container only pip-installs huggingface_hub and exits.
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - |
