@@ -658,30 +658,54 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
         errors: list,
     ):
-        """Fail early when monitoring is enabled but required CRDs are missing.
+        """Fail early when rendered monitoring resources need missing CRDs.
 
-        Checks for ``podmonitors.monitoring.coreos.com`` and
-        ``servicemonitors.monitoring.coreos.com``.  If either is absent the
-        step records an error with platform-aware remediation guidance.
+        Direct harness scraping does not create Prometheus Operator resources,
+        so ``metricsScrapeEnabled`` alone does not require either CRD.
+        PodMonitor rendering requires the PodMonitor CRD. Modelservice router
+        monitoring requires the ServiceMonitor CRD only when Prometheus
+        monitoring is enabled and its resolved provider is
+        ``prometheusoperator``.
         """
         if context.dry_run:
             cmd.logger.log_info("Skipping monitoring CRD validation (dry-run)")
             return
 
-        monitoring = plan_config.get("monitoring", {})
-        podmonitor_enabled = monitoring.get("podmonitor", {}).get("enabled", False)
-        scrape_enabled = monitoring.get("metricsScrapeEnabled", False)
+        monitoring = plan_config.get("monitoring") or {}
+        podmonitor = monitoring.get("podmonitor") or {}
+        podmonitor_enabled = podmonitor.get("enabled", False)
 
-        if not podmonitor_enabled and not scrape_enabled:
-            return
+        router = plan_config.get("router") or {}
+        router_monitoring = router.get("monitoring") or {}
+        router_prometheus = router_monitoring.get("prometheus") or {}
+        monitoring_provider = router_monitoring.get("provider") or {}
+        provider_name = monitoring_provider.get("name")
+        if not isinstance(provider_name, str) or not provider_name.strip():
+            gateway_provider = plan_config.get("provider") or {}
+            gateway_provider_name = gateway_provider.get("name")
+            provider_name = (
+                "gmp"
+                if isinstance(gateway_provider_name, str)
+                and gateway_provider_name.lower() == "gke"
+                else "prometheusoperator"
+            )
 
-        required_crds = [
-            "podmonitors.monitoring.coreos.com",
-            "servicemonitors.monitoring.coreos.com",
-        ]
+        router_service_monitor_enabled = (
+            "modelservice" in (context.deployed_methods or [])
+            and router_prometheus.get("enabled", False)
+            and provider_name.lower() == "prometheusoperator"
+        )
+
+        required_crds = []
+        if podmonitor_enabled:
+            required_crds.append("podmonitors.monitoring.coreos.com")
+        if router_service_monitor_enabled:
+            required_crds.append("servicemonitors.monitoring.coreos.com")
+
         missing = [c for c in required_crds if c not in existing_crds]
         if not missing:
-            cmd.logger.log_info("✅ Monitoring CRDs present on cluster")
+            if required_crds:
+                cmd.logger.log_info("✅ Monitoring CRDs present on cluster")
             return
 
         missing_str = ", ".join(missing)
@@ -700,11 +724,13 @@ class AdminPrerequisitesStep(Step):
 
         if context.is_gke:
             return (
-                "On GKE, enable Google Managed Prometheus with managed collection:\n"
-                "  gcloud container clusters update <CLUSTER> \\\n"
-                "    --enable-managed-prometheus \\\n"
-                "    --location=<LOCATION>\n"
-                "This lets GKE natively scrape PodMonitor resources.\n"
+                "Google Managed Service for Prometheus uses "
+                "monitoring.googleapis.com/v1 PodMonitoring resources, not "
+                "Prometheus Operator PodMonitor or ServiceMonitor resources.\n"
+                "Install the Prometheus Operator CRDs required by this plan, or "
+                "disable those Operator resources and configure Google "
+                "PodMonitoring separately. Direct harness scraping can remain "
+                "enabled.\n"
                 "See: https://cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed\n"
                 f"{common_tail}"
             )

@@ -357,3 +357,181 @@ def test_epponly_does_not_add_unused_istio_repo() -> None:
     assert not any("istio" in call for call in helm_calls)
     assert any("llmDInfra" in call for call in helm_calls)
     assert errors == []
+
+
+def _validate_monitoring_crds(
+    plan: dict[str, Any],
+    methods: list[str],
+    existing_crds: list[str] | None = None,
+) -> tuple[_Cmd, list[str]]:
+    cmd = _Cmd()
+    errors: list[str] = []
+    AdminPrerequisitesStep()._validate_monitoring_crds(
+        cmd,
+        _context(methods, cmd),
+        plan,
+        existing_crds=existing_crds or [],
+        errors=errors,
+    )
+    return cmd, errors
+
+
+def test_direct_metrics_scraping_does_not_require_prometheus_operator_crds() -> None:
+    plan = {
+        "monitoring": {
+            "podmonitor": {"enabled": False},
+            "metricsScrapeEnabled": True,
+        }
+    }
+
+    cmd, errors = _validate_monitoring_crds(plan, ["standalone"])
+
+    assert errors == []
+    cmd.logger.log_info.assert_not_called()
+
+
+def test_podmonitor_requires_only_its_own_crd() -> None:
+    plan = {"monitoring": {"podmonitor": {"enabled": True}}}
+
+    _, errors = _validate_monitoring_crds(plan, ["standalone"])
+
+    assert len(errors) == 1
+    assert "podmonitors.monitoring.coreos.com" in errors[0]
+    assert "servicemonitors.monitoring.coreos.com" not in errors[0]
+
+
+def test_modelservice_router_monitoring_requires_only_servicemonitor_crd() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": False}},
+        "router": {"monitoring": {"prometheus": {"enabled": True}}},
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert len(errors) == 1
+    assert "servicemonitors.monitoring.coreos.com" in errors[0]
+    assert "podmonitors.monitoring.coreos.com" not in errors[0]
+
+
+def test_gmp_router_monitoring_does_not_require_servicemonitor_crd() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": False}},
+        "router": {
+            "monitoring": {
+                "provider": {"name": "gmp"},
+                "prometheus": {"enabled": True},
+            }
+        },
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert errors == []
+
+
+def test_gke_router_defaults_to_gmp_without_servicemonitor_crd() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": False}},
+        "provider": {"name": "gke"},
+        "router": {"monitoring": {"prometheus": {"enabled": True}}},
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert errors == []
+
+
+def test_unset_router_monitoring_uses_chart_disabled_default() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": False}},
+        "router": {},
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert errors == []
+
+
+def test_explicit_prometheus_operator_overrides_gke_monitoring_default() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": False}},
+        "provider": {"name": "gke"},
+        "router": {
+            "monitoring": {
+                "provider": {"name": "prometheusoperator"},
+                "prometheus": {"enabled": True},
+            }
+        },
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert len(errors) == 1
+    assert "servicemonitors.monitoring.coreos.com" in errors[0]
+
+
+def test_standalone_does_not_require_router_servicemonitor_crd() -> None:
+    plan = {
+        "monitoring": {
+            "podmonitor": {"enabled": False},
+            "metricsScrapeEnabled": True,
+        },
+        "router": {"monitoring": {"prometheus": {"enabled": True}}},
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["standalone"])
+
+    assert errors == []
+
+
+def test_both_operator_resources_report_both_missing_crds() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": True}},
+        "router": {"monitoring": {"prometheus": {"enabled": True}}},
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert len(errors) == 1
+    assert "podmonitors.monitoring.coreos.com" in errors[0]
+    assert "servicemonitors.monitoring.coreos.com" in errors[0]
+
+
+def test_null_router_monitoring_blocks_do_not_crash_validation() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": False}},
+        "router": {"monitoring": None},
+    }
+
+    _, errors = _validate_monitoring_crds(plan, ["modelservice"])
+
+    assert errors == []
+
+
+def test_enabled_operator_resources_accept_their_matching_crds() -> None:
+    plan = {
+        "monitoring": {"podmonitor": {"enabled": True}},
+        "router": {"monitoring": {"prometheus": {"enabled": True}}},
+    }
+    existing_crds = [
+        "podmonitors.monitoring.coreos.com",
+        "servicemonitors.monitoring.coreos.com",
+    ]
+
+    cmd, errors = _validate_monitoring_crds(
+        plan, ["modelservice"], existing_crds=existing_crds
+    )
+
+    assert errors == []
+    cmd.logger.log_info.assert_called_once_with("✅ Monitoring CRDs present on cluster")
+
+
+def test_gke_monitoring_guidance_distinguishes_google_podmonitoring() -> None:
+    context = MagicMock()
+    context.is_gke = True
+
+    guidance = AdminPrerequisitesStep()._monitoring_guidance(context)
+
+    assert "monitoring.googleapis.com/v1 PodMonitoring" in guidance
+    assert "Direct harness scraping can remain enabled" in guidance
+    assert "natively scrape PodMonitor" not in guidance
