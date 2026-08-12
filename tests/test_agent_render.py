@@ -199,7 +199,9 @@ class TestBenchmarkJobManifest:
         _, _, _, manifest_without = self._manifest()
         assert "serviceAccountName" not in manifest_without["spec"]["template"]["spec"]
 
-        _, _, _, manifest_with = self._manifest(benchmark_runner_auth="runner-sa")
+        _, _, _, manifest_with = self._manifest(
+            benchmark_runner_auth="runner-sa"  # pragma: allowlist secret
+        )
         assert (
             manifest_with["spec"]["template"]["spec"]["serviceAccountName"]
             == "runner-sa"

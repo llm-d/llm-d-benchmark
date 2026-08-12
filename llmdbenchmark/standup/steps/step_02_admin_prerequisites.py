@@ -24,6 +24,7 @@ GATEWAY_API_EXTENSION_GROUPS = (
 AGENTGATEWAY_CRDS = [
     "agentgatewaybackends.agentgateway.dev",
     "agentgatewayparameters.agentgateway.dev",
+    "agentgatewaymodels.agentgateway.dev",
     "agentgatewaypolicies.agentgateway.dev",
 ]
 
