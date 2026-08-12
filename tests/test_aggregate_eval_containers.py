@@ -41,6 +41,7 @@ def _write_task(
     spans: list[dict] | None = None,
     delta: str | None = "PT120S",
     reward_txt: str | None = None,
+    harness_start: str | None = None,
 ) -> Path:
     task_dir = root / name
     (task_dir / "task").mkdir(parents=True)
@@ -67,6 +68,8 @@ def _write_task(
     metadata = f"harness_name: eval-containers\nharness_rc: 0\ntask_id: {task_id}\nmodel: test-model\n"
     if delta:
         metadata += f'harness_delta: "{delta}"\n'
+    if harness_start:
+        metadata += f'harness_start: "{harness_start}"\n'
     (task_dir / "run_metadata.yaml").write_text(metadata, encoding="utf-8")
 
     if exit_code is not None:
@@ -302,3 +305,39 @@ def test_report_validates_against_v0_2_schema(tmp_path: Path) -> None:
     report = load_benchmark_report(data)
     assert report.version == "0.2"
     assert report.run.uid == "run"
+
+
+def test_time_to_first_call_anchors_on_harness_start(tmp_path: Path) -> None:
+    """It must measure harness_start -> first call, not task_latency - llm_span.
+
+    Anchoring on the LAST call's end forces the answer to equal
+    (task_latency - task_llm_span), i.e. the trailing grading time, which is a
+    different quantity wearing this column's name.
+    """
+    # harness starts at t=0; the only call runs from t=+10s to t=+12s.
+    start = "2026-08-12T00:00:00+00:00"
+    base_ns = 1786492800 * 10**9  # 2026-08-12T00:00:00Z
+    spans = [
+        _span("/openai/v1/responses", base_ns + 10 * 10**9, base_ns + 12 * 10**9, {}),
+    ]
+    # 100s total: 10s before the call, 2s of call, 88s of grading after.
+    _write_task(
+        tmp_path, "run_1", task_id=1, spans=spans, delta="PT100S", harness_start=start
+    )
+    generate_agentic_summary(tmp_path)
+    with open(tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8") as f:
+        row = list(csv.DictReader(f))[0]
+    # The real answer is 10s. The buggy derivation would give 100 - 2 = 98.
+    assert float(row["time_to_first_call_s"]) == pytest.approx(10.0, abs=0.01)
+    assert float(row["task_latency_s"]) == pytest.approx(100.0)
+    assert float(row["task_llm_span_s"]) == pytest.approx(2.0)
+
+
+def test_time_to_first_call_blank_without_harness_start(tmp_path: Path) -> None:
+    """Runs predating the timestamps must blank it, not fabricate it."""
+    spans = [_span("/openai/v1/responses", 1_000_000_000, 2_000_000_000, {})]
+    _write_task(tmp_path, "run_1", task_id=1, spans=spans, delta="PT100S")
+    generate_agentic_summary(tmp_path)
+    with open(tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8") as f:
+        row = list(csv.DictReader(f))[0]
+    assert row["time_to_first_call_s"] == ""

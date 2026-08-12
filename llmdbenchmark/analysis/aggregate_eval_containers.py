@@ -215,6 +215,7 @@ class _TaskMetrics:
         self.harness_rc = metadata.get("harness_rc")
         self.model = str(metadata.get("model") or "")
         self.task_latency_s = _duration_seconds(metadata.get("harness_delta"))
+        self.harness_start_ns = _iso_to_unix_ns(metadata.get("harness_start"))
 
         self.call_latencies_ms: list[float] = []
         self.input_tokens = 0
@@ -290,6 +291,32 @@ def _latency_ms(attrs: dict, start_ns: int, end_ns: int) -> float | None:
     if start_ns and end_ns and end_ns > start_ns:
         return (end_ns - start_ns) / 1e6
     return None
+
+
+def _iso_to_unix_ns(value: Any) -> int | None:
+    """Parse the harness's ISO-8601 ``harness_start`` into unix nanoseconds.
+
+    Needed to anchor time-to-first-call: the span clock is unix-epoch
+    nanoseconds, so the task's own start has to be expressed in the same units.
+    Returns None on anything unparseable, so the metric is blanked rather than
+    guessed.
+    """
+    if value is None:
+        return None
+    text = str(value).strip().strip('"')
+    if not text:
+        return None
+    try:
+        from datetime import datetime
+
+        dt = datetime.fromisoformat(text)
+    except (ValueError, ImportError):
+        return None
+    if dt.tzinfo is None:
+        # The harness writes an offset; a naive value would silently be read as
+        # local time and skew the delta by hours.
+        return None
+    return int(dt.timestamp() * 1e9)
 
 
 def _duration_seconds(delta: Any) -> float | None:
@@ -514,15 +541,15 @@ def _time_to_first_call_s(task: _TaskMetrics) -> float | str:
     anchor, and anchoring to the first span would define the answer as 0. Blank
     rather than fabricated when either input is missing.
     """
-    if task.task_latency_s is None or task.first_call_start_ns is None:
+    if task.first_call_start_ns is None or task.harness_start_ns is None:
         return ""
-    if task.last_call_end_ns is None:
+    delta_s = (task.first_call_start_ns - task.harness_start_ns) / 1e9
+    # A negative delta means the two clocks disagree (harness_start is written by
+    # the pod's shell, span timestamps by the gateway), so the figure would be
+    # meaningless rather than merely imprecise. Blank it instead.
+    if delta_s < 0:
         return ""
-    # Task end is known only to the second, so derive the start from it.
-    task_end_ns = task.last_call_end_ns
-    task_start_ns = task_end_ns - int(task.task_latency_s * 1e9)
-    delta_s = (task.first_call_start_ns - task_start_ns) / 1e9
-    return delta_s if delta_s >= 0 else ""
+    return delta_s
 
 
 def generate_agentic_summary(
