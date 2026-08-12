@@ -136,19 +136,17 @@ def _user_keywords() -> list[str]:
 
 
 def _run_description(experiment_id: str) -> str:
-    """Return the run label, e.g. 'Qwen/Qwen3-32B [inference-perf-conc32-...]'.
+    """A submitter-supplied description wins over the experiment ID.
 
-    A submitter-supplied description wins; the generated label carries the model
-    for readability and the experiment ID to stay unique across a sweep.
+    The ID is not prefixed with the model: it already encodes the treatment and
+    is unique across a sweep, and the model is reported under scenario.stack, so
+    prefixing it made consumers that show both render the model twice.
     """
     user_description = _user_description()
     if user_description:
         return user_description
 
-    model = _get_harness_meta("model", "LLMDBENCH_DEPLOY_CURRENT_MODEL")
-    if not model:
-        return experiment_id
-    return f"{model} [{experiment_id}]" if experiment_id else model
+    return experiment_id
 
 
 def config_hash(config: dict) -> str:
