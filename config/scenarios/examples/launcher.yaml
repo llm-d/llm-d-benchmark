@@ -49,7 +49,7 @@ scenario:
       enabled: true
       image:
         repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-        tag: v0.6.3
+        tag: v0.6.4
       vllm:
         customPreprocessCommand: "source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
         loggingLevel: DEBUG
@@ -59,7 +59,7 @@ scenario:
         enabled: true
         image:
           repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-          tag: v0.6.3
+          tag: v0.6.4
         customPreprocessCommand: "source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
 
     harness:

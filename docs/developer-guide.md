@@ -50,6 +50,7 @@ accurate to the current codebase.
   - [Setup Treatments vs Run Treatments](#setup-treatments-vs-run-treatments)
   - [How to Reference Scenario Overrides](#how-to-reference-scenario-overrides)
   - [Running an Experiment](#running-an-experiment)
+- [10. Agent Core](#10-agent-core)
 
 ---
 
@@ -1351,3 +1352,43 @@ The experiment orchestrator (`_execute_experiment` in `llmdbenchmark/cli.py`):
 Options:
 - `--stop-on-error`: Abort on first failure (default: continue to next treatment)
 - `--skip-teardown`: Leave stacks running for debugging
+
+---
+
+## 10. Agent Core
+
+`llmdbenchmark/agent/` is a leaf package: four pure functions plus one
+versioned YAML map. It has no runtime state, no CLI surface, and no
+Kubernetes client -- unlike every other extension point in this guide, it
+is not a step, an analysis module, or a subcommand. See
+[docs/benchmarking-agent.md](benchmarking-agent.md) for the full model
+reference and a worked example.
+
+The package's only repository imports are
+`llmdbenchmark.utilities.os.filesystem.resolve_specification_file` and
+`llmdbenchmark.analysis.benchmark_report.import_benchmark_report`, so it
+cannot pull in `planner` or drag any standup/run machinery along with it.
+Four entry points cover the whole surface:
+
+- `recommend(facts, overrides=None, *, map_path=None, base_dir=None)` --
+  selects a row from `recommendation_map.yaml` for a Workload Intent, runs
+  Agent Static Validation against the local `config/specification/` and
+  `workload/profiles/` trees, and returns a `RecommendationOutput`. It does
+  not take Execution Facts: endpoint details must never influence
+  Recommendation Map selection.
+- `render_run_command(recommendation, execution_facts)` /
+  `render_benchmark_job_manifest(recommendation, execution_facts,
+  run_command)` -- render the Agent-Rendered Run Command and a plain
+  `batch/v1` Job dict. Neither function renders a Jinja template or touches
+  `config/`.
+- `score_slo_goodput(agent_analysis_input, gates, ...)` -- scores
+  benchmark-report v0.2 files against caller-supplied SLO Gates. It ships
+  with no default thresholds.
+- `write_agent_session_workspace(...)` -- the package's only I/O, writing
+  the four Agent Session Workspace files under a caller-supplied session
+  root.
+
+If you extend this package, keep the leaf-package property: do not import
+`llmdbenchmark.cli`, any `*/steps/*` module, or `llmdbenchmark.executor.*`
+from it, and do not add a Recommendation Map rule whose harness is missing
+from `llmdbenchmark.analysis._WRITER_NAMES`.

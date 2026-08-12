@@ -786,6 +786,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Lifecycle](docs/lifecycle.md)
 - [Run](docs/run.md)
 - [Agentic evaluation (eval-containers)](docs/agentic_eval.md)
+- [Benchmarking Agent (Agent Core)](docs/benchmarking-agent.md)
 - [Running eval-containers on OpenShift](docs/openshift-setup.md)
 - [Standup](docs/standup.md)
 - [Kustomize deploy method](docs/kustomize.md)

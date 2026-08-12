@@ -38,6 +38,7 @@ exclude = ["templates*", "specification*"]
     "benchmark_report/*.yaml",
     "benchmark_report/*.json",
 ]
+"llmdbenchmark.agent" = ["*.yaml"]
 
 [project.urls]
 Homepage = "https://llm-d.ai"
