@@ -1555,6 +1555,30 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+def agentic_stat(xs: list[float], units: Units) -> dict | None:
+    """Summarize ``xs`` in the v0.2 ``Statistics`` shape, or None if empty.
+
+    Shared by the per-task converter below and the run-level aggregator in
+    ``llmdbenchmark.analysis.aggregate_eval_containers`` so both report
+    identical numbers. Only the field names the schema's ``Statistics`` model
+    permits -- notably ``p50`` rather than ``median`` -- since that model
+    forbids extras.
+    """
+    if not xs:
+        return None
+    a = np.array(xs, dtype=float)
+    return {
+        "units": units,
+        "mean": float(a.mean()),
+        "stddev": float(a.std()),
+        "min": float(a.min()),
+        "p50": float(np.percentile(a, 50)),
+        "p90": float(np.percentile(a, 90)),
+        "p99": float(np.percentile(a, 99)),
+        "max": float(a.max()),
+    }
+
+
 def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     """Convert eval-containers agentic output into a v0.2 Benchmark Report.
 
@@ -1656,19 +1680,7 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             t_last = en if t_last is None else max(t_last, en)
 
     def _stat(xs: list[float]):
-        if not xs:
-            return None
-        a = np.array(xs, dtype=float)
-        return {
-            "units": Units.MS,
-            "mean": float(a.mean()),
-            "stddev": float(a.std()),
-            "min": float(a.min()),
-            "p50": float(np.percentile(a, 50)),
-            "p90": float(np.percentile(a, 90)),
-            "p99": float(np.percentile(a, 99)),
-            "max": float(a.max()),
-        }
+        return agentic_stat(xs, Units.MS)
 
     n = n_calls
     dur_s = (

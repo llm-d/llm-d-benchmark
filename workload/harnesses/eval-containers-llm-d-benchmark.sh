@@ -140,9 +140,16 @@ fi
 
 # --- run the eval ------------------------------------------------------------
 # image ENTRYPOINT stages /app for EVAL_TASK_ID, then execs the pipeline.
+# Wall-clock is recorded around the whole task because the OTel traces only
+# cover LLM calls: a span-derived duration silently omits agent startup, tool
+# execution, and grading, and a task that hangs outside its calls looks fast.
+# Analysis needs the real task window to report task latency and time-to-first
+# -call honestly.
+start=$(date +%s)
 rc=0
 "${EVAL_CONTAINERS_ENTRYPOINT:-/entrypoint.sh}" \
   "${EVAL_CONTAINERS_RUN:-/usr/local/bin/run}" || rc=$?
+stop=$(date +%s)
 
 # --- hand results back to llm-d-benchmark's collector ------------------------
 output_dir="${EVAL_OUTPUT_DIR:-/output}"
@@ -168,9 +175,14 @@ _yaml_escape() {
 }
 _description_text="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_TEXT:-}")"
 _description_keywords="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_KEYWORDS:-}")"
-printf 'harness_name: eval-containers\nharness_rc: %s\ntask_id: %s\nmodel: %s\nexperiment_id: "%s"\ndescription_text: "%s"\ndescription_keywords: "%s"\n' \
+# harness_start / harness_stop / harness_delta use the same key names and
+# ISO-8601 formats the other harnesses write, so existing readers need no special
+# case. BusyBox date has no -d @<epoch>, hence the -r fallback.
+_iso() { date -d "@$1" --iso-8601=seconds 2>/dev/null || date -r "$1" +%Y-%m-%dT%H:%M:%S%z; }
+printf 'harness_name: eval-containers\nharness_rc: %s\ntask_id: %s\nmodel: %s\nexperiment_id: "%s"\ndescription_text: "%s"\ndescription_keywords: "%s"\nharness_start: "%s"\nharness_stop: "%s"\nharness_delta: "PT%sS"\n' \
   "$rc" "$EVAL_TASK_ID" "$EVAL_MODEL" "${LLMDBENCH_RUN_EXPERIMENT_ID:-}" \
   "$_description_text" "$_description_keywords" \
+  "$(_iso "$start")" "$(_iso "$stop")" "$(( stop - start ))" \
   > "$results_dir/run_metadata.yaml"
 
 exit "$rc"
