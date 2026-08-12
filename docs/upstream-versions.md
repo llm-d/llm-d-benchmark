@@ -48,8 +48,7 @@ OCI registry at generation (and plan) time.
 | **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 462 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
 | **llmDModelservice** | `v0.4.15` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 463 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
 | **llmDRouter** | `v0.9.0` | tag | `config/templates/values/defaults.yaml` line 467 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
-| **lws** | `0.9.0` | tag | `config/templates/values/defaults.yaml` line 473 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
-
+| **lws** | `0.10.0` | tag | `config/templates/values/defaults.yaml` line 473 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 
 ## Container Image Dependencies
 
