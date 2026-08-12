@@ -213,7 +213,7 @@ remove all cluster resources in the deploy + harness namespaces.
 Copy one of the stack blocks in
 [`config/scenarios/examples/multi-model-optimized-baseline.yaml`](../config/scenarios/examples/multi-model-optimized-baseline.yaml),
 give it a unique short descriptive `name` and a unique `model.*`, and size
-`decode.resources` for it. The parser auto-derives unique `downloadJob.name`
+`modelservice.decode.resources` for it. The parser auto-derives unique `downloadJob.name`
 and `router.monitoring.secretName` values from the model ID label, so
 nothing else needs per-stack customization. Remember to grow
 `shared.storage.modelPvc.size` to cover the extra weights.

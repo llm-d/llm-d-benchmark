@@ -990,33 +990,40 @@ setting it explicitly.
 ```yaml
 # config/scenarios/examples/multi-model-optimized-baseline.yaml (abridged)
 shared:
+  standalone:   { enabled: false }
   modelservice:
     enabled: true
     gateway: { className: istio }
-  standalone:   { enabled: false }
-  httpRoute:
-    mode: shared
-    name: multi-model-route
-    pathPrefix: /{stack.name}
-    rewriteTo: /
-  router:
-    epp:
-      pluginsConfigFile: "optimized-baseline-plugins.yaml"
-      pluginsCustomConfig: { ... }
-    proxy: { args: [ ... ], resources: { ... } }
-    inferencePool: { failureMode: "FailOpen", providerConfig: { ... } }
-  decode:
-    vllm: { customCommand: | ... }
-    initContainers: [ ... ]
+    httpRoute:
+      mode: shared
+      name: multi-model-route
+      pathPrefix: /{stack.name}
+      rewriteTo: /
+    router:
+      epp:
+        pluginsConfigFile: "optimized-baseline-plugins.yaml"
+        pluginsCustomConfig: { ... }
+      proxy: { args: [ ... ], resources: { ... } }
+      inferencePool: { failureMode: "FailOpen", providerConfig: { ... } }
+    decode:
+      vllm: { customCommand: | ... }
+      initContainers: [ ... ]
 
 scenario:
   - name: qwen3-06b
     model: { name: Qwen/Qwen3-0.6B, ... }
-    decode: { replicas: 1, resources: { ... } }
+    modelservice:
+      decode: { replicas: 1, resources: { ... } }
   - name: llama-31-8b
     model: { name: unsloth/Meta-Llama-3.1-8B, ... }
     # same shape
 ```
+
+That scenario uses the nested `modelservice.<section>` spelling consistently
+in both `shared:` and the stacks. DoE treatments and `--set` still target the
+**top-level** dotted paths (`decode.replicas`, `router.epp.*`) -- the hoist
+runs before setup overrides are merged, so a treatment always lands on top of
+the scenario value.
 
 > [!NOTE]
 > Pick **one** spelling per section across `shared:` and the stacks. The
