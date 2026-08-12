@@ -643,7 +643,7 @@ decode:
 {% endif %}
 {% if decode.monitoring.podmonitor.metricRelabelings is defined %}
       metricRelabelings:
-{{ decode.monitoring.podmonitor.metricRelabelings | toyaml | indent(8) }}
+{{ decode.monitoring.podmonitor.metricRelabelings | toyaml(8) }}
 {% endif %}
 {% endif %}
 {% endif %}
@@ -1051,19 +1051,19 @@ prefill:
 {% endif %}
 {% if prefill.monitoring.podmonitor.labels is defined %}
       labels:
-{{ prefill.monitoring.podmonitor.labels | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.labels | toyaml(8) }}
 {% endif %}
 {% if prefill.monitoring.podmonitor.annotations is defined %}
       annotations:
-{{ prefill.monitoring.podmonitor.annotations | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.annotations | toyaml(8) }}
 {% endif %}
 {% if prefill.monitoring.podmonitor.relabelings is defined %}
       relabelings:
-{{ prefill.monitoring.podmonitor.relabelings | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.relabelings | toyaml(8) }}
 {% endif %}
 {% if prefill.monitoring.podmonitor.metricRelabelings is defined %}
       metricRelabelings:
-{{ prefill.monitoring.podmonitor.metricRelabelings | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.metricRelabelings | toyaml(8) }}
 {% endif %}
 {% endif %}
 {% endif %}
