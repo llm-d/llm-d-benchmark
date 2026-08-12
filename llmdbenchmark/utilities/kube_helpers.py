@@ -29,6 +29,12 @@ CRASH_STATES = {
 
 DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 
+# Retry budget for locating the data-access pod. Deliberately generous relative
+# to what it guards: ~14s of polling against a wave of results that cost hours of
+# GPU time and cannot be regenerated once the harness pods are deleted.
+DATA_ACCESS_LOOKUP_ATTEMPTS = 5
+DATA_ACCESS_LOOKUP_DELAY_S = 3.0
+
 
 def _terminated_state_detail(prefix: str, state: dict) -> str:
     """Format a terminated container state for a user-facing error."""
@@ -95,24 +101,54 @@ def _pod_crash_details(pod: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def find_data_access_pod(cmd, namespace: str) -> str | None:
+def find_data_access_pod(
+    cmd,
+    namespace: str,
+    attempts: int = DATA_ACCESS_LOOKUP_ATTEMPTS,
+    delay: float = DATA_ACCESS_LOOKUP_DELAY_S,
+) -> str | None:
     """Find the data-access pod by its well-known label.
 
-    Returns the pod name, or ``None`` if not found.
+    Returns the pod name, or ``None`` if not found after ``attempts`` tries.
+
+    Retries because this lookup gates result collection, and a single failed
+    API call here discards a whole run's results. ``check=False`` makes a
+    transient failure (API server hiccup, DNS blip, the pod restarting because
+    its container definition changed) indistinguishable from a genuinely absent
+    pod, and the caller treats either as fatal -- so one unlucky second can
+    throw away hours of GPU time whose output is sitting intact on the PVC.
+
+    Observed on a 100-task agentic run (2026-08-12): two separate 30-task waves
+    aborted collection this way, and every task directory was still recoverable
+    afterwards with a plain ``kubectl cp``. Retrying costs a few seconds;
+    not retrying costs the run.
     """
-    result = cmd.kube(
-        "get",
-        "pod",
-        "-l",
-        DATA_ACCESS_LABEL,
-        "--namespace",
-        namespace,
-        "-o",
-        "jsonpath={.items[0].metadata.name}",
-        check=False,
-    )
-    if result.success and result.stdout.strip():
-        return result.stdout.strip()
+    last_detail = ""
+    for attempt in range(1, max(1, attempts) + 1):
+        result = cmd.kube(
+            "get",
+            "pod",
+            "-l",
+            DATA_ACCESS_LABEL,
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.items[0].metadata.name}",
+            check=False,
+        )
+        name = (result.stdout or "").strip()
+        # An empty label match makes kubectl's jsonpath emit a multi-line
+        # "array index out of bounds" diagnostic on stdout, so a non-empty
+        # stdout is not proof of a pod name. Require a single bare token.
+        if result.success and name and "\n" not in name and " " not in name:
+            return name
+        last_detail = (
+            (result.stderr or "").strip() or name or "no pod matched the label"
+        )
+        if attempt < attempts:
+            time.sleep(delay)
+    # Left to the caller to report: it knows which treatment was being collected
+    # and where the results still live on the PVC.
     return None
 
 

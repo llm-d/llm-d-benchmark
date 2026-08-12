@@ -25,6 +25,7 @@ from llmdbenchmark.executor.command import CommandResult
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
+    DATA_ACCESS_LABEL,
     find_data_access_pod,
     wait_for_pods_by_label,
     collect_pod_results,
@@ -693,9 +694,20 @@ class DeployHarnessStep(Step):
 
         data_pod = find_data_access_pod(cmd, namespace)
         if not data_pod:
+            # The results are NOT lost when this fails -- they are on the workload
+            # PVC, written by harness pods that have already completed. Say so, and
+            # say how to get them, because the next thing that happens is cleanup
+            # deleting the pods and the run reporting failure, which reads as
+            # "the work is gone" when it is merely uncollected.
             errors.append(
                 f"Data access pod not found in namespace '{namespace}' -- "
-                f"cannot collect results for {experiment_id}"
+                f"cannot collect results for {experiment_id}. The results are "
+                f"still on the workload PVC; recover them with:\n"
+                f"  pod=$(kubectl get pod -n {namespace} "
+                f"-l {DATA_ACCESS_LABEL} -o name | head -1)\n"
+                f"  kubectl cp -n {namespace} "
+                f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
+                f"# dirs matching {experiment_id}_*"
             )
             return errors
 
@@ -839,9 +851,16 @@ class DeployHarnessStep(Step):
 
         data_pod = find_data_access_pod(cmd, namespace)
         if not data_pod:
+            # As above: uncollected is not lost. Point at the PVC copy.
             errors.append(
                 f"Data access pod not found in namespace '{namespace}' \u2014 "
-                f"cannot collect results for {experiment_id}"
+                f"cannot collect results for {experiment_id}. The results are "
+                f"still on the workload PVC; recover them with:\n"
+                f"  pod=$(kubectl get pod -n {namespace} "
+                f"-l {DATA_ACCESS_LABEL} -o name | head -1)\n"
+                f"  kubectl cp -n {namespace} "
+                f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
+                f"# dirs matching {experiment_id}_*"
             )
             return errors
 
