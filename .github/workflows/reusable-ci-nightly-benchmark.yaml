@@ -681,26 +681,28 @@ jobs:
         run: |
           #find ~ -type f -name "cks_nvshmem3.3.9.patch" -print
           cd ~
-          if [[ -d ~/_work/llm-d/llm-d ]];
-          then
+          if [[ -d ~/_work/llm-d/llm-d ]]; then
             ln -s ~/_work ~/work
           fi
-          if [[ ! -d ~/work/llm-d ]];
-          then
+          if [[ ! -d ~/work/llm-d ]]; then
             mkdir -p ~/work/llm-d/
             cd ~/work/llm-d/
             echo "### llm-d code NOT found, will clone now"
             git clone https://github.com/llm-d/llm-d.git
           else
-            echo "### llm-d code is already present. Refreshing to origin/main and deleting llm-d-benchmark"
+            echo "### llm-d code is already present."
+            is_pr_test=$(echo $GITHUB_REF_NAME | grep -E "pr-[0-9]+" || true)
+            if [[ -z $is_pr_test ]]; then
+              echo "### Refreshing to origin/main and deleting llm-d-benchmark"
             # Refresh the persistent checkout so it doesn't run against stale guide config.
-            git -C ~/work/llm-d/llm-d fetch --prune origin
-            git -C ~/work/llm-d/llm-d reset --hard origin/main
+              git -C ~/work/llm-d/llm-d fetch --prune origin
+              git -C ~/work/llm-d/llm-d reset --hard origin/main
+            fi
             pip uninstall -y llmdbenchmark || true
             rm -rf ~/work/llm-d-benchmark/
           fi
           cd ~/work/llm-d/llm-d
-          echo "### llm-d code is present (branch $(git branch --show-current))"
+          echo "### llm-d code is present (GITHUB_REF_NAME=$GITHUB_REF_NAME, branch $(git branch --show-current))"
         shell: bash
 
       - name: Install llmdbenchmark
@@ -948,7 +950,7 @@ jobs:
         shell: bash
 
       - name: Model Download
-        id: guide_model_download
+        id: infra_model_download
         if: env.LLMDBENCH_CICD_PERSISTENT_MODEL == 'true'
         run: |
           cd ~/work/llm-d-benchmark/llm-d-benchmark/
@@ -1035,6 +1037,13 @@ jobs:
             echo "### $(cat ~/work/lkcmd.txt); $LLMDBENCH_CMD ###"
             eval $LLMDBENCH_CMD
           fi
+        shell: bash
+
+      - name: Harness pod log (on failure)
+        id: infra_harness_pod_log
+        if: failure()
+        run: |
+          kubectl -n "$LLMDBENCH_CICD_NS" logs -l app=llmdbench-harness-launcher
         shell: bash
 
       - name: Teardown
@@ -1149,6 +1158,7 @@ jobs:
                [ "${{ steps.infra_create_nightly_prioclass.outcome }}" = "failure" ] || \
                [ "${{ steps.infra_label_node_for_simulated_accelerators.outcome }}" = "failure" ] || \
                [ "${{ steps.infra_handle_namesace_and_secret.outcome }}" = "failure" ] || \
+               [ "${{ steps.infra_model_download.outcome }}" = "failure" ] || \
                [ "${{ steps.infra_upload_results_to_gcs.outcome }}" = "failure" ] || \
                [ "${{ steps.infra_block_waiting_for_standalone_baseline.outcome }}" = "failure" ]; then
             CATEGORY="infra"

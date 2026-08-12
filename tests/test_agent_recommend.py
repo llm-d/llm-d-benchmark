@@ -211,7 +211,9 @@ def test_batch_throughput_falls_back_when_primary_profile_missing(tmp_path):
     # Mirror the repo layout minus the Batch Throughput primary profile.
     guidellm_dir = tmp_path / "workload" / "profiles" / "guidellm"
     guidellm_dir.mkdir(parents=True)
-    (guidellm_dir / "sanity_concurrent.yaml.in").write_text("profile: concurrent\n")
+    (guidellm_dir / "summarization_synthetic.yaml.in").write_text(
+        "profile: concurrent\n"
+    )
     spec_dir = tmp_path / "config" / "specification" / "guides"
     spec_dir.mkdir(parents=True)
     (spec_dir / "optimized-baseline.yaml.j2").write_text("base_dir: {}\n")

@@ -25,7 +25,7 @@ print(' '.join(sorted(get_literal_vals(ProfileType | StrategyType))))
   fi
 fi
 
-export LLMDBENCH_HARNESS_ARGS="--target $(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | yq -r .target) --scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} --output-path ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/results.json --disable-progress"
+export LLMDBENCH_HARNESS_ARGS="--scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} --output kind=json,path=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/results.json --disable-progress"
 
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
@@ -37,7 +37,7 @@ if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; the
 fi
 
 start=$(date +%s.%N)
-guidellm benchmark $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+guidellm run $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 

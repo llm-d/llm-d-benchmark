@@ -967,7 +967,7 @@ class AdminPrerequisitesStep(Step):
                 return f"{helm_repo.rstrip('/')}/lws"
             return f"{helm_repo}/lws"
 
-        cmd.logger.log_info(f"📦 Installing LeaderWorkerSet (LWS) v{version}...")
+        cmd.logger.log_info(f"📦 Installing LeaderWorkerSet (LWS) {version}...")
 
         result = cmd.helm(
             "upgrade",

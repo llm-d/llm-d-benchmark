@@ -1,9 +1,16 @@
-target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
-profile: concurrent
-request_type: text_completions
-rate: 2
-max_seconds: 30
-data:
-  prompt_tokens: 256
-  output_tokens: 128
+spec:
+  backend:
+    kind: openai_http
+    target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+    model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+    request_format: /v1/completions
+  profile:
+    kind: concurrent
+    rate: 2
+  constraints:
+    - kind: max_duration
+      seconds: 30
+  data:
+    - kind: synthetic_text
+    prompt_tokens: 256
+    output_tokens: 128
