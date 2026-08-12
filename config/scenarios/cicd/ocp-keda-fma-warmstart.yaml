@@ -136,6 +136,11 @@ scenario:
                                        # are created once at standup and KEDA drives
                                        # scale during the run.
 
+      launcher:
+        # Cap KV cache so sleep-mode leaves headroom for sampler warmup (avoids OOM).
+        # Re-tune per model/GPU if changed.
+        kvCacheMemory: 11259300148  # bytes (~10.49 GiB)
+
       requester:
         replicas: 1
 

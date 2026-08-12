@@ -38,7 +38,7 @@ spec:
       VLLM_LOGGING_LEVEL: DEBUG
       VLLM_SERVER_DEV_MODE: "1"
       VLLM_USE_V1: "1"
-    options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto --gpu-memory-utilization 0.95 --tensor-parallel-size 1"
+    options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size 1"
     port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1

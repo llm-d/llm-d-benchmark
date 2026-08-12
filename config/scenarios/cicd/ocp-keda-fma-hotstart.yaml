@@ -99,6 +99,11 @@ scenario:
       enabled: true
       iterations: 1
 
+      launcher:
+        # Cap KV cache so sleep-mode leaves headroom for sampler warmup (avoids OOM).
+        # Re-tune per model/GPU if changed.
+        kvCacheMemory: 11259300148  # bytes (~10.49 GiB)
+
       # Opt in to pinning: step_06 picks ONE GPU node whose GPUs are all one
       # type and all free, labels it, and pins the LauncherPopulationPolicy +
       # requester Deployment to it; launcherCount/replicas are sized to that
