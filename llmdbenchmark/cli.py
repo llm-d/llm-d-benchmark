@@ -1110,8 +1110,9 @@ def _print_endpoints_table(context, logger, args) -> None:
     spec_raw = getattr(args, "specification_file", None)
     spec = str(spec_raw) if spec_raw else "<spec>"
     if "/" in spec or spec.endswith(".yaml.j2"):
-        # Full path (e.g. /abs/path/config/specification/guides/multi-model-wva.yaml.j2)
-        # - trim to the friendly `category/name` form the CLI understands.
+        # Full path (e.g. /abs/path/config/specification/examples/
+        # multi-model-optimized-baseline.yaml.j2) - trim to the friendly
+        # `category/name` form the CLI understands.
         parent = os.path.basename(os.path.dirname(spec)) if "/" in spec else ""
         stem = os.path.basename(spec)
         if stem.endswith(".yaml.j2"):
@@ -1804,15 +1805,24 @@ def _extract_workspace_from_scenario(
         with open(scenario_path, encoding="utf-8") as f:
             scenario_data = _yaml.safe_load(f)
 
-        scenarios = scenario_data.get("scenario", [])
-        if scenarios and isinstance(scenarios, list):
-            first_stack = scenarios[0]
-            if not isinstance(first_stack, dict):
+        def _work_dir_of(layer: object) -> str | None:
+            """Read `workDir` from a scenario layer, sectioned form first."""
+            if not isinstance(layer, dict):
                 return None
-            common = first_stack.get("common")
+            common = layer.get("common")
             if isinstance(common, dict) and common.get("workDir") is not None:
                 return common["workDir"]
-            return first_stack.get("workDir")
+            return layer.get("workDir")
+
+        # Per-stack wins, matching the render-time merge order
+        # (defaults -> shared -> stack). A multi-stack scenario normally
+        # puts the scenario-wide workDir in `shared:` alone, so falling
+        # back to it here is what makes that spelling take effect.
+        scenarios = scenario_data.get("scenario", [])
+        if scenarios and isinstance(scenarios, list):
+            if (work_dir := _work_dir_of(scenarios[0])) is not None:
+                return work_dir
+        return _work_dir_of(scenario_data.get("shared"))
     except Exception:  # noqa: BLE001 -- best-effort; fall through to temp dir
         pass
     return None

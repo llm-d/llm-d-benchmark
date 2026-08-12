@@ -2,8 +2,8 @@
 
 Without a per-treatment ``run.description`` every treatment of a sweep falls
 back to the model name, and consumers collapse the sweep into a single entry.
-The generated label is ``<model> [<experiment id>]``; a submitter-supplied
-description wins over it.
+The generated label is the experiment ID; a submitter-supplied description wins
+over it.
 """
 
 from __future__ import annotations
@@ -27,14 +27,8 @@ EXPERIMENT_ID = "inference-perf-conc32-1786024743-hipkpq"
 # No treatment segment: <harness>-<timestamp>-<rand>.
 UNSWEPT_EXPERIMENT_ID = "inference-perf-1786001414-kdonyb"
 
-# The model every staged run reports. Only ever referenced through this name and
-# _expect_label(), so the assertions never restate it.
+# The model every staged run reports.
 MODEL = "Qwen/Qwen3-32B"
-
-
-def _expect_label(experiment_id: str) -> str:
-    """Build the run label prism should show for an experiment ID."""
-    return f"{MODEL} [{experiment_id}]"
 
 
 # The label is built the same way for every harness; these two stand in for a
@@ -109,7 +103,7 @@ def test_in_pod_experiment_id_yields_run_label(tmp_path, monkeypatch) -> None:
 
     run = import_inference_perf(results_file).run
 
-    assert run.description == _expect_label(EXPERIMENT_ID)
+    assert run.description == EXPERIMENT_ID
     assert run.eid == str(uuid.uuid5(uuid.NAMESPACE_URL, EXPERIMENT_ID))
 
 
@@ -123,7 +117,7 @@ def test_run_label_is_harness_agnostic(harness, tmp_path, monkeypatch) -> None:
 
     run = import_inference_perf(results_file).run
 
-    assert run.description == _expect_label(experiment_id)
+    assert run.description == experiment_id
     assert run.eid == str(uuid.uuid5(uuid.NAMESPACE_URL, experiment_id))
 
 
@@ -137,7 +131,7 @@ def test_multi_segment_treatment_is_kept_whole(harness, tmp_path, monkeypatch) -
 
     run = import_inference_perf(results_file).run
 
-    assert run.description == _expect_label(experiment_id)
+    assert run.description == experiment_id
     assert "grp40-splen8k" in run.description
 
 
@@ -147,7 +141,7 @@ def test_post_hoc_experiment_id_read_from_run_metadata(tmp_path, monkeypatch) ->
 
     run = import_inference_perf(results_file).run
 
-    assert run.description == _expect_label(EXPERIMENT_ID)
+    assert run.description == EXPERIMENT_ID
     assert run.eid == str(uuid.uuid5(uuid.NAMESPACE_URL, EXPERIMENT_ID))
 
 
@@ -189,7 +183,7 @@ def test_unswept_run_is_still_labelled(tmp_path, monkeypatch) -> None:
 
     run = import_inference_perf(results_file).run
 
-    assert run.description == _expect_label(UNSWEPT_EXPERIMENT_ID)
+    assert run.description == UNSWEPT_EXPERIMENT_ID
 
 
 @pytest.mark.parametrize("harness", HARNESSES)
@@ -228,15 +222,14 @@ def test_blank_experiment_id_is_no_experiment_id(blank, tmp_path, monkeypatch) -
     assert "eid" not in dumped
 
 
-def test_label_is_never_the_bare_model_name(tmp_path, monkeypatch) -> None:
-    """A bare model name is identical across a sweep, and prism's resolveRunLabel
-    deprioritizes a candidate equal to it."""
+def test_label_does_not_restate_the_model_name(tmp_path, monkeypatch) -> None:
+    """A bare model name is identical across a sweep, and consumers that pair the
+    label with scenario.stack's model would print the model twice."""
     results_file = _setup_run(tmp_path, monkeypatch, experiment_id=EXPERIMENT_ID)
 
     description = import_inference_perf(results_file).run.description
 
-    assert description.lower() != MODEL.lower()
-    assert description.startswith(MODEL)
+    assert MODEL.lower() not in description.lower()
     assert "conc32" in description
 
 
@@ -291,9 +284,7 @@ def test_blank_description_falls_back_to_the_generated_label(
         tmp_path, monkeypatch, experiment_id=EXPERIMENT_ID, description_text=blank
     )
 
-    assert import_inference_perf(results_file).run.description == _expect_label(
-        EXPERIMENT_ID
-    )
+    assert import_inference_perf(results_file).run.description == EXPERIMENT_ID
 
 
 def test_submitter_keywords_are_recorded(tmp_path, monkeypatch) -> None:
@@ -333,22 +324,10 @@ def test_a_description_survives_conversion_off_the_pod(tmp_path, monkeypatch) ->
     assert import_inference_perf(results_file).run.description == in_pod
 
 
-def test_model_name_is_read_from_the_environment(tmp_path, monkeypatch) -> None:
-    """The in-pod envar supplies the model when run_metadata.yaml lacks it."""
+def test_label_ignores_the_model_from_every_source(tmp_path, monkeypatch) -> None:
+    """Neither the metadata file nor the in-pod envar may reach the label."""
     results_file = _setup_run(tmp_path, monkeypatch, model="")
     monkeypatch.setenv("LLMDBENCH_DEPLOY_CURRENT_MODEL", "meta-llama/Llama-3.1-8B")
-    monkeypatch.setenv("LLMDBENCH_RUN_EXPERIMENT_ID", EXPERIMENT_ID)
-
-    run = import_inference_perf(results_file).run
-
-    assert run.description == f"meta-llama/Llama-3.1-8B [{EXPERIMENT_ID}]"
-
-
-def test_label_without_a_model_falls_back_to_the_experiment_id(
-    tmp_path, monkeypatch
-) -> None:
-    """With no model from any source the label is still per-treatment unique."""
-    results_file = _setup_run(tmp_path, monkeypatch, model="")
     monkeypatch.setenv("LLMDBENCH_RUN_EXPERIMENT_ID", EXPERIMENT_ID)
 
     run = import_inference_perf(results_file).run
@@ -363,7 +342,7 @@ def test_v0_2_1_carries_the_same_identity(tmp_path, monkeypatch) -> None:
     report = native_to_br0_2_1.import_inference_perf(results_file)
 
     assert report.version == "0.2.1"
-    assert report.run.description == _expect_label(EXPERIMENT_ID)
+    assert report.run.description == EXPERIMENT_ID
     assert report.run.eid == str(uuid.uuid5(uuid.NAMESPACE_URL, EXPERIMENT_ID))
 
 
@@ -386,7 +365,7 @@ def test_driver_side_analysis_populates_identity(tmp_path, monkeypatch) -> None:
             results_dir / "benchmark_report_v0.2,_stage_0_lifecycle_metrics.json.yaml"
         ).read_text(encoding="utf-8")
     )
-    assert report["run"]["description"] == _expect_label(EXPERIMENT_ID)
+    assert report["run"]["description"] == EXPERIMENT_ID
     assert report["run"]["eid"] == str(uuid.uuid5(uuid.NAMESPACE_URL, EXPERIMENT_ID))
     # The envar must not leak to whatever the driver analyses next.
     assert "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" not in os.environ
@@ -430,11 +409,8 @@ def test_sequential_directories_do_not_share_identity(tmp_path, monkeypatch) -> 
             ).read_text(encoding="utf-8")
         )
 
-    for suffix, model in treatments.items():
-        assert (
-            reports[suffix]["run"]["description"]
-            == f"{model} [{experiment_ids[suffix]}]"
-        )
+    for suffix in treatments:
+        assert reports[suffix]["run"]["description"] == experiment_ids[suffix]
         assert reports[suffix]["run"]["eid"] == str(
             uuid.uuid5(uuid.NAMESPACE_URL, experiment_ids[suffix])
         )

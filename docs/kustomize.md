@@ -170,5 +170,5 @@ because their generated manifests don't have the hard requirement.
   `{guideName}-epp` endpoint) with no per-stack/per-model uniquification
   (unlike modelservice's per-stack identity resolution), so multiple stacks
   would collide on the same guide resources. Use the `modelservice` method
-  (e.g. the `multi-model-wva` scenario) for multi-model; keep kustomize
+  (e.g. the `multi-model-optimized-baseline` scenario) for multi-model; keep kustomize
   scenarios single-stack.

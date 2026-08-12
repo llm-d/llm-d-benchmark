@@ -934,9 +934,9 @@ def wake(base_url: str, timeout: float, wait: float):
             raise RuntimeError(f"Server failed sleeping status after {elapsed} secs.")
 
 
-def find_service_by_cluster_ip(v1: client.CoreV1Api, ip: str):
-    """find a clusterip service giving an ip"""
-    services = v1.list_service_for_all_namespaces().items
+def find_service_by_cluster_ip(v1: client.CoreV1Api, namespace: str, ip: str):
+    """Find a ClusterIP service by IP within the benchmark namespace."""
+    services = v1.list_namespaced_service(namespace=namespace).items
     for svc in services:
         if svc.spec.cluster_ip == ip:
             return svc
@@ -1876,7 +1876,7 @@ def benchmark_nop(  # pylint: disable=too-many-arguments,too-many-positional-arg
         raise RuntimeError(f"Unable to extract hostname from {endpoint_url}.")
 
     # it should be IP
-    svc = find_service_by_cluster_ip(v1, cluster_ip)
+    svc = find_service_by_cluster_ip(v1, namespace, cluster_ip)
     if not svc:
         raise RuntimeError(f"No service found with ClusterIP {cluster_ip}")
 

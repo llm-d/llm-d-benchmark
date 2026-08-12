@@ -114,7 +114,8 @@ def add_subcommands(
         help=(
             "Comma-separated list of stack names to restrict execution to. "
             "Default: unset, meaning 'run against every stack of the scenario'. "
-            "Useful in multi-stack scenarios (e.g. guides/multi-model-wva) "
+            "Useful in multi-stack scenarios "
+            "(e.g. examples/multi-model-optimized-baseline) "
             "to benchmark a single pool without re-deploying. "
             "Endpoint URL auto-resolves for the selected stack - no need to "
             "pass --endpoint-url. Unknown names fail loudly. "

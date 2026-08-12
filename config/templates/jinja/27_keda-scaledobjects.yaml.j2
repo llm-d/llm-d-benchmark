@@ -7,6 +7,11 @@
      none         -- no authenticationRef, no authModes
      bearer-secret -- authModes: bearer + authenticationRef: keda-prometheus-auth
 
+   scaleTargetRef fields (all optional, with defaults):
+     apiVersion   -- defaults to apps/v1
+     kind         -- defaults to Deployment
+     name         -- defaults to <model_id_label>-decode
+
    Only rendered when keda.scaledObjects is defined and non-empty.
    ============================================================================ #}
 {% if keda is defined and keda.scaledObjects | default([]) %}
@@ -26,7 +31,7 @@ metadata:
     llm-d.ai/model-id: "{{ model.name }}"
 spec:
   scaleTargetRef:
-    apiVersion: apps/v1
+    apiVersion: {{ so.scaleTargetRef.apiVersion | default('apps/v1') if so.scaleTargetRef is defined else 'apps/v1' }}
     kind: {{ so.scaleTargetRef.kind | default('Deployment') if so.scaleTargetRef is defined else 'Deployment' }}
     name: {{ target_name }}
   minReplicaCount: {{ so.minReplicas | default(1) }}

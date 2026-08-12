@@ -353,6 +353,7 @@ def test_report_time_series_disabled_by_env(tmp_path: Path, monkeypatch) -> None
     obs = report["results"]["observability"]
     assert "components" not in obs
     assert obs["vllm_kv_cache_usage_perc"]["components"][0]["statistics"]["mean"] == 0.1
+    assert obs["time_series_interval"]["scope"] == "disabled"
 
 
 def test_report_time_series_downsampled(tmp_path: Path, monkeypatch) -> None:
@@ -380,3 +381,152 @@ def test_report_time_series_downsampled(tmp_path: Path, monkeypatch) -> None:
     assert len(series) <= 10
     assert series[0]["value"] == 0.0
     assert series[-1]["value"] == 0.49
+
+
+def _windowed_series(tmp_path: Path, window) -> list[dict]:
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+    for i in range(6):
+        _write_scrape(
+            raw_dir,
+            "pod-1",
+            f"2026-07-14T00:00:{i:02d}Z",
+            [f"vllm:kv_cache_usage_perc {i / 100:.2f}"],
+        )
+    (processed_dir / "metrics_summary.json").write_text(
+        _summary_with({"vllm:kv_cache_usage_perc": {"mean": 0.03}}), encoding="utf-8"
+    )
+    report = add_metrics_to_benchmark_report(
+        {}, str(metrics_dir), time_series_window=window
+    )
+    return report["results"]["observability"]["components"][0]["time_series"][
+        "kv_cache_usage"
+    ]["series"]
+
+
+def test_report_time_series_clipped_to_window(tmp_path: Path) -> None:
+    """A stage window keeps only that stage's samples, not the whole run's.
+
+    Half-open, so the sample at the end bound belongs to the next stage alone.
+    """
+    window = (
+        datetime(2026, 7, 14, 0, 0, 2, tzinfo=timezone.utc),
+        datetime(2026, 7, 14, 0, 0, 4, tzinfo=timezone.utc),
+    )
+    assert [p["value"] for p in _windowed_series(tmp_path, window)] == [0.02, 0.03]
+
+
+def test_stage_windows_parses_every_marker_variant(tmp_path: Path) -> None:
+    """Rate-based, session-based and failed stages all yield a window.
+
+    The marker strings are a contract with inference-perf's load generator.
+    """
+    from llmdbenchmark.analysis import _stage_windows
+
+    prefix = "inference_perf.loadgen.load_generator - INFO -"
+    (tmp_path / "stdout.log").write_text(
+        f"2026-08-11 11:51:19,607 - {prefix} Stage 0 - run started\n"
+        f"2026-08-11 11:51:57,120 - {prefix} Stage 0 - run completed\n"
+        f"2026-08-11 11:52:00,001 - {prefix} Stage 1 - session-based run started\n"
+        f"2026-08-11 11:52:40,002 - {prefix} Stage 1 - session-based run completed\n"
+        f"2026-08-11 11:53:00,003 - {prefix} Stage 2 - run started\n"
+        f"2026-08-11 11:53:30,004 - {prefix} Stage 2 - run failed\n"
+        f"2026-08-11 11:54:00,005 - {prefix} Stage 3 - run started\n",
+        encoding="utf-8",
+    )
+
+    windows = _stage_windows(tmp_path)
+
+    # Stage 3 never terminated, so it keeps the whole-run series.
+    assert sorted(windows) == [0, 1, 2]
+    assert windows[1] == (
+        datetime(2026, 8, 11, 11, 52, 0, tzinfo=timezone.utc),
+        datetime(2026, 8, 11, 11, 52, 40, tzinfo=timezone.utc),
+    )
+    assert windows[2][1] == datetime(2026, 8, 11, 11, 53, 30, tzinfo=timezone.utc)
+
+
+def test_stage_windows_missing_log_returns_empty(tmp_path: Path) -> None:
+    """No stdout.log leaves the caller on the whole-run series."""
+    from llmdbenchmark.analysis import _stage_windows
+
+    assert _stage_windows(tmp_path) == {}
+
+
+def test_stage_windows_rejects_inverted_window(tmp_path: Path) -> None:
+    """A retry that never completed leaves an end before its start.
+
+    Each event is last-write-wins, so the second "started" overwrites the first
+    while "completed" still holds the first attempt's stamp.
+    """
+    from llmdbenchmark.analysis import _stage_windows
+
+    prefix = "inference_perf.loadgen.load_generator - INFO -"
+    (tmp_path / "stdout.log").write_text(
+        f"2026-08-11 11:51:19,607 - {prefix} Stage 0 - run started\n"
+        f"2026-08-11 11:51:57,120 - {prefix} Stage 0 - run completed\n"
+        f"2026-08-11 11:59:00,001 - {prefix} Stage 0 - run started\n",
+        encoding="utf-8",
+    )
+
+    assert _stage_windows(tmp_path) == {}
+
+
+def test_report_stage_index_matches_native_idiom() -> None:
+    """Stage extraction must agree with native_to_br0_2, which names the reports."""
+    from llmdbenchmark.analysis import _REPORT_STAGE_RE
+
+    for name, expected in (
+        ("benchmark_report_v0.2,_stage_0_lifecycle_metrics.json.yaml", 0),
+        ("benchmark_report_v0.2,_stage_10_lifecycle_metrics.json.yaml", 10),
+        ("benchmark_report_v0.2,_stage_0_session_lifecycle_metrics.json.yaml", 0),
+        ("x_stage_2_stage_5.yaml", 5),
+    ):
+        match = _REPORT_STAGE_RE.match(name)
+        assert match and int(match.group(1)) == expected, name
+
+    assert _REPORT_STAGE_RE.match("benchmark_report_v0.2,_results.json.yaml") is None
+
+
+def test_report_version_stable_when_window_clips_everything(tmp_path: Path) -> None:
+    """An empty clip must not change the declared version.
+
+    Otherwise sibling reports in one sweep disagree, and a short stage validates
+    against the stricter v0.2 model while its neighbours declare v0.2.1.
+    """
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+    _write_scrape(
+        raw_dir,
+        "pod-1",
+        "2026-07-14T00:00:00Z",
+        ["vllm:num_requests_running 3"],
+    )
+    (processed_dir / "metrics_summary.json").write_text(
+        _summary_with({"vllm:num_requests_running": {"mean": 3.0}}), encoding="utf-8"
+    )
+    empty = (
+        datetime(2026, 7, 14, 1, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 7, 14, 1, 0, 5, tzinfo=timezone.utc),
+    )
+
+    clipped = add_metrics_to_benchmark_report(
+        {"version": "0.2"}, str(metrics_dir), time_series_window=empty
+    )
+    whole_run = add_metrics_to_benchmark_report({"version": "0.2"}, str(metrics_dir))
+
+    assert clipped["version"] == whole_run["version"] == "0.2.1"
+    interval = clipped["results"]["observability"]["time_series_interval"]
+    assert interval["scope"] == "stage"
+    assert interval["datapoints"] == 0
+    assert interval["datapoints_available"] == 1
+    assert interval["scraped_from"] == "2026-07-14T00:00:00+00:00"
+    assert (
+        whole_run["results"]["observability"]["time_series_interval"]["scope"] == "run"
+    )

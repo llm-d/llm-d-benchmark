@@ -67,19 +67,17 @@ scenario:
         maxReplicas: 6
         pollingInterval: 15
         unsafeSsl: true
-        # Defaults come from defaults.yaml; override the whole set here, e.g.
-        # (metricType + activationThreshold optional, default AverageValue/"0"):
+        # Triggers mirror the upstream llm-d workload-autoscaling KEDA guides.
+        # Defaults (from defaults.yaml) scale on EPP pool-saturation (the
+        # keda-epp-saturation guide). To scale on EPP queue size instead (the
+        # keda-epp-queue guide), override triggers here:
         # triggers:
-        #   - name: pool-saturation
-        #     query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
-        #     threshold: "0.7"
-        #     metricType: AverageValue
-        #     activationThreshold: "0"
+        #   - name: queue-size
+        #     query: 'sum(llm_d_epp_flow_control_queue_size{model_name="${modelName}"})'
+        #     threshold: "1"
         #   - name: running-requests
         #     query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
         #     threshold: "16"
-        #     metricType: AverageValue
-        #     activationThreshold: "0"
         behavior:
           scaleUp:
             stabilizationWindowSeconds: 0

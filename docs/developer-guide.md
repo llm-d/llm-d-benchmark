@@ -951,73 +951,79 @@ behind the same gateway), lift scenario-wide settings into the top-level
 ```yaml
 # config/scenarios/examples/my-two-model-scenario.yaml
 shared:
-  modelservice: { enabled: true }
+  modelservice:
+    enabled: true
+    # `epponly` deploys no Gateway, so multi-stack needs a real gateway class.
+    gateway: { className: istio }
   standalone:   { enabled: false }
   httpRoute:
     mode: shared
     name: multi-model-route
     pathPrefix: /{stack.name}
     rewriteTo: /
-  wva:
-    enabled: true
-    image: { tag: v0.6.0 }
-
-scenario:
-  - name: qwen3-06b
-    model: { name: Qwen/Qwen3-0.6B, ... }
-    decode: { replicas: 1 }
-    wva:
-      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
-      hpa:                { minReplicas: 1, maxReplicas: 4 }
-  - name: llama-31-8b
-    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
-    decode: { replicas: 1 }
-    wva:
-      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
-      hpa:                { minReplicas: 1, maxReplicas: 4 }
-```
-
-See the next subsection for how `shared:` merges with per-stack and the
-render-time behavior (auto-named PVCs, shared HTTPRoute, stack-index guards).
-For a fully-annotated real scenario, see
-[`examples/multi-model-wva.yaml`](../config/scenarios/examples/multi-model-wva.yaml).
-
-### Multi-Stack Scenarios and the `shared:` Block
-
-The scenario file supports an optional top-level `shared:` block alongside the
-`scenario:` list. Values in `shared:` are merged into every stack *before* the
-per-stack overrides, letting you lift scenario-wide settings (gateway, WVA
-controller, shared HTTPRoute config, chart versions, plugin config) out of
-per-stack blocks. Per-stack always wins, so a stack can still opt out of any
-shared value by setting it explicitly.
-
-```yaml
-# config/scenarios/examples/multi-model-wva.yaml (abridged)
-shared:
-  modelservice: { enabled: true }
-  standalone:   { enabled: false }
-  wva:
-    enabled: true
-    image: { repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler, tag: v0.6.0 }
-  httpRoute:
-    mode: shared
-    name: multi-model-route
-    pathPrefix: /{stack.name}
-    rewriteTo: /
-  vllmCommon:
-    flags: { enforceEager: true }
+  router:
+    epp: { pluginsConfigFile: "my-plugins.yaml", ... }
 
 scenario:
   - name: qwen3-06b
     model: { name: Qwen/Qwen3-0.6B, ... }
     decode: { replicas: 1, resources: { ... } }
-    wva:
-      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
-      hpa:                { minReplicas: 1, maxReplicas: 4 }
+  - name: llama-31-8b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    decode: { replicas: 1, resources: { ... } }
+```
+
+See the next subsection for how `shared:` merges with per-stack and the
+render-time behavior (auto-named PVCs, shared HTTPRoute, stack-index guards).
+For a fully-annotated real scenario, see
+[`examples/multi-model-optimized-baseline.yaml`](../config/scenarios/examples/multi-model-optimized-baseline.yaml).
+
+### Multi-Stack Scenarios and the `shared:` Block
+
+The scenario file supports an optional top-level `shared:` block alongside the
+`scenario:` list. Values in `shared:` are merged into every stack *before* the
+per-stack overrides, letting you lift scenario-wide settings (gateway, shared
+HTTPRoute config, chart versions, plugin config) out of per-stack blocks.
+Per-stack always wins, so a stack can still opt out of any shared value by
+setting it explicitly.
+
+```yaml
+# config/scenarios/examples/multi-model-optimized-baseline.yaml (abridged)
+shared:
+  modelservice:
+    enabled: true
+    gateway: { className: istio }
+  standalone:   { enabled: false }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+  router:
+    epp:
+      pluginsConfigFile: "optimized-baseline-plugins.yaml"
+      pluginsCustomConfig: { ... }
+    proxy: { args: [ ... ], resources: { ... } }
+    inferencePool: { failureMode: "FailOpen", providerConfig: { ... } }
+  decode:
+    vllm: { customCommand: | ... }
+    initContainers: [ ... ]
+
+scenario:
+  - name: qwen3-06b
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1, resources: { ... } }
   - name: llama-31-8b
     model: { name: unsloth/Meta-Llama-3.1-8B, ... }
     # same shape
 ```
+
+> [!NOTE]
+> Pick **one** spelling per section across `shared:` and the stacks. The
+> nested `modelservice.<section>` form is hoisted to the top level *after*
+> `shared:` and per-stack are merged, so mixing (e.g. `shared:` nesting
+> `modelservice.decode` while a stack sets top-level `decode`) makes the
+> shared value win over the stack's.
 
 **Resource-name collision handling (multi-stack only).** When two or more stacks
 share a namespace, the render engine auto-suffixes a small set of shipped-default

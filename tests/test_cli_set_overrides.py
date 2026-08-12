@@ -3,7 +3,11 @@
 Covers the parser (`llmdbenchmark/parser/cli_overrides.py`), the per-stack
 selector resolution and fail-fast validation in ``RenderPlans``, the
 precedence chain assembled in ``cli._build_setup_overrides_by_stack``, and
-end-to-end rendering against the real templates and shipped scenarios.
+end-to-end rendering against the real templates.
+
+Rendering runs against test-owned fixtures in ``tests/fixtures/`` rather
+than shipped scenarios -- see the note on ``SINGLE_STACK`` / ``MULTI_STACK``
+below.
 """
 
 from argparse import Namespace
@@ -39,12 +43,17 @@ from llmdbenchmark.parser.version_resolver import VersionResolver
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = PROJECT_ROOT / "config" / "templates" / "jinja"
 DEFAULTS = PROJECT_ROOT / "config" / "templates" / "values" / "defaults.yaml"
-SINGLE_STACK = (
-    PROJECT_ROOT / "config" / "scenarios" / "guides" / "optimized-baseline.yaml"
-)
-MULTI_STACK = (
-    PROJECT_ROOT / "config" / "scenarios" / "examples" / "multi-model-wva.yaml"
-)
+# Test-owned fixtures, deliberately NOT scenarios under config/scenarios/.
+# Those ship to users and get retuned freely -- replicas, resources, model
+# choice, pool names -- and the tests below assert on literal stack names
+# and values. Pointing them at a shipped scenario makes an ordinary config
+# edit fail the suite for a reason that has nothing to do with the code
+# under test. Each fixture's header states the contract its tests rely on.
+#
+# Whether the *shipped* scenarios still render is a separate concern,
+# covered by the CI plan-rendering job over config/specification/**.
+SINGLE_STACK = PROJECT_ROOT / "tests" / "fixtures" / "single_stack_overrides.yaml"
+MULTI_STACK = PROJECT_ROOT / "tests" / "fixtures" / "multi_stack_overrides.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +706,7 @@ class TestClusterConfigStillWorks:
             setup_overrides_by_stack={GLOBAL_SELECTOR: self.CLUSTER_CONFIG},
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["storage"]["workloadPvc"]["storageClassName"] == (
             "ocs-storagecluster-cephfs"
         )
@@ -718,7 +727,7 @@ class TestClusterConfigStillWorks:
             tmp_path, SINGLE_STACK, setup_overrides_by_stack={GLOBAL_SELECTOR: merged}
         ).eval()
         assert result.global_errors == []
-        pvc = _configs(result)["optimized-baseline"]["storage"]["workloadPvc"]
+        pvc = _configs(result)["single-pool"]["storage"]["workloadPvc"]
         assert pvc["storageClassName"] == "from-cli"
         # ...and the file's other values are untouched.
         assert pvc["accessModes"] == ["ReadWriteMany"]
@@ -737,7 +746,7 @@ class TestClusterConfigStillWorks:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["storage"]["workloadPvc"]["storageClassName"] == (
             "from-treatment"
         )
@@ -774,12 +783,16 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["decode"]["replicas"] == 7
 
-    def test_sglang_variant_reproduced_from_base_scenario(self, tmp_path):
-        # The motivating case: guides/optimized-baseline-sglang.yaml is the
-        # base guide plus these two values.
+    def test_kustomize_variant_reproduced_from_base_scenario(self, tmp_path):
+        # The motivating case for `--set`: the repo used to ship a
+        # `*-sglang` twin for each kustomize guide, differing only in the
+        # accelerator backend. Those files are gone -- `-t kustomize` plus
+        # one `--set` reproduces them. `enabled` flips from the CLI method,
+        # `acceleratorBackend` comes from the override, and `guideName`
+        # survives untouched from the scenario.
         result = _renderer(
             tmp_path,
             SINGLE_STACK,
@@ -789,10 +802,10 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["kustomize"]["enabled"] is True
         assert config["kustomize"]["acceleratorBackend"] == "gpu/sglang"
-        assert config["kustomize"]["guideName"] == "optimized-baseline"
+        assert config["kustomize"]["guideName"] == "single-pool-guide"
 
     def test_dedicated_model_flag_beats_override(self, tmp_path):
         result = _renderer(
@@ -804,9 +817,7 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["model"]["name"] == (
-            "facebook/opt-125m"
-        )
+        assert _configs(result)["single-pool"]["model"]["name"] == ("facebook/opt-125m")
 
     def test_dedicated_flags_beat_doe_treatments_too(self, tmp_path):
         # Pins the documented precedence tail:
@@ -827,7 +838,7 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["model"]["name"] == "facebook/opt-125m"
         assert config["gateway"]["className"] == "istio"
 
@@ -840,7 +851,7 @@ class TestSingleStackRender:
             setup_overrides_by_stack={GLOBAL_SELECTOR: {"decode": {"replicas": 3}}},
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["decode"]["replicas"] == 9
+        assert _configs(result)["single-pool"]["decode"]["replicas"] == 9
 
     def test_legacy_setup_overrides_param_still_applies(self, tmp_path):
         # Back-compat: DoE treatments and older callers pass only this.
@@ -848,11 +859,13 @@ class TestSingleStackRender:
             tmp_path, SINGLE_STACK, setup_overrides={"decode": {"replicas": 6}}
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["decode"]["replicas"] == 6
+        assert _configs(result)["single-pool"]["decode"]["replicas"] == 6
 
     def test_no_overrides_leaves_scenario_untouched(self, tmp_path):
+        # Pins the fixture baseline the override tests measure against: if
+        # this moves, "2 -> 4" in the override-log assertions is stale too.
         baseline = _configs(_renderer(tmp_path, SINGLE_STACK).eval())
-        assert baseline["optimized-baseline"]["decode"]["replicas"] == 2
+        assert baseline["single-pool"]["decode"]["replicas"] == 2
 
 
 class TestMultiStackRender:
@@ -880,16 +893,23 @@ class TestMultiStackRender:
         assert configs["llama-31-8b"]["decode"]["replicas"] == 2
 
     def test_global_floor_with_exact_exception(self, tmp_path):
+        # The global selector sets a floor for every stack; the exact-name
+        # selector overrides it for one, regardless of flag order.
         parsed, _ = parse_cli_overrides(
-            ["wva.hpa.maxReplicas=6", "llama-31-8b:wva.hpa.maxReplicas=2"]
+            [
+                "decode.resources.limits.memory=64Gi",
+                "llama-31-8b:decode.resources.limits.memory=32Gi",
+            ]
         )
         result = _renderer(
             tmp_path, MULTI_STACK, setup_overrides_by_stack=parsed
         ).eval()
         assert result.global_errors == []
         configs = _configs(result)
-        assert configs["qwen3-06b"]["wva"]["hpa"]["maxReplicas"] == 6
-        assert configs["llama-31-8b"]["wva"]["hpa"]["maxReplicas"] == 2
+        assert configs["qwen3-06b"]["decode"]["resources"]["limits"]["memory"] == "64Gi"
+        assert (
+            configs["llama-31-8b"]["decode"]["resources"]["limits"]["memory"] == "32Gi"
+        )
 
     def test_glob_selector_matches_subset(self, tmp_path):
         parsed, _ = parse_cli_overrides(["*-8b:decode.replicas=3"])
@@ -1003,7 +1023,7 @@ class TestSecretRedaction:
             tmp_path, SINGLE_STACK, setup_overrides_by_stack=parsed
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["huggingface"]["token"] == "hf_SUPERSECRET123"
 
     def test_duplicate_secret_warning_does_not_echo_values(self):
@@ -1074,7 +1094,7 @@ class TestOverrideLogging:
             tmp_path, SINGLE_STACK, setup_overrides_by_stack=parsed
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["vllmCommon"]["volumeMounts"] == [
+        assert _configs(result)["single-pool"]["vllmCommon"]["volumeMounts"] == [
             {"name": "only", "mountPath": "/only"}
         ]
 

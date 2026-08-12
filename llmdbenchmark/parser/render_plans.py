@@ -110,15 +110,9 @@ class RenderPlans:
         self._nok8s_port_claims: dict[int, tuple[str, str]] = {}
         self._nok8s_name_claims: dict[str, str] = {}
 
-        # ``--non-admin`` propagates into the Jinja render context as
-        # ``nonAdmin`` so templates can gate cluster-scoped resources
-        # (ClusterRole, ClusterRoleBinding, etc.) the namespaced user
-        # can't create. Currently consumed by
-        # ``05_namespace_sa_rbac_secret.yaml.j2`` to skip the
-        # ``inference-perf-service-viewer`` pair -- those are only
-        # required by the ``nop`` harness's cluster-wide service
-        # discovery, so dropping them is safe for the mainstream
-        # harnesses (inference-perf, guidellm, vllm-benchmark).
+        # Keep accepting --non-admin for CLI/API compatibility. Resource
+        # authorization is enforced by the execution context; the rendered
+        # namespace template no longer emits cluster-scoped resources.
         self.cli_non_admin: bool = bool(cli_non_admin)
 
         self.logger = logger or get_logger(
@@ -1089,7 +1083,14 @@ class RenderPlans:
         errors: list[str] = []
         nok8s = values["nok8s"]
         replicas = nok8s.get("vllm", {}).get("replicas", 1)
-        if not isinstance(replicas, int) or replicas < 1:
+        if isinstance(replicas, str) and replicas.strip().isdigit():
+            # `replicas: "2"` fails the render on its own (the container
+            # template does arithmetic on it), but coerce it here anyway so
+            # the port span below covers every worker the author asked for --
+            # under-counting would hide a sibling-stack clash behind an error
+            # message about the type.
+            replicas = int(replicas.strip())
+        if not isinstance(replicas, int) or isinstance(replicas, bool) or replicas < 1:
             # A bad value is already reported by the template render; this
             # validator only has to not crash on it.
             replicas = 1
@@ -1115,11 +1116,34 @@ class RenderPlans:
 
         for path, is_base in self._NOK8S_HOST_PORTS:
             base = self._get_nested(values, path)
-            if isinstance(base, str) and base.isdigit():
-                base = int(base)
-            if not isinstance(base, int):
-                continue
             key = ".".join(path)
+            if base is None:
+                # Absent, not misconfigured: defaults.yaml supplies all six, and
+                # `deep_merge` drops an explicit ``null`` so the default wins.
+                # Presence is not this validator's contract.
+                continue
+            if isinstance(base, str) and base.strip().isdigit():
+                base = int(base.strip())
+            # Only `vllm.hostPort` is used in template arithmetic, so a bad
+            # value there fails the render on its own. The other five are
+            # interpolated verbatim: they would render a nonsense port into
+            # the Envoy bootstrap and the endpoint URL, exit 0, and only fail
+            # when the container refuses to start. Reject them here instead --
+            # and a value that is not a port cannot be clash-checked below, so
+            # skipping it silently would also hide a sibling-stack collision.
+            if not isinstance(base, int) or isinstance(base, bool):
+                errors.append(
+                    f"[{stack_name}] {key} must be an integer port, got "
+                    f"{base!r}. A quoted value in the scenario YAML "
+                    f"(listenPort: '8081') is a string, not a number."
+                )
+                continue
+            if not 1 <= base <= 65535:
+                errors.append(
+                    f"[{stack_name}] {key} is {base}, outside the valid port "
+                    f"range 1-65535."
+                )
+                continue
             for port in range(base, base + (replicas if is_base else 1)):
                 owner, owner_key = self._nok8s_port_claims.setdefault(
                     port, (stack_name, key)
@@ -1340,6 +1364,9 @@ class RenderPlans:
         - Default ``router.modelServers.matchLabels`` and
           ``targetPorts`` to the benchmark conventions when the scenario
           hasn't overridden them.
+        - Mirror ``router.monitoring.secretName`` into
+          ``router.monitoring.prometheus.auth.secretName``, the spelling
+          the router chart reads.
         - Lift ``router.inferencePool.providerConfig`` to the root-level
           ``provider.{gatewayClassName}`` block expected by the
           gateway chart (gke / istio only).
@@ -1485,7 +1512,28 @@ class RenderPlans:
             if decode_port:
                 model_servers["targetPorts"] = [{"number": decode_port}]
 
-        # --- 8. Lift providerConfig to root-level provider.<gw_class>
+        # --- 8. Mirror the metrics-reader Secret name into the path the
+        # router chart actually reads.
+        #
+        # The benchmark's knob is ``router.monitoring.secretName`` -- it is
+        # what ``_STACK_SCOPED_DEFAULTS`` per-stack-suffixes, and what
+        # 05_namespace_sa_rbac_secret.yaml.j2 (RBAC resourceNames) and
+        # 20_harness_pod.yaml.j2 read. The chart moved its own spelling to
+        # ``router.monitoring.prometheus.auth.secretName``
+        # (charts/router/templates/_sa-token-secret.yaml), so without this
+        # copy the chart silently falls back to its packaged default. In a
+        # multi-stack scenario that default is identical for every stack,
+        # and the second router release fails to install with "Secret ...
+        # exists and cannot be imported into the current release".
+        monitoring = router.get("monitoring")
+        if isinstance(monitoring, dict):
+            secret_name = monitoring.get("secretName")
+            if secret_name:
+                auth = monitoring.setdefault("prometheus", {}).setdefault("auth", {})
+                if isinstance(auth, dict) and not auth.get("secretName"):
+                    auth["secretName"] = secret_name
+
+        # --- 9. Lift providerConfig to root-level provider.<gw_class>
         # for the gateway chart (gke / istio). The standalone chart's
         # epponly mode doesn't need this.
         inference_pool = router.get("inferencePool") or {}
@@ -2081,7 +2129,6 @@ class RenderPlans:
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
-        merged_values["nonAdmin"] = self.cli_non_admin
         merged_values["scenarioName"] = self.scenarios_file.stem
 
         epponly_errors = self._validate_epponly_constraints(

@@ -12,9 +12,11 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -427,6 +429,49 @@ def _run_inference_perf_analyze(
 # ---------------------------------------------------------------------------
 
 
+# A failed stage still generated load and still gets a report, so it needs a window.
+_STAGE_MARKER_RE = re.compile(
+    r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ "
+    r".*Stage (\d+) - (?:session-based )?run (started|completed|failed)",
+    re.MULTILINE,
+)
+# Greedy, to take the last occurrence like native_to_br0_2 does on the same filename.
+_REPORT_STAGE_RE = re.compile(r".*stage_(\d+)", re.DOTALL)
+
+
+def _stage_windows(results_dir: Path) -> dict[int, tuple[datetime, datetime]]:
+    """Map stage index to its (start, end) as logged by the load generator.
+
+    The markers are ``%(asctime)s`` local time, stamped UTC here because the pod
+    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). Returns {} when the log is missing
+    or holds no complete marker pair, leaving the caller on the whole-run series.
+    """
+    log = results_dir / "stdout.log"
+    try:
+        text = log.read_text(errors="replace")
+    except OSError:
+        return {}
+
+    bounds: dict[int, dict[str, datetime]] = {}
+    for stamp, stage, event in _STAGE_MARKER_RE.findall(text):
+        try:
+            when = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError:
+            continue
+        key = "started" if event == "started" else "ended"
+        bounds.setdefault(int(stage), {})[key] = when
+
+    # A retried or restarted stage can log its markers out of order, which would
+    # clip every sample away; fall back to the whole run instead.
+    return {
+        stage: (pair["started"], pair["ended"])
+        for stage, pair in bounds.items()
+        if "started" in pair and "ended" in pair and pair["started"] < pair["ended"]
+    }
+
+
 def _embed_metrics_in_reports(
     metrics_dir: Path,
     results_dir: Path,
@@ -453,11 +498,52 @@ def _embed_metrics_in_reports(
     if not reports:
         return
 
+    # One scrape covers the whole run, so each stage report needs its own window.
+    windows = _stage_windows(results_dir)
+
+    staged = [r for r in reports if _REPORT_STAGE_RE.search(r.name)]
+    # Staged reports with no window at all means the markers stopped parsing,
+    # which silently restores the whole-run series this clipping replaced.
+    if staged and not windows:
+        _log(
+            context,
+            f"No stage windows parsed from stdout.log for {len(staged)} stage "
+            f"report(s) -- embedding the whole run in each",
+            warning=True,
+        )
+
     for report in reports:
         try:
+            stage = _REPORT_STAGE_RE.search(report.name)
+            window = windows.get(int(stage.group(1))) if stage else None
+            # Warns only for a stage missing from an otherwise-parsed set; the
+            # none-parsed case is reported once above.
+            if stage and window is None and windows:
+                _log(
+                    context,
+                    f"No stage window for {report.name} -- embedding the whole run",
+                    warning=True,
+                )
             with open(report) as fh:
                 br_dict = yaml.safe_load(fh) or {}
-            br_dict = add_metrics_to_benchmark_report(br_dict, str(metrics_dir))
+            br_dict = add_metrics_to_benchmark_report(
+                br_dict, str(metrics_dir), time_series_window=window
+            )
+            interval = br_dict.get("results", {}).get("observability", {})
+            interval = interval.get("time_series_interval", {})
+            if (
+                window
+                and not interval.get("datapoints")
+                and interval.get("datapoints_available")
+            ):
+                _log(
+                    context,
+                    f"Stage window {interval.get('start')}..{interval.get('end')} "
+                    f"kept none of {interval.get('datapoints_available')} datapoints "
+                    f"scraped over {interval.get('scraped_from')}.."
+                    f"{interval.get('scraped_to')} in {report.name} -- series empty",
+                    warning=True,
+                )
             with open(report, "w") as fh:
                 yaml.dump(br_dict, fh, default_flow_style=False, allow_unicode=True)
             _log(context, f"Embedded metrics into {report.name}")
