@@ -516,6 +516,21 @@ def _embed_metrics_in_reports(
             br_dict = add_metrics_to_benchmark_report(
                 br_dict, str(metrics_dir), time_series_window=window
             )
+            interval = br_dict.get("results", {}).get("observability", {})
+            interval = interval.get("time_series_interval", {})
+            if (
+                window
+                and not interval.get("datapoints")
+                and interval.get("datapoints_available")
+            ):
+                _log(
+                    context,
+                    f"Stage window {interval.get('start')}..{interval.get('end')} "
+                    f"kept none of {interval.get('datapoints_available')} datapoints "
+                    f"scraped over {interval.get('scraped_from')}.."
+                    f"{interval.get('scraped_to')} in {report.name} -- series empty",
+                    warning=True,
+                )
             with open(report, "w") as fh:
                 yaml.dump(br_dict, fh, default_flow_style=False, allow_unicode=True)
             _log(context, f"Embedded metrics into {report.name}")

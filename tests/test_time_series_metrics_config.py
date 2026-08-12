@@ -353,6 +353,7 @@ def test_report_time_series_disabled_by_env(tmp_path: Path, monkeypatch) -> None
     obs = report["results"]["observability"]
     assert "components" not in obs
     assert obs["vllm_kv_cache_usage_perc"]["components"][0]["statistics"]["mean"] == 0.1
+    assert obs["time_series_interval"]["scope"] == "disabled"
 
 
 def test_report_time_series_downsampled(tmp_path: Path, monkeypatch) -> None:
@@ -474,6 +475,22 @@ def test_stage_windows_rejects_inverted_window(tmp_path: Path) -> None:
     assert _stage_windows(tmp_path) == {}
 
 
+def test_report_stage_index_matches_native_idiom() -> None:
+    """Stage extraction must agree with native_to_br0_2, which names the reports."""
+    from llmdbenchmark.analysis import _REPORT_STAGE_RE
+
+    for name, expected in (
+        ("benchmark_report_v0.2,_stage_0_lifecycle_metrics.json.yaml", 0),
+        ("benchmark_report_v0.2,_stage_10_lifecycle_metrics.json.yaml", 10),
+        ("benchmark_report_v0.2,_stage_0_session_lifecycle_metrics.json.yaml", 0),
+        ("x_stage_2_stage_5.yaml", 5),
+    ):
+        match = _REPORT_STAGE_RE.match(name)
+        assert match and int(match.group(1)) == expected, name
+
+    assert _REPORT_STAGE_RE.match("benchmark_report_v0.2,_results.json.yaml") is None
+
+
 def test_report_version_stable_when_window_clips_everything(tmp_path: Path) -> None:
     """An empty clip must not change the declared version.
 
@@ -505,19 +522,11 @@ def test_report_version_stable_when_window_clips_everything(tmp_path: Path) -> N
     whole_run = add_metrics_to_benchmark_report({"version": "0.2"}, str(metrics_dir))
 
     assert clipped["version"] == whole_run["version"] == "0.2.1"
-
-
-def test_report_stage_index_matches_native_idiom() -> None:
-    """Stage extraction must agree with native_to_br0_2, which names the reports."""
-    from llmdbenchmark.analysis import _REPORT_STAGE_RE
-
-    for name, expected in (
-        ("benchmark_report_v0.2,_stage_0_lifecycle_metrics.json.yaml", 0),
-        ("benchmark_report_v0.2,_stage_10_lifecycle_metrics.json.yaml", 10),
-        ("benchmark_report_v0.2,_stage_0_session_lifecycle_metrics.json.yaml", 0),
-        ("x_stage_2_stage_5.yaml", 5),
-    ):
-        match = _REPORT_STAGE_RE.match(name)
-        assert match and int(match.group(1)) == expected, name
-
-    assert _REPORT_STAGE_RE.match("benchmark_report_v0.2,_results.json.yaml") is None
+    interval = clipped["results"]["observability"]["time_series_interval"]
+    assert interval["scope"] == "stage"
+    assert interval["datapoints"] == 0
+    assert interval["datapoints_available"] == 1
+    assert interval["scraped_from"] == "2026-07-14T00:00:00+00:00"
+    assert (
+        whole_run["results"]["observability"]["time_series_interval"]["scope"] == "run"
+    )

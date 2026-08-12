@@ -372,10 +372,13 @@ def _build_embedded_time_series(
     metrics_dir: str,
     max_points: int,
     window: tuple[Any, Any] | None = None,
-) -> set[str]:
+) -> tuple[set[str], dict[str, Any]]:
     """Populate `observability.components[].time_series`, one entry per pod.
 
-    Returns the field names to declare a version against.
+    Returns the field names to declare a version against, plus the clip outcome:
+    how many points survived, how many were available before clipping, and the
+    span the scrapes actually cover. An empty clip is otherwise indistinguishable
+    from a stage that genuinely had no metrics.
     """
     from .timeseries import (
         clip_to_window,
@@ -386,7 +389,7 @@ def _build_embedded_time_series(
 
     pod_data = collect_time_series_data(metrics_dir)
     if not pod_data:
-        return set()
+        return set(), {"datapoints": 0, "datapoints_available": 0}
 
     specs = _embed_time_series_specs()
     components = obs.setdefault("components", [])
@@ -395,6 +398,8 @@ def _build_embedded_time_series(
     # Pre-clip field set: keying the version bump off the clipped one would make
     # sibling reports in one sweep declare different versions.
     available: set[str] = set()
+    kept = total = 0
+    scraped: list[Any] = []
 
     for pod_name in sorted(pod_data):
         pod_metrics = pod_data[pod_name]
@@ -408,9 +413,12 @@ def _build_embedded_time_series(
                 points = pod_metrics.get(spec.get("metric", ""), [])
             if points:
                 available.add(field)
+                total += len(points)
+                scraped += [points[0][0], points[-1][0]]
             points = clip_to_window(points, window)
             if not points:
                 continue
+            kept += len(points)
             series_by_field[field] = {
                 "units": spec["units"],
                 "series": series_points(points, max_points),
@@ -434,7 +442,11 @@ def _build_embedded_time_series(
     if not components:
         obs.pop("components", None)
 
-    return available if window else embedded
+    outcome: dict[str, Any] = {"datapoints": kept, "datapoints_available": total}
+    if scraped:
+        outcome["scraped_from"] = min(scraped).isoformat()
+        outcome["scraped_to"] = max(scraped).isoformat()
+    return (available if window else embedded), outcome
 
 
 # ---------------------------------------------------------------------------
@@ -565,8 +577,11 @@ def add_metrics_to_benchmark_report(
     Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
     with per-component statistics, role, graph paths, and EPP metrics.
 
-    ``time_series_window`` restricts the embedded series to one stage's interval;
-    without it every report in a sweep gets the whole run's series.
+    ``time_series_window`` restricts the embedded series to one stage's interval.
+    It applies to the series only -- the scalar statistics come from a whole-run
+    ``metrics_summary.json``, so the two cover different intervals;
+    ``observability.time_series_interval`` records both, and how many points
+    survived the clip so an empty series is never mistaken for a quiet stage.
     """
     obs = br_dict.setdefault("results", {}).setdefault("observability", {})
 
@@ -577,16 +592,32 @@ def add_metrics_to_benchmark_report(
     metrics_summary = _load_json(
         os.path.join(metrics_dir, "processed", "metrics_summary.json")
     )
+    # Recorded on every path: absence would otherwise be ambiguous between
+    # embedding disabled, no metrics, and a report predating the field.
+    start, end = time_series_window or (None, None)
+    interval: dict[str, Any] = {
+        "scope": "stage" if time_series_window else "run",
+        "start": start.isoformat() if start else None,
+        "end": end.isoformat() if end else None,
+        "statistics_scope": "run",
+    }
+    obs["time_series_interval"] = interval
+
     if metrics_summary:
         metric_names = _load_time_series_metrics(metrics_dir)
         obs.update(_build_per_metric_entries(metrics_summary, metric_names))
         _build_aggregated_entries(metrics_summary, obs, metric_names)
         if _embed_time_series_enabled():
-            embedded = _build_embedded_time_series(
+            embedded, outcome = _build_embedded_time_series(
                 obs, metrics_dir, _embed_time_series_max_points(), time_series_window
             )
             if embedded - _V0_2_TIME_SERIES_FIELDS and br_dict.get("version") == "0.2":
                 br_dict["version"] = "0.2.1"
+            interval.update(outcome)
+        else:
+            interval["scope"] = "disabled"
+    else:
+        interval["scope"] = "unavailable"
 
     # EPP log-derived metrics
     epp_summary = _load_json(os.path.join(metrics_dir, "epp_metrics_summary.json"))
