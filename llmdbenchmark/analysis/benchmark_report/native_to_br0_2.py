@@ -1555,6 +1555,33 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+#: Span-name fragments identifying a gateway's per-REQUEST span, one per LLM
+#: call. bifrost names it after the inbound path, which differs per wire:
+#: OpenAI chat/responses (completions, responses), Anthropic (messages), and
+#: Gemini (generatecontent); litellm emits litellm_request. Token usage is NOT
+#: here -- it rides on the provider span ("chat <model>") -- so these names are
+#: used only for counting calls and measuring request latency.
+#:
+#: Lowercase, and matched case-insensitively: Gemini's streaming variant is
+#: ":streamGenerateContent" with a capital G, so a case-sensitive
+#: "generateContent" test silently drops every streamed call. On a 100-task
+#: gemini-cli run that was 738 of 1037 calls (71%), which looks like a quiet
+#: undercount rather than an error.
+AGENTIC_REQUEST_SPAN_NAMES: tuple[str, ...] = (
+    "messages",
+    "completions",
+    "responses",
+    "generatecontent",
+    "litellm_request",
+)
+
+
+def is_agentic_request_span(name: str) -> bool:
+    """True if ``name`` is a gateway per-request span (one per LLM call)."""
+    lowered = name.lower()
+    return any(s in lowered for s in AGENTIC_REQUEST_SPAN_NAMES)
+
+
 def agentic_stat(xs: list[float], units: Units) -> dict | None:
     """Summarize ``xs`` in the v0.2 ``Statistics`` shape, or None if empty.
 
@@ -1657,19 +1684,9 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             else:
                                 out_tok += iv
 
-                        # one span per LLM request, across gateways: bifrost emits
-                        # /anthropic/v1/messages or /openai/.../completions; litellm
-                        # emits litellm_request. Skip the child provider span
-                        # (llm.call) so requests aren't double-counted.
-                        if not any(
-                            s in name
-                            for s in (
-                                "messages",
-                                "completions",
-                                "responses",
-                                "litellm_request",
-                            )
-                        ):
+                        # One span per LLM request. Skips the provider span
+                        # ("chat <model>") so requests aren't double-counted.
+                        if not is_agentic_request_span(name):
                             continue
                         n_calls += 1
                         st = int(sp.get("startTimeUnixNano", 0) or 0)
