@@ -12,9 +12,11 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -54,6 +56,36 @@ _WRITER_NAMES: dict[str, str] = {
     "nop": "nop",
     "eval-containers": "eval-containers",
 }
+
+
+def _reset_harness_meta_cache() -> None:
+    """Drop the memoized run_metadata.yaml; one process analyses many subdirs."""
+    from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+        _get_harness_meta,
+    )
+
+    if hasattr(_get_harness_meta, "_cache"):
+        del _get_harness_meta._cache
+
+
+def _recorded_for(results_dir: Path, key: str) -> str:
+    """Read one of this directory's own metadata values, ignoring the ambient envar.
+
+    Args:
+        results_dir (Path): directory being converted.
+        key (str): run_metadata.yaml key to read.
+
+    Returns:
+        str: the recorded value, or "" for a run that predates it.
+    """
+    import yaml
+
+    try:
+        with (results_dir / "run_metadata.yaml").open(encoding="utf-8") as meta_file:
+            metadata = yaml.safe_load(meta_file) or {}
+    except (OSError, yaml.YAMLError):
+        return ""
+    return str(metadata.get(key) or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -96,27 +128,55 @@ def run_analysis(
         _log(context, f"No result files matching '{pattern}' in {results_dir.name}")
         return None  # Nothing to convert -- not an error
 
+    # The converters resolve run identity relative to these envars. The harness
+    # pod sets them, the driver does not, and these reports overwrite the in-pod
+    # ones. Each one outranks the per-directory metadata, so a stale one left in
+    # the driver's environment would stamp every treatment of a sweep with a
+    # single identity -- the bug this scoping exists to prevent. Every envar the
+    # converters consult has to be scoped, not just the identity pair.
+    scoped_env = {
+        "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(results_dir),
+        "LLMDBENCH_RUN_EXPERIMENT_ID": _recorded_for(results_dir, "experiment_id"),
+        "LLMDBENCH_DESCRIPTION_TEXT": _recorded_for(results_dir, "description_text"),
+        "LLMDBENCH_DESCRIPTION_KEYWORDS": _recorded_for(
+            results_dir, "description_keywords"
+        ),
+    }
+    previous_env = {name: os.environ.get(name) for name in scoped_env}
+    os.environ.update(scoped_env)
+    _reset_harness_meta_cache()
+
     errors: list[str] = []
-    for result_file in result_files:
-        result_path = Path(result_file)
-        fname = result_path.name
+    try:
+        for result_file in result_files:
+            result_path = Path(result_file)
+            fname = result_path.name
 
-        for br_version in ("0.1", "0.2"):
-            prefix = (
-                "benchmark_report" if br_version == "0.1" else "benchmark_report_v0.2"
-            )
-            output_name = f"{prefix},_{fname}.yaml"
-            output_path = results_dir / output_name
+            for br_version in ("0.1", "0.2"):
+                prefix = (
+                    "benchmark_report"
+                    if br_version == "0.1"
+                    else "benchmark_report_v0.2"
+                )
+                output_name = f"{prefix},_{fname}.yaml"
+                output_path = results_dir / output_name
 
-            err = _convert_to_benchmark_report(
-                result_path,
-                output_path,
-                writer_name,
-                br_version,
-                context,
-            )
-            if err:
-                errors.append(err)
+                err = _convert_to_benchmark_report(
+                    result_path,
+                    output_path,
+                    writer_name,
+                    br_version,
+                    context,
+                )
+                if err:
+                    errors.append(err)
+    finally:
+        for name, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+        _reset_harness_meta_cache()
 
     # --- 2. Extract summary from stdout.log ---
     marker = _SUMMARY_MARKERS.get(harness_name)
@@ -127,9 +187,10 @@ def run_analysis(
     if harness_name == "inference-perf":
         _run_inference_perf_analyze(results_dir, context)
 
-    # --- 4. Generate metric plots (if metrics were collected) ---
+    # --- 4. Embed metrics + generate plots (if metrics were collected) ---
     metrics_dir = results_dir / "metrics"
     if metrics_dir.exists():
+        _embed_metrics_in_reports(metrics_dir, results_dir, context)
         _run_metric_visualizations(metrics_dir, results_dir, context)
 
     # --- 5. Generate per-request distribution plots ---
@@ -366,6 +427,132 @@ def _run_inference_perf_analyze(
 # ---------------------------------------------------------------------------
 # Metric visualization (Prometheus time series to PNG plots)
 # ---------------------------------------------------------------------------
+
+
+# A failed stage still generated load and still gets a report, so it needs a window.
+_STAGE_MARKER_RE = re.compile(
+    r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ "
+    r".*Stage (\d+) - (?:session-based )?run (started|completed|failed)",
+    re.MULTILINE,
+)
+# Greedy, to take the last occurrence like native_to_br0_2 does on the same filename.
+_REPORT_STAGE_RE = re.compile(r".*stage_(\d+)", re.DOTALL)
+
+
+def _stage_windows(results_dir: Path) -> dict[int, tuple[datetime, datetime]]:
+    """Map stage index to its (start, end) as logged by the load generator.
+
+    The markers are ``%(asctime)s`` local time, stamped UTC here because the pod
+    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). Returns {} when the log is missing
+    or holds no complete marker pair, leaving the caller on the whole-run series.
+    """
+    log = results_dir / "stdout.log"
+    try:
+        text = log.read_text(errors="replace")
+    except OSError:
+        return {}
+
+    bounds: dict[int, dict[str, datetime]] = {}
+    for stamp, stage, event in _STAGE_MARKER_RE.findall(text):
+        try:
+            when = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError:
+            continue
+        key = "started" if event == "started" else "ended"
+        bounds.setdefault(int(stage), {})[key] = when
+
+    # A retried or restarted stage can log its markers out of order, which would
+    # clip every sample away; fall back to the whole run instead.
+    return {
+        stage: (pair["started"], pair["ended"])
+        for stage, pair in bounds.items()
+        if "started" in pair and "ended" in pair and pair["started"] < pair["ended"]
+    }
+
+
+def _embed_metrics_in_reports(
+    metrics_dir: Path,
+    results_dir: Path,
+    context: ExecutionContext | None,
+) -> None:
+    """Merge scraped metrics into the v0.2 reports written by step 1.
+
+    The in-pod ``*-analyze_results.sh`` scripts also do this, but they run when
+    the harness pod exits -- before the driver has written
+    ``metrics/processed/metrics_summary.json`` -- so their guard is always false
+    and the reports ship without time series. Here the metrics exist.
+    """
+    import yaml
+
+    from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
+        add_metrics_to_benchmark_report,
+    )
+
+    if not (metrics_dir / "processed" / "metrics_summary.json").exists():
+        _log(context, "No metrics summary -- skipping report metrics embedding")
+        return
+
+    reports = sorted(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
+    if not reports:
+        return
+
+    # One scrape covers the whole run, so each stage report needs its own window.
+    windows = _stage_windows(results_dir)
+
+    staged = [r for r in reports if _REPORT_STAGE_RE.search(r.name)]
+    # Staged reports with no window at all means the markers stopped parsing,
+    # which silently restores the whole-run series this clipping replaced.
+    if staged and not windows:
+        _log(
+            context,
+            f"No stage windows parsed from stdout.log for {len(staged)} stage "
+            f"report(s) -- embedding the whole run in each",
+            warning=True,
+        )
+
+    for report in reports:
+        try:
+            stage = _REPORT_STAGE_RE.search(report.name)
+            window = windows.get(int(stage.group(1))) if stage else None
+            # Warns only for a stage missing from an otherwise-parsed set; the
+            # none-parsed case is reported once above.
+            if stage and window is None and windows:
+                _log(
+                    context,
+                    f"No stage window for {report.name} -- embedding the whole run",
+                    warning=True,
+                )
+            with open(report) as fh:
+                br_dict = yaml.safe_load(fh) or {}
+            br_dict = add_metrics_to_benchmark_report(
+                br_dict, str(metrics_dir), time_series_window=window
+            )
+            interval = br_dict.get("results", {}).get("observability", {})
+            interval = interval.get("time_series_interval", {})
+            if (
+                window
+                and not interval.get("datapoints")
+                and interval.get("datapoints_available")
+            ):
+                _log(
+                    context,
+                    f"Stage window {interval.get('start')}..{interval.get('end')} "
+                    f"kept none of {interval.get('datapoints_available')} datapoints "
+                    f"scraped over {interval.get('scraped_from')}.."
+                    f"{interval.get('scraped_to')} in {report.name} -- series empty",
+                    warning=True,
+                )
+            with open(report, "w") as fh:
+                yaml.dump(br_dict, fh, default_flow_style=False, allow_unicode=True)
+            _log(context, f"Embedded metrics into {report.name}")
+        except Exception as exc:
+            _log(
+                context,
+                f"Metrics embedding failed for {report.name}: {exc}",
+                warning=True,
+            )
 
 
 def _run_metric_visualizations(

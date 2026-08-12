@@ -9,6 +9,159 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
+# Time-series embedding allow-list.
+# Keys must be existing TimeSeriesResourceMetrics fields, and units must satisfy
+# that field's validator. Hardware fields are v0.2; the engine and router fields
+# below it are v0.2.1, so a report carrying them must declare that version.
+# Spec is either {"metric": <prometheus name>} or {"ratio": (num, den)}.
+# ---------------------------------------------------------------------------
+_EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
+    "kv_cache_usage": {
+        "metric": "vllm:kv_cache_usage_perc",
+        "units": "fraction",
+    },
+    "gpu_cache_usage": {
+        "metric": "vllm:gpu_cache_usage_perc",
+        "units": "fraction",
+    },
+    "cpu_cache_usage": {
+        "metric": "vllm:cpu_cache_usage_perc",
+        "units": "fraction",
+    },
+    "gpu_memory_usage": {
+        "metric": "vllm:gpu_memory_usage_bytes",
+        "units": "bytes",
+    },
+    "cpu_memory_usage": {
+        "metric": "vllm:cpu_memory_usage_bytes",
+        "units": "bytes",
+    },
+    "gpu_utilization": {
+        "metric": "DCGM_FI_DEV_GPU_UTIL",
+        "units": "percent",
+    },
+    "power_consumption": {
+        "metric": "DCGM_FI_DEV_POWER_USAGE",
+        "units": "Watts",
+    },
+    # Engine scheduling / queue depth
+    "num_requests_running": {
+        "metric": "vllm:num_requests_running",
+        "units": "count",
+    },
+    "num_requests_waiting": {
+        "metric": "vllm:num_requests_waiting",
+        "units": "count",
+    },
+    "num_preemptions": {
+        "metric": "vllm:num_preemptions_total",
+        "units": "count",
+    },
+    # Prefix cache effectiveness. vLLM v1 exposes only the counters, so the hit
+    # rates are derived; compute_ratio_series emits percent, not fraction.
+    "prefix_cache_queries": {
+        "metric": "vllm:prefix_cache_queries_total",
+        "units": "count",
+    },
+    "prefix_cache_hits": {
+        "metric": "vllm:prefix_cache_hits_total",
+        "units": "count",
+    },
+    "prefix_cache_hit_rate": {
+        "ratio": ("vllm:prefix_cache_hits_total", "vllm:prefix_cache_queries_total"),
+        "units": "percent",
+    },
+    "external_prefix_cache_queries": {
+        "metric": "vllm:external_prefix_cache_queries_total",
+        "units": "count",
+    },
+    "external_prefix_cache_hits": {
+        "metric": "vllm:external_prefix_cache_hits_total",
+        "units": "count",
+    },
+    "external_prefix_cache_hit_rate": {
+        "ratio": (
+            "vllm:external_prefix_cache_hits_total",
+            "vllm:external_prefix_cache_queries_total",
+        ),
+        "units": "percent",
+    },
+    # Token throughput counters
+    "prompt_tokens": {
+        "metric": "vllm:prompt_tokens_total",
+        "units": "count",
+    },
+    "generation_tokens": {
+        "metric": "vllm:generation_tokens_total",
+        "units": "count",
+    },
+    # Router / endpoint-picker pool state
+    "pool_avg_kv_cache_utilization": {
+        "metric": "inference_pool_average_kv_cache_utilization",
+        "units": "fraction",
+    },
+    "pool_avg_queue_size": {
+        "metric": "inference_pool_average_queue_size",
+        "units": "count",
+    },
+    "pool_avg_running_requests": {
+        "metric": "inference_pool_average_running_requests",
+        "units": "count",
+    },
+    "pool_ready_pods": {
+        "metric": "inference_pool_ready_pods",
+        "units": "count",
+    },
+}
+
+_DEFAULT_TS_MAX_POINTS = 256
+
+# Fields above are v0.2 TimeSeriesResourceMetrics; the rest were introduced in
+# v0.2.1. A report that embeds any of them must declare the later version, since
+# v0.2 forbids extra keys on that model.
+_V0_2_TIME_SERIES_FIELDS = frozenset(
+    (
+        "kv_cache_usage",
+        "gpu_cache_usage",
+        "cpu_cache_usage",
+        "gpu_memory_usage",
+        "cpu_memory_usage",
+        "storage_usage",
+        "gpu_utilization",
+        "cpu_utilization",
+        "power_consumption",
+    )
+)
+
+
+def _env(name: str, default: str | None = None) -> str | None:
+    return os.environ.get(f"LLMDBENCH_{name}", os.environ.get(name, default))
+
+
+def _embed_time_series_enabled() -> bool:
+    return (_env("METRICS_EMBED_TIME_SERIES", "true") or "true").lower() != "false"
+
+
+def _embed_time_series_max_points() -> int:
+    try:
+        return int(_env("METRICS_TS_MAX_POINTS", str(_DEFAULT_TS_MAX_POINTS)))
+    except (TypeError, ValueError):
+        return _DEFAULT_TS_MAX_POINTS
+
+
+def _embed_time_series_specs() -> dict[str, dict[str, Any]]:
+    override = _env("METRICS_EMBED_TIME_SERIES_SPEC")
+    if override:
+        try:
+            parsed = json.loads(override)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return _EMBED_TIME_SERIES
+
+
+# ---------------------------------------------------------------------------
 # Metrics that have corresponding graphs in metrics/graphs/
 # Maps prometheus metric name -> (report key, units string, graph filename)
 # ---------------------------------------------------------------------------
@@ -214,6 +367,88 @@ def _metric_metadata(
     return safe_name, units, f"{safe_name}.png"
 
 
+def _build_embedded_time_series(
+    obs: dict[str, Any],
+    metrics_dir: str,
+    max_points: int,
+    window: tuple[Any, Any] | None = None,
+) -> tuple[set[str], dict[str, Any]]:
+    """Populate `observability.components[].time_series`, one entry per pod.
+
+    Returns the field names to declare a version against, plus the clip outcome:
+    how many points survived, how many were available before clipping, and the
+    span the scrapes actually cover. An empty clip is otherwise indistinguishable
+    from a stage that genuinely had no metrics.
+    """
+    from .timeseries import (
+        clip_to_window,
+        collect_time_series_data,
+        compute_ratio_series,
+        series_points,
+    )
+
+    pod_data = collect_time_series_data(metrics_dir)
+    if not pod_data:
+        return set(), {"datapoints": 0, "datapoints_available": 0}
+
+    specs = _embed_time_series_specs()
+    components = obs.setdefault("components", [])
+    by_replica = {c.get("replica_id"): c for c in components}
+    embedded: set[str] = set()
+    # Pre-clip field set: keying the version bump off the clipped one would make
+    # sibling reports in one sweep declare different versions.
+    available: set[str] = set()
+    kept = total = 0
+    scraped: list[Any] = []
+
+    for pod_name in sorted(pod_data):
+        pod_metrics = pod_data[pod_name]
+        series_by_field: dict[str, Any] = {}
+
+        for field, spec in specs.items():
+            ratio = spec.get("ratio")
+            if ratio:
+                points = compute_ratio_series(pod_metrics, ratio[0], ratio[1])
+            else:
+                points = pod_metrics.get(spec.get("metric", ""), [])
+            if points:
+                available.add(field)
+                total += len(points)
+                scraped += [points[0][0], points[-1][0]]
+            points = clip_to_window(points, window)
+            if not points:
+                continue
+            kept += len(points)
+            series_by_field[field] = {
+                "units": spec["units"],
+                "series": series_points(points, max_points),
+            }
+
+        if not series_by_field:
+            continue
+
+        role = _detect_role(pod_name)
+        component = by_replica.get(pod_name)
+        if component is None:
+            component = {
+                "component_label": _component_id(role),
+                "replica_id": pod_name,
+            }
+            components.append(component)
+            by_replica[pod_name] = component
+        component.setdefault("time_series", {}).update(series_by_field)
+        embedded.update(series_by_field)
+
+    if not components:
+        obs.pop("components", None)
+
+    outcome: dict[str, Any] = {"datapoints": kept, "datapoints_available": total}
+    if scraped:
+        outcome["scraped_from"] = min(scraped).isoformat()
+        outcome["scraped_to"] = max(scraped).isoformat()
+    return (available if window else embedded), outcome
+
+
 # ---------------------------------------------------------------------------
 # Build observability entries
 # ---------------------------------------------------------------------------
@@ -332,12 +567,21 @@ def _build_epp_entries(
 
 
 def add_metrics_to_benchmark_report(
-    br_dict: dict[str, Any], metrics_dir: str, component_label: str = "vllm-service"
+    br_dict: dict[str, Any],
+    metrics_dir: str,
+    component_label: str = "vllm-service",
+    time_series_window: tuple[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """Add metrics to an existing benchmark report dictionary.
 
     Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
     with per-component statistics, role, graph paths, and EPP metrics.
+
+    ``time_series_window`` restricts the embedded series to one stage's interval.
+    It applies to the series only -- the scalar statistics come from a whole-run
+    ``metrics_summary.json``, so the two cover different intervals;
+    ``observability.time_series_interval`` records both, and how many points
+    survived the clip so an empty series is never mistaken for a quiet stage.
     """
     obs = br_dict.setdefault("results", {}).setdefault("observability", {})
 
@@ -348,10 +592,32 @@ def add_metrics_to_benchmark_report(
     metrics_summary = _load_json(
         os.path.join(metrics_dir, "processed", "metrics_summary.json")
     )
+    # Recorded on every path: absence would otherwise be ambiguous between
+    # embedding disabled, no metrics, and a report predating the field.
+    start, end = time_series_window or (None, None)
+    interval: dict[str, Any] = {
+        "scope": "stage" if time_series_window else "run",
+        "start": start.isoformat() if start else None,
+        "end": end.isoformat() if end else None,
+        "statistics_scope": "run",
+    }
+    obs["time_series_interval"] = interval
+
     if metrics_summary:
         metric_names = _load_time_series_metrics(metrics_dir)
         obs.update(_build_per_metric_entries(metrics_summary, metric_names))
         _build_aggregated_entries(metrics_summary, obs, metric_names)
+        if _embed_time_series_enabled():
+            embedded, outcome = _build_embedded_time_series(
+                obs, metrics_dir, _embed_time_series_max_points(), time_series_window
+            )
+            if embedded - _V0_2_TIME_SERIES_FIELDS and br_dict.get("version") == "0.2":
+                br_dict["version"] = "0.2.1"
+            interval.update(outcome)
+        else:
+            interval["scope"] = "disabled"
+    else:
+        interval["scope"] = "unavailable"
 
     # EPP log-derived metrics
     epp_summary = _load_json(os.path.join(metrics_dir, "epp_metrics_summary.json"))

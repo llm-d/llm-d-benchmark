@@ -50,6 +50,7 @@ accurate to the current codebase.
   - [Setup Treatments vs Run Treatments](#setup-treatments-vs-run-treatments)
   - [How to Reference Scenario Overrides](#how-to-reference-scenario-overrides)
   - [Running an Experiment](#running-an-experiment)
+- [10. Agent Core](#10-agent-core)
 
 ---
 
@@ -950,73 +951,79 @@ behind the same gateway), lift scenario-wide settings into the top-level
 ```yaml
 # config/scenarios/examples/my-two-model-scenario.yaml
 shared:
-  modelservice: { enabled: true }
+  modelservice:
+    enabled: true
+    # `epponly` deploys no Gateway, so multi-stack needs a real gateway class.
+    gateway: { className: istio }
   standalone:   { enabled: false }
   httpRoute:
     mode: shared
     name: multi-model-route
     pathPrefix: /{stack.name}
     rewriteTo: /
-  wva:
-    enabled: true
-    image: { tag: v0.6.0 }
-
-scenario:
-  - name: qwen3-06b
-    model: { name: Qwen/Qwen3-0.6B, ... }
-    decode: { replicas: 1 }
-    wva:
-      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
-      hpa:                { minReplicas: 1, maxReplicas: 4 }
-  - name: llama-31-8b
-    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
-    decode: { replicas: 1 }
-    wva:
-      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
-      hpa:                { minReplicas: 1, maxReplicas: 4 }
-```
-
-See the next subsection for how `shared:` merges with per-stack and the
-render-time behavior (auto-named PVCs, shared HTTPRoute, stack-index guards).
-For a fully-annotated real scenario, see
-[`examples/multi-model-wva.yaml`](../config/scenarios/examples/multi-model-wva.yaml).
-
-### Multi-Stack Scenarios and the `shared:` Block
-
-The scenario file supports an optional top-level `shared:` block alongside the
-`scenario:` list. Values in `shared:` are merged into every stack *before* the
-per-stack overrides, letting you lift scenario-wide settings (gateway, WVA
-controller, shared HTTPRoute config, chart versions, plugin config) out of
-per-stack blocks. Per-stack always wins, so a stack can still opt out of any
-shared value by setting it explicitly.
-
-```yaml
-# config/scenarios/examples/multi-model-wva.yaml (abridged)
-shared:
-  modelservice: { enabled: true }
-  standalone:   { enabled: false }
-  wva:
-    enabled: true
-    image: { repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler, tag: v0.6.0 }
-  httpRoute:
-    mode: shared
-    name: multi-model-route
-    pathPrefix: /{stack.name}
-    rewriteTo: /
-  vllmCommon:
-    flags: { enforceEager: true }
+  router:
+    epp: { pluginsConfigFile: "my-plugins.yaml", ... }
 
 scenario:
   - name: qwen3-06b
     model: { name: Qwen/Qwen3-0.6B, ... }
     decode: { replicas: 1, resources: { ... } }
-    wva:
-      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
-      hpa:                { minReplicas: 1, maxReplicas: 4 }
+  - name: llama-31-8b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    decode: { replicas: 1, resources: { ... } }
+```
+
+See the next subsection for how `shared:` merges with per-stack and the
+render-time behavior (auto-named PVCs, shared HTTPRoute, stack-index guards).
+For a fully-annotated real scenario, see
+[`examples/multi-model-optimized-baseline.yaml`](../config/scenarios/examples/multi-model-optimized-baseline.yaml).
+
+### Multi-Stack Scenarios and the `shared:` Block
+
+The scenario file supports an optional top-level `shared:` block alongside the
+`scenario:` list. Values in `shared:` are merged into every stack *before* the
+per-stack overrides, letting you lift scenario-wide settings (gateway, shared
+HTTPRoute config, chart versions, plugin config) out of per-stack blocks.
+Per-stack always wins, so a stack can still opt out of any shared value by
+setting it explicitly.
+
+```yaml
+# config/scenarios/examples/multi-model-optimized-baseline.yaml (abridged)
+shared:
+  modelservice:
+    enabled: true
+    gateway: { className: istio }
+  standalone:   { enabled: false }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+  router:
+    epp:
+      pluginsConfigFile: "optimized-baseline-plugins.yaml"
+      pluginsCustomConfig: { ... }
+    proxy: { args: [ ... ], resources: { ... } }
+    inferencePool: { failureMode: "FailOpen", providerConfig: { ... } }
+  decode:
+    vllm: { customCommand: | ... }
+    initContainers: [ ... ]
+
+scenario:
+  - name: qwen3-06b
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1, resources: { ... } }
   - name: llama-31-8b
     model: { name: unsloth/Meta-Llama-3.1-8B, ... }
     # same shape
 ```
+
+> [!NOTE]
+> Pick **one** spelling per section across `shared:` and the stacks. The
+> nested `modelservice.<section>` form is hoisted to the top level *after*
+> `shared:` and per-stack are merged, so mixing (e.g. `shared:` nesting
+> `modelservice.decode` while a stack sets top-level `decode`) makes the
+> shared value win over the stack's.
 
 **Resource-name collision handling (multi-stack only).** When two or more stacks
 share a namespace, the render engine auto-suffixes a small set of shipped-default
@@ -1097,14 +1104,20 @@ not "fall back to /bin/sh"; it removes the field and breaks rendering.
 1. `RenderSpecification` renders the `.yaml.j2` spec to resolve `base_dir`
    paths and writes the result as YAML.
 2. `RenderPlans` (in `llmdbenchmark/parser/render_plans.py`) loads the defaults
-   YAML and the scenario YAML. For each stack it applies a four-layer merge:
+   YAML and the scenario YAML. For each stack it applies a layered merge:
 
    ```
-   defaults.yaml  ->  scenario.shared  ->  stack config  ->  CLI / setup overrides
+   defaults.yaml -> scenario.shared -> stack config -> --cluster-config
+     -> --set -> setup overrides (DoE setup.treatments)
    ```
 
    Each later layer wins over earlier ones; dicts deep-merge, lists replace
-   wholesale. After merging, `RenderPlans` resolves model IDs, per-stack
+   wholesale. The last two layers reach `RenderPlans` through two separate
+   constructor arguments: `setup_overrides_by_stack` (a
+   `{selector: overrides}` mapping -- `"*"`, an exact stack name, or an
+   fnmatch glob -- resolved per stack by specificity in
+   `_effective_setup_overrides`) and `setup_overrides` (unscoped, applied
+   last so a DoE treatment always beats a CLI `--set`). After merging, `RenderPlans` resolves model IDs, per-stack
    identity names, and substitutes `${dotted.path}` references, then renders
    each Jinja2 template in `config/templates/jinja/` with the final values.
 3. Output goes to one directory per stack under the plan directory (e.g.,
@@ -1299,7 +1312,10 @@ Each treatment triggers a full standup/run/teardown cycle. Override keys use
 dotted paths into the scenario config (e.g., `vllmCommon.tensorParallelism`,
 `decode.replicas`, `standalone.enabled`). These overrides are passed to
 `RenderPlans` as `setup_overrides` and deep-merged into the scenario config
-during template rendering.
+during template rendering. They are applied *after* any `--cluster-config`
+or `--set` overrides, so a treatment always wins on a contested key -- the
+sweep factor is never flattened by a CLI flag. Treatment keys apply to every
+stack; the `stack:` / glob selector prefix is a `--set` feature only.
 
 **Run treatments** (`treatments`) control the workload parameters for each
 benchmark run. Each treatment overrides profile values (e.g., `max-concurrency`,
@@ -1342,3 +1358,43 @@ The experiment orchestrator (`_execute_experiment` in `llmdbenchmark/cli.py`):
 Options:
 - `--stop-on-error`: Abort on first failure (default: continue to next treatment)
 - `--skip-teardown`: Leave stacks running for debugging
+
+---
+
+## 10. Agent Core
+
+`llmdbenchmark/agent/` is a leaf package: four pure functions plus one
+versioned YAML map. It has no runtime state, no CLI surface, and no
+Kubernetes client -- unlike every other extension point in this guide, it
+is not a step, an analysis module, or a subcommand. See
+[docs/benchmarking-agent.md](benchmarking-agent.md) for the full model
+reference and a worked example.
+
+The package's only repository imports are
+`llmdbenchmark.utilities.os.filesystem.resolve_specification_file` and
+`llmdbenchmark.analysis.benchmark_report.import_benchmark_report`, so it
+cannot pull in `planner` or drag any standup/run machinery along with it.
+Four entry points cover the whole surface:
+
+- `recommend(facts, overrides=None, *, map_path=None, base_dir=None)` --
+  selects a row from `recommendation_map.yaml` for a Workload Intent, runs
+  Agent Static Validation against the local `config/specification/` and
+  `workload/profiles/` trees, and returns a `RecommendationOutput`. It does
+  not take Execution Facts: endpoint details must never influence
+  Recommendation Map selection.
+- `render_run_command(recommendation, execution_facts)` /
+  `render_benchmark_job_manifest(recommendation, execution_facts,
+  run_command)` -- render the Agent-Rendered Run Command and a plain
+  `batch/v1` Job dict. Neither function renders a Jinja template or touches
+  `config/`.
+- `score_slo_goodput(agent_analysis_input, gates, ...)` -- scores
+  benchmark-report v0.2 files against caller-supplied SLO Gates. It ships
+  with no default thresholds.
+- `write_agent_session_workspace(...)` -- the package's only I/O, writing
+  the four Agent Session Workspace files under a caller-supplied session
+  root.
+
+If you extend this package, keep the leaf-package property: do not import
+`llmdbenchmark.cli`, any `*/steps/*` module, or `llmdbenchmark.executor.*`
+from it, and do not add a Recommendation Map rule whose harness is missing
+from `llmdbenchmark.analysis._WRITER_NAMES`.

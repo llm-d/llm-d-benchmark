@@ -37,6 +37,10 @@ spec:
         cpu: "{{ harness.resources.cpu }}"
         memory: {{ harness.resources.memory }}
     env:
+    # Stage markers are logged in local time, then compared against `date -u`
+    # scrape timestamps when clipping per-stage series.
+    - name: TZ
+      value: "UTC"
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
     - name: LLMDBENCH_MAGIC_ENVAR
@@ -61,8 +65,20 @@ spec:
       value: "{{ harness.name }}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "{{ experiment_id }}"
+    - name: LLMDBENCH_DESCRIPTION_TEXT
+      value: {{ (description | default({}, true)).text | default('', true) | string | tojson }}
+    - name: LLMDBENCH_DESCRIPTION_KEYWORDS
+      value: {{ (description | default({}, true)).keywords | default([], true) | join(',') | tojson }}
     - name: RAYON_NUM_THREADS
       value: "{{ harness.inferencePerf.rayonNumThreads }}"
+    - name: HOME
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.home"
+    - name: HF_HOME
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache/huggingface"
+    - name: XDG_CACHE_HOME
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache"
+    - name: MPLCONFIGDIR
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache/matplotlib"
 {% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
@@ -120,6 +136,14 @@ spec:
       value: >-
         {{ monitoring.timeSeriesMetrics | tojson }}
 {% endif %}
+{% if monitoring.embedTimeSeries is defined %}
+    - name: LLMDBENCH_METRICS_EMBED_TIME_SERIES
+      value: "{{ monitoring.embedTimeSeries | lower }}"
+{% endif %}
+{% if monitoring.timeSeriesMaxPoints is defined %}
+    - name: LLMDBENCH_METRICS_TS_MAX_POINTS
+      value: "{{ monitoring.timeSeriesMaxPoints }}"
+{% endif %}
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED
       value: "{{ standalone.enabled | lower }}"
@@ -152,17 +176,22 @@ spec:
     volumeMounts:
     - name: results
       mountPath: /requests
-    - name: {{ harness.name }}-profiles
-      mountPath: /workspace/profiles/{{ harness.name }}
+{% set profile_mounts = profile_mounts | default([harness.name]) %}
+{% for profile_harness in profile_mounts %}
+    - name: {{ profile_harness }}-profiles
+      mountPath: /workspace/profiles/{{ profile_harness }}
+{% endfor %}
     - name: harness-scripts
       mountPath: /workspace/harnesses
   volumes:
   - name: results
     persistentVolumeClaim:
       claimName: {{ storage.workloadPvc.name }}
-  - name: {{ harness.name }}-profiles
+{% for profile_harness in profile_mounts %}
+  - name: {{ profile_harness }}-profiles
     configMap:
-      name: {{ harness.name }}-profiles
+      name: {{ profile_harness }}-profiles
+{% endfor %}
   - name: harness-scripts
     configMap:
       name: llmdbench-harness-scripts

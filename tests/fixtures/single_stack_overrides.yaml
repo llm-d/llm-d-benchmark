@@ -1,0 +1,46 @@
+# Test-only single-stack scenario, owned by tests/test_cli_set_overrides.py.
+# Sibling of multi_stack_overrides.yaml; same reasoning -- scenarios under
+# config/scenarios/ ship to users and get retuned freely, so a suite that
+# asserts on their literals fails for reasons unrelated to the code.
+#
+# Everything below is load-bearing for an assertion. The contract:
+#
+#   - exactly one stack, named `single-pool`. That name is the key the
+#     tests index rendered configs by.
+#   - `decode.replicas: 2` is the baseline an override moves off, and the
+#     "2 -> 4" value pair in the override-log assertion.
+#   - the `kustomize` block exists with `enabled: false` and a `guideName`,
+#     so the "reproduce a kustomize variant with -t kustomize + --set"
+#     test has something to flip and something to preserve.
+#
+# Deliberately minimal otherwise -- defaults.yaml fills in the rest,
+# including the `epponly` gateway class (valid here: single stack).
+
+scenario:
+  - name: "single-pool"
+
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+
+    model:
+      name: Qwen/Qwen3-0.6B
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 8Gi
+
+    decode:
+      replicas: 2
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+        requests:
+          memory: 24Gi
+          cpu: "8"
+
+    kustomize:
+      enabled: false
+      guideName: "single-pool-guide"
+      acceleratorBackend: "gpu/vllm"

@@ -1,0 +1,31 @@
+{# Modelservice direct baseline: expose decode vLLM without Gateway, EPP,
+   Envoy, or the routing proxy.  RenderPlans forces routing.proxy.enabled=false
+   for this mode, so vLLM binds directly to decode.vllm.servicePort. #}
+{% set decode_create = (decode.enabled if decode.enabled is defined else (decode.replicas | default(0) | int > 0)) %}
+{% if standalone.enabled is defined and not standalone.enabled
+      and not (kustomize.enabled | default(false))
+      and gateway.className | default('') == 'none'
+      and decode_create %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ model_id_label }}-direct
+  namespace: {{ gateway.namespace }}
+  labels:
+    app.kubernetes.io/managed-by: llm-d-benchmark
+    llm-d.ai/model: {{ model_id_label }}
+    llm-d.ai/role: decode
+    stood-up-from: llm-d-benchmark
+    stood-up-via: modelservice
+spec:
+  type: ClusterIP
+  selector:
+    llm-d.ai/model: {{ model_id_label }}
+    llm-d.ai/role: decode
+  ports:
+    - name: http
+      appProtocol: http
+      port: {{ routing.servicePort }}
+      targetPort: {{ decode.vllm.servicePort }}
+      protocol: TCP
+{% endif %}

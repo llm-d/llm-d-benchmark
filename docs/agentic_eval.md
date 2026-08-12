@@ -102,7 +102,12 @@ the model is served** (next section).
 **Keep scenarios cluster-agnostic.** RWX storage class, service account, and root
 privilege belong in a `--cluster-config` file
 ([openshift-setup.md](openshift-setup.md)), merged over the scenario at run time:
-`defaults.yaml → scenario.yaml → --cluster-config → CLI flags`.
+`defaults.yaml → scenario.yaml → --cluster-config → --set → CLI flags`.
+
+For a one-off tweak that does not warrant a file, `--set` takes the same
+dotted paths on the command line -- e.g.
+`--set storage.workloadPvc.storageClassName=ocs-storagecluster-cephfs`
+([standup.md](standup.md#overriding-scenario-values-from-the-cli---set)).
 
 ---
 

@@ -159,6 +159,27 @@ export LLMDBENCH_HARNESS_VERSION=$(pip show lm-eval 2>/dev/null | awk '/^Version
 # ---------------------------------------------------------------------------
 # 8. Write run metadata (same schema as other harnesses)
 # ---------------------------------------------------------------------------
+# Escape free text for the double-quoted YAML scalars below. Backslash first, or
+# the quote escapes get double-escaped. Control characters are illegal in a
+# double-quoted scalar at all, and an unparseable file loses every key in it, not
+# just this one.
+_yaml_escape() {
+  local text="${1:-}" out="" index character
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//$'\t'/\\t}"
+  text="${text//$'\n'/\\n}"
+  for (( index=0; index<${#text}; index++ )); do
+    character="${text:index:1}"
+    if [[ "$character" == [[:cntrl:]] ]]; then
+      printf -v character '\\x%02x' "'$character"
+    fi
+    out+="$character"
+  done
+  printf '%s' "$out"
+}
+_description_text="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_TEXT:-}")"
+_description_keywords="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_KEYWORDS:-}")"
 cat > "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/run_metadata.yaml" <<METADATA
 harness_start: "${LLMDBENCH_HARNESS_START}"
 harness_stop: "${LLMDBENCH_HARNESS_STOP}"
@@ -168,12 +189,15 @@ harness_version: "${LLMDBENCH_HARNESS_VERSION}"
 harness_name: "lm-eval"
 harness_workload: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME:-}"
 harness_rc: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC}"
+experiment_id: "${LLMDBENCH_RUN_EXPERIMENT_ID:-}"
 model: "${MODEL}"
 endpoint_url: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL:-}"
 tasks: "${TASKS}"
 num_fewshot: "${NUM_FEWSHOT}"
 limit: "${LIMIT:-}"
 num_concurrent: "${NUM_CONCURRENT}"
+description_text: "${_description_text}"
+description_keywords: "${_description_keywords}"
 METADATA
 echo "Run metadata written to ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/run_metadata.yaml"
 

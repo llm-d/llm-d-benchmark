@@ -72,14 +72,22 @@ class CreateProfileConfigmapStep(Step):
 
         errors: list[str] = []
 
-        profile_ok, profile_msg = self._create_profiles_configmap(
-            context,
-            cmd,
-            harness_name,
-            harness_ns,
-        )
-        if not profile_ok:
-            errors.append(profile_msg)
+        if context.harness_debug:
+            profile_results = self._create_debug_profiles_configmaps(
+                context,
+                cmd,
+                harness_ns,
+            )
+            errors.extend(msg for ok, msg in profile_results if not ok)
+        else:
+            profile_ok, profile_msg = self._create_profiles_configmap(
+                context,
+                cmd,
+                harness_name,
+                harness_ns,
+            )
+            if not profile_ok:
+                errors.append(profile_msg)
 
         scripts_ok, scripts_msg = self._create_harness_scripts_configmap(
             context,
@@ -156,6 +164,42 @@ class CreateProfileConfigmapStep(Step):
                 f"ConfigMap '{configmap_name}' created with {profile_count} profile(s)"
             )
         return ok, msg
+
+    def _create_debug_profiles_configmaps(
+        self,
+        context,
+        cmd,
+        harness_ns: str,
+    ) -> list[tuple[bool, str]]:
+        """Create one profiles ConfigMap per rendered harness in debug mode."""
+        profiles_root = context.workload_profiles_dir()
+        if not profiles_root.is_dir():
+            return [
+                (
+                    False,
+                    f"No rendered profiles found in {profiles_root}. "
+                    f"Run render_profiles first.",
+                )
+            ]
+
+        results: list[tuple[bool, str]] = []
+        for profiles_dir in sorted(profiles_root.iterdir()):
+            if not profiles_dir.is_dir():
+                continue
+            if not any(path.is_file() for path in profiles_dir.iterdir()):
+                continue
+            results.append(
+                self._create_profiles_configmap(
+                    context,
+                    cmd,
+                    profiles_dir.name,
+                    harness_ns,
+                )
+            )
+
+        if not results:
+            results.append((False, f"No profile directories in {profiles_root}"))
+        return results
 
     def _create_harness_scripts_configmap(
         self,

@@ -237,6 +237,9 @@ class Step(ABC):
             if cfg:
                 _add(cfg.get("namespace", {}).get("name"))
                 _add(cfg.get("harness", {}).get("namespace"))
+                gateway = cfg.get("gateway", {})
+                if gateway.get("className") == "none":
+                    _add(gateway.get("namespace"))
 
         _add(context.namespace)
         _add(context.harness_namespace)
@@ -299,7 +302,7 @@ class Step(ABC):
 
         Returns True if the PVC exists (caller should skip creation),
         False if it doesn't exist (caller should create it).
-        Appends to *errors* if existing size is too small or unparseable.
+        Appends to *errors* if existing size is too small or unparsable.
         """
         result = cmd.kube(
             "get",

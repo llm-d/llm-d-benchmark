@@ -10,6 +10,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
   - [Method 1: Scenario File](#method-1-scenario-file-recommended-for-deployment-specific-config)
   - [Method 2: Environment Variables](#method-2-environment-variables-for-shellci-defaults)
   - [Method 3: CLI Arguments](#method-3-cli-arguments-highest-priority-runtime-overrides)
+    - [Overriding arbitrary scenario keys (`--set`)](#overriding-arbitrary-scenario-keys---set)
   - [Method 4: Experiment Treatments](#method-4-experiment-treatments-for-parameter-sweeps)
 - [Templates](#templates)
   - [Jinja2 Templates](#templatesjinja)
@@ -27,6 +28,8 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Harness Entrypoint Configuration](#harness-entrypoint-configuration)
 - [Flow Control Configuration](#flow-control-configuration)
 - [Monitoring and Metrics](#monitoring-and-metrics)
+- [KEDA Autoscaling](#keda-autoscaling)
+  - [Generic KEDA ScaledObjects (`keda`)](#generic-keda-scaledobjects-keda)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -93,15 +96,28 @@ Create a scenario YAML under `config/scenarios/` that overrides only the values 
 ```yaml
 scenario:
   - name: "my-deployment"
-    model:
-      name: Qwen/Qwen3-32B
-    decode:
-      replicas: 4
-    namespace:
-      name: my-namespace
+    common:
+      model:
+        name: Qwen/Qwen3-32B
+      namespace:
+        name: my-namespace
+    modelservice:
+      enabled: true
+      decode:
+        replicas: 4
+    standalone:
+      enabled: false
+    fma:
+      enabled: false
 ```
 
 Only the keys you specify are overridden. Everything else comes from `defaults.yaml`.
+The `common` section is inherited by every standup method. Method-specific
+settings belong under `standalone`, `modelservice`, or `fma`. Legacy flat
+scenario keys remain supported for backward compatibility.
+
+`modelservice.common` is distinct from the stack-level `common` section: it
+is passed through as the modelservice Helm chart's `common` values block.
 
 **Multi-stack scenarios - the `shared:` block.** The scenario file also
 accepts an optional top-level `shared:` key that's merged into every stack
@@ -111,15 +127,16 @@ a shared value:
 
 ```yaml
 shared:
-  modelservice: { enabled: true }
-  wva:
+  modelservice:
     enabled: true
-    image: { tag: v0.6.0 }
+    gateway: { className: istio }
   httpRoute:
     mode: shared
     name: multi-model-route
     pathPrefix: /{stack.name}
     rewriteTo: /
+  router:
+    epp: { pluginsConfigFile: "optimized-baseline-plugins.yaml", ... }
 
 scenario:
   - name: pool-a
@@ -148,8 +165,8 @@ Render-time conveniences that activate only when `len(scenario) >= 2`:
   against the shared PVC. Downloads run in parallel - total wall time
   ~ slowest model, not sum.
 
-See [examples/multi-model-wva.yaml](scenarios/examples/multi-model-wva.yaml) for a
-complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+See [examples/multi-model-optimized-baseline.yaml](scenarios/examples/multi-model-optimized-baseline.yaml)
+for a complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
 section for the merge semantics.
 
 **Example: GPU scenario with a custom vLLM image**
@@ -226,6 +243,75 @@ llmdbenchmark --spec my-spec.yaml.j2 standup -r my-release
 # Combine multiple overrides
 llmdbenchmark --spec my-spec.yaml.j2 standup -p my-ns -t modelservice -r my-release
 ```
+
+##### Overriding arbitrary scenario keys (`--set`)
+
+The flags above cover the values that have a dedicated flag. **Any** key in
+the merged config can be overridden with `--set`, using the same dotted
+paths a scenario file uses. This is what makes a
+near-duplicate scenario file unnecessary:
+
+```bash
+# One key -- the SGLang flavour of a guide, no second scenario file
+llmdbenchmark --spec guides/optimized-baseline standup \
+  -t kustomize -o kustomize.acceleratorBackend=gpu/sglang
+
+# Several keys: comma-separated, or repeat the flag
+llmdbenchmark --spec guides/pd-disaggregation standup \
+  --set 'decode.replicas=2,prefill.replicas=4' \
+  --set 'storage.modelPvc.size=2Ti'
+```
+
+Values are parsed as YAML, so `4`, `true`, `[a, b]` and `{x: 1}` mean what
+they would in the scenario file. Commas inside `[]`, `{}` or quotes belong to
+the value, not the separator. Because it is real YAML, `012` is octal 10 and
+`1:30` is 90 -- quote the value (`"foo='012'"`) to keep it a string; a
+warning is emitted whenever a value is read as something other than it looks.
+
+Multi-line values are folded onto one line: real newlines in a plain scalar
+collapse into spaces, which silently changes the meaning of a shell command.
+Wrap the value in double quotes so `\n` is an escape --
+`--set 'decode.vllm.customCommand="export FOO=1\nvllm serve /model-cache/x"'`
+-- or, for a full multi-line `customCommand`, set it in the scenario file
+instead; `--set` is best suited to single-line values.
+
+Lists are assigned whole, never indexed: `vllmCommon.volumeMounts.0.name=x`
+is rejected (it would silently replace the entire list) -- pass the full
+list instead, `'vllmCommon.volumeMounts=[{name: x, mountPath: /x}]'`.
+
+In a multi-stack scenario, prefix a key with a stack name (or an fnmatch
+glob) to scope it; unprefixed applies to every stack:
+
+```bash
+# Different value per pool, both still deployed
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
+
+# A common floor with one exception (exact name beats the global)
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'decode.resources.limits.memory=64Gi' \
+  --set 'llama-31-8b:decode.resources.limits.memory=32Gi'
+```
+
+A selector matching no stack is a hard error, not a silent no-op. Every
+applied override is logged with its previous value
+(`[llama-31-8b] Scenario override: decode.replicas: 1 -> 4`).
+
+`--set` is available on every subcommand that renders templates
+(`plan`, `standup`, `smoketest`, `run`, `teardown`, `experiment`) -- pass it
+to each phase of a lifecycle, since they all re-render. Full reference:
+[docs/standup.md](../docs/standup.md#overriding-scenario-values-from-the-cli---set).
+
+> [!IMPORTANT]
+> `--set` always means the **scenario**. On `run` and `experiment`,
+> `-o/--overrides` is a **different** flag that overrides the workload
+> profile; the two can be combined. `standup` has no workload profile, so
+> it accepts `--set` only.
+
+There is also `--cluster-config FILE`, which takes the same overrides as a
+YAML mapping for values that are constant per cluster (storage class,
+service account). `--set` wins over that file on a contested key. See
+[docs/openshift-setup.md](../docs/openshift-setup.md).
 
 #### Method 4: Experiment Treatments (for parameter sweeps)
 
@@ -313,6 +399,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes) |
 | `harness` | Benchmark harness configuration |
 | `wva` | Workload Variant Autoscaler settings |
+| `keda` | Generic KEDA ScaledObjects with configurable Prometheus auth (any cluster) |
 | `control` | Context secret name |
 | `lws` | LeaderWorkerSet configuration |
 | `agentgateway` | agentgateway provider configuration |
@@ -767,15 +854,26 @@ affinity:
 
 ## Scenario Organization
 
-Scenario files use comment headers to organize settings into three categories:
+Each stack is organized into four YAML sections:
 
-- **COMMON** -- settings that apply to all deployment methods (model config, namespace, decode/prefill resources, vllmCommon, monitoring, etc.)
-- **STANDALONE** -- settings that only apply when `standalone.enabled: true` (standalone image, replicas, volumes)
-- **MODELSERVICE** -- settings that only apply when `modelservice.enabled: true` (Helm chart values, gateway config, GAIE settings)
+- **`common`** -- settings inherited by every deployment method (model,
+  namespace, storage, vllmCommon, harness, images, and workDir)
+- **`standalone`** -- settings used when `standalone.enabled: true`
+- **`modelservice`** -- settings used when `modelservice.enabled: true`,
+  including decode, prefill, gateway, router, routing, httpRoute,
+  inferenceExtension, and multinode
+- **`fma`** -- settings used when `fma.enabled: true`
+
+The renderer expands `common` and method-specific sub-sections to the flat
+effective `config.yaml` consumed internally. If a scenario contains both a
+legacy flat key and its sectioned spelling, the sectioned spelling wins.
+Treatment and CLI overrides are applied afterward and therefore take highest
+precedence.
 
 Each scenario must set exactly one of `standalone.enabled: true` or `modelservice.enabled: true`. Only one deployment method can be active at a time. The CLI `-t` flag overrides the scenario value (e.g., `-t standalone` forces standalone even if the scenario says modelservice). If both are passed via CLI, a warning is logged and modelservice is used. Templates use Jinja2 conditionals to skip rendering when the corresponding flag is `false`.
 
-A fifth section header, **WORKLOAD / HARNESS**, groups the `workDir` and `harness` fields that configure benchmark execution (which harness, workload profile, and where results are stored).
+Workload settings such as `workDir` and `harness` belong under `common` because
+they apply regardless of the selected standup method.
 
 ---
 
@@ -814,12 +912,12 @@ When no `customCommand` is set, the command is built from:
 
 Two ports are involved in the vLLM serving configuration:
 
-- **Port 8000** (`decode.vllm.servicePort` / `prefill.vllm.servicePort`) -- the inference/service port. Kubernetes probes (startup, liveness, readiness) always check this port. When routing proxy is enabled, the proxy listens on 8000. When routing proxy is disabled, vLLM binds directly to 8000.
-- **Port 8200** (`decode.vllm.port`) -- the vLLM backend port. Only used in the `--port` flag of the vLLM command when routing proxy is enabled (proxy on 8000 forwards to vLLM on 8200). Not used for probes.
+- **Port 8000** (`decode.vllm.servicePort` / `prefill.vllm.servicePort`) -- the inference/service port. When routing proxy is enabled, the proxy listens on 8000. When routing proxy is disabled, vLLM binds directly to 8000.
+- **Port 8200** (`decode.vllm.port`) -- the vLLM backend port. Used in the decode `--port` flag when routing proxy is enabled (proxy on 8000 forwards to vLLM on 8200).
 
-Probe port is overrideable via `decode.vllm.servicePort` or `prefill.vllm.servicePort` in the scenario YAML. Individual per-probe port overrides are not supported (matches the original bash implementation).
+Decode probe ports default to the vLLM bind port: `decode.vllm.port` when routing proxy is enabled, or `decode.vllm.servicePort` when routing proxy is disabled. Prefill pods do not have the routing proxy and continue to probe `prefill.vllm.servicePort`.
 
-When routing proxy is **enabled** (modelservice only), vLLM binds to `decode.vllm.port` (default 8200) and the proxy handles `servicePort` (8000) to `vllmPort` (8200) forwarding. When routing proxy is **disabled**, vLLM binds directly to `decode.vllm.servicePort` (8000). In both cases, probes target the `servicePort` (8000).
+Probe ports can be overridden with `decode.probes.startup.port`, `decode.probes.liveness.port`, `decode.probes.readiness.port`, or the corresponding `prefill.probes.*.port` fields.
 
 ### Custom command
 
@@ -1272,6 +1370,10 @@ This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inf
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
 - `inference_extension_flow_control_queue_size` -- flow control queue depth
 - `inference_extension_flow_control_pool_saturation` -- pool saturation level
+- `llm_d_epp_flow_control_pool_saturation` -- pool saturation (0.0–1.0); KEDA
+  EPP-saturation scale trigger (`saturationThreshold`)
+- `llm_d_epp_request_running` -- running requests; KEDA EPP-saturation scale
+  trigger (`runningRequestsThreshold`)
 
 #### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 
@@ -1327,6 +1429,111 @@ Reports are generated in both YAML and JSON formats. See `llmdbenchmark/analysis
 #### Prometheus adapter (for autoscaling)
 
 The `21_prometheus-adapter-values.yaml.j2` template configures a Prometheus adapter that bridges WVA (Workload Variant Autoscaler) metrics to the Kubernetes external metrics API. This is only needed when using WVA-based autoscaling.
+
+---
+
+## KEDA Autoscaling
+
+### Generic KEDA ScaledObjects (`keda`)
+
+Renders one or more `ScaledObject` resources from a user-defined list. Works on any Kubernetes cluster. KEDA must already be installed in the cluster.
+
+**Templates rendered:** `27_keda-scaledobjects.yaml.j2`, `27a_keda-triggerauthentication.yaml.j2`
+
+**Standup wiring:**
+- `step_03` (workload monitoring) applies the `TriggerAuthentication` once per namespace (bearer-secret mode only), then the `ScaledObjects` template.
+- `step_09` (deploy modelservice) re-applies the `ScaledObjects` template per stack (idempotent).
+- Neither step is gated on `is_openshift`.
+
+#### `keda.prometheus` — shared Prometheus connection
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `keda.prometheus.baseUrl` | `http://prometheus` | Base URL of the Prometheus instance (no trailing port) |
+| `keda.prometheus.port` | `9090` | Prometheus port; assembled with `baseUrl` as `baseUrl:port` |
+| `keda.prometheus.authMode` | `none` | Auth mode: `none` or `bearer-secret` |
+| `keda.prometheus.secretName` | `""` | Name of a pre-existing Secret in the **deploy namespace** containing `bearerToken` and `ca.crt` keys (`bearer-secret` only) |
+| `keda.prometheus.unsafeSsl` | `false` | Skip TLS verification; also omits the `ca` secretTargetRef entry from the TriggerAuthentication |
+
+**Auth modes:**
+
+| `authMode` | TriggerAuthentication created? | Secret required? |
+|------------|-------------------------------|-----------------|
+| `none` | No | No |
+| `bearer-secret` | Yes (`keda-prometheus-auth`) | Yes — user must pre-create it in the deploy namespace |
+
+> **Note:** KEDA's `secretTargetRef` does not support cross-namespace Secret references. The Secret must be in the same namespace as the ScaledObject.
+
+#### `keda.scaledObjects` — list of ScaledObjects to create
+
+Each entry in the list produces one `ScaledObject`. The list is empty by default (no ScaledObjects rendered).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | _(required)_ | `metadata.name` of the ScaledObject |
+| `scaleTargetRef.kind` | `Deployment` | Kind of the scale target |
+| `scaleTargetRef.name` | `model_id_label + "-decode"` | Name of the scale target; defaults to the model's decode Deployment |
+| `minReplicas` | `1` | Minimum replica count |
+| `maxReplicas` | `10` | Maximum replica count |
+| `pollingInterval` | _(omitted)_ | Seconds between KEDA polls; omit to use KEDA's default (15 s) |
+| `triggers` | `[]` | List of KEDA trigger objects (see below) |
+| `behavior` | _(omitted)_ | Optional HPA behavior block rendered under `spec.advanced.horizontalPodAutoscalerConfig.behavior` |
+
+Each entry in `triggers` is a raw KEDA trigger. For Prometheus triggers, `serverAddress` is injected automatically from `keda.prometheus`; you do not set it manually.
+
+| Trigger field | Default | Description |
+|---------------|---------|-------------|
+| `type` | _(required)_ | KEDA trigger type, e.g. `prometheus` |
+| `name` | _(omitted)_ | Optional trigger name |
+| `metricType` | `AverageValue` | HPA metric type |
+| `query` | _(required)_ | PromQL query string |
+| `threshold` | `"1"` | Scale-up threshold |
+| `activationThreshold` | `"0"` | Activation threshold (KEDA `activationThreshold`) |
+
+#### Example
+
+```yaml
+keda:
+  prometheus:
+    baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
+    port: 9090
+    authMode: none
+
+  scaledObjects:
+    - name: decode-saturation
+      scaleTargetRef:
+        kind: Deployment
+        name: ""              # defaults to model_id_label + "-decode"
+      minReplicas: 1
+      maxReplicas: 10
+      pollingInterval: 15
+      triggers:
+        - type: prometheus
+          name: kv-cache
+          metricType: AverageValue
+          query: |
+            max(inference_pool_average_kv_cache_utilization{namespace="my-ns"})
+          threshold: "0.7"
+          activationThreshold: "0"
+```
+
+For `bearer-secret` auth, first create a Secret in the deploy namespace:
+
+```bash
+kubectl create secret generic prometheus-bearer \
+  --from-literal=bearerToken="<token>" \
+  --from-file=ca.crt=/path/to/ca.crt \
+  -n <deploy-namespace>
+```
+
+Then set:
+
+```yaml
+keda:
+  prometheus:
+    authMode: bearer-secret
+    secretName: prometheus-bearer
+```
 
 ---
 

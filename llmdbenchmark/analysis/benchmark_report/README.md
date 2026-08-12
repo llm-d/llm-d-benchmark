@@ -20,6 +20,15 @@ The `version` field (`0.2`) indicates the schema revision for the benchmark repo
 
 The `run` field contains details about the benchmark run. Only the unique ID `run.uid` is required, with other fields including start/end times and duration, user name, and additional IDs for the experiment (to group benchmark reports), cluster, and pod.
 
+Two fields are populated from the experiment ID (`LLMDBENCH_RUN_EXPERIMENT_ID`, or the results directory name for an archived run):
+
+- `run.eid` groups every report of one experiment, as a UUID5 of the experiment ID. Stages of the same run share it; treatments of a sweep do not.
+- `run.description` is the human-readable run label. Consumers such as [llm-d-prism](https://github.com/llm-d/llm-d-prism) read it as the run label, so it defaults to `<model> [<experiment id>]` (for example `Qwen/Qwen3-32B [inference-perf-conc32-1786024743-hipkpq]`): the ID keeps the treatments of a sweep from collapsing into one entry, and the model keeps the label readable. When no experiment ID is available at all, both fields are omitted.
+
+The schema documents `run.description` as submitter-provided, so the generated label is only a default. Set your own with `--run-description`, `LLMDBENCH_DESCRIPTION_TEXT`, or `description.text` under a scenario's `common:` block, and it is used verbatim. A submitter-supplied description and keywords are recorded even when no experiment ID resolves, since neither needs one to be meaningful.
+
+`run.keywords` is populated only from `--run-keywords`, `LLMDBENCH_DESCRIPTION_KEYWORDS`, or `description.keywords` (comma-separated). It is never auto-populated -- see [SUBMISSION_POLICY.md](../../results_store/SUBMISSION_POLICY.md) -- and the key is omitted entirely when the submitter sets nothing.
+
 ### `scenario` Field
 
 `scenario` describes the inference stack configuration (under `scenario.stack`) and workload details (under `scenario.load`). These are the inputs to a benchmark experiment, and ideally will be sufficiently populated to ensure the benchmark is reproducible and leaves no question as to what exactly is being measured.

@@ -158,6 +158,19 @@ def parse_prometheus_metrics_with_timestamp(file_path):
     return timestamp_str, pod_name, metrics
 
 
+def compute_ratio_series(pod_metrics, numerator, denominator):
+    """Per-pod ratio series (numerator/denominator*100) over shared timestamps."""
+    if numerator not in pod_metrics or denominator not in pod_metrics:
+        return []
+    num_by_ts = {ts: val for ts, val in pod_metrics[numerator]}
+    den_by_ts = {ts: val for ts, val in pod_metrics[denominator]}
+    common_ts = sorted(set(num_by_ts) & set(den_by_ts))
+    return [
+        (ts, (num_by_ts[ts] / den_by_ts[ts] * 100) if den_by_ts[ts] > 0 else 0.0)
+        for ts in common_ts
+    ]
+
+
 def collect_time_series_data(metrics_dir):
     """Collect time series data from all metric files.
 
@@ -419,21 +432,9 @@ def generate_all_visualizations(metrics_dir, output_dir=None, context=None):
             continue
         ratio_data = {}
         for pod_name, metrics in pod_data.items():
-            if numerator in metrics and denominator in metrics:
-                hits_by_ts = {ts: val for ts, val in metrics[numerator]}
-                queries_by_ts = {ts: val for ts, val in metrics[denominator]}
-                common_ts = sorted(set(hits_by_ts) & set(queries_by_ts))
-                ratio_points = [
-                    (
-                        ts,
-                        (hits_by_ts[ts] / queries_by_ts[ts] * 100)
-                        if queries_by_ts[ts] > 0
-                        else 0.0,
-                    )
-                    for ts in common_ts
-                ]
-                if ratio_points:
-                    ratio_data[pod_name] = {output_name: ratio_points}
+            ratio_points = compute_ratio_series(metrics, numerator, denominator)
+            if ratio_points:
+                ratio_data[pod_name] = {output_name: ratio_points}
         if ratio_data:
             plot_metric_time_series(
                 ratio_data,

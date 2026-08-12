@@ -20,6 +20,7 @@ class VersionResolver:
 
     def __init__(self, logger, dry_run: bool = False):
         self.logger = logger
+        self.dry_run = dry_run
 
     @staticmethod
     def _latest_version_tag(tags: list[str]) -> str | None:
@@ -333,17 +334,37 @@ class VersionResolver:
                     )
                     unresolved.append(f"{path}.image")
 
-    def resolve_all(self, values: dict) -> dict:
-        """Resolve all ``"auto"`` image tags and chart versions in the values dict."""
+    def resolve_all(self, values: dict, skip_kubernetes: bool = False) -> dict:
+        """Resolve all ``"auto"`` image tags and chart versions in the values dict.
+
+        ``skip_kubernetes`` drops the resolutions that only feed Kubernetes
+        manifests - the WVA image, Helm chart versions and the gateway version.
+        The no-Kubernetes (nok8s) path never consumes them, and resolving them
+        needs helm, which ``docs/nok8s.md`` states is not required. Attempting
+        it there only produced warnings telling users to install tools they do
+        not need. The container image tags are still resolved: nok8s runs those
+        images directly.
+        """
         result = deepcopy(values)
+
+        if self.dry_run:
+            unresolved = self.has_unresolved(result)
+            if unresolved:
+                self.logger.log_warning(
+                    f"[DRY RUN] Skipping registry/helm resolution; "
+                    f"{len(unresolved)} version(s) remain 'auto': "
+                    f"{', '.join(unresolved)}"
+                )
+            return result
 
         unresolved = []
         self._resolve_image_tags(result, unresolved)
         self._resolve_standalone_image(result, unresolved)
-        self._resolve_wva_image(result, unresolved)
         self._resolve_init_container_images(result, unresolved)
-        self._resolve_chart_versions(result, unresolved)
-        self._resolve_gateway_version(result)
+        if not skip_kubernetes:
+            self._resolve_wva_image(result, unresolved)
+            self._resolve_chart_versions(result, unresolved)
+            self._resolve_gateway_version(result)
 
         if unresolved:
             self.logger.log_warning(

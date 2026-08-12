@@ -145,6 +145,23 @@ Setup treatment 3 (replicas=8):
 
 This produces 15 result sets total (3 setup x 5 run treatments).
 
+### Setup Treatments vs `--set`
+
+`setup.treatments` and the `--set` CLI flag write to the same place: dotted
+paths deep-merged into each stack's config before rendering. The difference
+is intent -- a treatment is a **factor being swept** (it varies per cycle and
+is recorded in the experiment summary), while `--set` is a **constant for the
+whole invocation**.
+
+When both touch the same key, the treatment wins, so a sweep is never
+silently flattened by a CLI flag. Use `--set` for things that hold across
+every cycle (a cluster's storage class, a backend flip) and `setup.treatments`
+for the variable under study.
+
+The `stack:` / glob selector prefix is currently a `--set` feature only;
+`setup.treatments` keys apply to every stack. See
+[standup.md](standup.md#scoping-overrides-in-multi-stack-scenarios).
+
 ### Run Treatments Within Each Cycle
 
 Within a single setup treatment, run treatments are executed sequentially against the same deployed stack. Each run treatment applies its factor values as workload profile overrides (e.g., `max-concurrency=64, num-prompts=640`). The harness pod is deployed, executes the workload, collects results, and is cleaned up before the next run treatment begins.

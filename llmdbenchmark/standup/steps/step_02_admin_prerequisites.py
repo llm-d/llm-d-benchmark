@@ -201,27 +201,35 @@ class AdminPrerequisitesStep(Step):
 
         deploy_methods = context.deployed_methods or []
         modelservice_active = "modelservice" in deploy_methods
+        gateway_class = (plan_config.get("gateway") or {}).get("className", "")
+        direct_service_mode = modelservice_active and gateway_class == "none"
 
         if modelservice_active:
-            self._install_gateway_api_crds(
-                cmd,
-                plan_config,
-                errors,
-                existing_crds,
-            )
-            self._install_gateway_api_extension_crds(
-                cmd,
-                plan_config,
-                errors,
-                existing_crds,
-            )
-            self._install_gateway_provider(
-                cmd,
-                context,
-                plan_config,
-                errors,
-                existing_crds,
-            )
+            if direct_service_mode:
+                context.logger.log_info(
+                    "✅ gateway.className=none -- skipping Gateway API, "
+                    "inference extension, and gateway provider prerequisites"
+                )
+            else:
+                self._install_gateway_api_crds(
+                    cmd,
+                    plan_config,
+                    errors,
+                    existing_crds,
+                )
+                self._install_gateway_api_extension_crds(
+                    cmd,
+                    plan_config,
+                    errors,
+                    existing_crds,
+                )
+                self._install_gateway_provider(
+                    cmd,
+                    context,
+                    plan_config,
+                    errors,
+                    existing_crds,
+                )
             self._install_lws_if_needed(
                 cmd,
                 plan_config,
@@ -328,9 +336,19 @@ class AdminPrerequisitesStep(Step):
     def _add_helm_repos(self, cmd: CommandExecutor, plan_config: dict, errors: list):
         """Add configured Helm repositories."""
         helm_repos = plan_config.get("helmRepositories", {})
+        gateway_class = plan_config.get("gateway", {}).get("className")
         added_classic_repo = False
 
         for repo_key, repo_info in helm_repos.items():
+            # The Istio repository is only required when Istio is the selected
+            # Gateway provider. epponly/agentgateway deployments otherwise gain
+            # an unnecessary network dependency during every standup.
+            if repo_key == "istio" and gateway_class != "istio":
+                cmd.logger.log_info(
+                    f"Skipping Istio Helm repo for gateway.className="
+                    f"{gateway_class or 'unset'}"
+                )
+                continue
             repo_name = repo_info.get("name", repo_key)
             repo_url = repo_info.get("url", "").strip()
             if not repo_url:

@@ -46,6 +46,47 @@ Verify GPU-in-container before you start:
 docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
+## Without a GPU
+
+Serving a model needs the accelerator, but *validating the plumbing* does not.
+Rendering and `--dry-run` never touch a device or a cluster, so a plain laptop
+can still check that a nok8s scenario renders and that the container commands
+are the ones you expect. Verified on macOS (Darwin 25.3, Python 3.13, `docker`
+present and usable, no GPU, no cluster, no `helm`/`yq`/`kind`):
+
+```bash
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . plan
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dry-run standup --methods nok8s
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dry-run run
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dry-run teardown --methods nok8s
+```
+
+| What | Without a GPU |
+|------|---------------|
+| `pytest tests/ -q -n2` | **Works** (739 passed, 31 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
+| `plan` | **Works** -- renders all 36 artifacts, including `31/32/33/34_nok8s-*` |
+| `--dry-run standup --methods nok8s` | **Works** (12/12 steps) -- step 06 logs each `docker run` it *would* execute, and records `http://localhost:8081` |
+| `--dry-run run` | **Works** -- endpoint resolves locally with no cluster query, profiles render, the harness `docker run` is logged |
+| `--dry-run teardown --methods nok8s` | **Works** -- logs one `docker rm -f` per container |
+| `teardown --methods nok8s` (live) | **Works** -- `docker rm -f` is idempotent, so it is safe with nothing running |
+| `standup` (live) | **Fails at step 06.** It emits `docker run -d --name vllm-0 --gpus all ...`, which a GPU-less docker rejects: `could not select device driver "" with capabilities: [[gpu]]` |
+| `run` / `smoketest` (live) | **Fails** -- nothing is serving the model |
+
+Two caveats before you read a green dry-run as "my host is fine":
+
+- **`--dry-run` skips the step 00 preflight.** It logs what it *would* verify
+  and returns success. It proves the plan and the command strings, not the host.
+- **Run live, step 00 passes anyway on a GPU-less host** with a working
+  container runtime: only a missing or broken runtime is fatal, so the missing
+  accelerator is a warning, not an error:
+  ```
+  WARNING  'nvidia-smi' found no nvidia accelerator; vLLM needs the device + driver present, ...
+  WARNING  $HUGGING_FACE_HUB_TOKEN is not set; gated Hugging Face models will fail to download ...
+  INFO     nok8s preflight passed (runtime=docker).
+  ```
+  The port-in-use check shells out to `ss -ltn`, so on a host without `ss`
+  (macOS) it silently reports nothing rather than warning.
+
 ## Usage
 
 ```bash
@@ -53,6 +94,9 @@ export HUGGING_FACE_HUB_TOKEN=hf_...     # for gated models
 
 # Bring up vLLM + EPP + Envoy as local containers (step 00 runs the preflight).
 llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . standup --methods nok8s
+
+# Probe the stack over HTTP (no cluster needed); standup does not chain this one.
+llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . smoketest
 
 # Benchmark it — the harness runs as a local container against http://localhost:8081.
 llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . run
@@ -85,7 +129,8 @@ single-GPU example. Key fields (full defaults in
 | `nok8s.workspaceHostDir` | Host dir where EPP/Envoy configs are staged + bind-mounted |
 | `nok8s.vllm.{image,tag,hostPort,tensorParallel,accelerator,gpus,deviceArgs,shmSize,replicas,extraArgs}` | vLLM worker(s); worker *i* is published on `hostPort + i` (see Accelerators for `accelerator`/`deviceArgs`) |
 | `nok8s.epp.{image,tag,grpcPort,grpcHealthPort,metricsPort}` | Endpoint Picker |
-| `nok8s.envoy.{image,tag,listenPort}` | Envoy front door (the run target) |
+| `nok8s.envoy.{image,tag,listenPort,adminPort}` | Envoy front door (the run target); `adminPort` is the admin interface, bound on the host (`--network host`) |
+| `nok8s.nameSuffix` | Appended to every container name. Filled automatically with `-<stack>` in a multi-stack scenario (see below); leave empty for one stack |
 | `model.{name,huggingfaceId}` | Set both; standup uses `name`, run reads `huggingfaceId` |
 
 Sizing (fp16, single GPU): ~16 GB → 7–8B · ~24 GB → 8B · ~40 GB → 14B ·
@@ -126,6 +171,76 @@ Step 00 probes the accelerator when it can (`nvidia-smi`/`rocm-smi`/`xpu-smi`/
 `hl-smi`); `cpu`/`spyre`/custom are not probed (a note is logged) — ensure the
 device and image match yourself.
 
+## Several stacks on one host
+
+A scenario with more than one stack runs every stack's containers on the same
+host, with no namespace to keep them apart, so each stack needs its own
+identity. Two things are automatic and two are on you:
+
+- **Container names** get a `-<stack name>` suffix, e.g. `vllm-0-chat`,
+  `epp-chat`, `envoy-chat`. Without this, stack B's idempotency sweep
+  (`docker rm -f epp`) deletes stack A's running router. Two stacks that
+  still end up with the same container name (names differing only by
+  punctuation, or a shared explicit `nok8s.nameSuffix`) are a render error.
+- **`nok8s.workspaceHostDir`** gains a per-stack sub-directory, so the staged
+  EPP/Envoy configs never overwrite each other.
+- **Host ports are yours to assign.** They are never derived, because guessing
+  would silently bind ports you did not ask for. Two nok8s stacks claiming the
+  same port is a render error that names the port and the owning stack, and
+  standup stops before any container starts.
+- **Accelerators are yours to divide.** A worker with `replicas: 1` gets
+  `--gpus all`, so two such stacks both claim every device and the second one
+  runs out of memory. Give each stack its own devices (preflight warns when
+  more than one stack is left unpinned). Total demand is the sum of
+  `replicas x tensorParallel` over all stacks.
+
+A single-stack scenario is unaffected: names stay `vllm-0` / `epp` / `envoy`
+and the workspace stays `~/.llmdbench/nok8s`. Converting an existing one? Run
+`teardown` first (or `docker rm -f vllm-0 epp envoy`): the unsuffixed
+containers from the single-stack run are no longer matched by the suffixed
+names, so teardown will not remove them and they keep holding their ports and
+device memory.
+
+Give every stack after the first a distinct set of six ports (more, with
+`replicas > 1`: worker *i* takes `hostPort + i`) and its own devices:
+
+```yaml
+scenario:
+  - name: chat
+    nok8s:
+      enabled: true
+      vllm:
+        gpus: "device=0"        # podman: nok8s.vllm.deviceArgs
+      # ... first stack keeps the default ports: 8000, 8081, 19000, 9002/9003/9090
+
+  - name: code
+    nok8s:
+      enabled: true
+      vllm:
+        hostPort: 8100
+        gpus: "device=1"
+      epp:
+        grpcPort: 9102
+        grpcHealthPort: 9103
+        metricsPort: 9190
+      envoy:
+        listenPort: 8181
+        adminPort: 19100
+```
+
+Each stack gets its own Envoy front door, so there is no scenario-wide
+endpoint: benchmark them one at a time with `--stack`, which resolves that
+stack's `listenPort`.
+
+```bash
+llmdbenchmark --spec my-scenario.yaml run --stack chat   # -> http://localhost:8081
+llmdbenchmark --spec my-scenario.yaml run --stack code   # -> http://localhost:8181
+```
+
+`run` without `--stack` (or an explicit `--endpoint-url`) fails on a
+multi-stack nok8s scenario rather than benchmarking the first stack's Envoy
+and filing the results under every stack's name.
+
 ## How it maps to the pipeline
 
 | Phase | nok8s behaviour |
@@ -133,6 +248,7 @@ device and image match yourself.
 | standup step 00 | Preflight: runtime / GPU / ports / token (replaces helm/kubectl checks) |
 | standup steps 02–05 | Skipped (no namespace, PVC, model-download Job) |
 | standup step 06 | `step_06_nok8s_deploy` launches the containers, waits for `/v1/models`, records `http://localhost:<listenPort>` |
+| smoketest steps 00–01 | Cluster-free probes: `GET /v1/models` and `POST /v1/completions` against the Envoy front door, read from the rendered `34_nok8s-containers.yaml` (no pods, Service or route) |
 | run step 03 | Endpoint resolves to the local Envoy URL (no cluster query) |
 | run step 07 | `step_07_deploy_harness_local` runs the harness image locally with `--network host`; results land in `workspace/results/` via a bind-mount |
 | teardown step 06 | `step_06_nok8s_teardown` removes the containers |
@@ -175,7 +291,8 @@ auto-pinning and puts you in control).
 
 - **Preflight fails on runtime** — install docker/podman or set `nok8s.runtime`.
 - **vLLM container exits at load** — usually a too-large model for VRAM or a bad
-  HF token; check `docker logs vllm-0`. Lower the model size or add
+  HF token; check `docker logs vllm-0` (`docker logs vllm-0-<stack>` in a
+  multi-stack scenario). Lower the model size or add
   `--max-model-len`/`--gpu-memory-utilization` via `nok8s.vllm.extraArgs`.
 - **Envoy 503** — a worker isn't up; confirm `curl http://localhost:8000/v1/models`.
 - **podman + GPU** — ensure the CDI spec exists: `nvidia-ctk cdi list` should show

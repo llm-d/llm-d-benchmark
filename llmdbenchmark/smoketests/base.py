@@ -7,6 +7,10 @@ from pathlib import Path
 
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.smoketests.nok8s import (
+    health_check as nok8s_health_check,
+    inference_test as nok8s_inference_test,
+)
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.utilities.endpoint import (
     _build_overrides,
@@ -15,10 +19,12 @@ from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     compute_gateway_path_prefix,
     find_custom_endpoint,
+    find_direct_modelservice_endpoint,
     find_epponly_endpoint,
     find_gateway_endpoint,
     find_kustomize_endpoint,
     find_standalone_endpoint,
+    resolve_direct_service_namespace,
     test_model_serving,
 )
 
@@ -144,6 +150,19 @@ class BaseSmoketest:
                 namespace,
                 model_id_label,
             )
+        elif gateway_class == "none":
+            direct_service_namespace = resolve_direct_service_namespace(
+                plan_config, namespace
+            )
+            direct_port = str(
+                _nested_get(plan_config, "routing", "servicePort") or "8000"
+            )
+            service_ip, _, gateway_port = find_direct_modelservice_endpoint(
+                cmd,
+                direct_service_namespace,
+                model_id_label,
+                direct_port,
+            )
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(cmd, namespace, release)
 
@@ -162,6 +181,10 @@ class BaseSmoketest:
         service endpoint, pod IPs, and OpenShift route.
         """
         report = SmoketestReport()
+        # nok8s deploys plain containers: no Service, no pods, no route to
+        # check. Probe the container endpoint over HTTP instead.
+        if context.container_only:
+            return nok8s_health_check(context, stack_path)
         cmd = context.require_cmd()
         namespace = context.require_namespace()
         plan_config = _load_config(stack_path)
@@ -185,6 +208,12 @@ class BaseSmoketest:
             context,
             plan_config,
         )
+        if (
+            not is_standalone
+            and not is_kustomize
+            and _nested_get(plan_config, "gateway", "className") == "none"
+        ):
+            namespace = resolve_direct_service_namespace(plan_config, namespace)
 
         # 1. Check pods running for each configured role
         if is_kustomize:
@@ -572,6 +601,9 @@ class BaseSmoketest:
     ) -> SmoketestReport:
         """Run a sample inference request and report pass/fail."""
         report = SmoketestReport()
+        # nok8s has no ephemeral curl pod to exec from: POST directly.
+        if context.container_only:
+            return nok8s_inference_test(context, stack_path)
         cmd = context.require_cmd()
         namespace = context.require_namespace()
         plan_config = _load_config(stack_path)

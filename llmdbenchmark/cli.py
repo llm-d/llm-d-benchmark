@@ -34,8 +34,16 @@ from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
+from llmdbenchmark.parser.cli_overrides import (
+    GLOBAL_SELECTOR,
+    REDACTED,
+    OverrideParseError,
+    dotted_leaves,
+    is_secret_path,
+    parse_cli_overrides,
+)
 from llmdbenchmark.parser.render_specification import RenderSpecification
-from llmdbenchmark.exceptions.exceptions import TemplateError
+from llmdbenchmark.exceptions.exceptions import TemplateError, ConfigurationError
 from llmdbenchmark.parser.render_plans import RenderPlans
 from llmdbenchmark.parser.version_resolver import VersionResolver
 from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolver
@@ -87,10 +95,14 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         Command.RUN.value,
     ):
         # Resolve templates, scenarios, and values into the workspace
-        specification_as_dict = RenderSpecification(
-            specification_file=args.specification_file,
-            base_dir=args.base_dir,
-        ).eval()
+        try:
+            specification_as_dict = RenderSpecification(
+                specification_file=args.specification_file,
+                base_dir=args.base_dir,
+            ).eval()
+        except ConfigurationError as e:
+            logger.log_error(f"Invalid specification: {e}")
+            sys.exit(1)
 
         logger.log_info(
             "Specification file rendered and validated successfully.",
@@ -105,6 +117,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         cluster_resource_resolver = ClusterResourceResolver(
             logger=logger,
             dry_run=args.dry_run,
+            kubeconfig=getattr(args, "kubeconfig", None),
         )
 
         render_plan_errors = RenderPlans(
@@ -128,7 +141,11 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_gateway_class=getattr(args, "gateway_class", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
             cli_non_admin=getattr(args, "non_admin", False),
-            setup_overrides=getattr(args, "cluster_config_overrides", None),
+            # --cluster-config is folded into the global bucket of
+            # setup_overrides_by_stack (under any --set pairs), so it is
+            # deliberately NOT passed as setup_overrides here -- that slot
+            # is reserved for DoE treatments, which must win over --set.
+            setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         ).eval()
 
         try:
@@ -329,6 +346,32 @@ def _load_all_stacks_info(rendered_paths):
     return stacks_info
 
 
+def _nok8s_endpoint_url(all_stacks_info, stack_filter=None):
+    """Default the nok8s run target to the local Envoy front door.
+
+    Each nok8s stack has its own Envoy, so there is no scenario-wide
+    endpoint: picking one stack's port and benchmarking every stack through
+    it files stack A's traffic under stack B's name. Refuse instead, unless
+    --stack narrows the run to a single nok8s stack (then use that stack's
+    port) or the caller passed --endpoint-url.
+    """
+    stacks = [s for s in all_stacks_info if s.get("nok8s_enabled")]
+    if stack_filter:
+        stacks = [s for s in stacks if s.get("stack_name") in stack_filter]
+    if len(stacks) > 1:
+        raise PhaseError(
+            "This scenario has "
+            + str(len(stacks))
+            + " nok8s stacks, each with its own Envoy port, so there is no "
+            "single endpoint to benchmark. Run them one at a time with "
+            "'--stack <name>', or pass '--endpoint-url "
+            "http://localhost:<that stack's nok8s.envoy.listenPort>'. Stacks: "
+            + ", ".join(f"{s['stack_name']} ({s['nok8s_listen_port']})" for s in stacks)
+        )
+    port = (stacks[0] if stacks else {}).get("nok8s_listen_port", 8081)
+    return f"http://localhost:{port}"
+
+
 def _load_plan_info(rendered_paths):
     """Read key configuration from the first rendered plan config.yaml.
 
@@ -481,6 +524,9 @@ def _do_standup(args, logger, render_plan_errors):
             getattr(args, "modelservice_deploy_timeout", 1500) or 1500
         ),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
+        harness_data_access_timeout=int(
+            getattr(args, "data_access_timeout", 120) or 120
+        ),
         kustomize_deploy_timeout=int(
             getattr(args, "kustomize_deploy_timeout", 900) or 900
         ),
@@ -518,8 +564,10 @@ def _execute_standup(args, logger, render_plan_errors):
     _print_standup_summary(context, result, logger)
 
     # Auto-chain smoketest after standup unless --skip-smoketest.
-    # nok8s has no cluster/namespace for the smoketest pod and the deploy step
-    # already curls /v1/models for readiness, so skip the chained smoketest.
+    # nok8s stays opt-out here: its deploy step already curls /v1/models for
+    # readiness, so the chained run would only add the inference probe. Run
+    # `llmdbenchmark ... smoketest` (or `experiment`, which chains it) to get
+    # that probe; it no longer needs a cluster.
     skip_smoketest = getattr(args, "skip_smoketest", False) or (
         "nok8s" in (context.deployed_methods or [])
     )
@@ -550,7 +598,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         plan_info,
     )
 
-    if not namespace:
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
         raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
@@ -571,6 +620,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -837,7 +888,9 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     # so the run is fully cluster-free (flips is_run_only_mode, skipping k8s
     # endpoint discovery and namespace validation).
     if container_only and not endpoint_url:
-        endpoint_url = f"http://localhost:{plan_info.get('nok8s_listen_port', 8081)}"
+        endpoint_url = _nok8s_endpoint_url(
+            all_stacks_info, _parse_stack_filter(getattr(args, "stack", None))
+        )
     is_run_only = bool(endpoint_url or run_config_file)
 
     if not namespace and not is_run_only:
@@ -1057,8 +1110,9 @@ def _print_endpoints_table(context, logger, args) -> None:
     spec_raw = getattr(args, "specification_file", None)
     spec = str(spec_raw) if spec_raw else "<spec>"
     if "/" in spec or spec.endswith(".yaml.j2"):
-        # Full path (e.g. /abs/path/config/specification/guides/multi-model-wva.yaml.j2)
-        # - trim to the friendly `category/name` form the CLI understands.
+        # Full path (e.g. /abs/path/config/specification/examples/
+        # multi-model-optimized-baseline.yaml.j2) - trim to the friendly
+        # `category/name` form the CLI understands.
         parent = os.path.basename(os.path.dirname(spec)) if "/" in spec else ""
         stem = os.path.basename(spec)
         if stem.endswith(".yaml.j2"):
@@ -1276,12 +1330,11 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
 def _render_plans_for_experiment(args, logger, setup_overrides=None):
     """Render plans with optional setup overrides. Raises PhaseError on failure.
 
-    ``setup_overrides`` from a treatment is deep-merged on top of any
-    ``--cluster-config`` overrides so that treatment values take precedence.
+    ``setup_overrides`` from a treatment is applied last -- on top of the
+    ``--cluster-config`` file and any ``--set`` overrides, both of which ride
+    in ``setup_overrides_by_stack`` -- so a treatment value (the deliberate
+    sweep factor) always takes precedence.
     """
-    cluster_overrides = getattr(args, "cluster_config_overrides", None)
-    if cluster_overrides:
-        setup_overrides = _deep_merge_dicts(cluster_overrides, setup_overrides or {})
     specification_as_dict = RenderSpecification(
         specification_file=args.specification_file,
         base_dir=args.base_dir,
@@ -1291,6 +1344,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
     cluster_resource_resolver = ClusterResourceResolver(
         logger=logger,
         dry_run=args.dry_run,
+        kubeconfig=getattr(args, "kubeconfig", None),
     )
 
     render_plan_errors = RenderPlans(
@@ -1315,6 +1369,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_epp_keda_saturation=getattr(args, "epp_keda_saturation", False),
         cli_gateway_class=getattr(args, "gateway_class", None),
         setup_overrides=setup_overrides,
+        setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         cli_non_admin=getattr(args, "non_admin", False),
     ).eval()
 
@@ -1567,6 +1622,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WORKSPACE": ("workspace", "--workspace"),
         "LLMDBENCH_BASE_DIR": ("base_dir", "--base-dir"),
         "LLMDBENCH_SPEC": ("specification_file", "--spec"),
+        "LLMDBENCH_DESCRIPTION_TEXT": ("run_description", "--run-description"),
+        "LLMDBENCH_DESCRIPTION_KEYWORDS": ("run_keywords", "--run-keywords"),
         "LLMDBENCH_TELEMETRY_ENABLED": ("telemetry_enabled", "--telemetry-enabled"),
         "LLMDBENCH_TELEMETRY_PROVIDER": ("telemetry_provider", "--telemetry-provider"),
         "LLMDBENCH_TELEMETRY_ENDPOINT": ("telemetry_endpoint", "--telemetry-endpoint"),
@@ -1597,6 +1654,7 @@ def _log_env_overrides(logger, args):
         ),
         "LLMDBENCH_EXPERIMENTS": ("experiments", "--experiments"),
         "LLMDBENCH_OVERRIDES": ("overrides", "--overrides"),
+        "LLMDBENCH_SET": ("set_overrides", "--set"),
         "LLMDBENCH_OUTPUT": ("output", "--output"),
         "LLMDBENCH_PARALLELISM": ("parallelism", "--parallelism"),
         "LLMDBENCH_WAIT_TIMEOUT": ("wait_timeout", "--wait-timeout"),
@@ -1678,6 +1736,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--workspace": ["--workspace", "--ws"],
         "--base-dir": ["--base-dir", "--bd"],
         "--spec": ["--specification_file", "--spec"],
+        "--run-description": ["--run-description"],
+        "--run-keywords": ["--run-keywords"],
         "--dry-run": ["--dry-run", "-n"],
         "--verbose": ["--verbose", "-v"],
         "--non-admin": ["--non-admin", "-i"],
@@ -1697,6 +1757,7 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--workload-file-path": ["--workload-file-path"],
         "--experiments": ["--experiments", "-e"],
         "--overrides": ["--overrides", "-o"],
+        "--set": ["--set"],
         "--output": ["--output", "-r"],
         "--parallelism": ["--parallelism", "-j"],
         "--wait-timeout": ["--wait-timeout"],
@@ -1744,9 +1805,24 @@ def _extract_workspace_from_scenario(
         with open(scenario_path, encoding="utf-8") as f:
             scenario_data = _yaml.safe_load(f)
 
+        def _work_dir_of(layer: object) -> str | None:
+            """Read `workDir` from a scenario layer, sectioned form first."""
+            if not isinstance(layer, dict):
+                return None
+            common = layer.get("common")
+            if isinstance(common, dict) and common.get("workDir") is not None:
+                return common["workDir"]
+            return layer.get("workDir")
+
+        # Per-stack wins, matching the render-time merge order
+        # (defaults -> shared -> stack). A multi-stack scenario normally
+        # puts the scenario-wide workDir in `shared:` alone, so falling
+        # back to it here is what makes that spelling take effect.
         scenarios = scenario_data.get("scenario", [])
         if scenarios and isinstance(scenarios, list):
-            return scenarios[0].get("workDir")
+            if (work_dir := _work_dir_of(scenarios[0])) is not None:
+                return work_dir
+        return _work_dir_of(scenario_data.get("shared"))
     except Exception:  # noqa: BLE001 -- best-effort; fall through to temp dir
         pass
     return None
@@ -1808,6 +1884,18 @@ def cli() -> None:
         action="store_true",
         help="Run as non-cluster-level admin user.",
     )
+    parser.add_argument(
+        "--run-description",
+        default=env("LLMDBENCH_DESCRIPTION_TEXT"),
+        help="Description of this run, recorded as run.description in the "
+        "benchmark report. Overrides the generated '<model> [<experiment id>]'.",
+    )
+    parser.add_argument(
+        "--run-keywords",
+        default=env("LLMDBENCH_DESCRIPTION_KEYWORDS"),
+        help="Comma-separated keywords recorded as run.keywords in the "
+        "benchmark report. Left unset unless supplied.",
+    )
 
     benchmark_parser = argparse.ArgumentParser(add_help=False)
     benchmark_parser.add_argument(
@@ -1825,6 +1913,18 @@ def cli() -> None:
         help="Base directory containing templates and scenarios. "
         'The default base directory is the cwd "." - we highly suggest enforcing a '
         'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
+    )
+    benchmark_parser.add_argument(
+        "--run-description",
+        default=argparse.SUPPRESS,
+        help="Description of this run, recorded as run.description in the "
+        "benchmark report. Overrides the generated '<model> [<experiment id>]'.",
+    )
+    benchmark_parser.add_argument(
+        "--run-keywords",
+        default=argparse.SUPPRESS,
+        help="Comma-separated keywords recorded as run.keywords in the "
+        "benchmark report. Left unset unless supplied.",
     )
     benchmark_parser.add_argument(
         "--specification_file",
@@ -1891,6 +1991,24 @@ def cli() -> None:
         "repo -- each user maintains their own. See docs/openshift-setup.md for examples.",
     )
 
+    benchmark_parser.add_argument(
+        "--set",
+        dest="set_overrides",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Scenario override(s) as [stack:]dotted.key=value, comma-separated "
+        "and repeatable (env: LLMDBENCH_SET). Deep-merged on top of the scenario, "
+        "so a variant that only differs in a few fields needs no separate YAML "
+        "file. Prefix with a stack name or an fnmatch glob to scope the override "
+        "in a multi-stack scenario; unprefixed applies to every stack. "
+        "Precedence: scenario < --cluster-config < --set < DoE setup.treatments "
+        "< dedicated flags (-m/-t/--gateway-class/--monitoring/--wva). "
+        "Example: --set 'kustomize.acceleratorBackend=gpu/sglang' "
+        "--set 'llama-31-8b:decode.replicas=4'. "
+        "NOTE: `--set` always overrides the SCENARIO. On `run`/`experiment`, "
+        "-o/--overrides is a separate flag that overrides the workload profile.",
+    )
+
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
@@ -1905,7 +2023,6 @@ def cli() -> None:
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
-
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)
@@ -2058,6 +2175,11 @@ def cli() -> None:
         getattr(args, "cluster_config", None), logger
     )
 
+    # Parse --set into per-stack-selector buckets, with the
+    # --cluster-config file folded in underneath the global bucket so the
+    # whole precedence chain lives in one structure.
+    args.setup_overrides_by_stack = _build_setup_overrides_by_stack(args, logger)
+
     dispatch_cli(args, logger)
 
 
@@ -2074,6 +2196,64 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
         else:
             result[key] = deepcopy(value)
     return result
+
+
+def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
+    """Combine ``--cluster-config`` and ``--set`` into selector buckets.
+
+    Returns ``{selector: nested_overrides}``.  The ``--cluster-config`` file
+    is folded into the global (``*``) bucket *underneath* any global
+    ``--set`` pairs, so an explicit CLI value beats the file.  Exits with an
+    error on a malformed ``--set`` expression -- silently dropping it would
+    deploy a config the user did not ask for.
+    """
+    raw = getattr(args, "set_overrides", None) or env("LLMDBENCH_SET") or None
+
+    try:
+        by_selector, warnings = parse_cli_overrides(raw)
+    except OverrideParseError as exc:
+        logger.log_error(f"Invalid --set override: {exc}")
+        sys.exit(1)
+
+    for warning in warnings:
+        logger.log_warning(warning)
+
+    # Scenario-wide, so global-only; an explicit --set of the same path wins.
+    description_overrides = {}
+    text = getattr(args, "run_description", None)
+    if text:
+        description_overrides["text"] = text
+    keywords = getattr(args, "run_keywords", None)
+    if keywords:
+        description_overrides["keywords"] = [
+            keyword.strip() for keyword in keywords.split(",") if keyword.strip()
+        ]
+    if description_overrides:
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            {"description": description_overrides},
+            by_selector.get(GLOBAL_SELECTOR, {}),
+        )
+
+    cluster_overrides = getattr(args, "cluster_config_overrides", None)
+    if cluster_overrides:
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            cluster_overrides, by_selector.get(GLOBAL_SELECTOR, {})
+        )
+
+    if raw:
+        # Values, not just paths -- the log has to answer "overridden to
+        # what?" on its own. The per-stack `old -> new` lines come later,
+        # from RenderPlans, once the scenario has been merged.
+        for selector, overrides in by_selector.items():
+            scope = "all stacks" if selector == GLOBAL_SELECTOR else f"stack {selector}"
+            for path, value in dotted_leaves(overrides):
+                shown = REDACTED if is_secret_path(path) else repr(value)
+                logger.log_info(
+                    f"CLI scenario override ({scope}): {path}={shown}",
+                    emoji="🔧",
+                )
+
+    return by_selector
 
 
 def _load_cluster_config(path: str | None, logger) -> dict | None:

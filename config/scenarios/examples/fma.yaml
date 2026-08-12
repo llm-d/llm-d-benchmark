@@ -12,22 +12,28 @@
 
 scenario:
   - name: "fma-example"
-    model:
-      name: meta-llama/Llama-3.1-8B-Instruct
-      shortName: llama-3.1-8b
-      path: models/meta-llama/Llama-3.1-8B-Instruct
-      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+    common:
+      model:
+        name: meta-llama/Llama-3.1-8B-Instruct
+        shortName: llama-3.1-8b
+        path: models/meta-llama/Llama-3.1-8B-Instruct
+        huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+      images:
+        benchmark:
+          repository: ghcr.io/llm-d/llm-d-benchmark
+          tag: nightly
 
     modelservice:
       enabled: false
+
     standalone:
       enabled: false
 
     fma:
       enabled: true
       iterations: 1
-
-    workDir: "~/data/fma"
 
     harness:
       name: nop
@@ -46,8 +52,5 @@ scenario:
       inferencePerf:
         rayonNumThreads: 4
 
-    images:
-      benchmark:
-        repository: ghcr.io/llm-d/llm-d-benchmark
-        tag: nightly
+    workDir: "~/data/fma"
 

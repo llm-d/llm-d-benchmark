@@ -37,7 +37,8 @@ class RenderPlans:
         cli_model=None,
         cli_methods=None,
         cli_monitoring=False,
-        setup_overrides=None,
+        setup_overrides=None,  # unscoped; applied last (DoE treatments)
+        setup_overrides_by_stack=None,  # {selector: overrides}; --cluster-config + --set
     ): ...
     def eval(self) -> RenderResult: ...  # Run full rendering pipeline
     def deep_merge(self, base, override) -> dict: ...  # Recursive dict merge
@@ -67,12 +68,19 @@ Templates are loaded from `.j2` files in the template directory. Files prefixed 
 
 For each stack in the scenario:
 
-1. Merge defaults with the optional top-level `shared:` block (scenario-wide
-   settings applied to every stack), then with stack-specific overrides:
-   `defaults -> shared -> stack`.
+1. Expand each scenario layer's stack-level `common:` section, then merge
+   defaults with the optional top-level `shared:` block and stack-specific
+   overrides: `defaults -> shared -> stack`.
 2. Hoist scenario-nested modelservice sections to the top level (see
    [Modelservice-nested sections](#modelservice-nested-sections)).
-3. Apply setup overrides (from DoE experiment treatments) if present.
+3. Apply scenario overrides if present, resolved once per stack by
+   `_effective_setup_overrides`: the `setup_overrides_by_stack` selector
+   buckets least-specific first (`*`, then fnmatch globs, then exact stack
+   names -- carrying `--cluster-config` and `--set`), then the
+   unscoped `setup_overrides` (DoE experiment treatments) on top. Each
+   applied value is logged as `old -> new`, and an override whose parent
+   path is absent from the merged config warns as a probable typo.
+   Selectors matching no stack in the scenario fail the render in `eval()`.
 4. Apply resource preset (if `resourcePreset` is set in the config).
 5. Run the resolver chain (see below).
 6. Validate against the Pydantic config schema.
@@ -84,12 +92,39 @@ For each stack in the scenario:
 9. Write `config.yaml` with the fully-resolved config (JSON round-trip strips YAML anchors).
 10. Validate all generated YAML files for syntax.
 
+#### Sectioned scenario stacks
+
+Each scenario stack may group shared values under `common` and method-specific
+values under `standalone`, `modelservice`, and `fma`:
+
+```yaml
+scenario:
+  - name: example
+    common:
+      model: { name: Qwen/Qwen3-8B }
+      storage: { modelPvc: { size: 200Gi } }
+      vllmCommon: { inferencePort: 8000 }
+    standalone: { enabled: false }
+    modelservice:
+      enabled: true
+      prefill: { enabled: true, replicas: 1 }
+      decode: { enabled: true, replicas: 2 }
+    fma: { enabled: false }
+```
+
+`common` is expanded before defaults and scenario layers are merged, so all
+standup methods inherit the same model, storage, and runtime configuration.
+Legacy flat stack keys remain supported. When both spellings are present, the
+sectioned value wins. The top-level `common` in defaults is a separate internal
+value passed to the modelservice chart; scenario authors set that value as
+`modelservice.common`.
+
 #### Modelservice-nested sections
 
-`gateway`, `router`, `routing`, and `httpRoute` are consumed only on the
-modelservice deploy path (standalone / kustomize / fma never read them). A
-scenario may express them either flat at the top level, or nested under
-`modelservice:` to document that scope:
+`common`, `gateway`, `router`, `routing`, `httpRoute`, `inferenceExtension`,
+`prefill`, `decode`, and `multinode` are consumed on the modelservice deploy
+path. A scenario may express them either flat at the stack level for backward
+compatibility, or nested under `modelservice:` to document that scope:
 
 ```yaml
 modelservice:
@@ -100,6 +135,8 @@ modelservice:
     epp: { replicas: 2 }
   httpRoute:
     requestTimeout: "300s"
+  prefill: { enabled: true, replicas: 1 }
+  decode: { enabled: true, replicas: 2 }
 ```
 
 `RenderPlans._hoist_modelservice_sections` lifts any nested block back to the
@@ -107,6 +144,11 @@ top level (deep-merged over the defaults, nested wins) before the resolver
 chain runs, then pops the nested copy so `config.yaml` has a single home per
 section. Templates, resolvers and standup steps always read the **top-level**
 keys, so the two spellings render identically -- pick one per section.
+
+Set `gateway.className: none` to skip Gateway and router resources and expose
+decode vLLM directly through a plain Service. The renderer also disables the
+modelservice routing proxy so the resulting lane measures the model server
+without Gateway, EPP, or Envoy overhead.
 
 The hoist runs **before** setup overrides so the precedence stays
 `defaults < scenario < treatment/CLI`: DoE experiment treatments and CLI

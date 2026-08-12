@@ -94,7 +94,59 @@ def _get_harness_meta(key: str, env_name: str, default: str = "") -> str:
         return val
     if not hasattr(_get_harness_meta, "_cache"):
         _get_harness_meta._cache = _load_run_metadata()
-    return str(_get_harness_meta._cache.get(key, default))
+    # A valueless YAML key parses to None; str() would make it the text "None".
+    cached = _get_harness_meta._cache.get(key)
+    return default if cached is None else str(cached)
+
+
+# Producers build every experiment ID as <harness>[-<treatment>]-<timestamp>-<rand>.
+_EXPERIMENT_ID_TAIL = re.compile(r"-\d{10,}-[a-z0-9]+$")
+
+
+def _resolve_experiment_id() -> str:
+    """Return the experiment ID, or "" when no source provides one."""
+    # An unset envar arrives as "", so strip: whitespace would still be truthy.
+    experiment_id = _get_harness_meta(
+        "experiment_id", "LLMDBENCH_RUN_EXPERIMENT_ID"
+    ).strip()
+    if experiment_id:
+        return experiment_id
+    results_dir = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "")
+    if not results_dir:
+        return ""
+    experiment_id = re.sub(
+        r"_\d+$", "", os.path.basename(results_dir.strip().rstrip("/"))
+    ).strip()
+    # A dir renamed to 'results' or a bare harness name would otherwise mint a
+    # plausible eid shared by unrelated runs.
+    if not _EXPERIMENT_ID_TAIL.search(experiment_id):
+        return ""
+    return experiment_id
+
+
+def _user_description() -> str:
+    """Return the submitter-supplied description, or "" when none was given."""
+    return _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+
+
+def _user_keywords() -> list[str]:
+    """Return the submitter-supplied keywords, or [] when none were given."""
+    raw = _get_harness_meta("description_keywords", "LLMDBENCH_DESCRIPTION_KEYWORDS")
+    return [keyword.strip() for keyword in raw.split(",") if keyword.strip()]
+
+
+def _run_description(experiment_id: str) -> str:
+    """A submitter-supplied description wins over the experiment ID.
+
+    The ID is not prefixed with the model: it already encodes the treatment and
+    is unique across a sweep, and the model is reported under scenario.stack, so
+    prefixing it made consumers that show both render the model twice.
+    """
+    user_description = _user_description()
+    if user_description:
+        return user_description
+
+    return experiment_id
 
 
 def config_hash(config: dict) -> str:
@@ -221,6 +273,108 @@ def get_configmap(
         return {}
 
 
+# Node labels advertising the accelerator model, in preference order.
+_ACCELERATOR_LABELS = (
+    "nvidia.com/gpu.product",
+    "gpu.nvidia.com/model",
+    "amd.com/gpu.product",
+    "gpu.amd.com/model",
+    "habana.ai/gaudi.product",
+    "ibm.com/spyre.product",
+)
+
+
+def _detect_accelerator_model(ev_dict: dict, timeout: int = 5) -> str:
+    """Read the accelerator model from cluster node labels.
+
+    Used as a fallback when LLMDBENCH_VLLM_COMMON_AFFINITY carries no value.
+    Prefers a node running a pod in the run's namespace; otherwise any node
+    advertising a known accelerator label. Returns "" if none is found.
+    """
+    try:
+        from kubernetes import client, config as k8s_config
+
+        try:
+            k8s_config.load_incluster_config()
+        except k8s_config.ConfigException:
+            context_dict = get_context_from_envar("LLMDBENCH_BASE64_CONTEXT_CONTENTS")
+            if not context_dict:
+                return ""
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as f:
+                yaml.dump(context_dict, f)
+                k8s_config.load_kube_config(config_file=f.name)
+
+        v1 = client.CoreV1Api()
+
+        def label(node) -> str:
+            labels = node.metadata.labels or {}
+            for key in _ACCELERATOR_LABELS:
+                if labels.get(key):
+                    return labels[key]
+            return ""
+
+        # Prefer nodes hosting the run's pods.
+        ns = ev_dict.get("vllm_common_namespace") or os.environ.get(
+            "LLMDBENCH_VLLM_COMMON_NAMESPACE", ""
+        )
+        node_names = set()
+        if ns:
+            pods = v1.list_namespaced_pod(namespace=ns, _request_timeout=timeout)
+            node_names = {p.spec.node_name for p in pods.items if p.spec.node_name}
+
+        nodes = v1.list_node(_request_timeout=timeout).items
+        for node in nodes:
+            if node.metadata.name in node_names and label(node):
+                return label(node)
+        for node in nodes:
+            if label(node):
+                return label(node)
+    except Exception as e:
+        sys.stderr.write(f"Failed to detect accelerator model: {e}\n")
+    return ""
+
+
+def _resolve_accelerator_model(ev_dict: dict) -> str:
+    """Accelerator model from the affinity value, falling back to node labels."""
+    accelerator = ev_dict.get("vllm_common_affinity", "").rsplit(":", 1)[-1]
+    return accelerator or _detect_accelerator_model(ev_dict)
+
+
+def _populate_run_identity() -> dict:
+    """Create the run identity fields derived from the experiment ID.
+
+    Needs no kubernetes context, so it also applies when analysis runs on the
+    driver rather than in the harness pod. SUBMISSION_POLICY.md reserves
+    run.keywords for curated tags, so it stays absent unless the submitter sets it.
+    """
+    run = {}
+    # Submitter-supplied values stand on their own: neither needs an experiment
+    # ID to be correct, and keywords have no other source at all.
+    user_description = _user_description()
+    if user_description:
+        run["description"] = user_description
+    keywords = _user_keywords()
+    if keywords:
+        run["keywords"] = keywords
+
+    experiment_id = _resolve_experiment_id()
+    if not experiment_id:
+        # Otherwise this surfaces only as an empty dashboard column, long after
+        # the cluster is gone.
+        sys.stderr.write(
+            "WARNING: no experiment ID from LLMDBENCH_RUN_EXPERIMENT_ID, "
+            "run_metadata.yaml:experiment_id, or the results directory name; "
+            "run.eid will be omitted, and run.description too unless supplied\n"
+        )
+        return {"run": run} if run else {}
+
+    run["eid"] = str(uuid.uuid5(uuid.NAMESPACE_URL, experiment_id))
+    run.setdefault("description", _run_description(experiment_id))
+    return {"run": run}
+
+
 def _populate_run(ev_dict: dict) -> dict:
     """Create a benchmark report with run details from environment variables.
 
@@ -232,8 +386,6 @@ def _populate_run(ev_dict: dict) -> dict:
     """
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
-    # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, ev_dict.get("run_experiment_id", "")))
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
@@ -265,7 +417,6 @@ def _populate_run(ev_dict: dict) -> dict:
 
     br_dict = {
         "run": {
-            "eid": eid,
             "cid": cid,
             "pid": pid,
             "user": "namespace=" + namespace,
@@ -278,6 +429,8 @@ def _populate_run(ev_dict: dict) -> dict:
             },
         },
     }
+    update_dict(br_dict, _populate_run_identity())
+
     return br_dict
 
 
@@ -363,7 +516,7 @@ def _populate_aggregate_stack(ev_dict: dict) -> dict:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
     model = ev_dict.get("deploy_current_model", "")
-    accelerator = ev_dict.get("vllm_common_affinity", "").rsplit(":", 1)[-1]
+    accelerator = _resolve_accelerator_model(ev_dict)
     replicas = int(ev_dict.get("vllm_common_replicas", 1))
     tp = int(ev_dict.get("vllm_common_tensor_parallelism", 1))
     dp = int(ev_dict.get("vllm_common_data_parallelism", 1))
@@ -451,19 +604,16 @@ def _add_inference_scheduler_component(br_dict: dict, ev_dict: dict) -> None:
         ev_dict (dict): Environment variable values.
     """
     epp_config_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
-    if not epp_config_str:
-        return
-
-    epp_config = yaml.safe_load(epp_config_str)
-    # Inference scheduler component
+    epp_config = yaml.safe_load(epp_config_str) if epp_config_str else {}
+    # "scheduler" in the label is what prism keys off to show the component.
     epp = {
         "metadata": {
-            "label": "EPP",  # TODO
+            "label": "Inference Scheduler (EPP)",
             "cfg_id": config_hash(epp_config),
         },
         "standardized": {
             "kind": "generic",
-            "tool": "request_router",
+            "tool": "inference_scheduler",
             "tool_version": "",  # TODO get version somehow
         },
         "native": {
@@ -473,6 +623,40 @@ def _add_inference_scheduler_component(br_dict: dict, ev_dict: dict) -> None:
 
     stack: list[Component] = br_dict["scenario"]["stack"]
     stack.append(epp)
+
+
+def _add_gateway_component(br_dict: dict, ev_dict: dict) -> None:
+    """Add an inference gateway component unless the topology has none."""
+    gateway_class = ev_dict.get("gateway_class", "")
+    # epponly deploys no Kubernetes Gateway (EPP serves HTTP directly).
+    if not gateway_class or gateway_class == "epponly":
+        return
+    gateway = {
+        "metadata": {"label": "Inference Gateway", "cfg_id": config_hash({})},
+        "standardized": {
+            "kind": "generic",
+            "tool": f"inference_gateway ({gateway_class})",
+            "tool_version": "",
+        },
+        "native": {"config": {"className": gateway_class}},
+    }
+    br_dict["scenario"]["stack"].append(gateway)
+
+
+def _add_leaderworkerset_component(br_dict: dict, ev_dict: dict) -> None:
+    """Add a LeaderWorkerSet component when multinode serving is enabled."""
+    if str(ev_dict.get("multinode_enabled", "")).lower() != "true":
+        return
+    lws = {
+        "metadata": {"label": "LeaderWorkerSet", "cfg_id": config_hash({})},
+        "standardized": {
+            "kind": "generic",
+            "tool": "leaderworkerset",
+            "tool_version": "",
+        },
+        "native": {"config": {}},
+    }
+    br_dict["scenario"]["stack"].append(lws)
 
 
 def _populate_disaggregate_stack(ev_dict: dict) -> dict:
@@ -487,7 +671,7 @@ def _populate_disaggregate_stack(ev_dict: dict) -> dict:
     """
 
     model = ev_dict.get("deploy_current_model", "")
-    accelerator = ev_dict.get("vllm_common_affinity", "").rsplit(":", 1)[-1]
+    accelerator = _resolve_accelerator_model(ev_dict)
     p_replicas = int(ev_dict.get("vllm_modelservice_prefill_replicas", 0))
     d_replicas = int(ev_dict.get("vllm_modelservice_decode_replicas", 1))
     p_tp = int(ev_dict.get("vllm_modelservice_prefill_tensor_parallelism", 1))
@@ -632,6 +816,8 @@ def _populate_disaggregate_stack(ev_dict: dict) -> dict:
 
     # Add inference scheduler component to stack
     _add_inference_scheduler_component(br_dict, ev_dict)
+    _add_gateway_component(br_dict, ev_dict)
+    _add_leaderworkerset_component(br_dict, ev_dict)
     return br_dict
 
 
@@ -645,24 +831,86 @@ def _populate_stack(ev_dict: dict) -> dict:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
 
-    if "LLMDBENCH_DEPLOY_METHODS" not in os.environ:
-        sys.stderr.write(
-            "Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method\n"
-        )
-        return {}
+    method = os.environ.get("LLMDBENCH_DEPLOY_METHODS")
 
-    if os.environ.get("LLMDBENCH_DEPLOY_METHODS") == "standalone":
+    if method == "standalone":
         # This is an aggregate serving setup
         return _populate_aggregate_stack(ev_dict)
 
-    if os.environ.get("LLMDBENCH_DEPLOY_METHODS") == "modelservice":
+    if method == "modelservice":
         # This is a disaggregated serving setup
         return _populate_disaggregate_stack(ev_dict)
 
-    sys.stderr.write(
-        f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ.get('LLMDBENCH_DEPLOY_METHODS')}\n"
+    if method:
+        sys.stderr.write(
+            f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={method}\n"
+        )
+    # Run-only mode: no deployment method, so build a minimal stack from the
+    # model/namespace we do have (detecting the accelerator from node labels).
+    return _populate_minimal_stack(ev_dict)
+
+
+def _populate_minimal_stack(ev_dict: dict) -> dict:
+    """Minimal scenario.stack when the deployment method is unknown (run-only).
+
+    No standup data exists in this mode; record the served model and a
+    node-label-detected accelerator, leaving parallelism at the schema default.
+    """
+    model = ev_dict.get("deploy_current_model", "")
+    if not model:
+        return {}
+    inference_engine = {
+        "metadata": {"label": "", "cfg_id": config_hash({})},
+        "standardized": {
+            "kind": "inference_engine",
+            "tool": "",
+            "tool_version": "",
+            "role": HostType.REPLICA,
+            "replicas": 1,
+            "model": {"name": model},
+            "accelerator": {
+                "model": _detect_accelerator_model(ev_dict),
+                "count": 0,
+                "parallelism": {"tp": 1, "dp": 1, "dp_local": 1, "workers": 1},
+            },
+        },
+        "native": {"args": {}, "envars": {}},
+    }
+    return {"scenario": {"stack": [inference_engine]}}
+
+
+def _ev_dict_from_params(data: dict) -> dict:
+    """Map the flat standup-parameters ConfigMap keys to the names the stack
+    populators read from ev_dict.
+    """
+    if not data:
+        return {}
+    ev = {
+        "deploy_current_model": data.get("model_name", ""),
+        "vllm_common_namespace": data.get("namespace", ""),
+        "vllm_common_affinity": data.get("accelerator_model", ""),
+        "vllm_common_replicas": data.get("decode_replicas", 1),
+        "vllm_modelservice_prefill_replicas": data.get("prefill_replicas", 0),
+        "vllm_modelservice_decode_replicas": data.get("decode_replicas", 1),
+        "gateway_class": data.get("gateway_class", ""),
+        "multinode_enabled": data.get("multinode_enabled", ""),
+    }
+    for role in ("prefill", "decode"):
+        for short, key in (
+            ("tensor_parallelism", "tensor"),
+            ("data_parallelism", "data"),
+            ("data_local_parallelism", "data_local"),
+            ("num_workers_parallelism", "workers"),
+        ):
+            ev[f"vllm_modelservice_{role}_{short}"] = data.get(
+                f"{role}_{key}_parallelism", 1
+            )
+    ev["vllm_common_tensor_parallelism"] = data.get("decode_tensor_parallelism", 1)
+    ev["vllm_common_data_parallelism"] = data.get("decode_data_parallelism", 1)
+    ev["vllm_common_data_local_parallelism"] = data.get(
+        "decode_data_local_parallelism", 1
     )
-    return {}
+    return ev
 
 
 def _populate_benchmark_report_from_envars() -> dict:
@@ -683,7 +931,9 @@ def _populate_benchmark_report_from_envars() -> dict:
     # We make the assumption that if the environment variable
     # LLMDBENCH_MAGIC_ENVAR is defined, then we are inside a harness pod.
     if "LLMDBENCH_MAGIC_ENVAR" not in os.environ:
-        # We are not in a harness pod
+        # No kubernetes context here, but the run identity comes from the
+        # results directory, which the driver does have.
+        update_dict(br_dict, _populate_run_identity())
         return br_dict
 
     # Get Kubernetes context
@@ -693,7 +943,11 @@ def _populate_benchmark_report_from_envars() -> dict:
 
     if params_cm:
         ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
-        ev_dict = yaml.safe_load(ev_str) if ev_str else {}
+        if ev_str:
+            ev_dict = yaml.safe_load(ev_str)
+        else:
+            # Standup writes flat metadata keys, not an ev.yaml blob.
+            ev_dict = _ev_dict_from_params(get_nested(params_cm, ["data"]) or {})
     else:
         # Could not get parameters from ConfigMap, try /standup/ev.yaml
         try:
@@ -2247,6 +2501,13 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     "mean": get_nested(
                         results,
                         ["successes", "throughput", "total_tokens_per_sec"],
+                    ),
+                },
+                "input_token_rate": {
+                    "units": Units.TOKEN_PER_S,
+                    "mean": get_nested(
+                        results,
+                        ["successes", "throughput", "input_tokens_per_sec"],
                     ),
                 },
                 "request_rate": {

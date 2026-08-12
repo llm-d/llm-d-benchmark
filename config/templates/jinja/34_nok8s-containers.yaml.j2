@@ -18,7 +18,7 @@ readiness:
   envoyPort: {{ nok8s.envoy.listenPort }}
 containers:
 {% for i in range(nok8s.vllm.replicas) %}
-  - name: vllm-{{ i }}
+  - name: vllm-{{ i }}{{ nok8s.nameSuffix }}
     kind: vllm
     image: "{{ nok8s.vllm.image }}:{{ nok8s.vllm.tag }}"
     hostPort: {{ nok8s.vllm.hostPort + i }}
@@ -32,7 +32,7 @@ containers:
     replicaIndex: {{ i }}
     extraArgs: [{% for a in nok8s.vllm.extraArgs %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 {% endfor %}
-  - name: epp
+  - name: epp{{ nok8s.nameSuffix }}
     kind: epp
     image: "{{ nok8s.epp.image }}:{{ nok8s.epp.tag }}"
     grpcPort: {{ nok8s.epp.grpcPort }}
@@ -41,7 +41,7 @@ containers:
     poolName: {{ nok8s.epp.poolName }}
     poolNamespace: {{ nok8s.epp.poolNamespace }}
     configMountDir: {{ nok8s.epp.configMountDir }}
-  - name: envoy
+  - name: envoy{{ nok8s.nameSuffix }}
     kind: envoy
     image: "{{ nok8s.envoy.image }}:{{ nok8s.envoy.tag }}"
     listenPort: {{ nok8s.envoy.listenPort }}

@@ -123,3 +123,88 @@ def test_harness_pod_receives_configured_time_series_metrics() -> None:
     }
 
     assert env["LLMDBENCH_TIME_SERIES_METRICS"] == '["vllm:custom_metric"]'
+
+
+def test_harness_pod_mounts_all_debug_profile_configmaps() -> None:
+    template_path = (
+        Path(__file__).resolve().parent.parent
+        / "config"
+        / "templates"
+        / "jinja"
+        / "20_harness_pod.yaml.j2"
+    )
+    values = _template_values()
+    values["profile_mounts"] = ["guidellm", "inference-perf"]
+
+    rendered = DeployHarnessStep._render_template(
+        template_path.read_text(encoding="utf-8"), values
+    )
+    pod = yaml.safe_load(rendered)
+    container = pod["spec"]["containers"][0]
+    mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
+    volumes = {
+        volume["name"]: volume["configMap"]["name"]
+        for volume in pod["spec"]["volumes"]
+        if "configMap" in volume
+    }
+
+    assert mounts["guidellm-profiles"] == "/workspace/profiles/guidellm"
+    assert mounts["inference-perf-profiles"] == "/workspace/profiles/inference-perf"
+    assert volumes["guidellm-profiles"] == "guidellm-profiles"
+    assert volumes["inference-perf-profiles"] == "inference-perf-profiles"
+
+
+def _render_pod(values: dict[str, Any]) -> dict[str, Any]:
+    template_path = (
+        Path(__file__).resolve().parent.parent
+        / "config"
+        / "templates"
+        / "jinja"
+        / "20_harness_pod.yaml.j2"
+    )
+    rendered = DeployHarnessStep._render_template(
+        template_path.read_text(encoding="utf-8"), values
+    )
+    return yaml.safe_load(rendered)
+
+
+def _pod_env(values: dict[str, Any]) -> dict[str, Any]:
+    pod = _render_pod(values)
+    return {
+        item["name"]: item.get("value") for item in pod["spec"]["containers"][0]["env"]
+    }
+
+
+def test_harness_pod_ships_the_run_description() -> None:
+    """The description reaches the harness so it can record it as run.description."""
+    values = _template_values()
+    values["description"] = {"text": "Sweep A", "keywords": ["kv-cache", "p-d"]}
+
+    env = _pod_env(values)
+
+    assert env["LLMDBENCH_DESCRIPTION_TEXT"] == "Sweep A"
+    assert env["LLMDBENCH_DESCRIPTION_KEYWORDS"] == "kv-cache,p-d"
+
+
+def test_harness_pod_quotes_a_hostile_run_description() -> None:
+    """Free text must not break the manifest: a bare "{{ ... }}" would produce
+    unparseable YAML for any of these, so the parse below is the assertion."""
+    hostile = 'has "quotes", a back\\slash, a: colon and #hash'
+    values = _template_values()
+    values["description"] = {"text": hostile, "keywords": ['k "1"']}
+
+    env = _pod_env(values)
+
+    assert env["LLMDBENCH_DESCRIPTION_TEXT"] == hostile
+    assert env["LLMDBENCH_DESCRIPTION_KEYWORDS"] == 'k "1"'
+
+
+def test_harness_pod_tolerates_a_missing_description_block() -> None:
+    """Callers rendering a hand-built context need not supply the block."""
+    values = _template_values()
+    values.pop("description", None)
+
+    env = _pod_env(values)
+
+    assert env["LLMDBENCH_DESCRIPTION_TEXT"] == ""
+    assert env["LLMDBENCH_DESCRIPTION_KEYWORDS"] == ""

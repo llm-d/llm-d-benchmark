@@ -17,6 +17,11 @@ from llmdbenchmark.utilities.os.filesystem import (
 from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.exceptions.exceptions import TemplateError, ConfigurationError
 
+# Keys every consumer of the returned config dict indexes unconditionally as
+# `<key>["path"]` (see cli.py dispatch_cli and _render_plans_for_experiment).
+# Missing any of them is a config mistake, not a runtime KeyError.
+_REQUIRED_KEYS = ("template_dir", "values_file", "scenario_file")
+
 
 class RenderSpecification:  # pylint: disable=too-few-public-methods
     """
@@ -92,6 +97,35 @@ class RenderSpecification:  # pylint: disable=too-few-public-methods
                 context={"yaml_error": str(exc)},
             ) from exc
 
+    def _check_required(self, config_dict: Any) -> None:
+        """Validate that the specification defines every required key as `{path: ...}`."""
+        node = config_dict if isinstance(config_dict, dict) else {}
+        missing = [
+            key
+            for key in _REQUIRED_KEYS
+            if not isinstance(node.get(key), dict) or "path" not in node[key]
+        ]
+        if not missing:
+            return
+
+        if "scenario" in node:
+            hint = (
+                "this looks like a scenario file, not a specification; pass a "
+                "specification instead, for example --spec guides/nok8s"
+            )
+        else:
+            hint = (
+                "specifications live under config/specification/ and must define "
+                "each required key as '<key>:' followed by 'path: <location>'"
+            )
+
+        raise ConfigurationError(
+            message=f"Specification is missing required keys: {', '.join(missing)}",
+            step="Validate required specification keys",
+            config_file=f"{self.specification_file.stem}.yaml",
+            context={"hint": hint},
+        )
+
     def _precheck(self, node: Any, prefix: str = "") -> None:
         """Recursively validate filesystem paths referenced in the config."""
         if isinstance(node, dict):
@@ -148,6 +182,7 @@ class RenderSpecification:  # pylint: disable=too-few-public-methods
         """Render, parse, and validate the specification. Returns the config dict."""
         rendered_yaml = self._render()
         config_dict = self._parse(rendered_yaml)
+        self._check_required(config_dict)
         self._precheck(config_dict)
 
         _json_dump = json.dumps(config_dict, indent=2)

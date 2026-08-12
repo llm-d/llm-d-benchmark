@@ -15,6 +15,45 @@ from llmdbenchmark.executor.deps import (
 )
 from llmdbenchmark.utilities.cluster import print_phase_banner
 
+# Listening-socket probes, first one available wins. ss is iproute2 (Linux);
+# lsof covers macOS and hosts without iproute2.
+PORT_PROBES = ("ss -ltn", "lsof -nP -iTCP -sTCP:LISTEN")
+
+
+def _as_port(value, default: int) -> int | None:
+    """Coerce a configured nok8s port to an int, or None if it isn't one.
+
+    Scenario YAML has no type validation, so a quoted port (``listenPort:
+    "8081"``) reaches here as a string and used to crash this preflight with
+    an unhandled ``TypeError`` from ``sorted()``. Digit strings are accepted
+    the way ``RenderPlans._validate_nok8s_host_claims`` accepts them, so the
+    two agree on what counts as a port. Anything else returns None and is
+    reported as unverifiable rather than aborting a warnings-only preflight.
+
+    A missing key falls back to *default*; an explicitly empty value (``None``)
+    does too, matching Jinja's use of the default for an unset field.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):  # bool is an int subclass; not a port.
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return None
+
+
+def _as_count(value, default: int = 1) -> int:
+    """Coerce a configured replica/tensor-parallel count, falling back to *default*.
+
+    Same untyped-YAML problem as ``_as_port``, but these values only size a
+    GPU-capacity warning, so an unusable one degrades to *default* instead of
+    being reported separately.
+    """
+    count = _as_port(value, default)
+    return default if count is None or count < 1 else count
+
 
 class EnsureInfraStep(Step):
     """Validate system dependencies and print cluster summary banner."""
@@ -128,13 +167,17 @@ class EnsureInfraStep(Step):
         nok8s = plan_config.get("nok8s", {})
         accelerator = str(nok8s.get("vllm", {}).get("accelerator", "nvidia")).lower()
         hf_env = nok8s.get("hfTokenEnv", "HUGGING_FACE_HUB_TOKEN")
-        ports = [
-            nok8s.get("vllm", {}).get("hostPort", 8000),
-            nok8s.get("envoy", {}).get("listenPort", 8081),
-            nok8s.get("epp", {}).get("grpcPort", 9002),
-            nok8s.get("epp", {}).get("grpcHealthPort", 9003),
-            nok8s.get("epp", {}).get("metricsPort", 9090),
-        ]
+        # Every nok8s stack in the plan lands on this host, so the port and
+        # GPU checks cover all of them, not just the first.
+        stacks = [
+            cfg
+            for cfg in (
+                (self._load_stack_config(p).get("nok8s") or {})
+                for p in (context.rendered_stacks or [])
+            )
+            if cfg.get("enabled")
+        ] or [nok8s]
+        ports, bad_ports = self._nok8s_ports(stacks)
 
         if context.dry_run:
             context.logger.log_info(
@@ -168,6 +211,19 @@ class EnsureInfraStep(Step):
                 f"permissions). Verify with '{runtime} info'."
             )
 
+        # 1b. Host tools the nok8s path shells out to (fatal). The k8s
+        #     toolchain check does not run for nok8s, so these would otherwise
+        #     go unchecked: 'timeout' bounds the harness wait in step 07 and
+        #     'curl' probes endpoint readiness in step 06.
+        for tool in ("timeout", "curl"):
+            if not cmd.execute(
+                f"command -v {tool}", check=False, force=True, silent=True
+            ).success:
+                errors.append(
+                    f"'{tool}' not found on PATH; the nok8s path needs it "
+                    f"(install GNU coreutils and curl)."
+                )
+
         # 2. Accelerator visible on the host (warning). Probe depends on the
         #    configured accelerator; cpu/spyre/custom are not probed here.
         probe = {
@@ -192,10 +248,11 @@ class EnsureInfraStep(Step):
 
         # 2b. GPU capacity: replicas x tensorParallel must fit the host's GPUs.
         #     Only checkable for nvidia (nvidia-smi -L enumerates devices).
-        vllm = nok8s.get("vllm", {})
-        replicas = int(vllm.get("replicas", 1) or 1)
-        tp = int(vllm.get("tensorParallel", 1) or 1)
-        needed = replicas * tp
+        needed = sum(
+            _as_count(cfg.get("vllm", {}).get("replicas", 1))
+            * _as_count(cfg.get("vllm", {}).get("tensorParallel", 1))
+            for cfg in stacks
+        )
         if accelerator == "nvidia" and needed > 1:
             res_gpu = cmd.execute("nvidia-smi -L", check=False, force=True, silent=True)
             if res_gpu.success and res_gpu.stdout:
@@ -204,10 +261,27 @@ class EnsureInfraStep(Step):
                 )
                 if count and needed > count:
                     warnings.append(
-                        f"nok8s.vllm needs {needed} GPUs (replicas {replicas} x "
-                        f"tensorParallel {tp}) but only {count} detected -- workers "
-                        f"will contend for devices or fail to start."
+                        f"nok8s.vllm needs {needed} GPUs (replicas x tensorParallel "
+                        f"over {len(stacks)} stack(s)) but only {count} detected -- "
+                        f"workers will contend for devices or fail to start."
                     )
+
+        # 2c. A worker with replicas: 1 and no explicit device selection gets
+        #     the whole accelerator ("--gpus all"), so two such stacks claim
+        #     the same devices and the second one runs out of memory.
+        unpinned = [
+            cfg
+            for cfg in stacks
+            if _as_count(cfg.get("vllm", {}).get("replicas", 1)) == 1
+            and str(cfg.get("vllm", {}).get("gpus", "all")) == "all"
+            and not cfg.get("vllm", {}).get("deviceArgs")
+        ]
+        if accelerator != "cpu" and len(unpinned) > 1:
+            warnings.append(
+                f"{len(unpinned)} nok8s stacks each take every accelerator on this "
+                f"host; give them distinct devices with nok8s.vllm.gpus (docker) or "
+                f"nok8s.vllm.deviceArgs, or they will fight over memory."
+            )
 
         # 3. Hugging Face token (warning).
         if not os.environ.get(hf_env):
@@ -216,10 +290,33 @@ class EnsureInfraStep(Step):
                 f"download in the vLLM container."
             )
 
-        # 4. Required host ports free (warning).
-        res = cmd.execute("ss -ltn", check=False, force=True, silent=True)
-        if res.success and res.stdout:
-            busy = [p for p in ports if f":{p} " in res.stdout]
+        # 4. Required host ports free (warning). Pick the first probe tool that
+        #    exists; warn rather than pass silently when none does.
+        if bad_ports:
+            warnings.append(
+                f"Not a whole number, so not checked: {', '.join(bad_ports)}. "
+                f"These must be plain integers; a quoted value in the scenario "
+                f"YAML (listenPort: '8081') is a string, not a number."
+            )
+        probe_cmd = next(
+            (
+                p
+                for p in PORT_PROBES
+                if cmd.execute(
+                    f"command -v {p.split()[0]}", check=False, force=True, silent=True
+                ).success
+            ),
+            None,
+        )
+        if probe_cmd is None:
+            warnings.append(
+                f"Cannot verify host ports {ports}: none of "
+                f"{', '.join(p.split()[0] for p in PORT_PROBES)} found on PATH. "
+                f"Install iproute2 or lsof, or check the ports yourself."
+            )
+        else:
+            res = cmd.execute(probe_cmd, check=False, force=True, silent=True)
+            busy = [p for p in ports if f":{p} " in (res.stdout or "")]
             if busy:
                 warnings.append(
                     f"Host ports already in use: {busy}. Free them, run "
@@ -246,3 +343,42 @@ class EnsureInfraStep(Step):
             success=True,
             message=f"nok8s infrastructure ready (runtime={runtime})",
         )
+
+    # Config path -> whether the value is the base of `vllm.replicas`
+    # consecutive ports. Mirrors RenderPlans._NOK8S_HOST_PORTS.
+    _NOK8S_PORT_FIELDS: tuple[tuple[str, str, int, bool], ...] = (
+        ("vllm", "hostPort", 8000, True),
+        ("envoy", "listenPort", 8081, False),
+        ("envoy", "adminPort", 19000, False),
+        ("epp", "grpcPort", 9002, False),
+        ("epp", "grpcHealthPort", 9003, False),
+        ("epp", "metricsPort", 9090, False),
+    )
+
+    def _nok8s_ports(self, stacks: list[dict]) -> tuple[list[int], list[str]]:
+        """Host ports every nok8s stack in the plan will claim.
+
+        Returns ``(ports, bad)`` where *bad* names the fields whose configured
+        value is not a port number. Those are skipped rather than raised: this
+        preflight is warnings-only, and a bad value is already reported by the
+        render, so crashing here would replace a clear render error with a
+        traceback.
+        """
+        ports: set[int] = set()
+        bad: list[str] = []
+        for cfg in stacks:
+            replicas = _as_port(cfg.get("vllm", {}).get("replicas", 1), 1)
+            if replicas is None or replicas < 1:
+                if replicas is None:
+                    bad.append("nok8s.vllm.replicas")
+                replicas = 1
+            for section, field, default, is_base in self._NOK8S_PORT_FIELDS:
+                port = _as_port(cfg.get(section, {}).get(field, default), default)
+                if port is None:
+                    bad.append(f"nok8s.{section}.{field}")
+                    continue
+                # One worker per replica, hostPort .. hostPort+replicas-1
+                # (34_nok8s-containers.yaml.j2).
+                span = replicas if is_base else 1
+                ports.update(range(port, port + span))
+        return sorted(ports), sorted(set(bad))

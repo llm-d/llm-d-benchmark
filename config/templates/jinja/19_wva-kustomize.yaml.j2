@@ -57,6 +57,17 @@ patches:
       path: /spec/replicas
       value: {{ wva.replicaCount | default(1) }}
 
+# Retarget the metrics ServiceMonitor's TLS serverName to this install's
+# namespace (upstream hardcodes `wva-system`); otherwise the scrape cert
+# mismatches and `wva_desired_replicas` never reaches KEDA/the HPA.
+- target:
+    kind: ServiceMonitor
+    name: wva-controller-manager-metrics-monitor
+  patch: |-
+    - op: replace
+      path: /spec/endpoints/0/tlsConfig/serverName
+      value: wva-controller-manager-metrics-service.{{ _wva_ns }}.svc
+
 # Suffix each ClusterRoleBinding's metadata.name with the WVA namespace so
 # concurrent WVA installs in different namespaces don't fight over these
 # cluster-scoped binding names

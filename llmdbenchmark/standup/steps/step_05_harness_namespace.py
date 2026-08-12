@@ -57,6 +57,7 @@ class HarnessNamespaceStep(Step):
                 "HF token not configured -- skipping secret creation"
             )
 
+        bind_deferred = False
         pvc_yaml = self._find_rendered_yaml(context, "01_pvc_workload-pvc")
         if pvc_yaml:
             pvc_name = (
@@ -119,6 +120,7 @@ class HarnessNamespaceStep(Step):
                         message="Workload PVC failed to bind -- aborting",
                         errors=errors,
                     )
+                bind_deferred = bind_result.wait_skipped
 
         pod_yaml = self._find_rendered_yaml(context, "06_pod_access_to_harness_data")
         if pod_yaml:
@@ -159,6 +161,18 @@ class HarnessNamespaceStep(Step):
         self._create_preprocesses_configmap(cmd, context, configmap_namespaces, errors)
 
         timeout = context.harness_data_access_timeout
+        if bind_deferred:
+            # The bind wait was skipped, so this wait covers dynamic volume
+            # provisioning (which only starts once the pod schedules) plus
+            # container start. Carry the unspent bind budget forward instead
+            # of silently halving the budget for the harder job.
+            timeout += context.pvc_bind_timeout
+            context.logger.log_info(
+                f"PVC bind wait was skipped (WaitForFirstConsumer) -- "
+                f"extending data-access pod wait to {timeout}s "
+                f"({context.harness_data_access_timeout}s + "
+                f"{context.pvc_bind_timeout}s unspent bind budget)"
+            )
         wait_result = cmd.wait_for_pods(
             label="role=llm-d-benchmark-data-access",
             namespace=harness_ns,
@@ -167,7 +181,16 @@ class HarnessNamespaceStep(Step):
             description="harness data-access pod",
         )
         if not wait_result.success:
-            errors.append(f"Data access pod not ready: {wait_result.stderr}")
+            msg = f"Data access pod not ready: {wait_result.stderr}"
+            if bind_deferred:
+                msg += (
+                    ". The PVC bind wait was skipped (StorageClass "
+                    "volumeBindingMode=WaitForFirstConsumer), so this wait "
+                    "may also have covered volume provisioning. Raise "
+                    "--data-access-timeout (LLMDBENCH_DATA_ACCESS_TIMEOUT) "
+                    "and/or --pvc-bind-timeout for slow shared storage."
+                )
+            errors.append(msg)
 
         if errors:
             for err in errors:

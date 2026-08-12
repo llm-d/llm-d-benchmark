@@ -649,3 +649,70 @@ class TestProviderConfigLift:
         assert (
             out["provider"]["istio"]["destinationRule"]["host"] == "user-explicit-host"
         )
+
+
+# ---------------------------------------------------------------------------
+# Metrics-reader Secret name: benchmark knob -> chart-native spelling
+# ---------------------------------------------------------------------------
+
+
+class TestMonitoringSecretNameMirror:
+    """`router.monitoring.secretName` must reach the chart.
+
+    The benchmark's knob is `router.monitoring.secretName` -- it is what
+    `_STACK_SCOPED_DEFAULTS` per-stack-suffixes and what the RBAC and
+    harness templates read. The router chart reads
+    `router.monitoring.prometheus.auth.secretName`
+    (charts/router/templates/_sa-token-secret.yaml). If the two drift, a
+    multi-stack scenario's router releases all create the chart's
+    packaged default name and the second install fails with
+    "Secret ... cannot be imported into the current release".
+    """
+
+    CHART_PATH = ("prometheus", "auth", "secretName")
+
+    @staticmethod
+    def _auth_secret(out: dict) -> str | None:
+        monitoring = out["router"]["monitoring"]
+        return monitoring["prometheus"]["auth"].get("secretName")
+
+    def test_mirrored_to_the_chart_spelling(self, normalize):
+        values = {"router": {"monitoring": {"secretName": "per-stack-secret"}}}
+        assert self._auth_secret(normalize(values)) == "per-stack-secret"
+
+    def test_existing_prometheus_block_is_preserved(self, normalize):
+        values = {
+            "router": {
+                "monitoring": {
+                    "secretName": "per-stack-secret",
+                    "interval": "10s",
+                    "prometheus": {"enabled": True, "auth": {"enabled": True}},
+                }
+            }
+        }
+        out = normalize(values)
+        monitoring = out["router"]["monitoring"]
+        assert self._auth_secret(out) == "per-stack-secret"
+        assert monitoring["prometheus"]["enabled"] is True
+        assert monitoring["prometheus"]["auth"]["enabled"] is True
+        assert monitoring["interval"] == "10s"
+
+    def test_explicit_chart_spelling_wins(self, normalize):
+        values = {
+            "router": {
+                "monitoring": {
+                    "secretName": "benchmark-knob",
+                    "prometheus": {"auth": {"secretName": "explicit-chart-value"}},
+                }
+            }
+        }
+        assert self._auth_secret(normalize(values)) == "explicit-chart-value"
+
+    def test_no_monitoring_block_is_a_noop(self, normalize):
+        out = normalize({"router": {}})
+        assert "monitoring" not in out["router"]
+
+    def test_empty_secret_name_is_a_noop(self, normalize):
+        values = {"router": {"monitoring": {"secretName": ""}}}
+        out = normalize(values)
+        assert "prometheus" not in out["router"]["monitoring"]

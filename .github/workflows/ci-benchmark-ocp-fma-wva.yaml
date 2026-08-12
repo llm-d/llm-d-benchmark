@@ -106,6 +106,11 @@ on:
         required: false
         default: 'inference-perf'
         type: 'string'
+      model:
+        description: 'Served model. Keep in sync with the scenario model.'
+        required: false
+        default: 'Qwen/Qwen3-32B'
+        type: 'string'
       workload:
         description: 'Workload profile (under workload/profiles/<harness>/)'
         required: false
@@ -252,6 +257,9 @@ jobs:
       FMA_WVA_WARMSTART_SCENARIO: ${{ inputs.standup_scenario || 'ocp-wva-fma-warmstart' }}
       FMA_WVA_HOTSTART_SCENARIO: ${{ inputs.hotstart_scenario || 'ocp-wva-fma-hotstart' }}
     steps:
+      - name: Checkout llm-d-benchmark (for the results-table script)
+        uses: actions/checkout@v7.0.0
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
@@ -292,249 +300,18 @@ jobs:
           [ -n "$FW_WARMSTART_DATE" ] && gcloud storage cp -r "${FW_WARMSTART_PREFIX}${FW_WARMSTART_DATE}" "$FMA_WVA_WARMSTART_DIR/" || true
           [ -n "$FW_HOTSTART_DATE" ] && gcloud storage cp -r "${FW_HOTSTART_PREFIX}${FW_HOTSTART_DATE}" "$FMA_WVA_HOTSTART_DIR/" || true
 
-          # PyYAML for cluster-state parsing in the timing-row computation
-          # below; ubuntu-latest doesn't have it pre-installed in the user
-          # site, but the system one does (apt-installed python3-yaml).
-          pip install --quiet pyyaml 2>/dev/null || true
-
-          # Locate, per pass:
-          #   - summary_lifecycle_metrics.json   (harness output, has latency)
-          #   - <exp_id>/wva-controller.log      (step_09a, has scale-up timestamp)
-          #   - <exp_id>/resources.yaml          (step_09a, has Pod Ready timestamps)
-          find_in_results() {
-            # $1 = pass dir, $2 = filename
-            find "$1" -path "*/results/*" -name "$2" 2>/dev/null | sort | tail -1
-          }
-          BL_SUM=$(find_in_results "$BASELINE_DIR"            "summary_lifecycle_metrics.json")
-          FW_WARMSTART_SUM=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "summary_lifecycle_metrics.json")
-          FW_HOTSTART_SUM=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "summary_lifecycle_metrics.json")
-          BL_WVA=$(find_in_results "$BASELINE_DIR"            "wva-controller.log")
-          FW_WARMSTART_WVA=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "wva-controller.log")
-          FW_HOTSTART_WVA=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "wva-controller.log")
-          BL_RES=$(find_in_results "$BASELINE_DIR"            "resources.yaml")
-          FW_WARMSTART_RES=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "resources.yaml")
-          FW_HOTSTART_RES=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "resources.yaml")
-          BL_EVENTS=$(find_in_results "$BASELINE_DIR"            "events.json")
-          FW_WARMSTART_EVENTS=$(find_in_results "$FMA_WVA_WARMSTART_DIR" "events.json")
-          FW_HOTSTART_EVENTS=$(find_in_results "$FMA_WVA_HOTSTART_DIR"   "events.json")
-
-          python3 - "$BL_SUM" "$FW_WARMSTART_SUM" "$FW_HOTSTART_SUM" "$BL_WVA" "$FW_WARMSTART_WVA" "$FW_HOTSTART_WVA" "$BL_RES" "$FW_WARMSTART_RES" "$FW_HOTSTART_RES" "$BL_EVENTS" "$FW_WARMSTART_EVENTS" "$FW_HOTSTART_EVENTS" \
-            >> "$GITHUB_STEP_SUMMARY" <<'PY'
-          import json, sys, os, re, datetime
-          try:
-              import yaml
-              HAVE_YAML = True
-          except ImportError:
-              HAVE_YAML = False
-
-          (bl_sum, fw_ws_sum, fw_hs_sum,
-           bl_wva, fw_ws_wva, fw_hs_wva,
-           bl_res, fw_ws_res, fw_hs_res,
-           bl_events, fw_ws_events, fw_hs_events) = sys.argv[1:13]
-
-          def load_json(p):
-              if not p or not os.path.isfile(p):
-                  return None
-              try:
-                  with open(p) as f:
-                      return json.load(f)
-              except (json.JSONDecodeError, OSError):
-                  return None
-
-          bl = load_json(bl_sum)
-          fw_ws = load_json(fw_ws_sum)   # WVA with FMA — warm start
-          fw_hs = load_json(fw_hs_sum)   # WVA with FMA — hot start
-
-          def get(d, *keys, scale=1.0):
-              if d is None: return None
-              cur = d
-              for k in keys:
-                  if not isinstance(cur, dict) or k not in cur: return None
-                  cur = cur[k]
-              return cur * scale if isinstance(cur, (int, float)) else cur
-
-          def fmt(v, unit="", precision=1):
-              if v is None: return "_n/a_"
-              if isinstance(v, float): return f"{v:.{precision}f}{unit}"
-              return f"{v}{unit}"
-
-          # ----- Scale actuation timing (scaler-agnostic: pod lifecycle) -----
-          # FMA requester Deployment is scaled via a KEDAScaledObject -> HPA,
-          # so timing is measured from the captured resources.yaml (pod status)
-
-          # T_actuation: mean wall-clock from each serving container's START to
-          # its pod's Ready transition. Measuring from container start (not pod
-          # creation) excludes scheduling + image-pull + volume-mount overhead —
-          # matching FMA's httpstart, which times from container start.
-          def _iso_full(s):
-              """Parse an RFC3339 timestamp (with optional fractional seconds
-              and Z suffix) into a tz-aware datetime, or None on failure."""
-              if not s:
-                  return None
-              try:
-                  return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
-              except (ValueError, TypeError):
-                  return None
-
-          # Serving-container names whose start marks the beginning of model
-          # actuation: "vllm" for the WVA/decode baseline,
-          # "inference-server" for FMA launcher & requester pods.
-          SERVING_CONTAINERS = ("inference-server", "vllm")
-
-          def _container_started(item):
-              for cs in item.get('status', {}).get('containerStatuses', []):
-                  if cs.get('name') in SERVING_CONTAINERS:
-                      running = (cs.get('state') or {}).get('running') or {}
-                      return _iso_full(running.get('startedAt'))
-              return None
-
-          def actuation_mean(resources_path):
-              if not HAVE_YAML or not resources_path or not os.path.isfile(resources_path):
-                  return None
-              try:
-                  with open(resources_path) as f:
-                      doc = yaml.safe_load(f)
-              except (yaml.YAMLError, OSError):
-                  return None
-              if not isinstance(doc, dict):
-                  return None
-              items = doc.get('items', []) if doc.get('kind') == 'List' else []
-              durs = []
-              for item in items:
-                  if item.get('kind') != 'Pod': continue
-                  name = item.get('metadata', {}).get('name', '')
-                  if 'fma-requester' not in name and '-decode-' not in name:
-                      continue
-                  start = _container_started(item) or _iso_full(item['metadata'].get('creationTimestamp'))
-                  ready = None
-                  for c in item.get('status', {}).get('conditions', []):
-                      if c.get('type') == 'Ready' and c.get('status') == 'True':
-                          ready = _iso_full(c.get('lastTransitionTime'))
-                          break
-                  if start and ready:
-                      durs.append((ready - start).total_seconds())
-              return sum(durs)/len(durs) if durs else None
-
-          bl_actuation = actuation_mean(bl_res)
-          fw_ws_actuation = actuation_mean(fw_ws_res)
-          fw_hs_actuation = actuation_mean(fw_hs_res)
-
-          # T_scale_up: autoscaler scale-UP latency, event-anchored. t0 = each
-          # HPA SuccessfulRescale scale-up event (where "New size" increases);
-          # t1 = that replica's Ready. Only scale-UPs count, so it's robust to
-          # the end-of-run scale-down that overwrites HPA.lastScaleTime. Reads
-          # events.json (absolute timestamps) + resources.yaml (pod Ready) --
-          # identical for WVA & EPP-KEDA (both drive a KEDA-managed HPA that
-          # emits SuccessfulRescale). Returns None if no scale-up event is found
-          # or the scaled-up pods were already deleted by capture time.
-          def t_scale_up_mean(events_path, resources_path):
-              if not HAVE_YAML or not events_path or not os.path.isfile(events_path):
-                  return None
-              try:
-                  with open(events_path) as f:
-                      ev = json.load(f)
-              except (ValueError, OSError):
-                  return None
-              size_rx = re.compile(r'New size:\s*(\d+)')
-              def _etime(e):
-                  return e.get('lastTimestamp') or e.get('eventTime') or e.get('firstTimestamp') or ''
-              ups, prev = [], None
-              evitems = ev.get('items', []) if isinstance(ev, dict) else []
-              for e in sorted(evitems, key=_etime):
-                  if e.get('reason') != 'SuccessfulRescale':
-                      continue
-                  if (e.get('involvedObject', {}) or {}).get('kind') != 'HorizontalPodAutoscaler':
-                      continue
-                  m = size_rx.search(e.get('message', '') or '')
-                  if not m:
-                      continue
-                  n = int(m.group(1))
-                  t = _iso_full(_etime(e))
-                  if t and (prev is None or n > prev):
-                      ups.append(t)
-                  prev = n
-              if not ups:
-                  return None
-              readies = []
-              if resources_path and os.path.isfile(resources_path):
-                  try:
-                      with open(resources_path) as f:
-                          doc = yaml.safe_load(f)
-                  except (yaml.YAMLError, OSError):
-                      doc = None
-                  ritems = doc.get('items', []) if isinstance(doc, dict) and doc.get('kind') == 'List' else []
-                  for item in ritems:
-                      if item.get('kind') != 'Pod':
-                          continue
-                      name = item.get('metadata', {}).get('name', '')
-                      if 'fma-requester' not in name and '-decode-' not in name:
-                          continue
-                      for c in item.get('status', {}).get('conditions', []):
-                          if c.get('type') == 'Ready' and c.get('status') == 'True':
-                              r = _iso_full(c.get('lastTransitionTime'))
-                              if r:
-                                  readies.append(r)
-              readies.sort()
-              used = [False] * len(readies)
-              durs = []
-              for t0 in ups:
-                  for i, r in enumerate(readies):
-                      if not used[i] and r >= t0:
-                          durs.append((r - t0).total_seconds())
-                          used[i] = True
-                          break
-              return sum(durs) / len(durs) if durs else None
-
-          bl_t_scale_up = t_scale_up_mean(bl_events, bl_res)
-          fw_ws_t_scale_up = t_scale_up_mean(fw_ws_events, fw_ws_res)
-          fw_hs_t_scale_up = t_scale_up_mean(fw_hs_events, fw_hs_res)
-
-          # ----- Render the table --------------------------------------------
-          print("| Metric | Baseline (WVA without FMA) | WVA with FMA Warm Start | WVA with FMA Hot Start |")
-          print("|---|---:|---:|---:|")
-
-          rows = [
-              ("Duration (s)",    "benchmark_time_seconds", None, 0, ""),
-              ("Total requests",  "load_summary", "count",  None, 0, ""),
-              ("Successes",       "successes", "count",     None, 0, ""),
-              ("Failures",        "failures", "count",      None, 0, ""),
-              ("Avg prompt len (tokens)",  "successes", "prompt_len", "mean", None, 1, ""),
-              ("Avg output len (tokens)",  "successes", "output_len", "mean", None, 1, ""),
-              ("Throughput (req/s)",       "successes", "throughput", "requests_per_sec",     None, 1, ""),
-              ("Throughput input (tok/s)", "successes", "throughput", "input_tokens_per_sec", None, 0, ""),
-              ("Throughput output (tok/s)","successes", "throughput", "output_tokens_per_sec",None, 0, ""),
-              ("Latency mean (ms)",  "successes", "latency", "request_latency", "mean",       1000, ""),
-              ("Latency p99 (ms)",   "successes", "latency", "request_latency", "p99",        1000, ""),
-              ("TTFT mean (ms)",     "successes", "latency", "time_to_first_token", "mean",   1000, ""),
-              ("TTFT p99 (ms)",      "successes", "latency", "time_to_first_token", "p99",    1000, ""),
-              ("TPOT mean (ms)",     "successes", "latency", "time_per_output_token", "mean", 1000, ""),
-              ("TPOT p99 (ms)",      "successes", "latency", "time_per_output_token", "p99",  1000, ""),
-              ("ITL mean (ms)",      "successes", "latency", "inter_token_latency", "mean",   1000, ""),
-              ("ITL p99 (ms)",       "successes", "latency", "inter_token_latency", "p99",    1000, ""),
-          ]
-          for row in rows:
-              label = row[0]
-              keys = [k for k in row[1:-2] if k is not None]
-              scale = row[-2] or 1.0
-              unit = row[-1]
-              prec = 0 if any(s in label for s in ("Total", "Successes", "Failures", "Duration", "tok/s")) else 1
-              bl_v = get(bl, *keys, scale=scale)
-              fw_ws_v = get(fw_ws, *keys, scale=scale)
-              fw_hs_v = get(fw_hs, *keys, scale=scale)
-              print(f"| {label} | {fmt(bl_v, unit, prec)} | {fmt(fw_ws_v, unit, prec)} | {fmt(fw_hs_v, unit, prec)} |")
-
-          print(f"| T_scale_up mean (s) — HPA scale→ready | {fmt(bl_t_scale_up, '', 1)} | {fmt(fw_ws_t_scale_up, '', 1)} | {fmt(fw_hs_t_scale_up, '', 1)} |")
-          print(f"| T_actuation mean (s) — container start→ready | {fmt(bl_actuation, '', 1)} | {fmt(fw_ws_actuation, '', 1)} | {fmt(fw_hs_actuation, '', 1)} |")
-
-          if bl is None:
-              print("\n_No baseline results found._")
-          if fw_ws is None:
-              print("\n_No WVA+FMA warm-start results found._")
-          if fw_hs is None:
-              print("\n_No WVA+FMA hot-start results found._")
-          if not HAVE_YAML:
-              print("\n_Note: PyYAML unavailable; scale-event timing rows skipped._")
-          PY
+          python3 "$GITHUB_WORKSPACE/llmdbenchmark/analysis/scripts/fma_comparison_table.py" \
+            --baseline-dir "$BASELINE_DIR" \
+            --warmstart-dir "$FMA_WVA_WARMSTART_DIR" \
+            --hotstart-dir "$FMA_WVA_HOTSTART_DIR" \
+            --col-baseline "Baseline (WVA without FMA)" \
+            --col-warmstart "WVA with FMA Warm Start" \
+            --col-hotstart "WVA with FMA Hot Start" \
+            --model "${{ inputs.model || 'Qwen/Qwen3-32B' }}" \
+            --harness "${{ inputs.harness || 'inference-perf' }}" \
+            --workload "${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}" \
+            --gpu-hourly-cost 1.0 \
+            >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
       # =====================================================================

@@ -1,3 +1,4 @@
+{% if not (storage.hostPath is defined and storage.hostPath.enabled | default(false)) %}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -54,3 +55,4 @@ spec:
         - name: model-cache
           persistentVolumeClaim:
             claimName: {{ storage.modelPvc.name }}
+{% endif %}

@@ -9,11 +9,13 @@ from llmdbenchmark.utilities.endpoint import (
     find_fma_endpoint,
     find_gateway_endpoint,
     find_epponly_endpoint,
+    find_direct_modelservice_endpoint,
     find_custom_endpoint,
     find_kustomize_endpoint,
     discover_hf_token_secret,
     extract_hf_token_from_secret,
     compute_gateway_path_prefix,
+    resolve_direct_service_namespace,
 )
 
 
@@ -145,6 +147,26 @@ class DetectEndpointStep(Step):
                     cmd,
                     namespace,
                     model_id_label,
+                )
+            elif gateway_class == "none":
+                model_id_label = plan_config.get("model_id_label", "")
+                direct_service_namespace = resolve_direct_service_namespace(
+                    plan_config, namespace
+                )
+                direct_port = str(
+                    self._resolve(
+                        plan_config,
+                        "routing.servicePort",
+                        default="8000",
+                    )
+                )
+                service_ip, service_name, gateway_port = (
+                    find_direct_modelservice_endpoint(
+                        cmd,
+                        direct_service_namespace,
+                        model_id_label,
+                        direct_port,
+                    )
                 )
             else:
                 service_ip, service_name, gateway_port = find_gateway_endpoint(

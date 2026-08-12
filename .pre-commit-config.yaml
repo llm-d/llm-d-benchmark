@@ -19,8 +19,8 @@ repos:
       # .github/workflows/ci-pr-benchmark.yaml.
       # ----------------------------------------------------------------
       - id: pytest
-        name: Unit tests (pytest tests/ -x -q)
-        entry: python -m pytest tests/ -x -q
+        name: Unit tests (pytest tests/ -x -q -n2)
+        entry: python -m pytest tests/ -x -q -n2
         language: system
         pass_filenames: false
         stages: [pre-commit]

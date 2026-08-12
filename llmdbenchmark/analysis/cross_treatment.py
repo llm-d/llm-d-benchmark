@@ -125,20 +125,43 @@ def deep_get(d: dict, dotted_key: str, default=None):
     return d
 
 
-def _shorten_treatment_label(name: str) -> str:
+# Only used when the caller has no harness name to hand: a results directory
+# name alone cannot be split into harness and treatment, since both may contain
+# a hyphen. Pass harness_name instead wherever it is known.
+_KNOWN_HARNESS_PREFIXES = (
+    "inference-perf",
+    "guidellm",
+    "vllm-benchmark",
+    "inferencemax",
+    "nop",
+    "priority-mix",
+    "eval-containers",
+    "aiperf",
+    "lm-eval",
+)
+
+
+def _shorten_treatment_label(name: str, harness_name: str = "") -> str:
     """Extract a readable treatment label from a results directory name.
 
     Strips the harness prefix, experiment ID, and parallelism suffix to
     extract just the treatment-specific part.
 
+    Args:
+        name: results directory or experiment ID to shorten.
+        harness_name: harness that produced it. Given one, every harness is
+            treated alike; without one, only _KNOWN_HARNESS_PREFIXES are
+            recognised.
+
+    The strips are unconditional, so an ID carrying no timestamp/random tail
+    loses its own trailing segment -- see the last two examples.
+
     Examples:
         inference-perf-grp40-splen8k-1773947901-i5e39v_1 -> grp40-splen8k
         inference-perf-conc32-1773947901-abc123_1        -> conc32
-        inference-perf-1773947901-xyz789_1               -> default
-        qlen100-olen300                                  -> qlen100-olen300
+        inference-perf-1773947901-xyz789_1               -> inference-perf
+        qlen100-olen300                                  -> qlen100
     """
-    import re
-
     # Strip trailing _N (parallelism index)
     name = re.sub(r"_\d+$", "", name)
 
@@ -148,16 +171,12 @@ def _shorten_treatment_label(name: str) -> str:
     # Strip trailing timestamp/experiment ID (e.g., -1773947901)
     name = re.sub(r"-\d{10,}$", "", name)
 
-    # Strip harness prefix (e.g., inference-perf-)
-    for prefix in (
-        "inference-perf-",
-        "guidellm-",
-        "vllm-benchmark-",
-        "inferencemax-",
-        "nop-",
-    ):
-        if name.startswith(prefix):
-            name = name[len(prefix) :]
+    # Strip harness prefix (e.g., inference-perf-), once: a treatment may
+    # legitimately begin with the harness name.
+    prefixes = (harness_name,) if harness_name else _KNOWN_HARNESS_PREFIXES
+    for prefix in prefixes:
+        if prefix and name.startswith(f"{prefix}-"):
+            name = name[len(prefix) + 1 :]
             break
 
     return name if name else "default"

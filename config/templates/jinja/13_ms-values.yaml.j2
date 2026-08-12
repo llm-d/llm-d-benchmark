@@ -106,7 +106,7 @@ accelerator:
 {% endif %}
 {% if dra is defined and dra.claimTemplates is defined %}
   resourceClaimTemplates:
-{{ dra.claimTemplates | toyaml | indent(4) }}
+{{ dra.claimTemplates | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# -------------------------------------------------------------------------- #}
@@ -231,11 +231,11 @@ requester:
 {# ========================================================================== #}
 {# DECODE SECTION                                                             #}
 {# ========================================================================== #}
-{# Probe port: always use servicePort (8000) to match bash behavior.
-   The inference port is what Kubernetes probes check -- whether the proxy
-   is in front (proxy on 8000, vLLM on 8200) or vLLM binds directly (8000).
-   The vllm.port (8200) is only for the --port flag in the vLLM command. #}
-{% set decode_effective_port = decode.vllm.servicePort -%}
+{# Probe port: follow the vLLM bind port. When the routing proxy is disabled,
+   vLLM binds directly to servicePort (8000). When the proxy is enabled,
+   vLLM binds to vllm.port (8200) and the sidecar handles servicePort (8000). #}
+{% set decode_proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+{% set decode_effective_port = decode.vllm.servicePort if decode_proxy_disabled else decode.vllm.port -%}
 decode:
   create: {{ decode_create | lower }}
 {% if decode_create %}
@@ -346,12 +346,12 @@ decode:
 
 {% if decode.resourceClaims is defined and decode.resourceClaims %}
   resourceClaims:
-{{ decode.resourceClaims | toyaml | indent(4) }}
+{{ decode.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if decode.podSecurityContext is defined and decode.podSecurityContext %}
   podSecurityContext:
-{{ decode.podSecurityContext | toyaml | indent(4) }}
+{{ decode.podSecurityContext | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# LWS / Multinode specific options #}
@@ -407,6 +407,9 @@ decode:
     args:
       - |
 {{ build_vllm_command('decode') | indent(8, first=True) }}
+{% elif decode_model_command == 'imageDefault' and decode.vllm.additionalFlags is defined and decode.vllm.additionalFlags %}
+    args:
+{{ decode.vllm.additionalFlags | toyaml | indent(6, true) }}
 {% endif %}
     env:
 {{ build_ms_env_vars('decode') | indent(6, true) }}
@@ -427,10 +430,10 @@ decode:
       limits:
         memory: {{ decode.resources.limits.memory }}
         cpu: "{{ decode.resources.limits.cpu }}"
-{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource) %}
-{% if decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
+{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource | default('')) %}
+{% if decode_accel_resource and decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.limits[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif decode_accel_resource and decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% set decode_eph_storage = decode.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -450,9 +453,9 @@ decode:
       requests:
         memory: {{ decode.resources.requests.memory }}
         cpu: "{{ decode.resources.requests.cpu }}"
-{% if decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
+{% if decode_accel_resource and decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.requests[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif decode_accel_resource and decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% if decode_eph_storage and decode_eph_resource %}
@@ -766,12 +769,12 @@ prefill:
 
 {% if prefill.resourceClaims is defined and prefill.resourceClaims %}
   resourceClaims:
-{{ prefill.resourceClaims | toyaml | indent(4) }}
+{{ prefill.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if prefill.podSecurityContext is defined and prefill.podSecurityContext %}
   podSecurityContext:
-{{ prefill.podSecurityContext | toyaml | indent(4) }}
+{{ prefill.podSecurityContext | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# LWS / Multinode specific options #}
@@ -824,6 +827,9 @@ prefill:
     args:
       - |
 {{ build_vllm_command('prefill') | indent(8, first=True) }}
+{% elif prefill_model_command == 'imageDefault' and prefill.vllm.additionalFlags is defined and prefill.vllm.additionalFlags %}
+    args:
+{{ prefill.vllm.additionalFlags | toyaml | indent(6, true) }}
 {% endif %}
     env:
 {{ build_ms_env_vars('prefill') | indent(6, true) }}
@@ -844,10 +850,10 @@ prefill:
       limits:
         memory: {{ prefill.resources.limits.memory }}
         cpu: "{{ prefill.resources.limits.cpu }}"
-{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource) %}
-{% if prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
+{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource | default('')) %}
+{% if prefill_accel_resource and prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.limits[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif prefill_accel_resource and prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% set prefill_eph_storage = prefill.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -867,9 +873,9 @@ prefill:
       requests:
         memory: {{ prefill.resources.requests.memory }}
         cpu: "{{ prefill.resources.requests.cpu }}"
-{% if prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
+{% if prefill_accel_resource and prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.requests[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif prefill_accel_resource and prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% if prefill_eph_storage and prefill_eph_resource %}

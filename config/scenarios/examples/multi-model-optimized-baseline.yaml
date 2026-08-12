@@ -1,0 +1,447 @@
+# MULTI-MODEL OPTIMIZED BASELINE for LLM-D Deployment
+#
+# The optimized-baseline well-lit path
+# ([config/scenarios/guides/optimized-baseline.yaml]), deployed N times
+# behind a single gateway. Each model gets its own EPP + InferencePool +
+# decode Deployment; all of them are reachable through ONE HTTPRoute with
+# N backendRefs. Deploy method is modelservice (the same path the
+# single-model guide uses when `kustomize.enabled: false`).
+#
+# Topology (with N=2):
+#                        +---- Gateway (infra-llmdbench, shared) ------+
+#                        |     HTTPRoute multi-model-route (shared)    |
+#                        |     +-- /qwen3-06b/v1   -> InferencePool A  |
+#                        |     +-- /llama-31-8b/v1 -> InferencePool B  |
+#                        +--------------------------------------------+
+#                              |                          |
+#                      +-------+--------+         +-------+--------+
+#                      | EPP qwen3-06b  |         | EPP llama-31-8b|
+#                      | + InferencePool|         | + InferencePool|
+#                      +-------+--------+         +-------+--------+
+#                              |                          |
+#                      +-------+--------+         +-------+--------+
+#                      | vLLM decode    |         | vLLM decode    |
+#                      +----------------+         +----------------+
+#
+# Architecture:
+#
+#   - `shared:` block holds scenario-wide config (gateway, shared
+#     HTTPRoute, EPP plugin config, Envoy sidecar + InferencePool tuning,
+#     the decode command). It is merged into every stack's values in
+#     render_plans._process_stack BEFORE the per-stack overrides -
+#     per-stack always wins.
+#
+#   - `scenario:` is a list of N stacks. Each gets its own
+#     `{model_id_label}-ms` and `{model_id_label}-router` Helm releases and
+#     its own auto-named download Job. Per-stack blocks carry only
+#     model-specific knobs (model.*, decode replicas + resources).
+#
+# What changed relative to the single-model guide, and why:
+#
+#   - `gateway.className: istio`, not `epponly`. `epponly` is the
+#     single-stack "standalone router" topology: it deploys no Gateway, so
+#     a shared HTTPRoute would have no parentRef to attach to. The
+#     renderer rejects `epponly` outright once a scenario has more than one
+#     stack (see `_validate_epponly_constraints` in render_plans.py).
+#
+#   - `router.extraServicePorts` is dropped. In the guide it exists only to
+#     expose the `epponly` Envoy sidecar (port 80 -> 8081) directly to
+#     clients; with a real Gateway in front, clients go through the
+#     HTTPRoute instead.
+#
+#   - `router.modelServers.matchLabels` is dropped. The guide pins it to
+#     `llm-d.ai/guide: optimized-baseline`, a label that is identical on
+#     every stack's decode pods - both InferencePools would select each
+#     other's pods. Leaving it unset lets `_normalize_router_block` derive
+#     a per-stack selector (`llm-d.ai/model: {model_id_label}`) instead.
+#
+#   - `kustomize` is left at its default (disabled) and is not configured
+#     here. The kustomize deploy path applies the upstream guide manifests
+#     keyed on `guideName` with no per-stack uniquification, so N stacks
+#     would collide. This scenario is modelservice-only.
+#
+#   - `storage.modelPvc.size` is 100Gi rather than the guide's 1Ti: sized
+#     for the sum of the two example models below, not for Qwen3-32B.
+#
+# Everything else - the EPP scheduling profile, the Envoy sidecar args and
+# resources, the InferencePool connection-pool limits, the HTTPRoute
+# timeouts, the decode `customCommand`, the preprocess init container - is
+# carried over from the guide verbatim.
+#
+# Stack naming convention:
+#
+#   Stack `name` values double as path prefixes in the shared HTTPRoute
+#   (`/{stack.name}/v1/...`). Pick short descriptive names that identify
+#   the model family + size (e.g. `qwen3-06b`, `llama-31-8b`) rather than
+#   opaque labels (`pool-a`). Keep them lowercase and URL-safe; no hard
+#   k8s limit on the name itself, but conventionally <=30 chars.
+#   `--list-endpoints` prints the rendered URLs so users rarely have to
+#   type these manually.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
+#
+# Running:
+#
+#   llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p <namespace>
+#
+# To add a third model: copy one of the stack blocks, give it a unique
+# short descriptive `name` and a unique `model.*`. The parser auto-derives
+# unique `downloadJob.name` and `router.monitoring.secretName` values from
+# the model ID label, so nothing else needs per-stack customization. Grow
+# `shared.storage.modelPvc.size` to cover the extra weights.
+#
+# Before editing, two things worth knowing:
+#
+#   - Pick ONE spelling per section across `shared:` and the stacks. The
+#     nested `modelservice.<section>` form is hoisted to the top level
+#     AFTER `shared:` and per-stack are merged, so a stack's flat
+#     `gateway:` would be silently beaten by `shared.modelservice.gateway`.
+#     Today only `gateway` uses the nested form and no stack overrides it.
+#
+#   - DoE treatments from experiments/optimized-baseline.yaml are
+#     unscoped, so they apply to EVERY stack: a sweep that sets
+#     `decode.replicas` or `parallelism.tensor` multiplies across pools.
+#     Scope them with a `stack:` prefix, or budget accelerators for the
+#     sum of all stacks.
+
+# ============================================================================
+# SHARED - applied to every stack before per-stack overrides
+# ============================================================================
+shared:
+  # --------------------------------------------------------------------------
+  # DEPLOYMENT METHOD
+  # --------------------------------------------------------------------------
+  modelservice:
+    enabled: true
+    # Pinned explicitly: this scenario is multi-stack, and `epponly` (what
+    # the single-model guide uses) is single-stack only -- it has no shared
+    # Gateway / HTTPRoute to multiplex several models behind one address.
+    gateway:
+      className: istio
+  standalone:
+    enabled: false
+
+  # --------------------------------------------------------------------------
+  # ACCELERATOR - detect the device-plugin resource and select the matching
+  # machine profile. Explicit accelerator settings supplied by the user
+  # still win.
+  # --------------------------------------------------------------------------
+  accelerator:
+    profile: auto
+    resource: auto
+
+  # -------------------------------------------------------------------------
+  # Affinity / Node Selection
+  # By default, affinity is disabled and pods schedule on any available node.
+  # Options:
+  #   1. Leave commented out -- no node selection constraint
+  #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+  #   3. Set explicit labels -- pods only schedule on matching nodes
+  # -------------------------------------------------------------------------
+  # affinity:
+  #   enabled: true
+  #   nodeSelector:
+  #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+  #     # gpu.nvidia.com/model: H200                        # Kubernetes
+  #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+
+  # --------------------------------------------------------------------------
+  # HTTPROUTE - one shared route with N URLRewrite rules, one per stack.
+  # Emitted only in the first stack's render (stackIndex == 1). Other stacks
+  # render an empty 08_httproute.yaml (step_09 skips empty files).
+  #
+  # pathPrefix is the whole client-side path segment; the gateway rewrites
+  # it to rewriteTo before the upstream pod sees the request. We route on
+  # `/{stack.name}` (e.g. `/qwen3-06b`) rather than `/{stack.name}/v1` so
+  # the smoketest can probe both `/{stack.name}/health` and
+  # `/{stack.name}/v1/models` - the vLLM `/health` endpoint lives at the
+  # root, not under `/v1`, and a narrower prefix would not match it.
+  #
+  # requestTimeout: end-to-end Gateway-API HTTPRoute timeout the istio
+  # gateway enforces per request. Long agentic turns that exceed it are
+  # aborted by the gateway with a 502 (surfaces as "connection reset by
+  # peer" on the decode routing-proxy loopback hop). Set "0s" to disable.
+  # --------------------------------------------------------------------------
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+    requestTimeout: "300s"
+    backendRequestTimeout: "0s"
+
+  # --------------------------------------------------------------------------
+  # ROUTING / GAIE - the optimized-baseline scheduling profile and transport
+  # tuning, applied identically to every pool. `modelServers.matchLabels` is
+  # deliberately NOT set here so each stack gets its own pod selector.
+  # --------------------------------------------------------------------------
+  router:
+    epp:
+      replicas: 1
+      flags:
+        v: 2
+      pluginsConfigFile: "optimized-baseline-plugins.yaml"
+      pluginsCustomConfig:
+        optimized-baseline-plugins.yaml: |
+          apiVersion: llm-d.ai/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: queue-scorer
+          - type: kv-cache-utilization-scorer
+          - type: prefix-cache-scorer
+          - type: no-hit-lru-scorer
+          schedulingProfiles:
+          - name: default
+            plugins:
+            - pluginRef: queue-scorer
+              weight: 2
+            - pluginRef: kv-cache-utilization-scorer
+              weight: 2
+            - pluginRef: prefix-cache-scorer
+              weight: 3
+            - pluginRef: no-hit-lru-scorer
+              weight: 2
+      resources:
+        requests:
+          cpu: "4"
+          memory: 8Gi
+        limits:
+          memory: 16Gi
+    proxy:
+      # CLI args for the Envoy sidecar. Override the chart's defaults of
+      # `--log-level trace` (very expensive under load) and no `--concurrency`
+      # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+      # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+      # equivalent below; trace-level logging would burn a meaningful share of
+      # the sidecar's CPU at high QPS.
+      args:
+        - "--service-node"
+        - "envoy-sidecar"
+        - "--log-level"
+        - "warn"
+        - "--concurrency"
+        - "8"
+        - "--drain-strategy"
+        - "immediate"
+        - "--drain-time-s"
+        - "60"
+        - "-c"
+        - "/etc/envoy/envoy.yaml"
+      # Resource requests and limits for the Envoy sidecar.
+      resources:
+        requests:
+          cpu: "4"
+          memory: 8Gi
+        limits:
+          memory: 16Gi
+    modelServers:
+      # NOTE: `matchLabels` is deliberately absent - see the header. Setting it
+      # here would stop `_normalize_router_block` from deriving the per-stack
+      # `llm-d.ai/model` selector, and every InferencePool would then select
+      # every stack's decode pods.
+      protocol: http
+    inferencePool:
+      failureMode: "FailOpen"
+      providerConfig:
+        destinationRule:
+          trafficPolicy:
+            connectionPool:
+              http:
+                http1MaxPendingRequests: 256000
+                maxRequestsPerConnection: 256000
+                http2MaxRequests: 256000
+                idleTimeout: "900s"
+              tcp:
+                maxConnections: 256000
+                maxConnectionDuration: "1800s"
+                connectTimeout: "900s"
+    tracing:
+      otelExporterEndpoint: "http://localhost:4317"
+      sampling:
+        sampler: "parentbased_traceidratio"
+        samplerArg: "0.1"
+
+  # --------------------------------------------------------------------------
+  # VLLM COMMON - same across pools. Individual settings can be overridden
+  # per-stack below if a specific model needs different tuning.
+  # --------------------------------------------------------------------------
+  vllmCommon:
+    #      priorityClassName: nightly-gpu-critical
+    volumes:
+      - name: shared-config
+        type: emptyDir
+        emptyDir: {}
+      - name: dshm
+        type: emptyDir
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
+
+    volumeMounts:
+      - name: dshm
+        mountPath: /dev/shm
+      - name: shared-config
+        mountPath: /shared-config
+
+  # --------------------------------------------------------------------------
+  # PREFILL - disabled; the optimized baseline is decode-only.
+  # --------------------------------------------------------------------------
+  prefill:
+    enabled: false
+    replicas: 0
+
+  # --------------------------------------------------------------------------
+  # DECODE defaults shared across pools. `replicas` and `resources` are
+  # per-model sizing and live in each stack below.
+  # --------------------------------------------------------------------------
+  decode:
+    extraContainerConfig:
+      ports:
+        - containerPort: 5557  # NIXL side channel port
+          protocol: TCP
+        - containerPort: 8200  # Metrics port
+          name: metrics
+          protocol: TCP
+      securityContext:
+        capabilities:
+          add:
+            - "IPC_LOCK"
+            - "SYS_RAWIO"
+        runAsGroup: 0
+        runAsUser: 0
+      imagePullPolicy: Always
+
+    vllm:
+      # `${accelerator.*}` fragments and `$MODEL_PATH` / `$MODEL_NAME` /
+      # `$VLLM_*` are resolved per stack (the former at render time against
+      # each stack's merged config, the latter in each pod's environment),
+      # so this one command string is correct for every model.
+      customCommand: |
+        ${accelerator.runtimePreamble}
+        vllm serve /model-cache/$MODEL_PATH \
+        --host 0.0.0.0 \
+        --served-model-name $MODEL_NAME \
+        --port $VLLM_METRICS_PORT \
+        ${accelerator.blockSizeArgs} \
+        --max-model-len $VLLM_MAX_MODEL_LEN \
+        --max-num-seq $VLLM_MAX_NUM_SEQ \
+        --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+        --tensor-parallel-size $TP_SIZE \
+        ${accelerator.memoryUtilizationArgs} \
+        ${accelerator.dtypeArgs} \
+        ${accelerator.executionArgs} \
+        --no-enable-log-requests \
+        --disable-uvicorn-access-log \
+        --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+        --no-enable-prefix-caching
+
+    initContainers:
+      - name: preprocess
+        imageKey: benchmark
+        imagePullPolicy: Always
+        command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+
+    parallelism:
+      tensor: 1
+      data: 1
+      dataLocal: 1
+      workers: 1
+
+    # -----------------------------------------------------------------------
+    # Extra Environment Variables
+    # No custom env vars for this scenario -- uses default ENVVARS_TO_YAML
+    # mechanism. Auto-populated vars (UCX_TLS, VLLM_NIXL_*, etc.) are set
+    # by the preprocess script at pod runtime.
+    # -----------------------------------------------------------------------
+    extraEnvVars: []
+
+    # -----------------------------------------------------------------------
+    # Additional Volume Mounts
+    # -----------------------------------------------------------------------
+    additionalVolumeMounts: []
+
+    # -----------------------------------------------------------------------
+    # Additional Volumes
+    # -----------------------------------------------------------------------
+    additionalVolumes: []
+
+  # --------------------------------------------------------------------------
+  # HARNESS + WORKDIR - harness is single-instance per scenario, so it
+  # lives in `shared` (the workload PVC it writes to is scenario-wide).
+  # --------------------------------------------------------------------------
+  workDir: "~/data/multi-model-optimized-baseline"
+  harness:
+    name: inference-perf
+    experimentProfile: shared_prefix_synthetic.yaml
+
+  # --------------------------------------------------------------------------
+  # STORAGE - ONE shared model PVC for the whole scenario.
+  # Every stack's weights live in a distinct subdirectory
+  # (`{modelPvc.mountPath}/{model.path}`) on the same volume, which is the
+  # right shape for NVMe / local-directory-backed storage classes and for
+  # reusing cached weights across runs. Size it for the sum of all models
+  # this scenario will ever load.
+  # --------------------------------------------------------------------------
+  storage:
+    modelPvc:
+      size: 100Gi
+
+
+# ============================================================================
+# SCENARIO - per-model stacks
+# ============================================================================
+scenario:
+  # --------------------------------------------------------------------------
+  # QWEN3-06B - Qwen/Qwen3-0.6B
+  # --------------------------------------------------------------------------
+  - name: "qwen3-06b"
+
+    model:
+      name: Qwen/Qwen3-0.6B
+      shortName: qwen-qwen3-0-6b
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 8Gi
+      maxModelLen: 8192
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    decode:
+      replicas: 1
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+        requests:
+          memory: 24Gi
+          cpu: "8"
+
+
+  # --------------------------------------------------------------------------
+  # LLAMA-31-8B - unsloth/Meta-Llama-3.1-8B
+  # --------------------------------------------------------------------------
+  - name: "llama-31-8b"
+
+    model:
+      name: unsloth/Meta-Llama-3.1-8B
+      shortName: unsloth-meta-llama-3-1-8b
+      path: models/unsloth/Meta-Llama-3.1-8B
+      huggingfaceId: unsloth/Meta-Llama-3.1-8B
+      size: 32Gi
+      maxModelLen: 8192
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    decode:
+      replicas: 1
+      resources:
+        limits:
+          memory: 48Gi
+          cpu: "16"
+        requests:
+          memory: 48Gi
+          cpu: "16"

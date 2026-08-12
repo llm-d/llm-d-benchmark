@@ -113,12 +113,13 @@ _anchors:
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
   # Used for both the standalone and gateway router charts.
   router_chart_version:              &router_chart_version              v0.9.0
-  vllm-openai_version:               &vllm-openai_version               v0.24.0
+  vllm-openai_version:               &vllm-openai_version               v0.26.0
   llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.9.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.9.0
-  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.24.0
-  llm-d-cuda_version:                &llm-d-cuda_version                v0.8.0
-  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.9.2
+  # Just use vllm-openai image for tokenizer
+  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.26.0
+  llm-d-cuda_version:                &llm-d-cuda_version                v0.8.1
+  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.10.2
   llm-d-benchmark_version:           &llm-d-benchmark_version           v0.7.0
 
   # Common labels
@@ -319,6 +320,28 @@ storage:
     volumeMode: Filesystem
     storageClassName: *storage_class
 
+  # HostPath-backed model storage (opt-in).
+  # When enabled, a static PersistentVolume with hostPath is created and the
+  # model PVC binds to it via a matching storageClassName.  A DaemonSet
+  # downloads the model to the hostPath on every target node BEFORE the
+  # serving pods start; the regular download Job is skipped.
+  #
+  # Requirements:
+  #   - Nodes must have the hostPath directory writable.
+  #   - nodeSelector / tolerations should target the GPU nodes where
+  #     vLLM pods will schedule.
+  #   - The storageClassName does NOT need a real StorageClass object
+  #     on the cluster; static PV binding uses label matching.
+  hostPath:
+    enabled: false
+    path: /mnt/models
+    storageClassName: hostpath
+    capacity: 300Gi
+    nodeSelector: {}
+    tolerations: []
+    daemonSetTimeout: 3600
+    daemonSetName: download-model-ds
+
 # ============================================================================
 # HUGGINGFACE CONFIGURATION
 # ============================================================================
@@ -496,6 +519,11 @@ monitoring:
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
+  # Embed downsampled per-timestamp series into the report's
+  # results.observability.components[].time_series, for interactive plotting.
+  # Only metrics in the _EMBED_TIME_SERIES allow-list (metrics_processor.py) qualify.
+  embedTimeSeries: true
+  timeSeriesMaxPoints: 256
   # Prometheus time-series metrics retained for processing, visualization,
   # and benchmark-report observability entries. Add new metrics here without
   # changing the analysis code.
@@ -521,21 +549,39 @@ monitoring:
     - vllm:nixl_bytes_transferred_sum
     - vllm:nixl_bytes_transferred_count
     - vllm:num_preemptions_total
+    - vllm:prompt_tokens_total
+    - vllm:generation_tokens_total
     - inference_pool_average_kv_cache_utilization
     - inference_pool_average_queue_size
     - inference_pool_average_running_requests
     - inference_pool_ready_pods
+    - llm_d_epp_flow_control_pool_saturation
+    - llm_d_epp_flow_control_queue_size
+    - llm_d_epp_request_running
 
 # ============================================================================
 # ACCELERATOR CONFIGURATION
-# Supports: nvidia, intel-i915, intel-xe, intel-gaudi, amd, google
+# Supports: nvidia, intel-xpu, intel-i915, intel-xe, intel-gaudi, amd, google
 # ============================================================================
 accelerator:
   type: nvidia
   # Resource name for the accelerator used in limits/requests
   # Override for non-NVIDIA GPUs (e.g. habana.ai/gaudi, amd.com/gpu)
   resource: "nvidia.com/gpu"
+  # Runtime command fragments consumed by accelerator-neutral guide commands.
+  # Hardware profiles use these to avoid duplicating guides; a profile may
+  # additionally provide a fitting model, resource sizing, and storage defaults.
+  runtimePreamble: |
+    export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+    export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+  dtypeArgs: "--dtype bfloat16"
+  executionArgs: ""
+  blockSizeArgs: "--block-size $VLLM_BLOCK_SIZE"
+  memoryUtilizationArgs: "--gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL"
+  kvBufferDeviceJson: ""
   # Resource names for different accelerator types (optional override)
+  # DRA drivers are tracked separately as accelerator.draDriver and are not
+  # rendered into container resource limits or requests.
   # resources:
   #   nvidia: "nvidia.com/gpu"
   #   intel-i915: "gpu.intel.com/i915"
@@ -555,8 +601,12 @@ accelerator:
 dra:
   enabled: false
   type: nvidia
+  # Keyed by accelerator type -- the chart looks the entry up by
+  # accelerator.type and builds one ResourceClaimTemplate per role.
+  # Omit `count` to let each role derive it from its own parallelism.
   # claimTemplates:
-  #   - name: nvidia
+  #   nvidia:
+  #     name: nvidia-claim-template
   #     class: gpu.nvidia.com
   #     match: "exactly"
   #     count: 1
@@ -641,7 +691,9 @@ gateway:
   #                                Kubernetes Gateway is deployed, the EPP
   #                                runs with an Envoy sidecar that serves
   #                                HTTP directly (single-stack only).
-  className: istio
+  #   none                       - plain ClusterIP Service to decode vLLM;
+  #                                no Gateway, EPP, Envoy, or routing proxy.
+  className: epponly
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
   logLevel: error
@@ -931,8 +983,14 @@ decode:
   # Probe configuration
   probes:
     startup: *probe_startup
-    liveness: *probe_liveness
-    readiness: *probe_readiness
+    liveness:
+      <<: *probe_liveness
+      failureThreshold: 10
+      timeoutSeconds: 15
+    readiness:
+      <<: *probe_readiness
+      failureThreshold: 10
+      timeoutSeconds: 15
 
   # vLLM configuration
   vllm:
@@ -1234,6 +1292,32 @@ standalone:
     preprocessCommand: /bin/true
     customPreprocessCommand: null
     customCommand: null
+    # How the container is launched. Mirrors decode/prefill `vllm.modelCommand`
+    # on the modelservice path.
+    #   custom       -- render `command: [<vllmCommon.shell>, -c]` plus the
+    #                   generated (or customCommand) shell script. Requires a
+    #                   shell in the server image.
+    #   imageDefault -- emit no `command:`; the image entrypoint runs and
+    #                   `args` below is passed verbatim. Required for
+    #                   distroless images, which have no shell to exec --
+    #                   e.g. llm-d-inference-sim v0.9+ ships only
+    #                   /app/llm-d-inference-sim (v0.8.2 still had bash).
+    modelCommand: custom
+    # Argument list for `modelCommand: imageDefault`. Ignored when
+    # modelCommand is `custom`. Supports ${dotted.path} substitution.
+    # Rendered as `args:`, so the image ENTRYPOINT supplies argv[0] (both
+    # server images have one: vllm-openai is `vllm serve`, inference-sim is
+    # /app/llm-d-inference-sim). For a CMD-only image with no ENTRYPOINT,
+    # make the binary the first element -- `args` replaces CMD outright.
+    args: []
+    # Example:
+    # args:
+    #   - "--model"
+    #   - "/model-cache/${model.path}"
+    #   - "--port"
+    #   - "8000"
+    #   - "--served-model-name"
+    #   - "${model.name}"
     # Use these if wanted to use default command but add additional
     # flags
     additionalFlags: []
@@ -1331,8 +1415,17 @@ nok8s:
   # can pull gated models from Hugging Face.
   hfTokenEnv: HUGGING_FACE_HUB_TOKEN
   # Host directory where rendered EPP/Envoy configs are staged and bind-mounted
-  # from (avoids sudo writes to /etc).
+  # from (avoids sudo writes to /etc). A scenario with more than one stack
+  # gets a per-stack subdirectory appended so stacks never overwrite each
+  # other's staged configs.
   workspaceHostDir: "~/.llmdbench/nok8s"
+  # Appended to every container name (vllm-N, epp, envoy). Filled in
+  # automatically with "-<stack>" when a scenario has more than one stack, so
+  # sibling stacks on one host don't share (and delete) each other's
+  # containers. An explicit value is preserved, but two stacks resolving to
+  # the same container name is a render error; single-stack scenarios keep
+  # the bare names.
+  nameSuffix: ""
 
   # vLLM inference worker(s)
   vllm:
@@ -1376,6 +1469,9 @@ nok8s:
     image: docker.io/envoyproxy/envoy
     tag: distroless-v1.33.2
     listenPort: 8081
+    # Envoy admin interface. Envoy runs with --network host, so two stacks on
+    # one host need distinct admin ports as well as distinct listenPorts.
+    adminPort: 19000
     configMountPath: /etc/envoy/envoy.yaml
 
 # ============================================================================
@@ -1416,23 +1512,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.2/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.2/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.2/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.4/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.4/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.4/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.6.2
+    version: 0.6.4
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.6.2
+    tag: v0.6.4
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.2
+      tag: v0.6.4
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1446,7 +1542,7 @@ fma:
     maxInstances: 4
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.2
+      tag: v0.6.4
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:
@@ -1589,18 +1685,34 @@ wva:
     scheme: http
 
 # ============================================================================
+# GENERIC KEDA SCALEDOBJECTS
+# ============================================================================
+# Platform-agnostic KEDA autoscaling. Renders one ScaledObject per entry in
+# keda.scaledObjects. Works on any Kubernetes cluster (not gated on OpenShift).
+# KEDA must already be installed. The TriggerAuthentication name used by this
+# path is "keda-prometheus-auth" -- distinct from "prometheus-auth" used by
+# eppKedaSaturation below, so both paths can coexist in the same namespace.
+keda:
+  prometheus:
+    baseUrl: http://prometheus      # host only -- port is appended separately
+    port: 9090
+    authMode: none                  # "none" | "bearer-secret"
+    secretName: ""                  # pre-existing Secret in deploy namespace (bearer-secret only)
+    unsafeSsl: false
+  scaledObjects: []                 # list of ScaledObject definitions; see config/README.md
+
+# ============================================================================
 # EPP+KEDA SATURATION AUTOSCALING
 # ============================================================================
-# Direct KEDA autoscaling using EPP pool metrics, without WVA controller.
-# Queries inference_pool_average_kv_cache_utilization and
-# inference_pool_average_queue_size directly.
+# Direct KEDA autoscaling using EPP flow-control metrics, without WVA controller.
+# Queries llm_d_epp_flow_control_pool_saturation and llm_d_epp_request_running
+# directly (see scaledObject.triggers below).
 eppKedaSaturation:
   enabled: false
   namespace: ""                 # defaults to namespace.name at render time
   prometheus:
     baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
     port: 9091
-    proxyUrl: "http://prometheus-proxy.openshift-keda:8080"  # local proxy using projected tokens
   epp:
     poolName: ""                # InferencePool name; defaults to model_id_label
     serviceLabelSelector: {}    # matchLabels for EPP Service selector
@@ -1612,10 +1724,22 @@ eppKedaSaturation:
     minReplicas: 1
     maxReplicas: 10
     pollingInterval: 15
-    kvCacheThreshold: "0.7"    # scale up when pool-avg KV cache > 70%
-    queueSizeThreshold: "2"    # scale up when pool-avg queue > 2 requests
-    activationThreshold: "0"
     unsafeSsl: true
+    # KEDA Prometheus triggers, fully defined here so new metrics/thresholds
+    # can be added without touching the Jinja. These mirror the upstream llm-d
+    # workload-autoscaling keda-epp-saturation guide; a scenario may redefine
+    # this entire list (e.g. the keda-epp-queue guide). Per entry: query
+    # (required), threshold, and optional name/metricType/activationThreshold.
+    # In `query`, ${poolName} and ${modelName} are substituted at render time.
+    triggers:
+      - name: pool-saturation
+        query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
+        threshold: "0.7"
+        activationThreshold: "0"
+      - name: running-requests
+        query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        threshold: "16"
+        activationThreshold: "0"
     behavior:
       scaleUp:
         stabilizationWindowSeconds: 0
@@ -1690,6 +1814,13 @@ experiment:
   workspaceDir: /workspace
   datasetUrl: ""
   datasetDir: ""
+
+# ============================================================================
+# RUN DESCRIPTION (submitter-provided; surfaces as run.description/keywords)
+# ============================================================================
+description:
+  text: ""
+  keywords: []
 
 # ============================================================================
 # CONTROL TIMEOUTS

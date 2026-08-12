@@ -52,7 +52,8 @@ def add_subcommands(
         default=env("LLMDBENCH_GATEWAY_CLASS"),
         help=(
             "Override the scenario's gateway.className. Supported values: "
-            "epponly, istio, agentgateway, gke, data-science-gateway-class. "
+            "none, epponly, istio, agentgateway, gke, "
+            "data-science-gateway-class. "
             "Only takes effect on the modelservice deploy path -- ignored "
             "by kustomize/standalone/fma."
         ),
@@ -155,6 +156,17 @@ def add_subcommands(
         "default StorageClass on the cluster) fails fast instead of "
         "masquerading as a downstream pod/job timeout. Default: 240 "
         "(some dynamic provisioners take 1-3 minutes per volume).",
+    )
+    standup_parser.add_argument(
+        "--data-access-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
+        help="Seconds to wait for the harness data-access pod to become "
+        "Ready. Mirrors the run flag and accepts the same env var "
+        "(LLMDBENCH_DATA_ACCESS_TIMEOUT). On a WaitForFirstConsumer "
+        "StorageClass the unspent --pvc-bind-timeout is added to this "
+        "budget, because the volume is only provisioned once that pod "
+        "schedules. Default: 120.",
     )
     standup_parser.add_argument(
         "--llmd-repo-path",

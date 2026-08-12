@@ -1,0 +1,98 @@
+{% if storage.hostPath is defined and storage.hostPath.enabled | default(false) %}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ storage.hostPath.daemonSetName | default('download-model-ds') }}
+  namespace: {{ namespace.name }}
+  labels:
+    app: {{ labels.app }}
+    component: model-download
+spec:
+  selector:
+    matchLabels:
+      app: {{ labels.app }}
+      component: model-download
+  template:
+    metadata:
+      labels:
+        app: {{ labels.app }}
+        component: model-download
+    spec:
+      serviceAccountName: {{ serviceAccount.name }}
+      securityContext:
+        seLinuxOptions:
+          type: spc_t
+{% if storage.hostPath.nodeSelector is defined and storage.hostPath.nodeSelector %}
+      nodeSelector:
+{{ storage.hostPath.nodeSelector | toyaml | indent(8, true) }}
+{% endif %}
+{% if storage.hostPath.tolerations is defined and storage.hostPath.tolerations %}
+      tolerations:
+{{ storage.hostPath.tolerations | toyaml | indent(8, true) }}
+{% endif %}
+      containers:
+        - name: downloader
+          image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              TARGET_DIR="{{ storage.hostPath.path }}/{{ model.path }}"
+              MARKER="${TARGET_DIR}/.download-complete"
+              if [ -f "${MARKER}" ]; then
+                echo "Model already present at ${TARGET_DIR}, skipping download."
+                exec sleep infinity
+              fi
+              echo "Downloading model to ${TARGET_DIR}..."
+              mkdir -p "${TARGET_DIR}"
+              pip install huggingface_hub
+              export PATH="${PATH}:${HOME}/.local/bin"
+{% if huggingface.enabled %}
+              hf auth login --token "${HF_TOKEN}"
+{% endif %}
+              hf download "{{ model.huggingfaceId }}" --local-dir "${TARGET_DIR}"
+              echo "Relabelling for non-spc_t readers..."
+              chcon -R -t container_file_t "{{ storage.hostPath.path }}"
+              touch "${MARKER}"
+              echo "Download complete."
+              exec sleep infinity
+          env:
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: HOME
+              value: /tmp
+{% if huggingface.enabled %}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ huggingface.secretName }}
+                  key: {{ huggingface.tokenKey }}
+{% endif %}
+          volumeMounts:
+            - name: model-host-storage
+              mountPath: {{ storage.hostPath.path }}
+{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
+      imagePullSecrets:
+        - name: {{ vllmCommon.pullSecret }}
+{% endif %}
+      restartPolicy: Always
+      volumes:
+        - name: model-host-storage
+          hostPath:
+            path: {{ storage.hostPath.path }}
+            type: DirectoryOrCreate
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ serviceAccount.name }}-hostmount-anyuid
+  namespace: {{ namespace.name }}
+subjects:
+- kind: ServiceAccount
+  name: {{ serviceAccount.name }}
+  namespace: {{ namespace.name }}
+roleRef:
+  kind: ClusterRole
+  name: system:openshift:scc:hostmount-anyuid
+  apiGroup: rbac.authorization.k8s.io
+{% endif %}

@@ -55,7 +55,7 @@ class TestScrubSecrets:
         assert KustomizeDeployStep._scrub_secrets(text) == text
 
     def test_real_hf_token_gets_redacted(self, monkeypatch):
-        secret = "hf_realtoken_1234567890"
+        secret = "hf_realtoken_1234567890"  # pragma: allowlist secret
         monkeypatch.setenv("HF_TOKEN", secret)
         text = f"kubectl create secret HF_TOKEN={secret}"
         scrubbed = KustomizeDeployStep._scrub_secrets(text)
@@ -65,7 +65,7 @@ class TestScrubSecrets:
     def test_llmdbench_hf_token_gets_redacted(self, monkeypatch):
         for v in KustomizeDeployStep._SECRET_ENV_VARS:
             monkeypatch.delenv(v, raising=False)
-        secret = "hf_llmdbench_9876"
+        secret = "hf_llmdbench_9876"  # pragma: allowlist secret
         monkeypatch.setenv("LLMDBENCH_HF_TOKEN", secret)
         text = f"echo {secret}"
         assert secret not in KustomizeDeployStep._scrub_secrets(text)
@@ -73,13 +73,13 @@ class TestScrubSecrets:
     def test_huggingface_hub_token_gets_redacted(self, monkeypatch):
         for v in KustomizeDeployStep._SECRET_ENV_VARS:
             monkeypatch.delenv(v, raising=False)
-        secret = "hf_hub_abc"
+        secret = "hf_hub_abc"  # pragma: allowlist secret
         monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", secret)
         text = f"kubectl set env HF={secret}"
         assert secret not in KustomizeDeployStep._scrub_secrets(text)
 
     def test_multiple_matches_all_redacted(self, monkeypatch):
-        secret = "hf_multi"
+        secret = "hf_multi"  # pragma: allowlist secret
         monkeypatch.setenv("HF_TOKEN", secret)
         text = f"cmd --a={secret} --b={secret}"
         scrubbed = KustomizeDeployStep._scrub_secrets(text)
@@ -149,7 +149,7 @@ class TestRunResolvedLogging:
         )
 
     def test_secrets_scrubbed_from_log(self, monkeypatch):
-        secret = "hf_shouldnotleak"
+        secret = "hf_shouldnotleak"  # pragma: allowlist secret
         monkeypatch.setenv("HF_TOKEN", secret)
         ctx = self._make_context()
         cmd = self._make_cmd()

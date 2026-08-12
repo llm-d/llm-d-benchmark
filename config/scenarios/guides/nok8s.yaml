@@ -10,9 +10,9 @@
 #     export HUGGING_FACE_HUB_TOKEN=hf_...
 #
 # Usage:
-#     llmdbenchmark --spec config/scenarios/guides/nok8s.yaml standup --methods nok8s
-#     llmdbenchmark --spec config/scenarios/guides/nok8s.yaml run
-#     llmdbenchmark --spec config/scenarios/guides/nok8s.yaml teardown --methods nok8s
+#     llmdbenchmark --spec guides/nok8s standup --methods nok8s
+#     llmdbenchmark --spec guides/nok8s run
+#     llmdbenchmark --spec guides/nok8s teardown --methods nok8s
 
 scenario:
   - name: "nok8s-single"

@@ -19,47 +19,167 @@ A scenario may define more than one stack in its `scenario:` list. Standup
 iterates every per-stack step across all stacks (in parallel, bounded by
 `--parallel`), so you can stand up N models behind one gateway in a single
 `llmdbenchmark standup` invocation. Scenario-wide config (gateway class,
-WVA controller, shared HTTPRoute, chart versions) lives in an optional
+shared HTTPRoute, EPP plugin config, chart versions) lives in an optional
 top-level `shared:` block that's merged into every stack before per-stack
 overrides.
 
 Cluster-scoped infrastructure that would race with itself across N parallel
 standup executions is deduplicated at render time - only the first stack
 emits the istio control-plane helmfile and the `infra-llmdbench` Helm
-release; subsequent stacks render empty files for those templates. WVA
-controller installation is deduplicated at the step level (one per
-`wva.namespace`).
+release; subsequent stacks render empty files for those templates. When a
+multi-stack scenario does enable WVA, controller installation is
+deduplicated at the step level too (one per `wva.namespace`).
 
 Currently shipped multi-stack example:
 
-- [`examples/multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml) -
-  two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each with its own EPP +
-  InferencePool + VariantAutoscaling + HPA, one shared WVA controller,
-  one HTTPRoute with two backendRefs routing by path prefix
-  (`/qwen3-06b/*` -> Qwen pool, `/llama-31-8b/*` -> Llama pool).
+- [`examples/multi-model-optimized-baseline`](../config/scenarios/examples/multi-model-optimized-baseline.yaml) -
+  the [optimized-baseline](../config/scenarios/guides/optimized-baseline.yaml)
+  guide deployed twice: two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each
+  with its own EPP + InferencePool + decode Deployment, one HTTPRoute with
+  two backendRefs routing by path prefix (`/qwen3-06b/*` -> Qwen pool,
+  `/llama-31-8b/*` -> Llama pool).
 
 See [`config/README.md`](../config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config)
-for the `shared:` merge semantics and the developer guide's
+for the `shared:` merge semantics, the developer guide's
 [Multi-Stack Scenarios](developer-guide.md#multi-stack-scenarios-and-the-shared-block)
-section for the render-engine details.
+section for the render-engine details, and
+[multi-model.md](multi-model.md) for the day-to-day operations cookbook.
 
 `--stack NAME[,NAME...]` (also `LLMDBENCH_STACK=NAME`) restricts standup to
 a subset of rendered stacks - handy for re-deploying a single pool after a
 scenario edit without tearing down siblings. Global steps (cluster admin
-prereqs, shared-infra helmfile, WVA controller install, scenario-wide
-PVCs) still run as usual; only per-stack steps (06+ for standup) are
-filtered. Unknown names fail loudly with a list of valid ones.
+prereqs, shared-infra helmfile, scenario-wide PVCs) still run as usual;
+only per-stack steps (06+ for standup) are filtered. Unknown names fail
+loudly with a list of valid ones.
 
 ```bash
 # One stack:
-llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qwen3-06b
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace --stack qwen3-06b
 
 # Multiple named stacks (comma-separated):
-llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qwen3-06b,llama-31-8b
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace --stack qwen3-06b,llama-31-8b
 ```
 
 The same flag works on `smoketest`, `run`, and `teardown` with identical
 semantics, so you can scope every lifecycle phase to the same subset.
+
+## Overriding scenario values from the CLI (`--set`)
+
+A scenario variant that differs from an existing one in only a handful of
+fields does not need its own YAML file. Every subcommand that renders
+templates accepts `--set`, which deep-merges dotted-path values on top of
+the scenario:
+
+```bash
+# Run the SGLang flavour of a guide without a separate scenario file
+llmdbenchmark --spec guides/optimized-baseline standup \
+  -t kustomize --set kustomize.acceleratorBackend=gpu/sglang
+```
+
+Pairs are comma-separated and the flag is repeatable. Values are parsed as
+YAML, so `4`, `true`, `[a, b]` and `{x: 1}` mean what they would inside the
+scenario file; commas inside `[]`, `{}` or quotes belong to the value.
+
+> [!WARNING]
+> **Multi-line values are folded onto one line.** A value containing real
+> newlines is read as a YAML plain scalar, so its line breaks collapse into
+> spaces -- which silently changes the meaning of a shell command
+> (`export FOO=1`⏎`vllm serve` becomes `export FOO=1 vllm serve`). To keep
+> the breaks, wrap the value in double quotes so `\n` is an escape:
+> `--set 'decode.vllm.customCommand="export FOO=1\nvllm serve /model-cache/x"'`.
+> For a full multi-line `customCommand`, prefer the scenario file or
+> `--cluster-config` -- `--set` is best suited to single-line values.
+
+> [!IMPORTANT]
+> `--set` always means the **scenario**, on every subcommand. It is not the
+> same as `run`/`experiment`'s `-o/--overrides`, which overrides the
+> **workload profile**. Those two are separate flags and can be combined:
+> `run --set decode.replicas=4 -o max-concurrency=8`. `standup` has no
+> workload profile, so it accepts `--set` only.
+
+The same value can be supplied via `LLMDBENCH_SET`. Pass `--set` to every
+lifecycle phase (`plan`/`standup`/`smoketest`/`run`/`teardown`) so each one
+renders the same plan -- these phases re-render templates, and a phase that
+misses the flag will disagree with what was deployed.
+
+### Scoping overrides in multi-stack scenarios
+
+Prefix the key with a stack name, or an fnmatch glob, to scope an override
+in a [multi-stack scenario](#multi-stack-scenarios). Unprefixed applies to
+every stack:
+
+```bash
+# every stack
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup --set decode.replicas=2
+
+# one stack; both are still deployed
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
+
+# a common floor with one exception
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'decode.resources.limits.memory=64Gi' \
+  --set 'llama-31-8b:decode.resources.limits.memory=32Gi'
+
+# every stack whose name ends in -8b
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set '*-8b:decode.resources.limits.memory=64Gi'
+```
+
+When several selectors match a stack they are applied by specificity --
+global, then globs, then exact names -- so the exception above wins
+regardless of the order the flags were typed. A selector that matches no
+stack in the scenario is a hard error, not a silent no-op.
+
+`--stack` and override selectors are orthogonal: `--stack` chooses which
+stacks are **deployed**, a selector chooses which stacks are **modified**.
+Note that an unprefixed `--set` applies to every stack even when `--stack`
+narrows the deployment, which differs from `-m/--models` (that one scopes
+itself to a single filtered stack).
+
+### Precedence and limits
+
+Highest wins:
+
+```
+defaults.yaml → shared: → stack block → --cluster-config → --set
+  → DoE setup.treatments → dedicated flags (-m, -t, --gateway-class,
+                                            --monitoring, --wva)
+```
+
+`--set` beats the stack's own block -- unlike a value in `shared:`, which
+loses to it. DoE `setup.treatments` beat `--set`, because the treatment is
+the deliberate sweep factor.
+
+The dedicated flags sit at the top because they are applied by resolver
+functions that run *after* the whole merge, not as another merge layer. So
+`-m facebook/opt-125m` wins over both `--set model.name=...` and a
+treatment that sets `model.name`. Use `--set` for keys with no dedicated
+flag; when a flag exists, the flag is authoritative.
+
+Every applied override is logged with its previous value
+(`[stack] Scenario override: decode.replicas: 1 -> 4`), and an override
+whose *parent* path does not exist warns about a possible typo.
+
+**Lists are assigned whole, never indexed.** A dotted path cannot address a
+list element, so `--set vllmCommon.volumeMounts.0.mountPath=/x` is rejected
+rather than silently replacing the whole list. Assign the list instead:
+
+```bash
+--set 'vllmCommon.volumeMounts=[{name: dshm, mountPath: /dev/shm}]'
+```
+
+(This differs from `run -o`, which overrides the workload profile and *does*
+support list indices.)
+
+Three things overrides cannot do:
+
+- **Add or remove a stack.** Scenarios differing in stack *count* cannot be
+  collapsed into one file.
+- **Change a stack's `name`.** It names the plan output directory and is
+  read before the merge.
+- **Move the workspace via `workDir`.** That is read before rendering; use
+  `--workspace` instead.
 
 ## Multiple steps
 The full standup of a stack is a multi-step process. The [lifecycle](lifecycle.md) document go into more details explaning the meaning of each different individual step.
@@ -142,17 +262,21 @@ The scenario parameters can be roughly categorized in four groups:
 
 | Variable                                     | Meaning                                                                | Note                                                                                                     |
 | -------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Supported: `istio`, `agentgateway`, `gke`, `data-science-gateway-class`, `epponly`.     |
+| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Supported: `none`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`, `epponly`.     |
 
 Gateway class options (set via `gateway.className` in the scenario YAML):
 
 | `className`                  | What it deploys                                                                                                  | Use when                                                          |
 |------------------------------|------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `none`                       | ModelService decode pods plus a plain ClusterIP Service; **no** Gateway, HTTPRoute, EPP, Envoy, or routing proxy | Measuring direct model-server performance and routing overhead    |
 | `istio` (default)            | istio-base + istiod control plane, a Gateway + HTTPRoute, the `llm-d-router-gateway-dev` chart                       | Default; most flexible / production deployments                   |
 | `agentgateway`               | agentgateway-crds + agentgateway controller, a Gateway + HTTPRoute, the `llm-d-router-gateway-dev` chart             | Want agentgateway's data plane instead of Envoy/Istio             |
 | `gke`                        | Uses GKE-managed Gateway controller; same `llm-d-router-gateway-dev` chart                                           | Running on GKE                                                    |
 | `data-science-gateway-class` | OpenDataHub / OpenShift AI managed Gateway                                                                           | Running on OpenShift AI                                           |
 | `epponly`                    | **No** Kubernetes Gateway, **no** HTTPRoute, the `llm-d-router-standalone-dev` chart (EPP with an Envoy sidecar serving HTTP) | You want llm-d's standalone router topology without any gateway   |
+
+`none` is a baseline lane, not a routing topology. It requires at least one
+decode replica and does not support P/D disaggregation.
 
 ### Overriding `gateway.className` from the CLI
 

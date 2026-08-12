@@ -8,6 +8,17 @@ extend-exclude = [
 ]
 
 [default.extend-words]
+# Deliberate misspellings fed to the config schema by
+# tests/test_config_schema.py::TestTypoDetection to assert that
+# `extra="forbid"` rejects unknown keys. Correcting these turns them into
+# real fields and the tests silently stop testing anything.
+naem = "naem"
+Timout = "Timout"
+addtional = "addtional"
+replicsa = "replicsa"
+inferenceProt = "inferenceProt"
+# Typo shown as an example inside a docstring (render_plans.py)
+modle = "modle"
 # sed regex pattern (not a typo)
 ba = "ba"
 # Shell variable / abbreviation

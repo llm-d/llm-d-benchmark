@@ -77,7 +77,12 @@ spec:
         {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if (standalone.parallelism.tensor | int) > 0
+  and standalone.acceleratorType is defined
+  and standalone.acceleratorType.labelKey is defined
+  and standalone.acceleratorType.labelKey
+  and ((standalone.acceleratorType.labelValues is defined and standalone.acceleratorType.labelValues)
+       or (standalone.acceleratorType.labelValue is defined and standalone.acceleratorType.labelValue)) %}
 {# GPU scenario — use acceleratorType-based nodeAffinity #}
       affinity:
         nodeAffinity:
@@ -232,12 +237,20 @@ spec:
       - name: vllm-standalone-{{ model_id_label }}
         image: {{ standalone.image.repository }}:{{ standalone.image.tag }}
         imagePullPolicy: {{ standalone.image.pullPolicy }}
+{% set standalone_model_command = standalone.vllm.modelCommand | default('custom') %}
+{% if standalone_model_command == 'custom' %}
         command:
         - {{ vllmCommon.shell }}
         - "-c"
         args:
         - |
 {{ build_standalone_vllm_command() | indent(10, first=True) }}
+{% elif standalone.vllm.args is defined and standalone.vllm.args %}
+{# imageDefault: no `command:` -- the image entrypoint runs. Required for
+   distroless server images that ship no shell to exec `<shell> -c`. #}
+        args:
+{{ standalone.vllm.args | toyaml | indent(8, true) }}
+{% endif %}
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
           value: "{{ model.name }}"
@@ -246,7 +259,12 @@ spec:
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
           value: "{{ standalone.vllm.modelLoaderExtraConfig }}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if (standalone.parallelism.tensor | int) > 0
+  and standalone.acceleratorType is defined
+  and standalone.acceleratorType.labelKey is defined
+  and standalone.acceleratorType.labelKey
+  and standalone.acceleratorType.labelValue is defined
+  and standalone.acceleratorType.labelValue %}
           value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey }}:{{ standalone.acceleratorType.labelValue }}"
 {% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
 {% set ns_items = affinity.nodeSelector.items() | list %}
@@ -376,7 +394,7 @@ spec:
           limits:
             memory: {{ standalone.resources.limits.memory }}
             cpu: "{{ standalone.resources.limits.cpu }}"
-{% set standalone_accel_resource = (standalone.accelerator.resource if standalone.accelerator is defined and standalone.accelerator.resource is defined else accelerator.resource) %}
+{% set standalone_accel_resource = (standalone.accelerator.resource if standalone.accelerator is defined and standalone.accelerator.resource is defined else accelerator.resource | default('')) %}
 {# Use standalone.accelerator.count if set, then top-level accelerator.count,
    then fall back to parallelism.tensor. CPU scenarios set accelerator.count: 0
    to suppress GPU requests even when TP > 0. #}
@@ -387,7 +405,7 @@ spec:
 {% else -%}
 {% set standalone_accel_count = standalone.parallelism.tensor | int -%}
 {% endif -%}
-{% if standalone_accel_count > 0 %}
+{% if standalone_accel_resource and standalone_accel_count > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
 {% endif %}
 {% set eph_storage = standalone.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -403,7 +421,7 @@ spec:
           requests:
             memory: {{ standalone.resources.requests.memory }}
             cpu: "{{ standalone.resources.requests.cpu }}"
-{% if standalone_accel_count > 0 %}
+{% if standalone_accel_resource and standalone_accel_count > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
 {% endif %}
 {% if eph_storage and eph_resource %}
@@ -474,7 +492,12 @@ spec:
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
           value: "{{ standalone.vllm.modelLoaderExtraConfig }}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if (standalone.parallelism.tensor | int) > 0
+  and standalone.acceleratorType is defined
+  and standalone.acceleratorType.labelKey is defined
+  and standalone.acceleratorType.labelKey
+  and standalone.acceleratorType.labelValue is defined
+  and standalone.acceleratorType.labelValue %}
           value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey }}:{{ standalone.acceleratorType.labelValue }}"
 {% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
 {% set ns_items = affinity.nodeSelector.items() | list %}
@@ -592,7 +615,7 @@ spec:
           limits:
             memory: {{ standalone.resources.limits.memory }}
             cpu: "{{ standalone.resources.limits.cpu }}"
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if standalone_accel_resource and (standalone.parallelism.tensor | int) > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
 {% endif %}
 {% if eph_storage and eph_resource %}
@@ -604,7 +627,7 @@ spec:
           requests:
             memory: {{ standalone.resources.requests.memory }}
             cpu: "{{ standalone.resources.requests.cpu }}"
-{% if (standalone.parallelism.tensor | int) > 0 %}
+{% if standalone_accel_resource and (standalone.parallelism.tensor | int) > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
 {% endif %}
 {% if eph_storage and eph_resource %}

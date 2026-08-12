@@ -88,6 +88,40 @@ class ClusterResourceResolver:
         "gpu.intel.com/xe",
     ]
 
+    # Runtime/profile identity derived from the device-plugin resource.  The
+    # resource name is what Kubernetes exposes; the profile is what the plan
+    # renderer uses to select image, security-context and command overrides.
+    ACCELERATOR_PROFILES = {
+        "nvidia.com/gpu": "nvidia",
+        "amd.com/gpu": "amd",
+        "habana.ai/gaudi": "intel-gaudi",
+        "google.com/tpu": "google",
+        "intel.com/gpu": "intel-i915",
+        "gpu.intel.com/i915": "intel-i915",
+        "gpu.intel.com/xe": "intel-xe",
+    }
+    # DRA driver/DeviceClass names live in a different namespace than the
+    # extended resource names above and must never be used interchangeably.
+    DRA_DRIVER_PROFILES = {
+        "gpu.intel.com": "intel-xpu",
+    }
+    PROFILE_RESOURCES = {
+        "nvidia": "nvidia.com/gpu",
+        "amd": "amd.com/gpu",
+        "intel-gaudi": "habana.ai/gaudi",
+        "google": "google.com/tpu",
+        "intel-i915": "gpu.intel.com/i915",
+        "intel-xe": "gpu.intel.com/xe",
+    }
+    PROFILE_DRA_DRIVERS = {
+        "intel-xpu": "gpu.intel.com",
+    }
+    INTEL_XPU_RESOURCE_PRIORITY = (
+        "gpu.intel.com/xe",
+        "gpu.intel.com/i915",
+        "intel.com/gpu",
+    )
+
     # Attribute names that mark a node label as a GPU SKU identifier (as
     # opposed to a count, memory size, or feature flag). The matcher pulls
     # the part after the LAST ``/`` or ``.``, so both naming conventions
@@ -142,9 +176,15 @@ class ClusterResourceResolver:
         "rdma/ib",
     ]
 
-    def __init__(self, logger: Any, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        logger: Any,
+        dry_run: bool = False,
+        kubeconfig: str | None = None,
+    ) -> None:
         self.logger = logger
         self.dry_run = dry_run
+        self.kubeconfig = kubeconfig
         self._node_resources: NodeResources | None = None
         self._api_client: Any = None
         self._connected = False
@@ -153,8 +193,26 @@ class ClusterResourceResolver:
         """Resolve all ``"auto"`` cluster resource values. Returns a new dict."""
         result = deepcopy(values)
 
+        # An explicitly selected profile is also the chart accelerator type.
+        # Do this before the no-auto fast path so manual/offline selection has
+        # the same result as cluster detection.
+        accelerator = result.get("accelerator") or {}
+        explicit_profile = accelerator.get("profile")
+        if explicit_profile and explicit_profile != "auto":
+            accelerator["type"] = explicit_profile
+            if accelerator.get("resource") == "auto":
+                dra_driver = self.PROFILE_DRA_DRIVERS.get(explicit_profile)
+                if dra_driver:
+                    accelerator.pop("resource", None)
+                    accelerator["draDriver"] = dra_driver
+                else:
+                    explicit_resource = self.PROFILE_RESOURCES.get(explicit_profile)
+                    if explicit_resource:
+                        accelerator["resource"] = explicit_resource
+
         auto_fields = self.has_unresolved(result)
         if not auto_fields:
+            self._apply_dra_claim_defaults(result)
             self._propagate_network_to_methods(result)
             return result
 
@@ -165,9 +223,11 @@ class ClusterResourceResolver:
 
         unresolved: list[str] = []
         self._resolve_accelerator_resource(result, unresolved)
+        self._resolve_accelerator_profile(result, unresolved)
         self._resolve_network_resource(result, unresolved)
         self._resolve_affinity_node_selector(result, unresolved)
         self._resolve_accelerator_type_labels(result, unresolved)
+        self._apply_dra_claim_defaults(result)
         self._propagate_network_to_methods(result)
 
         if unresolved:
@@ -191,6 +251,8 @@ class ClusterResourceResolver:
 
         if values.get("accelerator", {}).get("resource") == "auto":
             unresolved.append("accelerator.resource")
+        if values.get("accelerator", {}).get("profile") == "auto":
+            unresolved.append("accelerator.profile")
 
         vllm = values.get("vllmCommon", {})
         if vllm.get("networkResource") == "auto":
@@ -234,7 +296,7 @@ class ClusterResourceResolver:
                     "Install with: pip install kubernetes"
                 )
 
-            self._api_client = kube_connect()
+            self._api_client = kube_connect(kubeconfig=self.kubeconfig)
             self._connected = True
             self.logger.log_info("Connected to cluster for resource auto-detection")
             return True
@@ -439,12 +501,119 @@ class ClusterResourceResolver:
 
         resources = self._node_resources or NodeResources()
 
-        if resources.accelerator_resources:
+        if len(resources.accelerator_resources) == 1:
             resolved = resources.accelerator_resources[0]
             accel["resource"] = resolved
             self.logger.log_info(f"Resolved accelerator.resource: {resolved}")
+        elif len(resources.accelerator_resources) > 1:
+            discovered_resources = set(resources.accelerator_resources)
+            intel_xpu_resources = set(self.INTEL_XPU_RESOURCE_PRIORITY)
+            if discovered_resources.issubset(intel_xpu_resources):
+                # Intel's device plugin may advertise both the legacy i915
+                # name and the Xe name for the same physical devices. Treat
+                # those as compatible aliases, preferring the modern Xe key.
+                resolved = next(
+                    resource
+                    for resource in self.INTEL_XPU_RESOURCE_PRIORITY
+                    if resource in discovered_resources
+                )
+                accel["resource"] = resolved
+                self.logger.log_info(
+                    "Discovered compatible Intel XPU resource aliases "
+                    f"({', '.join(resources.accelerator_resources)}); "
+                    f"selected {resolved}"
+                )
+                return
+            discovered = ", ".join(resources.accelerator_resources)
+            raise RuntimeError(
+                "Multiple accelerator resources were discovered "
+                f"({discovered}); set accelerator.resource or "
+                "accelerator.profile explicitly."
+            )
+        # Device-plugin resources win over DRA on clusters exposing both.
+        elif len(resources.dra_drivers) == 1:
+            resolved = resources.dra_drivers[0]
+            accel.pop("resource", None)
+            accel["draDriver"] = resolved
+            self.logger.log_info(f"Resolved accelerator.draDriver: {resolved}")
+        elif len(resources.dra_drivers) > 1:
+            discovered = ", ".join(resources.dra_drivers)
+            raise RuntimeError(
+                "Multiple DRA accelerator drivers were discovered "
+                f"({discovered}); set accelerator.profile explicitly."
+            )
+        elif self.dry_run:
+            # A dry-run deliberately does not connect to the cluster. Keep its
+            # historical NVIDIA rendering behaviour while allowing real runs
+            # to auto-detect the accelerator.
+            accel["resource"] = "nvidia.com/gpu"
+            self.logger.log_info(
+                "[DRY RUN] Defaulting accelerator.resource to nvidia.com/gpu"
+            )
         else:
             unresolved.append("accelerator.resource")
+
+    def _resolve_accelerator_profile(
+        self,
+        values: dict,
+        unresolved: list[str],
+    ) -> None:
+        """Resolve ``accelerator.profile/type`` from the resource key.
+
+        ``profile`` is intentionally distinct from the Kubernetes resource:
+        it selects reusable runtime configuration and per-guide variants.
+        Explicit profiles are never overwritten.
+        """
+        accel = values.get("accelerator", {})
+        if accel.get("profile") != "auto":
+            return
+
+        accelerator_identity = accel.get("resource")
+        if accelerator_identity:
+            profile = self.ACCELERATOR_PROFILES.get(accelerator_identity)
+        else:
+            accelerator_identity = accel.get("draDriver")
+            profile = self.DRA_DRIVER_PROFILES.get(accelerator_identity)
+        if profile:
+            accel["profile"] = profile
+            accel["type"] = profile
+            self.logger.log_info(
+                "Resolved accelerator.profile: "
+                f"{profile} (identity={accelerator_identity})"
+            )
+        else:
+            unresolved.append("accelerator.profile")
+
+    def _apply_dra_claim_defaults(self, values: dict) -> None:
+        """Turn a resolved ``accelerator.draDriver`` into a real device request.
+
+        A DRA driver is deliberately kept out of container limits/requests, so
+        without a claim the plan would render workloads with no accelerator at
+        all.  The modelservice chart builds the ``ResourceClaimTemplate`` and
+        attaches the pod ``resourceClaims`` on its own once ``dra.enabled`` and
+        a matching claim template are present.
+        """
+        accel = values.get("accelerator") or {}
+        dra_driver = accel.get("draDriver")
+        accelerator_type = accel.get("type")
+        if not dra_driver or not accelerator_type:
+            return
+
+        dra = values.setdefault("dra", {})
+        dra["enabled"] = True
+        dra["type"] = accelerator_type
+        if dra.get("claimTemplates"):
+            return
+
+        # The chart keys claim templates by accelerator type and otherwise
+        # falls back to a ``gpu.<type>.com`` DeviceClass that never exists.
+        # ``count`` stays unset so each role derives it from its own
+        # parallelism -- one entry has to serve both decode and prefill.
+        dra["claimTemplates"] = {accelerator_type: {"class": dra_driver}}
+        self.logger.log_info(
+            f"Enabled DRA claim template for {accelerator_type} "
+            f"(deviceClass={dra_driver})"
+        )
 
     def _resolve_network_resource(
         self,
@@ -540,11 +709,10 @@ class ClusterResourceResolver:
         When ``labelValue`` is ``"auto"``, detect the GPU product label from
         the cluster and set both ``labelKey`` and ``labelValue``.
 
-        Sections that are disabled or don't actually request accelerators
-        (CPU-only / sim scenarios such as ``cicd/kind``) are skipped silently:
-        the inherited default ``labelValue: "auto"`` is meaningless to them
-        and a failure to discover would be a false positive. This matches
-        the skip logic in ``step_03_workload_monitoring._validate_node_selectors``.
+        Sections requesting no accelerators are skipped. ``enabled: false``
+        does not skip resolution -- it only suppresses the hard error when
+        nothing is detectable, since ``_resolve_deploy_method`` runs after
+        this resolver and ``-t standalone`` can still turn the section on.
         """
         resources = self._node_resources or NodeResources()
 
@@ -560,12 +728,7 @@ class ClusterResourceResolver:
             if accel_type.get("labelValue") != "auto":
                 continue
 
-            if section_dict.get("enabled") is False:
-                self.logger.log_debug(
-                    f"Skipping {section}.acceleratorType resolution: "
-                    f"{section}.enabled is false"
-                )
-                continue
+            section_enabled = section_dict.get("enabled") is not False
 
             accel_count, count_source = effective_accelerator_count(section_dict)
             if accel_count == 0:
@@ -621,6 +784,12 @@ class ClusterResourceResolver:
                 accel_type.pop("labelKey", None)
                 accel_type.pop("labelValue", None)
                 accel_type.pop("labelValues", None)
+            elif not section_enabled:
+                self.logger.log_debug(
+                    f"Skipping {section}.acceleratorType resolution: no GPU "
+                    f"labels or resources on the cluster and {section}.enabled "
+                    "is false"
+                )
             else:
                 unresolved.append(f"{section}.acceleratorType.labelValue")
 

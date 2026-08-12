@@ -29,6 +29,23 @@ llmdbenchmark --spec guides/optimized-baseline standup -t kustomize -p NS
 methods). Equivalently, set `kustomize.enabled: true` in the scenario. If
 `kustomize.enabled` is false the step is a no-op.
 
+Any key in the `kustomize:` block below can also be set per-invocation with
+`--set`, so a backend or guide variant needs no separate scenario file:
+
+```bash
+# same guide, SGLang model servers
+llmdbenchmark --spec guides/optimized-baseline standup \
+  -t kustomize -p NS --set kustomize.acceleratorBackend=gpu/sglang
+
+# fill a guide README ${VAR} without editing the scenario
+llmdbenchmark --spec guides/tiered-prefix-cache standup \
+  -t kustomize -p NS --set kustomize.guideVariableOverrides.INFRA_PROVIDER=base
+```
+
+Pass the same `--set` to every phase (`smoketest`/`run`/`teardown`) -- they
+re-render the plan. See
+[standup.md](standup.md#overriding-scenario-values-from-the-cli---set).
+
 ## Config reference (`kustomize:` block)
 
 | Key | Default | Effect |
@@ -153,5 +170,5 @@ because their generated manifests don't have the hard requirement.
   `{guideName}-epp` endpoint) with no per-stack/per-model uniquification
   (unlike modelservice's per-stack identity resolution), so multiple stacks
   would collide on the same guide resources. Use the `modelservice` method
-  (e.g. the `multi-model-wva` scenario) for multi-model; keep kustomize
+  (e.g. the `multi-model-optimized-baseline` scenario) for multi-model; keep kustomize
   scenarios single-stack.
