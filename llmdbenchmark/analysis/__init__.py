@@ -501,11 +501,24 @@ def _embed_metrics_in_reports(
     # One scrape covers the whole run, so each stage report needs its own window.
     windows = _stage_windows(results_dir)
 
+    staged = [r for r in reports if _REPORT_STAGE_RE.search(r.name)]
+    # Staged reports with no window at all means the markers stopped parsing,
+    # which silently restores the whole-run series this clipping replaced.
+    if staged and not windows:
+        _log(
+            context,
+            f"No stage windows parsed from stdout.log for {len(staged)} stage "
+            f"report(s) -- embedding the whole run in each",
+            warning=True,
+        )
+
     for report in reports:
         try:
             stage = _REPORT_STAGE_RE.search(report.name)
             window = windows.get(int(stage.group(1))) if stage else None
-            if stage and window is None:
+            # Warns only for a stage missing from an otherwise-parsed set; the
+            # none-parsed case is reported once above.
+            if stage and window is None and windows:
                 _log(
                     context,
                     f"No stage window for {report.name} -- embedding the whole run",
