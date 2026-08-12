@@ -1599,6 +1599,40 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                 for ss in rs.get("scopeSpans", []):
                     for sp in ss.get("spans", []):
                         name = sp.get("name", "")
+                        attrs = {
+                            a.get("key", ""): a.get("value", {})
+                            for a in sp.get("attributes", [])
+                        }
+
+                        # Token usage rides on the PROVIDER span, not the HTTP
+                        # span. bifrost names it "chat <model>"; the HTTP span
+                        # (/openai/v1/responses, /anthropic/v1/messages) carries
+                        # routing only and no gen_ai.usage.* at all. Selecting by
+                        # attribute presence rather than span name keeps this
+                        # working across gateways instead of hard-coding each
+                        # one's naming. Counted separately from n_calls so a
+                        # provider span never inflates the request count.
+                        #
+                        # Exact keys, not endswith():
+                        # gen_ai.usage.reasoning.output_tokens also ends in
+                        # "output_tokens" and would be double-counted into the
+                        # output total on reasoning models.
+                        for tok_key, prompt_key, target in (
+                            ("gen_ai.usage.input_tokens", "prompt_tokens", "in"),
+                            ("gen_ai.usage.output_tokens", "completion_tokens", "out"),
+                        ):
+                            val = attrs.get(tok_key)
+                            if val is None:
+                                # litellm/openai-style flat naming fallback
+                                val = attrs.get(prompt_key)
+                            if val is None:
+                                continue
+                            iv = int(val.get("intValue") or 0)
+                            if target == "in":
+                                in_tok += iv
+                            else:
+                                out_tok += iv
+
                         # one span per LLM request, across gateways: bifrost emits
                         # /anthropic/v1/messages or /openai/.../completions; litellm
                         # emits litellm_request. Skip the child provider span
@@ -1620,17 +1654,6 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             lats_ms.append((en - st) / 1e6)
                             t_first = st if t_first is None else min(t_first, st)
                             t_last = en if t_last is None else max(t_last, en)
-                        for a in sp.get("attributes", []):
-                            k = a.get("key", "")
-                            iv = int(a.get("value", {}).get("intValue") or 0)
-                            if k.endswith("input_tokens") or k.endswith(
-                                "prompt_tokens"
-                            ):
-                                in_tok += iv
-                            elif k.endswith("output_tokens") or k.endswith(
-                                "completion_tokens"
-                            ):
-                                out_tok += iv
 
     def _stat(xs: list[float]):
         if not xs:
