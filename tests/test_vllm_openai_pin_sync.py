@@ -33,3 +33,12 @@ def test_vllm_and_vllm_openai_pins_stay_in_sync():
 
     assert defaults["images"]["udsTokenizer"]["tag"] == uds_tokenizer_pin
     assert _doc_pin_for("udsTokenizer") == uds_tokenizer_pin
+
+
+def test_agentgateway_pin_stays_in_sync_with_upstream_versions_doc():
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+
+    agentgateway_pin = defaults["_anchors"]["agentgateway_version"]
+
+    assert defaults["chartVersions"]["agentgateway"] == agentgateway_pin
+    assert _doc_pin_for("agentgateway") == agentgateway_pin
