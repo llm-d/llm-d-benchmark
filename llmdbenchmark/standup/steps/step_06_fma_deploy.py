@@ -52,8 +52,19 @@ class FMADeployStep(Step):
                 step_number=self.number,
                 step_name=self.name,
                 success=False,
-                message="No FMA ClusterRole YAML found, skipping",
-                errors=["FMA ClusterRole YAML is required"],
+                message="No FMA RBAC YAML found, skipping",
+                errors=["FMA RBAC YAML is required"],
+                stack_name=stack_path.name,
+            )
+
+        launcher_rbac_yaml = self._find_yaml(stack_path, "25a_fma-launcher-rbac")
+        if not launcher_rbac_yaml or not self._has_yaml_content(launcher_rbac_yaml):
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="No FMA launcher RBAC YAML found, skipping",
+                errors=["FMA launcher RBAC YAML is required"],
                 stack_name=stack_path.name,
             )
 
@@ -84,8 +95,11 @@ class FMADeployStep(Step):
             context, plan_config, errors
         )  # pylint disable=too-many-function-args
 
-        # Fast Model Actuation ClusterRole
+        # Fast Model Actuation cluster-scoped ClusterRole (create only if missing)
         self._install_fma_clusterole(context, clusterrole_yaml, errors)
+
+        # Namespace-scoped launcher RBAC -- always apply (idempotent, namespaced)
+        self._apply_fma_launcher_rbac(context, launcher_rbac_yaml, errors)
 
         if len(errors) == 0:
             # Fast Model Actuation Controllers chart
@@ -752,6 +766,21 @@ class FMADeployStep(Step):
             return
 
         context.logger.log_info("✅ Fast Model Actuation ClusterRole installed")
+
+    def _apply_fma_launcher_rbac(
+        self, context: ExecutionContext, launcher_rbac_yaml: Path, errors: list[str]
+    ) -> None:
+        # Namespace-scoped SA/Role/RoleBinding for the launcher: always apply
+        # (idempotent, namespaced) so it exists before the LauncherConfig's SA resolves.
+        cmd = context.require_cmd()
+        context.logger.log_info("🚚 Applying Fast Model Actuation launcher RBAC ...")
+
+        result = cmd.kube("apply", "-f", str(launcher_rbac_yaml))
+        if not result.success:
+            errors.append(f"Failed to apply fma launcher RBAC: {result.stderr}")
+            return
+
+        context.logger.log_info("✅ Fast Model Actuation launcher RBAC applied")
 
     def _propagate_standup_parameters(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict

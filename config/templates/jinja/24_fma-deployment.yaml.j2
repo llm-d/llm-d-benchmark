@@ -70,6 +70,9 @@ spec:
 {% endfor %}
 {% endif %}
     spec:
+      # SA granted pods get/patch so the state-change-reflector can patch its
+      # own pod's serving state (Role in 25a_fma-launcher-rbac.yaml.j2).
+      serviceAccountName: fma-launcher
 {% if fma.launcher.runtimeClassName is defined and fma.launcher.runtimeClassName %}
       runtimeClassName: {{ fma.launcher.runtimeClassName }}
 {% endif %}

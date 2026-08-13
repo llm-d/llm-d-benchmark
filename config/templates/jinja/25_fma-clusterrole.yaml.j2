@@ -1,8 +1,8 @@
 {# ============================================================================
    25_fma-clusterrole.yaml.j2
 
-   ClusterRole granting access to FMA.
-   Required by FMA.
+   Cluster-scoped RBAC required by FMA: ClusterRole fma-node-viewer
+   (node get/list/watch for the controllers).
 
    Only rendered when fma.enabled is true.
    ============================================================================ #}
