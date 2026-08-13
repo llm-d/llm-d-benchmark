@@ -92,6 +92,12 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_output: str = "local"
     harness_parallelism: int = 1
     harness_wait_timeout: int = 3600
+    # Retry budget for locating the data-access pod, which gates result
+    # collection: a single failed API call there discards a completed run whose
+    # output is still on the PVC. Tunable because how flaky the apiserver is is a
+    # property of the cluster, not of the code.
+    data_access_lookup_attempts: int = 5
+    data_access_lookup_delay: float = 3.0
     harness_debug: bool = False
     harness_skip_run: bool = False
     # When True, collect results via a gzip'd ``oc exec | tar`` stream instead

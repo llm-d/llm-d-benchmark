@@ -114,7 +114,11 @@ Shared kubectl patterns for the run phase.
 
 ### Pod Discovery
 
-- `find_data_access_pod(cmd, namespace) -> str | None` -- Find the data-access pod by its well-known label.
+- `find_data_access_pod(cmd, namespace, attempts=5, delay=3.0) -> str | None` -- Find
+  the data-access pod by its well-known label, retrying on failure. This lookup
+  gates result collection, so a single failed API call would otherwise discard a
+  completed run whose output is still on the PVC. Tunable via
+  `--data-access-lookup-attempts` / `--data-access-lookup-delay`.
 
 ### Pod Waiting
 

@@ -692,7 +692,13 @@ class DeployHarnessStep(Step):
         """
         errors: list[str] = []
 
-        data_pod = find_data_access_pod(cmd, namespace)
+        data_pod = find_data_access_pod(
+            cmd,
+            namespace,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
             # The results are NOT lost when this fails -- they are on the workload
             # PVC, written by harness pods that have already completed. Say so, and
@@ -849,7 +855,13 @@ class DeployHarnessStep(Step):
         """
         errors: list[str] = []
 
-        data_pod = find_data_access_pod(cmd, namespace)
+        data_pod = find_data_access_pod(
+            cmd,
+            namespace,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
             # As above: uncollected is not lost. Point at the PVC copy.
             errors.append(

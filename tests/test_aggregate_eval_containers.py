@@ -268,7 +268,9 @@ def test_csv_has_units_in_column_names_and_one_row_per_task(tmp_path: Path) -> N
     _write_task(tmp_path, "run_2", task_id=170, spans=spans)
 
     generate_agentic_summary(tmp_path)
-    with open(tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8") as f:
+    with open(
+        tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8"
+    ) as f:
         rows = list(csv.DictReader(f))
 
     assert len(rows) == 2
@@ -325,7 +327,9 @@ def test_time_to_first_call_anchors_on_harness_start(tmp_path: Path) -> None:
         tmp_path, "run_1", task_id=1, spans=spans, delta="PT100S", harness_start=start
     )
     generate_agentic_summary(tmp_path)
-    with open(tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8") as f:
+    with open(
+        tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8"
+    ) as f:
         row = list(csv.DictReader(f))[0]
     # The real answer is 10s. The buggy derivation would give 100 - 2 = 98.
     assert float(row["time_to_first_call_s"]) == pytest.approx(10.0, abs=0.01)
@@ -338,6 +342,8 @@ def test_time_to_first_call_blank_without_harness_start(tmp_path: Path) -> None:
     spans = [_span("/openai/v1/responses", 1_000_000_000, 2_000_000_000, {})]
     _write_task(tmp_path, "run_1", task_id=1, spans=spans, delta="PT100S")
     generate_agentic_summary(tmp_path)
-    with open(tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8") as f:
+    with open(
+        tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8"
+    ) as f:
         row = list(csv.DictReader(f))[0]
     assert row["time_to_first_call_s"] == ""

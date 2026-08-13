@@ -120,6 +120,8 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination: local path, `gs://bucket`, or `s3://bucket` |
 | `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
 | `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion (default: 3600) |
+| `--data-access-lookup-attempts N` | `LLMDBENCH_DATA_ACCESS_LOOKUP_ATTEMPTS` | Tries to locate the data-access pod before abandoning result collection (default: 5) |
+| `--data-access-lookup-delay S` | `LLMDBENCH_DATA_ACCESS_LOOKUP_DELAY` | Seconds between those attempts (default: 3.0) |
 | `-z` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results from PVC |
 | `-d` | `LLMDBENCH_DEBUG` | Debug mode -- start harness with `sleep infinity` |
 | `--analyze` | | Run local analysis on collected results |

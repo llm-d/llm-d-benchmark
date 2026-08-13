@@ -33,7 +33,7 @@ DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 # to what it guards: ~14s of polling against a wave of results that cost hours of
 # GPU time and cannot be regenerated once the harness pods are deleted.
 DATA_ACCESS_LOOKUP_ATTEMPTS = 5
-DATA_ACCESS_LOOKUP_DELAY_S = 3.0
+DATA_ACCESS_LOOKUP_DELAY_SECONDS = 3.0
 
 
 def _terminated_state_detail(prefix: str, state: dict) -> str:
@@ -105,7 +105,8 @@ def find_data_access_pod(
     cmd,
     namespace: str,
     attempts: int = DATA_ACCESS_LOOKUP_ATTEMPTS,
-    delay: float = DATA_ACCESS_LOOKUP_DELAY_S,
+    delay: float = DATA_ACCESS_LOOKUP_DELAY_SECONDS,
+    context: ExecutionContext | None = None,
 ) -> str | None:
     """Find the data-access pod by its well-known label.
 
@@ -123,7 +124,6 @@ def find_data_access_pod(
     afterwards with a plain ``kubectl cp``. Retrying costs a few seconds;
     not retrying costs the run.
     """
-    last_detail = ""
     for attempt in range(1, max(1, attempts) + 1):
         result = cmd.kube(
             "get",
@@ -142,13 +142,24 @@ def find_data_access_pod(
         # stdout is not proof of a pod name. Require a single bare token.
         if result.success and name and "\n" not in name and " " not in name:
             return name
-        last_detail = (
-            (result.stderr or "").strip() or name or "no pod matched the label"
-        )
+        detail = (result.stderr or "").strip() or name or "no pod matched the label"
         if attempt < attempts:
+            if context is not None:
+                # Log per attempt rather than only at the end: on a slow apiserver
+                # this is the only signal that collection is retrying rather than
+                # hung, and the reason often differs between attempts.
+                context.logger.log_warning(
+                    f"Data-access pod lookup attempt {attempt}/{attempts} failed "
+                    f"in {namespace} ({detail}); retrying in {delay}s"
+                )
             time.sleep(delay)
-    # Left to the caller to report: it knows which treatment was being collected
-    # and where the results still live on the PVC.
+        elif context is not None:
+            context.logger.log_warning(
+                f"Data-access pod lookup failed after {attempts} attempts in "
+                f"{namespace} ({detail})"
+            )
+    # The caller reports the user-facing failure: it knows which treatment was
+    # being collected and where the results still live on the PVC.
     return None
 
 

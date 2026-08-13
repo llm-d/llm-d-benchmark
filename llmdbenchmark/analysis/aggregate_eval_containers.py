@@ -256,7 +256,9 @@ class _TaskMetrics:
         self.last_call_end_ns = last_end
         self.task_llm_span_s = (
             (last_end - first_start) / 1e9
-            if first_start is not None and last_end is not None and last_end > first_start
+            if first_start is not None
+            and last_end is not None
+            and last_end > first_start
             else None
         )
 
@@ -416,7 +418,9 @@ def _build_report(tasks: list[_TaskMetrics]) -> dict:
         observability["eval_containers_reward_mean"] = sum(rewards) / scored
         observability["eval_containers_reward_sum"] = sum(rewards)
     if llm_calls:
-        observability["eval_containers_llm_calls_per_task_mean"] = llm_calls / len(tasks)
+        observability["eval_containers_llm_calls_per_task_mean"] = llm_calls / len(
+            tasks
+        )
 
     # Per-language pass rates, so a task-mix shift is not mistaken for a
     # regression. Only meaningful for the language-ordered polyglot dataset.
@@ -474,8 +478,9 @@ def _build_report(tasks: list[_TaskMetrics]) -> dict:
                 "native": {
                     "args": {
                         "harness": "eval-containers",
-                        "benchmark": benchmarks[0] if len(benchmarks) == 1 else
-                        ",".join(benchmarks),
+                        "benchmark": benchmarks[0]
+                        if len(benchmarks) == 1
+                        else ",".join(benchmarks),
                         "model": models[0] if len(models) == 1 else ",".join(models),
                         "workload_type": "agentic-multi-turn",
                         "aggregation": "run-level",

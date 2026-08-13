@@ -25,3 +25,14 @@ def env_int(name: str, default: int | None = None) -> int | None:
         return int(val)
     except ValueError:
         return default
+
+
+def env_float(name: str, default: float | None = None) -> float | None:
+    """Return env var as float, or default if not set / not parseable."""
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except ValueError:
+        return default

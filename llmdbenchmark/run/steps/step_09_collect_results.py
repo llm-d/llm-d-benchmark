@@ -78,7 +78,13 @@ class CollectResultsStep(Step):
         )
 
         # Find the data-access pod
-        data_pod = find_data_access_pod(cmd, harness_ns)
+        data_pod = find_data_access_pod(
+            cmd,
+            harness_ns,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
             if context.dry_run:
                 data_pod = "<dry-run-data-pod>"

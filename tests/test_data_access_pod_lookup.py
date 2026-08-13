@@ -75,3 +75,54 @@ def test_jsonpath_out_of_bounds_is_not_a_pod_name() -> None:
 def test_whitespace_only_stdout_is_not_a_pod_name() -> None:
     cmd = _FakeCmd([_Result(True, "   \n  ")] * 2)
     assert find_data_access_pod(cmd, "ns", attempts=2, delay=0) is None
+
+
+def test_env_float_parses_and_falls_back() -> None:
+    """The delay flag's default comes from the environment."""
+    import os
+    from llmdbenchmark.interface.env import env_float
+
+    os.environ["LLMDBENCH_TEST_DELAY"] = "2.5"
+    try:
+        assert env_float("LLMDBENCH_TEST_DELAY") == 2.5
+    finally:
+        del os.environ["LLMDBENCH_TEST_DELAY"]
+    assert env_float("LLMDBENCH_TEST_DELAY_UNSET", 3.0) == 3.0
+    os.environ["LLMDBENCH_TEST_DELAY"] = "not-a-number"
+    try:
+        assert env_float("LLMDBENCH_TEST_DELAY", 3.0) == 3.0
+    finally:
+        del os.environ["LLMDBENCH_TEST_DELAY"]
+
+
+def test_context_defaults_match_the_helper() -> None:
+    """A default drift here would silently change collection robustness."""
+    from llmdbenchmark.executor.context import ExecutionContext
+    from llmdbenchmark.utilities import kube_helpers as kh
+
+    ctx = ExecutionContext.__dataclass_fields__
+    assert ctx["data_access_lookup_attempts"].default == kh.DATA_ACCESS_LOOKUP_ATTEMPTS
+    assert (
+        ctx["data_access_lookup_delay"].default == kh.DATA_ACCESS_LOOKUP_DELAY_SECONDS
+    )
+
+
+def test_cli_exposes_the_lookup_flags() -> None:
+    """Vezio's review point: these must be reachable without editing source."""
+    import argparse
+    from llmdbenchmark.interface import run as run_iface
+
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command")
+    run_iface.add_subcommands(sub)
+    args = parser.parse_args(
+        [
+            "run",
+            "--data-access-lookup-attempts",
+            "9",
+            "--data-access-lookup-delay",
+            "1.5",
+        ]
+    )
+    assert args.data_access_lookup_attempts == 9
+    assert args.data_access_lookup_delay == 1.5

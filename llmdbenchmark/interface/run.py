@@ -2,7 +2,7 @@
 
 import argparse
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.interface.env import env, env_bool, env_int
+from llmdbenchmark.interface.env import env, env_bool, env_float, env_int
 
 
 def add_subcommands(
@@ -139,6 +139,26 @@ def add_subcommands(
         type=int,
         default=env_int("LLMDBENCH_WAIT_TIMEOUT"),
         help="Seconds to wait for harness completion (0 = do not wait).",
+    )
+    run_parser.add_argument(
+        "--data-access-lookup-attempts",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_LOOKUP_ATTEMPTS"),
+        help=(
+            "How many times to look for the data-access pod before giving up on "
+            "collecting results (default: 5). This lookup gates collection, so a "
+            "single failed API call would otherwise discard a completed run whose "
+            "output is still on the PVC. Raise it on a flaky cluster."
+        ),
+    )
+    run_parser.add_argument(
+        "--data-access-lookup-delay",
+        type=float,
+        default=env_float("LLMDBENCH_DATA_ACCESS_LOOKUP_DELAY"),
+        help=(
+            "Seconds between data-access pod lookup attempts (default: 3.0). "
+            "Total worst-case wait is attempts x delay."
+        ),
     )
     run_parser.add_argument(
         "--treatment-max-attempts",

@@ -962,6 +962,12 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             if getattr(args, "wait_timeout", None) is not None
             else (plan_info.get("harness", {}) or {}).get("waitTimeout") or 3600
         ),
+        data_access_lookup_attempts=int(
+            getattr(args, "data_access_lookup_attempts", None) or 5
+        ),
+        data_access_lookup_delay=float(
+            getattr(args, "data_access_lookup_delay", None) or 3.0
+        ),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
         harness_fast_collect=getattr(args, "fast_collect", False),
@@ -1658,6 +1664,14 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_OUTPUT": ("output", "--output"),
         "LLMDBENCH_PARALLELISM": ("parallelism", "--parallelism"),
         "LLMDBENCH_WAIT_TIMEOUT": ("wait_timeout", "--wait-timeout"),
+        "LLMDBENCH_DATA_ACCESS_LOOKUP_ATTEMPTS": (
+            "data_access_lookup_attempts",
+            "--data-access-lookup-attempts",
+        ),
+        "LLMDBENCH_DATA_ACCESS_LOOKUP_DELAY": (
+            "data_access_lookup_delay",
+            "--data-access-lookup-delay",
+        ),
         "LLMDBENCH_DATASET": ("dataset", "--dataset"),
         "LLMDBENCH_ENDPOINT_URL": ("endpoint_url", "--endpoint-url"),
         "LLMDBENCH_SKIP": ("skip", "--skip"),
@@ -1761,6 +1775,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--output": ["--output", "-r"],
         "--parallelism": ["--parallelism", "-j"],
         "--wait-timeout": ["--wait-timeout"],
+        "--data-access-lookup-attempts": ["--data-access-lookup-attempts"],
+        "--data-access-lookup-delay": ["--data-access-lookup-delay"],
         "--dataset": ["--dataset", "-x"],
         "--endpoint-url": ["--endpoint-url", "-U"],
         "--skip": ["--skip", "-z"],
