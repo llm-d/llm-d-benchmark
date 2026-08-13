@@ -6,6 +6,12 @@ pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 yq '.storage["local_storage"]["path"] = '\"${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}\" <"${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}" >${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 
+# inference-perf generates its reports after the final traffic stage drains.
+# Expose that boundary so campaign orchestrators can release accelerators while
+# report generation and result collection continue.
+source /workspace/harnesses/inference-perf-lifecycle.sh
+LLMDBENCH_FINAL_STAGE_ID="$(inference_perf_final_stage_id "./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}")"
+
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
   echo "Starting metrics collection..."
@@ -16,7 +22,17 @@ if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; the
 fi
 
 start=$(date +%s.%N)
-inference-perf $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+inference-perf $LLMDBENCH_HARNESS_ARGS \
+  > >(inference_perf_capture_stream \
+    "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" \
+    stdout.log \
+    "$LLMDBENCH_FINAL_STAGE_ID" \
+    "${LLMDBENCH_RUN_EXPERIMENT_ID:-unknown}") \
+  2> >(inference_perf_capture_stream \
+    "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" \
+    stderr.log \
+    "$LLMDBENCH_FINAL_STAGE_ID" \
+    "${LLMDBENCH_RUN_EXPERIMENT_ID:-unknown}" >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 

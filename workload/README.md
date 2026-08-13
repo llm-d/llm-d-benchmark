@@ -204,6 +204,14 @@ Each harness script is expected to:
 5. Capture timing metadata (start/stop timestamps, elapsed time)
 6. Exit with the benchmark tool's return code
 
+The inference-perf wrapper additionally writes `traffic_complete.yaml` and
+emits `LLMDBENCH_EVENT_V1 traffic_complete` immediately after its final
+explicitly configured stage drains successfully. Campaign orchestrators can
+use this stable boundary to release accelerator resources while inference-perf
+generates reports and llm-d-benchmark collects results. Sweep-generated stages
+do not emit the event because their final stage is not known from the rendered
+profile before load generation starts.
+
 ### How Harness Scripts Are Mounted
 
 The scripts in `workload/harnesses/` are packaged into a Kubernetes ConfigMap named `llmdbench-harness-scripts` by step 05. The harness pod template (`20_harness_pod.yaml.j2`) mounts this ConfigMap at `/workspace/harnesses/` with executable permissions (`defaultMode: 0755`).
