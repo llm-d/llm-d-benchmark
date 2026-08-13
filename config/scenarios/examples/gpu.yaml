@@ -42,7 +42,7 @@ scenario:
       # Required when using contextLengthRanges or vllmVariants.
       # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
       multinode:
-        enabled: true
+        enabled: false
 
       # -------------------------------------------------------------------------
       # Model Configuration
@@ -245,7 +245,7 @@ scenario:
         # Also requires the preprocess script (vllmCommon.preprocessScript) for
         # pod self-labeling and ,,-delimited env var splitting.
         # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
-        
+
         contextLengthRanges:
           - "0-1000"
           - "1000-2048"
