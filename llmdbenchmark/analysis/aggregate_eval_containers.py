@@ -300,7 +300,7 @@ def _iso_to_unix_ns(value: Any) -> int | None:
 
     Needed to anchor time-to-first-call: the span clock is unix-epoch
     nanoseconds, so the task's own start has to be expressed in the same units.
-    Returns None on anything unparseable, so the metric is blanked rather than
+    Returns None on anything unparsable, so the metric is blanked rather than
     guessed.
     """
     if value is None:
