@@ -648,6 +648,7 @@ llmdbenchmark/                Python package
         plan.py               Plan subcommand
         standup.py            Standup subcommand
         teardown.py           Teardown subcommand
+        cleanup.py            Cleanup subcommand (remove run leftovers)
         run.py                Run subcommand
         experiment.py         Experiment subcommand (DoE orchestration)
 
@@ -683,6 +684,9 @@ llmdbenchmark/                Python package
 
     teardown/                 Teardown phase (see teardown/README.md)
         steps/                Step implementations (00-05)
+
+    cleanup/                  Cleanup phase (see cleanup/README.md)
+        steps/                Step implementations (00)
 
     run/                      Run phase (see run/README.md)
         steps/                Step implementations (00-11)

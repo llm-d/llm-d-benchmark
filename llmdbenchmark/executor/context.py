@@ -36,6 +36,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     non_admin: bool = False
     current_phase: Any = None  # Phase enum, set at runtime to avoid circular import
     deep_clean: bool = False  # teardown: wipe all resources in namespaces
+    keep_pvc: bool = False  # cleanup: preserve the workload PVC
     release: str = "llmdbench"  # Helm release name prefix
 
     # Kubernetes connection info (resolved at runtime by step 00)

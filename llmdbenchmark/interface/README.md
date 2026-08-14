@@ -14,6 +14,7 @@ interface/
 ├── smoketest.py     -- smoketest subcommand
 ├── run.py           -- run subcommand
 ├── teardown.py      -- teardown subcommand
+├── cleanup.py       -- cleanup subcommand
 └── experiment.py    -- experiment subcommand
 ```
 
@@ -26,6 +27,7 @@ class Command(Enum):
     SMOKETEST = "smoketest"
     RUN = "run"
     TEARDOWN = "teardown"
+    CLEANUP = "cleanup"
     EXPERIMENT = "experiment"
 ```
 
