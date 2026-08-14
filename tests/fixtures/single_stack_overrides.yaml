@@ -1,6 +1,6 @@
 # Test-only single-stack scenario, owned by tests/test_cli_set_overrides.py.
 # Sibling of multi_stack_overrides.yaml; same reasoning -- scenarios under
-# config/scenarios/ ship to users and get retuned freely, so a suite that
+# config/scenarios/ ship to users and get modified freely, so a suite that
 # asserts on their literals fails for reasons unrelated to the code.
 #
 # Everything below is load-bearing for an assertion. The contract:

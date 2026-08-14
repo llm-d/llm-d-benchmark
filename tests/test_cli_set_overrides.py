@@ -44,7 +44,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = PROJECT_ROOT / "config" / "templates" / "jinja"
 DEFAULTS = PROJECT_ROOT / "config" / "templates" / "values" / "defaults.yaml"
 # Test-owned fixtures, deliberately NOT scenarios under config/scenarios/.
-# Those ship to users and get retuned freely -- replicas, resources, model
+# Those ship to users and get modified freely -- replicas, resources, model
 # choice, pool names -- and the tests below assert on literal stack names
 # and values. Pointing them at a shipped scenario makes an ordinary config
 # edit fail the suite for a reason that has nothing to do with the code
