@@ -120,3 +120,13 @@ llmdbenchmark teardown
 
 > [!NOTE]
 > The scenario can also be indicated as part of the command line options for `llmdbenchmark teardown` (e.g., `llmdbenchmark teardown --spec kubernetes_H200_modelservice_llama-8b`)
+
+`teardown` removes the deployed llm-d stack, but the harness namespace still holds what benchmark runs created there: the data-access pod, the harness service, the benchmark ConfigMaps and the workload PVC (which keeps billing against its storage backend until deleted). Remove all of it with
+
+```
+llmdbenchmark --spec <specification> cleanup
+```
+
+`cleanup` takes the same `--spec` as every other subcommand and reads the resource names from the scenario, so a scenario that overrides `harness.podLabel`, `harness.name`, `labels.app` or `storage.workloadPvc.name` is cleaned correctly. It also reaches both namespaces when the scenario sets `harness.namespace` separately from `namespace.name`.
+
+The command is idempotent -- resources that no longer exist are skipped, and a namespace with no benchmark resources exits 0. Pass `--keep-pvc` to preserve the workload PVC so workload data survives for the next run. `--namespace` overrides the namespaces from the scenario (comma-separated `model,harness`), and `--pvc-name` overrides `storage.workloadPvc.name`.
