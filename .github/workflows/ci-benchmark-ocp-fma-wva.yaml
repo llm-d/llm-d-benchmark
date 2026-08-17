@@ -127,6 +127,13 @@ on:
         required: false
         default: '5400'
         type: 'string'
+      admin_privileges:
+        # Keep 'true': 'false' adds --non-admin, which skips the decode SCC
+        # grant (pods never admit) and the prometheus-auth Secret (no HPA).
+        description: 'Run with cluster-admin privileges (required for SCC grants and Prometheus auth)'
+        required: false
+        default: 'true'
+        type: 'string'
 
 jobs:
   # =========================================================================
@@ -161,6 +168,7 @@ jobs:
       harness: ${{ inputs.harness || 'inference-perf' }}
       workload: ${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}
       wait_timeout: ${{ inputs.wait_timeout || '5400' }}
+      admin_privileges: ${{ inputs.admin_privileges || 'true' }}
     secrets: inherit
 
   # =========================================================================
@@ -202,6 +210,7 @@ jobs:
       harness: ${{ inputs.harness || 'inference-perf' }}
       workload: ${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}
       wait_timeout: ${{ inputs.wait_timeout || '5400' }}
+      admin_privileges: ${{ inputs.admin_privileges || 'true' }}
     secrets: inherit
 
   # =========================================================================
@@ -239,6 +248,7 @@ jobs:
       harness: ${{ inputs.harness || 'inference-perf' }}
       workload: ${{ inputs.workload || 'shared_prefix_synthetic_heavy.yaml' }}
       wait_timeout: ${{ inputs.wait_timeout || '7200' }}
+      admin_privileges: ${{ inputs.admin_privileges || 'true' }}
     secrets: inherit
 
   # =========================================================================
