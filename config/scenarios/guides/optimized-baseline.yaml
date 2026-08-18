@@ -109,7 +109,7 @@ scenario:
       extraHelmSets: {}
 #      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
       guideVariableOverrides:
-        ROUTER_CHART_VERSION: v0.9.0
+        ROUTER_CHART_VERSION: v0.10.0
         ROUTER_GATEWAY_CHART: oci://ghcr.io/llm-d/charts/llm-d-router-gateway
       # Inline kustomize strategic merge patches applied on top of the
       # guide's modelserver base. Default is empty -- the upstream guide
