@@ -114,7 +114,7 @@ _anchors:
   # Used for both the standalone and gateway router charts.
   router_chart_version:              &router_chart_version              v0.9.0
   vllm-openai_version:               &vllm-openai_version               v0.26.0
-  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.9.0
+  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.10.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.9.0
   # Just use vllm-openai image for tokenizer
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.26.0

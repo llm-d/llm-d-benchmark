@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-08-17 18:05:56` (UTC)
-- Generated against git ref: `f2ad11af8a1c3c488b2e329bee74b1f9ab10c5b5`
+- Generated at: `2026-08-18 04:14:39` (UTC)
+- Generated against git ref: `ba30b34566a53addf8d5959de5cdd3ecf0bb00b8`
 
 ## System Tool Dependencies
 
@@ -61,7 +61,7 @@ generation (and plan) time.
 |---|---|---|---|---|
 | **benchmark** | `v0.7.9` | tag | `config/templates/values/defaults.yaml` line 380 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 428 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routerEndpointPicker** | `v0.9.0` | tag | `config/templates/values/defaults.yaml` line 405 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
+| **routerEndpointPicker** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 405 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
 | **routingSidecar** | `v0.9.0` | tag | `config/templates/values/defaults.yaml` line 411 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
 | **udsTokenizer** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 417 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 | **vllm** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 386 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
