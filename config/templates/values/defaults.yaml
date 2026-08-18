@@ -105,9 +105,9 @@ _anchors:
   lws_version:                       &lws_version                       v0.10.0
 
   # GAIE CRDs are still installed from the gateway-api-inference-extension
-  # release (`v1.5.0`). The router chart below replaces the legacy
+  # release (`v1.6.0`). The router chart below replaces the legacy
   # `inferencepool` / `standalone` charts from that release.
-  gaie_version:                      &gaie_version                      v1.5.0
+  gaie_version:                      &gaie_version                      v1.6.0
   # llm-d-router chart version (migrated off the GAIE-published
   # `inferencepool` / `standalone` charts onto the llm-d-owned
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).

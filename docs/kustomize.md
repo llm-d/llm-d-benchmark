@@ -55,7 +55,7 @@ re-render the plan. See
 | `repoPath` | `""` | Local llm-d clone to use. Falls back to `--llmd-repo-path`; empty ⇒ clone `https://github.com/llm-d/llm-d.git` into `workspace/llm-d`. |
 | `repoRef` | `"main"` | Git ref used when cloning. |
 | `acceleratorBackend` | `"gpu/vllm"` | Swaps `modelserver/gpu/vllm` → `modelserver/<backend>` in guide paths. |
-| `gaieVersion` | README `GAIE_VERSION` or `v1.5.0` | GAIE CRD bundle version substituted into README commands. |
+| `gaieVersion` | README `GAIE_VERSION` or `v1.6.0` | GAIE CRD bundle version substituted into README commands. |
 | `routerChartVersion` | README `ROUTER_CHART_VERSION` or `v0` | llm-d-router chart version. |
 | `monitoring` | `false` | Also applies `guides/recipes/modelserver/components/monitoring`. |
 | `deployTimeout` | `900` | Pod-readiness wait (seconds). |

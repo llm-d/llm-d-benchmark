@@ -42,3 +42,13 @@ def test_agentgateway_pin_stays_in_sync_with_upstream_versions_doc():
 
     assert defaults["chartVersions"]["agentgateway"] == agentgateway_pin
     assert _doc_pin_for("agentgateway") == agentgateway_pin
+
+
+def test_inference_pool_pin_stays_in_sync_with_defaults_and_doc():
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+
+    gaie_pin = defaults["_anchors"]["gaie_version"]
+
+    assert defaults["chartVersions"]["inferencePool"] == gaie_pin
+    assert defaults["gatewayApiCrd"]["inferenceExtensionRevision"] == gaie_pin
+    assert _doc_pin_for("inferencePool") == gaie_pin

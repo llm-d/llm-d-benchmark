@@ -102,10 +102,10 @@ on:
         type: 'string'
         default: 'true'
       gaie_version:
-        description: 'Gateway API Inference Extension ("v1.5.0")'
+        description: 'Gateway API Inference Extension ("v1.6.0")'
         required: false
         type: 'string'
-        default: 'v1.5.0'
+        default: 'v1.6.0'
       router_standalone_chart_url:
         description: 'standalone router chart URL ("oci://ghcr.io/llm-d/charts/llm-d-router-standalone")'
         required: false
@@ -353,7 +353,7 @@ jobs:
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-      LLMDBENCH_CICD_GAIE_VERSION: ${{ inputs.gaie_version || 'v1.5.0' }}
+      LLMDBENCH_CICD_GAIE_VERSION: ${{ inputs.gaie_version || 'v1.6.0' }}
       LLMDBENCH_CICD_ROUTER_CHART_VERSION: ${{ inputs.router_chart_version || 'v0' }}
       LLMDBENCH_CICD_ROUTER_STANDALONE_CHART_URL: ${{ inputs.router_standalone_chart_url || 'oci://ghcr.io/llm-d/charts/llm-d-router-standalone' }}
       LLMDBENCH_CICD_ROUTER_GATEWAY_CHART_URL: ${{ inputs.router_gateway_chart_url || 'oci://ghcr.io/llm-d/charts/llm-d-router-gateway' }}

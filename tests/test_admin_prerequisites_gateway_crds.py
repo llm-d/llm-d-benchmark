@@ -35,7 +35,7 @@ GATEWAY_CRDS = [
 ]
 INFERENCE_EXTENSION_CRDS = [
     "inferencepools.inference.networking.k8s.io",
-    "inferenceobjectives.inference.networking.k8s.io",
+    "inferencepoolimports.inference.networking.x-k8s.io",
 ]
 
 
@@ -92,7 +92,7 @@ def _plan_config() -> dict[str, Any]:
             "crdUrlTemplate": (
                 "github.com/kubernetes-sigs/gateway-api/config/crd?ref={revision}"
             ),
-            "inferenceExtensionRevision": "v1.5.0",
+            "inferenceExtensionRevision": "v1.6.0",
             "inferenceExtensionUrlTemplate": (
                 "https://example.invalid/{revision}/manifests.yaml"
             ),
@@ -314,7 +314,7 @@ def test_inference_extension_uses_discovered_crds() -> None:
         cmd,
         _plan_config(),
         errors,
-        dict.fromkeys(INFERENCE_EXTENSION_CRDS, "v1.5.0"),
+        dict.fromkeys(INFERENCE_EXTENSION_CRDS, "v1.6.0"),
     )
 
     assert ("apply", "--dry-run=client") in [call[:2] for call in cmd.calls]
