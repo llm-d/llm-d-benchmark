@@ -37,11 +37,18 @@ class UninstallHelmStep(Step):
         }
     )
 
-    # Chart name prefixes used exclusively by modelservice deployments this
-    # tool creates (llm-d-modelservice, llm-d-router-gateway/-standalone).
-    # Used as a fallback match on full-scenario teardowns -- see
-    # _release_matches.
-    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-")
+    # Chart name prefixes used exclusively by deployments this tool creates:
+    # modelservice (llm-d-modelservice, llm-d-router-gateway/-standalone) and
+    # the FMA controllers (fma-controllers, from fma.chart.url). Used as a
+    # fallback match on full-scenario teardowns -- see _release_matches. The
+    # FMA release is named <model_id_label>-fma-dp but the chart itself is
+    # model-agnostic, so without this entry it has no safety net when the
+    # model labels re-derived at teardown do not match standup's.
+    _MANAGED_CHART_PREFIXES = (
+        "llm-d-modelservice",
+        "llm-d-router-",
+        "fma-controllers",
+    )
 
     def __init__(self):
         super().__init__(
@@ -405,10 +412,11 @@ class UninstallHelmStep(Step):
 
         On a full-scenario teardown (``full_teardown``, i.e. no --stack
         filter), we also match by chart identity: any release using one of
-        our managed charts (llm-d-modelservice, llm-d-router-*) belongs to
-        this deployment regardless of model-label mismatches, since a full
-        teardown is meant to wipe everything this tool deployed in the
-        namespace anyway. A --stack-filtered (partial) teardown must not
+        our managed charts (llm-d-modelservice, llm-d-router-*,
+        fma-controllers) belongs to this deployment regardless of
+        model-label mismatches, since a full teardown is meant to wipe
+        everything this tool deployed in the namespace anyway. A
+        --stack-filtered (partial) teardown must not
         use this broader match -- sibling stacks in the same namespace can
         use the same charts and must be preserved.
         """
