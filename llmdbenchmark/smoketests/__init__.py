@@ -10,7 +10,7 @@ def get_validator(
     from llmdbenchmark.smoketests.validators import VALIDATORS
 
     if is_fma:
-        stack_name = "fma"
+        stack_name = "fast-model-actuation"
     elif is_kustomize:
         stack_name = "ignore"
 

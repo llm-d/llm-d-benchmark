@@ -197,7 +197,11 @@ def main():
     # __main__ guard below -- the harness pod goes to Failed and step_08
     # (wait_completion) marks the nightly failed.
     if fma_error is not None:
-        logger.error("FMA benchmark failed; harness exiting non-zero to fail the run")
+        logger.error(
+            "FMA benchmark failed (%r): %s; harness exiting non-zero to fail the run",
+            fma_error,
+            fma_error,
+        )
         sys.exit(1)
 
 

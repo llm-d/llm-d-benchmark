@@ -40,6 +40,11 @@ VALIDATORS: dict[str, type] = {
     "pd-disaggregation": PdDisaggregationValidator,
     "precise-prefix-cache-aware": PrecisePrefixCacheAwareValidator,
     "optimized-baseline": OptimizedBaselineValidator,
+    # All FMA standup paths resolve here:
+    # 1. guide path (standup_method: kustomize) has the
+    # the guide stack name, and
+    # 2.benchmark path (standup_method: fma) is mapped to
+    # "fast-model-actuation" by get_validator.
     "fast-model-actuation": FmaValidator,
     "fast-model-actuation-keda": FmaValidator,
     # inference-scheduling-wva reuses the inference-scheduling validator;
@@ -54,6 +59,4 @@ VALIDATORS: dict[str, type] = {
     "cpu-example-ms": CpuValidator,
     "gpu-example": GpuValidator,
     "spyre-example": SpyreValidator,
-    # get_validator sets stack_name = "fma" when standup_method is fma.
-    "fma": FmaValidator,
 }
