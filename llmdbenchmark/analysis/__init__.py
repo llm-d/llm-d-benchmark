@@ -12,13 +12,18 @@ from __future__ import annotations
 import glob
 import logging
 import os
-import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from llmdbenchmark.analysis.summary import SUMMARY_MARKERS, extract_summary
+
+from llmdbenchmark.analysis.metrics_embed import (  # noqa: F401
+    REPORT_STAGE_RE as _REPORT_STAGE_RE,
+    stage_windows as _stage_windows,
+)
 
 if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
@@ -40,12 +45,40 @@ _RESULT_PATTERNS: dict[str, str] = {
 }
 
 # Summary marker per harness -- the line in stdout.log where the
-# interesting output starts.
-_SUMMARY_MARKERS: dict[str, str] = {
-    "guidellm": "Setup complete, starting benchmarks",
-    "vllm-benchmark": "Result ==",
-    "inferencemax": "Result ==",
-}
+# interesting output starts. Shared with the in-pod extractor.
+_SUMMARY_MARKERS = SUMMARY_MARKERS
+
+# Every harness analyses in the pod at exit. Re-running on the driver only rewrites
+# identical artifacts and forces a collected set to be read back out of its archive.
+# The driver pass stays the fallback for a set the pod did not analyse.
+_IN_POD_ANALYZERS = frozenset(
+    {
+        "inference-perf",
+        "guidellm",
+        "vllm-benchmark",
+        "inferencemax",
+        "aiperf",
+        "nop",
+        "lm-eval",
+        "eval-containers",
+    }
+)
+
+
+def pod_analysis_present(harness_name: str, results_dir: Path) -> bool:
+    """True when *results_dir* already holds the pod's own analysis output.
+
+    Presence is decided on the artifacts, not on the harness name alone: an
+    older image, a failed analyzer, or a hand-assembled directory leaves the
+    reports missing, and re-running on the driver is the fallback for exactly
+    those cases.
+    """
+    if harness_name not in _IN_POD_ANALYZERS:
+        return False
+    if harness_name == "nop":
+        return (results_dir / "analysis" / "result.txt").is_file()
+    return any(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
+
 
 # Harness name to benchmark_report writer name
 _WRITER_NAMES: dict[str, str] = {
@@ -113,6 +146,12 @@ def run_analysis(
     Returns:
         ``None`` on success, or an error string.
     """
+    # Returns None (success) so the caller still counts this result set: the
+    # cross-treatment comparison is gated on that count and is driver-only work.
+    if pod_analysis_present(harness_name, results_dir):
+        _log(context, f"{results_dir.name}: using in-pod analysis")
+        return None
+
     if harness_name == "nop":
         return _run_nop_analysis(results_dir, context)
 
@@ -339,38 +378,18 @@ def _convert_via_cli(
 
 def _extract_summary(
     results_dir: Path,
-    marker: str,
+    marker: str | None,
     context: ExecutionContext | None,
 ) -> None:
     """Extract the tail of stdout.log from *marker* into analysis/summary.txt."""
-    stdout_log = results_dir / "stdout.log"
-    if not stdout_log.exists():
-        return
-
-    analysis_dir = results_dir / "analysis"
-    analysis_dir.mkdir(parents=True, exist_ok=True)
-
     try:
-        lines = stdout_log.read_text(
-            encoding="utf-8",
-            errors="replace",
-        ).splitlines()
-        # Find the last occurrence of the marker
-        # (matches bash ``grep | tail -1``)
-        start_idx = None
-        for idx, line in enumerate(lines):
-            if marker in line:
-                start_idx = idx
-        if start_idx is not None:
-            summary_lines = lines[start_idx:]
-            summary_path = analysis_dir / "summary.txt"
-            summary_path.write_text(
-                "\n".join(summary_lines) + "\n",
-                encoding="utf-8",
-            )
-            _log(context, f"Summary extracted to {summary_path.name}")
+        summary_path = extract_summary(results_dir, marker)
     except Exception as exc:
         _log(context, f"Could not extract summary: {exc}", warning=True)
+        return
+
+    if summary_path is not None:
+        _log(context, f"Summary extracted to {summary_path.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -429,130 +448,25 @@ def _run_inference_perf_analyze(
 # ---------------------------------------------------------------------------
 
 
-# A failed stage still generated load and still gets a report, so it needs a window.
-_STAGE_MARKER_RE = re.compile(
-    r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ "
-    r".*Stage (\d+) - (?:session-based )?run (started|completed|failed)",
-    re.MULTILINE,
-)
-# Greedy, to take the last occurrence like native_to_br0_2 does on the same filename.
-_REPORT_STAGE_RE = re.compile(r".*stage_(\d+)", re.DOTALL)
-
-
-def _stage_windows(results_dir: Path) -> dict[int, tuple[datetime, datetime]]:
-    """Map stage index to its (start, end) as logged by the load generator.
-
-    The markers are ``%(asctime)s`` local time, stamped UTC here because the pod
-    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). Returns {} when the log is missing
-    or holds no complete marker pair, leaving the caller on the whole-run series.
-    """
-    log = results_dir / "stdout.log"
-    try:
-        text = log.read_text(errors="replace")
-    except OSError:
-        return {}
-
-    bounds: dict[int, dict[str, datetime]] = {}
-    for stamp, stage, event in _STAGE_MARKER_RE.findall(text):
-        try:
-            when = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(
-                tzinfo=timezone.utc
-            )
-        except ValueError:
-            continue
-        key = "started" if event == "started" else "ended"
-        bounds.setdefault(int(stage), {})[key] = when
-
-    # A retried or restarted stage can log its markers out of order, which would
-    # clip every sample away; fall back to the whole run instead.
-    return {
-        stage: (pair["started"], pair["ended"])
-        for stage, pair in bounds.items()
-        if "started" in pair and "ended" in pair and pair["started"] < pair["ended"]
-    }
-
-
 def _embed_metrics_in_reports(
     metrics_dir: Path,
     results_dir: Path,
     context: ExecutionContext | None,
 ) -> None:
-    """Merge scraped metrics into the v0.2 reports written by step 1.
+    """Merge scraped metrics into the v0.2 reports, clipped per stage.
 
-    The in-pod ``*-analyze_results.sh`` scripts also do this, but they run when
-    the harness pod exits -- before the driver has written
-    ``metrics/processed/metrics_summary.json`` -- so their guard is always false
-    and the reports ship without time series. Here the metrics exist.
+    The in-pod analyzers run the same pass, via the same module, before the results
+    are collected -- so on a normal run this is a no-op re-do. It stays for the
+    result sets the pod did not analyse: an older image, or a harness with no in-pod
+    analyzer.
     """
-    import yaml
+    from llmdbenchmark.analysis.metrics_embed import embed_metrics
 
-    from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
-        add_metrics_to_benchmark_report,
+    embed_metrics(
+        metrics_dir,
+        results_dir,
+        log=lambda message, warning=False: _log(context, message, warning=warning),
     )
-
-    if not (metrics_dir / "processed" / "metrics_summary.json").exists():
-        _log(context, "No metrics summary -- skipping report metrics embedding")
-        return
-
-    reports = sorted(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
-    if not reports:
-        return
-
-    # One scrape covers the whole run, so each stage report needs its own window.
-    windows = _stage_windows(results_dir)
-
-    staged = [r for r in reports if _REPORT_STAGE_RE.search(r.name)]
-    # Staged reports with no window at all means the markers stopped parsing,
-    # which silently restores the whole-run series this clipping replaced.
-    if staged and not windows:
-        _log(
-            context,
-            f"No stage windows parsed from stdout.log for {len(staged)} stage "
-            f"report(s) -- embedding the whole run in each",
-            warning=True,
-        )
-
-    for report in reports:
-        try:
-            stage = _REPORT_STAGE_RE.search(report.name)
-            window = windows.get(int(stage.group(1))) if stage else None
-            # Warns only for a stage missing from an otherwise-parsed set; the
-            # none-parsed case is reported once above.
-            if stage and window is None and windows:
-                _log(
-                    context,
-                    f"No stage window for {report.name} -- embedding the whole run",
-                    warning=True,
-                )
-            with open(report) as fh:
-                br_dict = yaml.safe_load(fh) or {}
-            br_dict = add_metrics_to_benchmark_report(
-                br_dict, str(metrics_dir), time_series_window=window
-            )
-            interval = br_dict.get("results", {}).get("observability", {})
-            interval = interval.get("time_series_interval", {})
-            if (
-                window
-                and not interval.get("datapoints")
-                and interval.get("datapoints_available")
-            ):
-                _log(
-                    context,
-                    f"Stage window {interval.get('start')}..{interval.get('end')} "
-                    f"kept none of {interval.get('datapoints_available')} datapoints "
-                    f"scraped over {interval.get('scraped_from')}.."
-                    f"{interval.get('scraped_to')} in {report.name} -- series empty",
-                    warning=True,
-                )
-            with open(report, "w") as fh:
-                yaml.dump(br_dict, fh, default_flow_style=False, allow_unicode=True)
-            _log(context, f"Embedded metrics into {report.name}")
-        except Exception as exc:
-            _log(
-                context,
-                f"Metrics embedding failed for {report.name}: {exc}",
-                warning=True,
-            )
 
 
 def _run_metric_visualizations(
@@ -603,12 +517,8 @@ def _run_per_request_plots(
     Reads ``per_request_lifecycle_metrics.json`` and writes plots to
     ``analysis/distributions/``.  Requires ``matplotlib``.
     """
-    pr_file = results_dir / "per_request_lifecycle_metrics.json"
-    if not pr_file.exists():
-        pr_file = results_dir / "analysis" / "per_request_lifecycle_metrics.json"
-    if not pr_file.exists():
-        return
-
+    # Plain files only, and the in-pod pass runs before compression: on the driver
+    # this is a fallback that no-ops on an already-compressed result set.
     try:
         from llmdbenchmark.analysis.per_request_plots import (
             generate_per_request_plots,
@@ -639,126 +549,16 @@ def _run_session_plots(
     results_dir: Path,
     context: ExecutionContext | None,
 ) -> None:
-    """Generate bar charts for session lifecycle metrics from benchmark report v0.2 files.
-
-    Reads all ``benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml``
-    files in results_dir and produces bar charts in ``analysis/session/``.
-    """
-    try:
-        import yaml as _yaml
-    except ImportError:
-        _log(context, "PyYAML not available -- skipping session plots")
-        return
+    """Generate bar charts for session lifecycle metrics from benchmark report v0.2 files."""
+    from llmdbenchmark.analysis.session_plots import generate_session_plots
 
     try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import numpy as np
-    except ImportError:
-        _log(context, "matplotlib not available -- skipping session plots")
-        return
-
-    session_br_files = sorted(
-        results_dir.glob("benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml")
-    )
-    if not session_br_files:
-        return
-
-    from llmdbenchmark.analysis.cross_treatment import (
-        SESSION_METRICS_OF_INTEREST,
-        deep_get,
-    )
-
-    # Load all stages into rows
-    rows: list[dict] = []
-    for br_file in session_br_files:
-        try:
-            with open(br_file, encoding="utf-8") as f:
-                report = _yaml.safe_load(f)
-            if not report:
-                continue
-        except Exception:
-            continue
-
-        row: dict = {"stage_file": br_file.name}
-        for dotted_path, col_name in SESSION_METRICS_OF_INTEREST:
-            row[col_name] = deep_get(report, dotted_path)
-        rows.append(row)
-
-    if not rows:
-        return
-
-    out_dir = results_dir / "analysis" / "session"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # (column_name, title, unit)
-    plot_specs = [
-        ("session_rate_qps", "Session Rate", "sessions/s"),
-        ("session_duration_mean_s", "Session Duration (Mean)", "seconds"),
-        ("session_duration_p99_s", "Session Duration P99", "seconds"),
-        ("events_per_session_mean", "Events per Session (Mean)", "count"),
-        (
-            "events_cancelled_per_session_mean",
-            "Cancelled Events per Session (Mean)",
-            "count",
-        ),
-        (
-            "output_tokens_per_session_mean",
-            "Output Tokens per Session (Mean)",
-            "tokens",
-        ),
-        ("failed_sessions", "Failed Sessions", "count"),
-    ]
-
-    bar_color = "#3498db"
-    generated = 0
-
-    stage_labels = [
-        r["stage_file"]
-        .replace("benchmark_report_v0.2,_", "")
-        .replace("_session_lifecycle_metrics.json.yaml", "")
-        for r in rows
-    ]
-
-    for col_name, title, unit in plot_specs:
-        values = [r.get(col_name) for r in rows]
-        if all(v is None for v in values):
-            continue
-        values_plot = [float(v) if v is not None else float("nan") for v in values]
-
-        fig, ax = plt.subplots(figsize=(max(6, len(rows) * 1.5), 5))
-        x_pos = range(len(rows))
-        bars = ax.bar(x_pos, values_plot, color=bar_color, alpha=0.85)
-
-        for bar, val in zip(bars, values_plot):
-            if np.isnan(val):
-                continue
-            text = f"{val:.4f}" if val < 10 else f"{val:.1f}"
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                text,
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                fontweight="bold",
-            )
-
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(stage_labels, rotation=30, ha="right", fontsize=9)
-        ax.set_ylabel(unit)
-        ax.set_title(title)
-        ax.grid(axis="y", alpha=0.3)
-
-        plt.tight_layout()
-        plt.savefig(str(out_dir / f"session_{col_name}.png"), dpi=150)
-        plt.close()
-        generated += 1
-
-    if generated:
-        _log(context, f"Generated {generated} session plot(s) in {out_dir}")
+        out_dir = results_dir / "analysis" / "session"
+        count = generate_session_plots(results_dir, output_dir=out_dir)
+        if count:
+            _log(context, f"Generated {count} session plot(s) in {out_dir}")
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        _log(context, f"Session plot generation failed: {exc}", warning=True)
 
 
 # ---------------------------------------------------------------------------

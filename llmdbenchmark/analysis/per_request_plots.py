@@ -43,16 +43,22 @@ def generate_per_request_plots(
         _log(context, "matplotlib not available -- skipping per-request plots")
         return 0
 
-    pr_file = results_dir / "per_request_lifecycle_metrics.json"
-    if not pr_file.exists():
-        pr_file = results_dir / "analysis" / "per_request_lifecycle_metrics.json"
-    if not pr_file.exists():
+    results_dir = Path(results_dir)
+    # Runs in-pod, before the results are compressed, so the metrics are plain
+    # files here. inference-perf --analyze may have moved them under analysis/.
+    for name in (
+        "per_request_lifecycle_metrics.json",
+        "analysis/per_request_lifecycle_metrics.json",
+    ):
+        metrics_file = results_dir / name
+        if metrics_file.is_file():
+            break
+    else:
         return 0
 
     try:
-        with open(pr_file, encoding="utf-8") as f:
-            raw_requests = json.load(f)
-    except (json.JSONDecodeError, Exception):
+        raw_requests = json.loads(metrics_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return 0
 
     if not isinstance(raw_requests, list) or len(raw_requests) < 2:
