@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-08-17 18:05:56` (UTC)
-- Generated against git ref: `f2ad11af8a1c3c488b2e329bee74b1f9ab10c5b5`
+- Generated at: `2026-08-18 04:14:39` (UTC)
+- Generated against git ref: `ba30b34566a53addf8d5959de5cdd3ecf0bb00b8`
 
 ## System Tool Dependencies
 

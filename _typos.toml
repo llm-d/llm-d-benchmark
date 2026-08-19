@@ -34,6 +34,10 @@ ba = "ba"
 nam = "nam"
 # Parameter abbreviation used in code
 parm = "parm"
+# Local variable abbreviation for `strategy` (guidellm_native.py)
+strat = "strat"
+# "re-tuned" as in adjusted/tweaked freely (comments in fixtures + tests)
+retuned = "retuned"
 
 # OpenShift Data Foundation
 ODF = "ODF"

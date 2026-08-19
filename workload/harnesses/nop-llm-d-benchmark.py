@@ -8,6 +8,7 @@ Benchmark 'nop' harness
 from __future__ import annotations
 from datetime import datetime, timezone
 import os
+import sys
 import logging
 from pathlib import Path
 import yaml
@@ -135,6 +136,7 @@ def main():
     benchmark_result = BenchmarkResult()
     benchmark_result.scenario.deploy_methods = ",".join(deploy_methods)
     benchmark_result.scenario.max_instances = fma_max_instances
+    fma_error: Exception | None = None
     if fma_enabled:
         try:
             logger.info("Benchmark FMA launcher start...")
@@ -153,8 +155,9 @@ def main():
                 MAX_VLLM_WAIT,
                 write_log_per_process,
             )
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.exception("error on benchmark FMA launcher")
+            fma_error = exc
         finally:
             logger.info("Benchmark FMA launcher end")
     else:
@@ -187,6 +190,15 @@ def main():
     os.makedirs(benchmark_report_filepath, exist_ok=True)
     benchmark_report_filepath = os.path.join(benchmark_report_filepath, "result.yaml")
     convert_result(result_filepath, benchmark_report_filepath, start_time, stop_time)
+
+    # An FMA benchmark failure must fail the run. Exit non-zero AFTER results and
+    # logs are persisted above: SystemExit is not an Exception, so it is not
+    # swallowed by the broad `except Exception` in benchmark_fma or in the
+    # __main__ guard below -- the harness pod goes to Failed and step_08
+    # (wait_completion) marks the nightly failed.
+    if fma_error is not None:
+        logger.error("FMA benchmark failed; harness exiting non-zero to fail the run")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

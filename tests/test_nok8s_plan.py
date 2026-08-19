@@ -58,6 +58,8 @@ def test_nok8s_scenario_renders_templates_and_flags(tmp_path: Path) -> None:
     assert cfg["modelservice"]["enabled"] is False
     assert cfg["kustomize"]["enabled"] is False
     assert cfg["fma"]["enabled"] is False
+    assert cfg["images"]["routerEndpointPicker"]["tag"] == "v0.10.0"
+    assert cfg["nok8s"]["epp"]["tag"] == "v0.10.0"
 
     # All four nok8s artifacts rendered with content.
     for prefix in (

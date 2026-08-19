@@ -2,8 +2,8 @@
 
 Snapshots HPA/ScaledObject/Deployment YAML, events, controller logs, and the
 logs of every pod in the deploy and WVA namespaces to ``results/<exp_id>/``
-— alongside the harness's benchmark output. Skipped only when neither
-+``wva.enabled`` nor ``eppKedaSaturation.enabled`` is set.
+— alongside the harness's benchmark output. Skipped only when none of
+``wva.enabled``, ``eppKedaSaturation.enabled``, or the FMA guide path applies.
 
 Runs AFTER step_09_collect_results so the local results dir already exists
 and won't trip step_09's "skip if results dir non-empty" gate.
@@ -46,6 +46,9 @@ def _kube_logs_with_retry(cmd, *args, attempts: int = 3, backoff: float = 2.0):
     return last
 
 
+_FMA_GUIDE_STACK_NAME = "fast-model-actuation"
+
+
 class CaptureClusterStateStep(Step):
     """Snapshot HPA/ScaledObject/Deployment/events + WVA controller logs to workspace."""
 
@@ -85,14 +88,15 @@ class CaptureClusterStateStep(Step):
             plan_config, "eppKedaSaturation.enabled", default=False
         )
         fma_enabled = self._resolve(plan_config, "fma.enabled", default=False)
-        if not (wva_enabled or epp_keda_enabled):
+        fma_capture = fma_enabled or stack_name == _FMA_GUIDE_STACK_NAME
+        if not (wva_enabled or epp_keda_enabled or fma_capture):
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
                 message=(
-                    "wva.enabled and eppKedaSaturation.enabled both false; "
-                    "skipping cluster-state capture"
+                    "wva.enabled, eppKedaSaturation.enabled, and FMA all "
+                    "inactive; skipping cluster-state capture"
                 ),
                 stack_name=stack_name,
             )
@@ -248,8 +252,8 @@ class CaptureClusterStateStep(Step):
         # (wake / create_instance / launcher-create), the signal the hit-rate
         # computation parses. A dedicated high-tail capture (vs. the generic
         # per-pod dump in section 9, which is tail=5000) keeps the full run's
-        # actuation events. FMA-only.
-        if fma_enabled:
+        # actuation events. FMA paths only (benchmark fma.enabled or the guide).
+        if fma_capture:
             result = _kube_logs_with_retry(
                 cmd,
                 "-l",
