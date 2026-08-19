@@ -184,6 +184,55 @@ Three things overrides cannot do:
 ## Multiple steps
 The full standup of a stack is a multi-step process. The [lifecycle](lifecycle.md) document go into more details explaning the meaning of each different individual step.
 
+## Recovering from crashed pods (`--pod-restart-budget`)
+
+Some pods come up broken and only recover once deleted -- the replacement the
+controller creates is healthy. By default a pod that lands in a crash state
+fails the readiness wait immediately, and with it the whole standup.
+
+`--pod-restart-budget N` lets standup absorb that:
+
+```bash
+llmdbenchmark standup --spec <spec> --pod-restart-budget 3
+```
+
+```bash
+LLMDBENCH_POD_RESTART_BUDGET=3 llmdbenchmark standup --spec <spec>
+```
+
+The budget is a **single total for the whole standup** -- shared by every pod,
+every readiness wait, and every stack, not a per-pod allowance. `3` means at
+most three pod deletions in total, whether they all hit one stubborn decode
+pod or one each across three stacks.
+
+Only failures a restart can plausibly fix are retried:
+
+| Situation | Behavior |
+|---|---|
+| `CrashLoopBackOff`, `Error`, `OOMKilled`, pod phase `Failed` | Deleted and retried while budget remains |
+| `ImagePullBackOff`, `ErrImagePull`, `InvalidImageName`, `CreateContainerConfigError` | Fails immediately -- an identical replacement fails identically |
+| Pod with no controller to recreate it | Fails immediately -- deleting it means it never comes back |
+| Pod already `Terminating` | Left alone; never charged twice |
+| Budget exhausted | Fails with `Pod restart budget exhausted (N/N)` |
+
+Each restart adds `--pod-restart-grace` seconds (default `300`) to that wait's
+deadline, since the replacement pod re-pulls its image and reloads the model
+from scratch. Without it, a crash late in a wait would leave the replacement
+no time to become Ready.
+
+Before a pod is deleted, its `describe` output, current logs,
+previous-container logs, and events are written to
+`<workspace>/setup/logs/pod-restarts/`. Every consumed restart is reported at
+the end of standup, so a run that only converged after deleting pods does not
+look identical to one that came up clean.
+
+Default is `0` (disabled), which behaves exactly as standup always has.
+
+> [!TIP]
+> If you find yourself needing a large budget, the pods are probably failing
+> for a structural reason. Check the captured diagnostics before raising it --
+> the previous-container logs are usually the ones that explain a crash loop.
+
 ## Use
 A scenario file has to be manually crafted as a YAML file. Once crafted, it can be used by `llmdbenchmark standup`, `llmdbenchmark run` or `llmdbenchmark teardown` commands. Its access is controlled by the following parameters.
 

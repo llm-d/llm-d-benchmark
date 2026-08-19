@@ -530,6 +530,8 @@ def _do_standup(args, logger, render_plan_errors):
         kustomize_deploy_timeout=int(
             getattr(args, "kustomize_deploy_timeout", 900) or 900
         ),
+        pod_restart_budget=max(0, int(getattr(args, "pod_restart_budget", 0) or 0)),
+        pod_restart_grace=int(getattr(args, "pod_restart_grace", 300) or 300),
         llmd_repo_path=getattr(args, "llmd_repo_path", None),
         kustomize_skip_infra=not getattr(args, "full_infra", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
@@ -547,10 +549,35 @@ def _do_standup(args, logger, render_plan_errors):
     step_spec = getattr(args, "step", None)
     result = executor.execute(step_spec=step_spec)
 
+    # Reported before the failure check so a standup that died *after*
+    # spending restarts still says what it spent them on.
+    _report_pod_restarts(context, logger)
+
     if result.has_errors:
         raise PhaseError(f"Standup failed:\n{result.summary()}")
 
     return context, result
+
+
+def _report_pod_restarts(context, logger):
+    """Log which pods were restarted, if any.
+
+    A standup that only converged after deleting pods must not read the same
+    as one that came up clean -- especially in CI, where nobody watched it.
+    """
+    from llmdbenchmark.utilities.podstate import evidence_dir, render_restart_summary
+
+    budget = context.restart_budget
+    lines = render_restart_summary(budget)
+    if not lines:
+        return
+
+    logger.log_warning("")
+    for line in lines:
+        logger.log_warning(line)
+    logger.log_warning(
+        f"  Diagnostics for each restarted pod: {evidence_dir(context.workspace)}"
+    )
 
 
 def _execute_standup(args, logger, render_plan_errors):
@@ -1707,6 +1734,14 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT": (
             "kustomize_deploy_timeout",
             "--kustomize-deploy-timeout",
+        ),
+        "LLMDBENCH_POD_RESTART_BUDGET": (
+            "pod_restart_budget",
+            "--pod-restart-budget",
+        ),
+        "LLMDBENCH_POD_RESTART_GRACE": (
+            "pod_restart_grace",
+            "--pod-restart-grace",
         ),
     }
 

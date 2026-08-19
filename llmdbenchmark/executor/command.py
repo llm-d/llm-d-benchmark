@@ -9,45 +9,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from llmdbenchmark.exceptions.exceptions import ExecutionError
-from llmdbenchmark.utilities.kube_helpers import CRASH_STATES
-
-
-def _summarize_container_status(not_ready: list[dict]) -> str:
-    """Return the 'worst' container state among *not_ready*.
-
-    Priority: terminated with a CRASH_STATES reason > any terminated >
-    waiting with a CRASH_STATES reason > any waiting > "NotReady".
-
-    This is what surfaces to ``wait_for_pods``' crash detector, so
-    pushing crash reasons to the front means a CrashLoopBackOff on one
-    container of a multi-container pod aborts the wait immediately
-    instead of getting masked by a "Waiting" sibling.
-    """
-    if not not_ready:
-        return "NotReady"
-
-    def _state_reason(cs: dict, key: str) -> str:
-        return (cs.get("state", {}).get(key) or {}).get("reason", "") or ""
-
-    # Terminal crash states first.
-    for cs in not_ready:
-        reason = _state_reason(cs, "terminated")
-        if reason in CRASH_STATES:
-            return reason
-
-    # Waiting with a crash reason (e.g. CrashLoopBackOff, ImagePullBackOff).
-    for cs in not_ready:
-        reason = _state_reason(cs, "waiting")
-        if reason in CRASH_STATES:
-            return reason
-
-    # Non-terminal but informative.
-    for cs in not_ready:
-        reason = _state_reason(cs, "waiting") or _state_reason(cs, "terminated")
-        if reason:
-            return reason
-
-    return "NotReady"
+from llmdbenchmark.utilities.podstate import (
+    PodState,
+    RestartBudget,
+    RestartBudgetPolicy,
+    Verdict,
+    WaitContext,
+    capture_pod_evidence,
+    evidence_dir,
+    parse_pod_list,
+)
 
 
 @dataclass
@@ -117,6 +88,8 @@ class CommandExecutor:
         kubeconfig: str | None = None,
         kube_context: str | None = None,
         openshift: bool = False,
+        pod_restart_budget: RestartBudget | None = None,
+        pod_restart_grace: float = 300.0,
     ):
         self.work_dir = work_dir
         self.dry_run = dry_run
@@ -128,6 +101,18 @@ class CommandExecutor:
         self._kube_bin = "oc" if openshift else "kubectl"
         self._commands_dir = work_dir / "setup" / "commands"
         self._commands_dir.mkdir(parents=True, exist_ok=True)
+        # Owned by the caller, not built here: this executor is rebuilt
+        # mid-phase (after cluster/OpenShift detection), and a budget created
+        # here would silently reset its counter on every rebuild.
+        self.pod_restart_budget = pod_restart_budget
+        self._pod_policies: list = []
+        if pod_restart_budget is not None and pod_restart_budget.enabled:
+            self._pod_policies.append(
+                RestartBudgetPolicy(
+                    budget=pod_restart_budget,
+                    grace_seconds=pod_restart_grace,
+                )
+            )
 
     def execute(  # pylint: disable=too-many-arguments
         self,
@@ -322,7 +307,13 @@ class CommandExecutor:
         poll_interval: int = 10,
         description: str = "",
     ) -> CommandResult:
-        """Poll pods matching a label selector until all are Ready, showing live progress."""
+        """Poll pods matching a label selector until all are Ready, showing live progress.
+
+        When a restart budget is configured (``--pod-restart-budget``), pods
+        that fail in a way a restart may clear are deleted and given another
+        chance instead of aborting the wait outright. Failures a restart
+        cannot clear (a bad image reference, a broken config) still fail fast.
+        """
         desc = description or label
         kc_args = " ".join(self._kubeconfig_args())
         cmd_repr = (
@@ -336,32 +327,38 @@ class CommandExecutor:
         start = time.time()
         last_status_line = ""
         ever_found_pods = False
+        # Extended by the restart policy: a replacement pod re-pulls its image
+        # and reloads the model from zero, so it needs budget of its own.
+        deadline = float(timeout)
 
         while True:
             elapsed = time.time() - start
-            remaining = max(0, timeout - elapsed)  # noqa: F841
 
-            if elapsed > timeout:
+            if elapsed > deadline:
                 self._clear_progress_line(last_status_line)
+                budget_note = self._restart_budget_note()
                 if not ever_found_pods:
                     self.logger.log_warning(
-                        f"⏱️  No pods found for {desc} after {timeout}s"
+                        f"⏱️  No pods found for {desc} after {int(deadline)}s"
                     )
                     return CommandResult(
                         command=cmd_repr,
                         exit_code=1,
-                        stderr=f"Timed out after {timeout}s waiting for {desc} -- no pods found",
+                        stderr=(
+                            f"Timed out after {int(deadline)}s waiting for {desc} "
+                            f"-- no pods found{budget_note}"
+                        ),
                     )
                 self.logger.log_error(
-                    f"⏱️  Timed out waiting for {desc} after {timeout}s"
+                    f"⏱️  Timed out waiting for {desc} after {int(deadline)}s"
                 )
                 return CommandResult(
                     command=cmd_repr,
                     exit_code=1,
-                    stderr=f"Timed out after {timeout}s waiting for {desc}",
+                    stderr=f"Timed out after {int(deadline)}s waiting for {desc}{budget_note}",
                 )
 
-            pods = self._get_pod_statuses(label, namespace)
+            pods = self._observe_pods(label, namespace)
 
             if pods is None:
                 time.sleep(poll_interval)
@@ -371,7 +368,7 @@ class CommandExecutor:
                 status_line = self._format_progress(
                     desc,
                     elapsed,
-                    timeout,
+                    deadline,
                     "no pods found yet",
                     0,
                     0,
@@ -383,14 +380,14 @@ class CommandExecutor:
 
             ever_found_pods = True
 
-            ready_count = sum(1 for p in pods if p["ready"])
+            ready_count = sum(1 for p in pods if p.ready)
             total = len(pods)
-            pod_summaries = [f"{p['name'][:30]}:{p['status']}" for p in pods]
+            pod_summaries = [f"{p.name[:30]}:{p.summary}" for p in pods]
 
             status_line = self._format_progress(
                 desc,
                 elapsed,
-                timeout,
+                deadline,
                 " | ".join(pod_summaries),
                 ready_count,
                 total,
@@ -398,11 +395,39 @@ class CommandExecutor:
             self._print_progress(status_line, last_status_line)
             last_status_line = status_line
 
-            crashing = [p for p in pods if p["status"] in CRASH_STATES]
+            remedy = self._apply_pod_policies(
+                pods,
+                WaitContext(
+                    description=desc,
+                    namespace=namespace,
+                    elapsed=elapsed,
+                    timeout=deadline,
+                ),
+                last_status_line,
+            )
+            if remedy is not None:
+                if remedy.verdict is Verdict.ABORT:
+                    self._clear_progress_line(last_status_line)
+                    return CommandResult(
+                        command=cmd_repr,
+                        exit_code=1,
+                        stderr=remedy.message or f"Aborting wait for {desc}",
+                    )
+                if remedy.extend_deadline:
+                    deadline += remedy.extend_deadline
+                if remedy.message or remedy.delete_pods:
+                    # The policy logged something, so the progress line was
+                    # cleared; a silent remedy leaves it on screen to be
+                    # overwritten by the next tick.
+                    last_status_line = ""
+                time.sleep(poll_interval)
+                continue
+
+            crashing = [p for p in pods if p.crashing]
             if crashing:
                 self._clear_progress_line(last_status_line)
                 crash_details = ", ".join(
-                    f"{p['name'][:30]}={p['status']}" for p in crashing
+                    f"{p.name[:30]}={p.summary}" for p in crashing
                 )
                 self.logger.log_error(
                     f"❌ {desc}: pod(s) in terminal failure state: {crash_details}"
@@ -412,7 +437,7 @@ class CommandExecutor:
                     exit_code=1,
                     stderr=(
                         f"Pod(s) in terminal failure state: {crash_details}. "
-                        f"Aborting wait for {desc}."
+                        f"Aborting wait for {desc}.{self._restart_budget_note()}"
                     ),
                 )
 
@@ -424,6 +449,93 @@ class CommandExecutor:
                 return CommandResult(command=cmd_repr, exit_code=0)
 
             time.sleep(poll_interval)
+
+    def _restart_budget_note(self) -> str:
+        """Suffix explaining budget state, for failure messages ('' when unused)."""
+        budget = self.pod_restart_budget
+        if budget is None or not budget.enabled:
+            return ""
+        if budget.exhausted:
+            return (
+                f" Pod restart budget exhausted ({budget.status()}); "
+                "raise --pod-restart-budget to allow more restart attempts."
+            )
+        return f" Pod restart budget used: {budget.status()}."
+
+    def _apply_pod_policies(
+        self,
+        pods: list[PodState],
+        ctx: WaitContext,
+        last_status_line: str,
+    ):
+        """Run the configured policies and perform the side effects they ask for.
+
+        Returns the Remedy that was acted on, or ``None`` when no policy had
+        anything to say and the caller should apply its normal rules.
+        """
+        for policy in self._pod_policies:
+            remedy = policy.observe(pods, ctx)
+            if remedy is None:
+                continue
+
+            granted = getattr(policy, "take_granted", lambda: [])()
+            if not remedy.message and not granted:
+                # A silent "keep waiting" (e.g. a replacement pod that has not
+                # appeared yet): leave the progress line alone.
+                return remedy
+
+            self._clear_progress_line(last_status_line)
+            if remedy.message:
+                self.logger.log_warning(f"♻️  {ctx.description}: {remedy.message}")
+
+            for grant in granted:
+                self._capture_and_delete(grant.pod, ctx, grant.event.sequence)
+
+            if remedy.extend_deadline:
+                self.logger.log_info(
+                    f"   Extending wait for {ctx.description} by "
+                    f"{int(remedy.extend_deadline)}s to cover the restart"
+                )
+            return remedy
+        return None
+
+    def _capture_and_delete(
+        self, pod: PodState, ctx: WaitContext, sequence: int
+    ) -> None:
+        """Snapshot a failing pod's diagnostics, then delete it.
+
+        Evidence first: once the pod object is gone its logs and events go with
+        it, and a standup that silently restarted pods would be undebuggable.
+        """
+        try:
+            capture_pod_evidence(
+                self,
+                pod,
+                evidence_dir(self.work_dir),
+                prefix=f"{sequence:02d}-",
+                logger=self.logger,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            self.logger.log_warning(
+                f"Could not capture diagnostics for pod '{pod.name}': {exc}"
+            )
+
+        result = self.kube(
+            "delete",
+            "pod",
+            pod.name,
+            "--namespace",
+            pod.namespace or ctx.namespace,
+            "--ignore-not-found",
+            "--wait=false",
+            check=False,
+        )
+        if result.success:
+            self.logger.log_info(f"   Deleted pod '{pod.name}' -- awaiting replacement")
+        else:
+            self.logger.log_warning(
+                f"Could not delete pod '{pod.name}': {result.stderr}"
+            )
 
     def wait_for_job(
         self,
@@ -769,8 +881,15 @@ class CommandExecutor:
         except OSError:
             return ""
 
-    def _get_pod_statuses(self, label: str, namespace: str) -> list[dict] | None:
-        """Query pod statuses via kubectl/oc get pods -o json."""
+    def _observe_pods(self, label: str, namespace: str) -> list[PodState] | None:
+        """Query pods matching *label* and return their structured state.
+
+        Returns ``None`` when the query itself failed, so a poll loop can tell
+        an apiserver hiccup apart from "the deployment has no pods".
+
+        Deliberately bypasses :meth:`execute`: this runs on every poll tick and
+        would otherwise write a log file per query.
+        """
         parts = [self._kube_bin]
         parts.extend(self._kubeconfig_args())
         parts.extend(
@@ -796,60 +915,24 @@ class CommandExecutor:
             )
             if result.returncode != 0:
                 return None
-
-            data = json.loads(result.stdout)
-            pods = []
-            for item in data.get("items", []):
-                name = item.get("metadata", {}).get("name", "?")
-                phase = item.get("status", {}).get("phase", "Unknown")
-
-                status = phase
-                ready = False
-                container_statuses = item.get("status", {}).get("containerStatuses", [])
-                if container_statuses:
-                    # A pod is Ready only when ALL of its containers are
-                    # Ready. Previously we only looked at containerStatuses[0]
-                    # which, for multi-container pods (e.g. modelservice's
-                    # decode pod with its routing sidecar), could show
-                    # "Ready" while the actual serving container was in
-                    # CrashLoopBackOff — causing step_09's wait to return
-                    # success on a broken deployment.
-                    if all(cs.get("ready", False) for cs in container_statuses):
-                        ready = True
-                        status = "Ready"
-                    else:
-                        # Surface the worst-looking not-ready container so the
-                        # caller can match against CRASH_STATES. Prefer a
-                        # crashing/terminated container over a merely-waiting
-                        # one so terminal failures bubble up first.
-                        not_ready = [
-                            cs
-                            for cs in container_statuses
-                            if not cs.get("ready", False)
-                        ]
-                        status = _summarize_container_status(not_ready)
-                elif phase == "Pending":
-                    conditions = item.get("status", {}).get("conditions", [])
-                    for cond in conditions:
-                        if (
-                            cond.get("type") == "PodScheduled"
-                            and cond.get("status") == "False"
-                        ):
-                            reason = cond.get("reason", "Unschedulable")
-                            status = reason
-                            break
-
-                pods.append(
-                    {
-                        "name": name,
-                        "status": status,
-                        "ready": ready,
-                        "phase": phase,
-                    }
-                )
-            return pods
-        except (json.JSONDecodeError, OSError):
+            return parse_pod_list(result.stdout, namespace=namespace)
+        except OSError:
             return None
+
+    def _get_pod_statuses(self, label: str, namespace: str) -> list[dict] | None:
+        """Query pod statuses as plain dicts (name/status/ready/phase)."""
+        pods = self._observe_pods(label, namespace)
+        if pods is None:
+            return None
+        return [
+            {
+                "name": pod.name,
+                "status": pod.summary,
+                "ready": pod.ready,
+                "phase": pod.phase,
+            }
+            for pod in pods
+        ]
 
     def _get_job_status(self, job_name: str, namespace: str) -> dict | None:
         """Query job status via kubectl/oc get job -o json."""

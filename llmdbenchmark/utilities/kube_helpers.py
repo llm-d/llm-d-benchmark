@@ -13,19 +13,16 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from llmdbenchmark.utilities.podstate import PodState
+from llmdbenchmark.utilities.podstate import CRASH_STATES as _CRASH_STATES
+
 if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
 
-# Container states that indicate a pod will never succeed.
-CRASH_STATES = {
-    "CrashLoopBackOff",
-    "Error",
-    "OOMKilled",
-    "CreateContainerConfigError",
-    "ImagePullBackOff",
-    "ErrImagePull",
-    "InvalidImageName",
-}
+# Container states that indicate a pod will never succeed. Re-exported from
+# llmdbenchmark.utilities.podstate, which also splits them into the states a
+# restart may clear (DEGRADED_STATES) and those it cannot (TERMINAL_STATES).
+CRASH_STATES = _CRASH_STATES
 
 DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 
@@ -36,64 +33,14 @@ DATA_ACCESS_LOOKUP_ATTEMPTS = 5
 DATA_ACCESS_LOOKUP_DELAY_SECONDS = 3.0
 
 
-def _terminated_state_detail(prefix: str, state: dict) -> str:
-    """Format a terminated container state for a user-facing error."""
-    reason = state.get("reason") or "unknown reason"
-    detail = f"{prefix}{reason}"
-    if state.get("exitCode") is not None:
-        detail += f", exit_code={state['exitCode']}"
-    return detail
-
-
 def _pod_crash_details(pod: dict) -> list[str]:
-    """Return concrete crash details for containers in a pod."""
-    metadata = pod.get("metadata", {})
-    status = pod.get("status", {})
-    pod_name = metadata.get("name", "unknown-pod")
-    failures: list[str] = []
+    """Return concrete crash details for containers in a pod.
 
-    status_groups = (
-        status.get("initContainerStatuses", []),
-        status.get("containerStatuses", []),
-        status.get("ephemeralContainerStatuses", []),
-    )
-    for container_statuses in status_groups:
-        for container_status in container_statuses or []:
-            state = container_status.get("state", {})
-            details: list[str] = []
-
-            waiting = state.get("waiting") or {}
-            waiting_reason = waiting.get("reason")
-            if waiting_reason in CRASH_STATES:
-                details.append(waiting_reason)
-
-            terminated = state.get("terminated") or {}
-            terminated_reason = terminated.get("reason")
-            terminated_exit_code = terminated.get("exitCode")
-            if terminated and (
-                terminated_reason in CRASH_STATES
-                or (terminated_exit_code is not None and terminated_exit_code != 0)
-            ):
-                details.append(_terminated_state_detail("terminated: ", terminated))
-
-            if not details:
-                continue
-
-            last_terminated = (container_status.get("lastState") or {}).get(
-                "terminated"
-            )
-            if last_terminated:
-                details.append(
-                    _terminated_state_detail("last terminated: ", last_terminated)
-                )
-
-            container_name = container_status.get("name", "unknown-container")
-            failures.append(f"{pod_name}/{container_name} ({', '.join(details)})")
-
-    if not failures and status.get("reason") in CRASH_STATES:
-        failures.append(f"{pod_name} ({status['reason']})")
-
-    return failures
+    Thin wrapper over :attr:`PodState.crash_details`; kept as a module-level
+    function because callers outside this module (the FMA validator) import it
+    by name.
+    """
+    return PodState.from_api(pod).crash_details
 
 
 # ---------------------------------------------------------------------------

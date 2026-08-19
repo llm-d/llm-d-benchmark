@@ -137,6 +137,19 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # namespace creation).  Override with --full-infra on the CLI.
     kustomize_skip_infra: bool = True
 
+    # Total pod deletions allowed across a phase when a pod lands in a failure
+    # state a restart may clear (CrashLoopBackOff, Error, OOMKilled). Some pods
+    # come up broken and only recover once deleted, so this trades a bounded
+    # amount of churn for a standup that survives it. Deliberately a single
+    # phase-wide total rather than per-pod: the cap is on how much churn the
+    # phase is allowed, not on how stubborn any one pod may be.
+    # 0 (default) disables the mechanism -- a crashing pod fails the wait
+    # immediately, as it always has.
+    pod_restart_budget: int = 0
+    # Seconds added to the wait deadline per restart, covering the replacement
+    # pod's image pull and model load.
+    pod_restart_grace: int = 300
+
     # Standup pod deployment timeouts
     kustomize_deploy_timeout: int = 900
     standalone_deploy_timeout: int = 900
@@ -163,6 +176,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     logger: LoggerProtocol | None = field(default=None, repr=False)
 
+    # Built once on first use and shared by every CommandExecutor rebuild, so
+    # the count survives the executor being recreated mid-phase.
+    _restart_budget: Any = field(default=None, repr=False)
+
     # Call rebuild_cmd() after changing kubeconfig or is_openshift.
     cmd: CommandExecutor | None = field(default=None, repr=False)
 
@@ -173,6 +190,15 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     helm_cmd: str = "helm"
     helmfile_cmd: str = "helmfile"
     python_cmd: str = "python3"
+
+    @property
+    def restart_budget(self):
+        """The phase-wide pod restart budget, created on first access."""
+        if self._restart_budget is None:
+            from llmdbenchmark.utilities.podstate import RestartBudget
+
+            self._restart_budget = RestartBudget(self.pod_restart_budget)
+        return self._restart_budget
 
     def rebuild_cmd(self) -> CommandExecutor:
         """Create or recreate the shared CommandExecutor from current context fields."""
@@ -186,6 +212,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
             kubeconfig=self.kubeconfig,
             kube_context=self.context_name,
             openshift=self.is_openshift,
+            pod_restart_budget=self.restart_budget,
+            pod_restart_grace=float(self.pod_restart_grace),
         )
         return self.cmd
 
