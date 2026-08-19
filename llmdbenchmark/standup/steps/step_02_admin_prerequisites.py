@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from collections.abc import Mapping
+import json
 import re
 
 import yaml
@@ -200,6 +201,7 @@ class AdminPrerequisitesStep(Step):
 
         existing_crds = self._get_existing_crds(cmd, context)
 
+        installed_monitoring_crds = False
         deploy_methods = context.deployed_methods or []
         modelservice_active = "modelservice" in deploy_methods
         gateway_class = (plan_config.get("gateway") or {}).get("className", "")
@@ -238,7 +240,7 @@ class AdminPrerequisitesStep(Step):
                 existing_crds,
             )
 
-            self._install_prometheus_crds_if_needed(
+            installed_monitoring_crds = self._install_prometheus_crds_if_needed(
                 cmd,
                 plan_config,
                 existing_crds,
@@ -246,16 +248,23 @@ class AdminPrerequisitesStep(Step):
 
         # Also install Prometheus CRDs for standalone (outside modelservice block)
         if not modelservice_active:
-            self._install_prometheus_crds_if_needed(
+            installed_monitoring_crds = self._install_prometheus_crds_if_needed(
                 cmd,
                 plan_config,
                 existing_crds,
             )
 
         # After any auto-install attempt, validate that monitoring CRDs are
-        # present when monitoring is enabled.  Re-fetch CRDs so we pick up
-        # anything that was just installed above.
-        refreshed_crds = self._get_existing_crds(cmd, context)
+        # present when monitoring is enabled.  Re-fetch the inventory only when
+        # something was actually installed above -- `kubectl get crd -o json`
+        # ships every CRD's full OpenAPI schema, so an unconditional refetch
+        # spends seconds to minutes re-confirming a set we already hold. When
+        # nothing installed, `existing_crds` is still authoritative.
+        refreshed_crds = (
+            self._get_existing_crds(cmd, context)
+            if installed_monitoring_crds
+            else existing_crds
+        )
         self._validate_monitoring_crds(
             cmd, context, plan_config, refreshed_crds, errors
         )
@@ -296,9 +305,14 @@ class AdminPrerequisitesStep(Step):
         )
         if not result.success or not result.stdout.strip():
             return {}
+        # json.loads, not yaml.safe_load: `-o json` can only emit JSON, and
+        # this payload carries every CRD's full OpenAPI v3 schema -- tens of
+        # MB on a mature cluster. PyYAML's pure-Python parser takes ~200x
+        # longer than json on that input (a minute vs a fraction of a second
+        # for ~600 CRDs), which used to dominate this step's runtime.
         try:
-            items = yaml.safe_load(result.stdout).get("items", [])
-        except (yaml.YAMLError, AttributeError):
+            items = json.loads(result.stdout).get("items", [])
+        except (json.JSONDecodeError, AttributeError):
             return {}
         inventory: dict[str, str | None] = {}
         for item in items:
@@ -607,16 +621,19 @@ class AdminPrerequisitesStep(Step):
         cmd: CommandExecutor,
         plan_config: dict,
         existing_crds: list[str],
-    ):
+    ) -> bool:
         """Install Prometheus Operator CRDs (PodMonitor, ServiceMonitor) if requested.
 
         Only installs when monitoring.installPrometheusCrds is true and the
         CRDs don't already exist. Useful for Kind or vanilla K8s clusters
         that don't have the Prometheus Operator installed.
+
+        Returns True only when CRDs were actually applied, so the caller knows
+        whether its cached CRD inventory is now stale.
         """
         monitoring = plan_config.get("monitoring", {})
         if not monitoring.get("installPrometheusCrds", False):
-            return
+            return False
 
         prometheus_crds = [
             "podmonitors.monitoring.coreos.com",
@@ -628,7 +645,7 @@ class AdminPrerequisitesStep(Step):
                 "✅ Prometheus Operator CRDs already installed "
                 "(podmonitors.monitoring.coreos.com found)"
             )
-            return
+            return False
 
         cmd.logger.log_info(
             "Installing Prometheus Operator CRDs (PodMonitor, ServiceMonitor)..."
@@ -638,18 +655,19 @@ class AdminPrerequisitesStep(Step):
             cmd.logger.log_warning(
                 "monitoring.prometheusCrdUrls is empty -- cannot install CRDs"
             )
-            return
+            return False
         for url in urls:
             result = cmd.kube("apply", "-f", url, check=False)
             if not result.success:
                 cmd.logger.log_warning(
                     f"Failed to install Prometheus CRD from {url}: {result.stderr}"
                 )
-                return
+                return False
 
         cmd.logger.log_info(
             "✅ Prometheus Operator CRDs installed (PodMonitor, ServiceMonitor)"
         )
+        return True
 
     def _validate_monitoring_crds(
         self,
