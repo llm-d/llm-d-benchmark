@@ -41,6 +41,7 @@ VALIDATORS: dict[str, type] = {
     "precise-prefix-cache-aware": PrecisePrefixCacheAwareValidator,
     "optimized-baseline": OptimizedBaselineValidator,
     "fast-model-actuation": FmaValidator,
+    "fast-model-actuation-keda": FmaValidator,
     # inference-scheduling-wva reuses the inference-scheduling validator;
     # the WvaSmoketestMixin auto-activates its extra checks when the
     # stack's config has wva.enabled: true.
