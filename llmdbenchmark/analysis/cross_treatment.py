@@ -13,10 +13,15 @@ per-treatment analysis completes).
 from __future__ import annotations
 
 import csv
-import glob
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from llmdbenchmark.analysis.session_metrics import (
+    SESSION_METRICS_OF_INTEREST,
+    deep_get,
+)
+from llmdbenchmark.utilities.archive import read_member, read_members
 
 try:
     import yaml
@@ -77,53 +82,6 @@ METRICS_OF_INTEREST = [
     ("results.request_performance.aggregate.requests.total", "total_requests"),
     ("results.request_performance.aggregate.requests.failures", "failures"),
 ]
-
-SESSION_METRICS_OF_INTEREST = [
-    ("results.session_performance.sessions.session_rate.mean", "session_rate_qps"),
-    (
-        "results.session_performance.sessions.session_duration.mean",
-        "session_duration_mean_s",
-    ),
-    (
-        "results.session_performance.sessions.session_duration.p50",
-        "session_duration_p50_s",
-    ),
-    (
-        "results.session_performance.sessions.session_duration.p99",
-        "session_duration_p99_s",
-    ),
-    (
-        "results.session_performance.sessions.events_per_session.mean",
-        "events_per_session_mean",
-    ),
-    (
-        "results.session_performance.sessions.events_cancelled_per_session.mean",
-        "events_cancelled_per_session_mean",
-    ),
-    (
-        "results.session_performance.sessions.input_tokens_per_session.mean",
-        "input_tokens_per_session_mean",
-    ),
-    (
-        "results.session_performance.sessions.output_tokens_per_session.mean",
-        "output_tokens_per_session_mean",
-    ),
-    ("results.session_performance.sessions.total", "total_sessions"),
-    ("results.session_performance.sessions.failed", "failed_sessions"),
-]
-
-
-def deep_get(d: dict, dotted_key: str, default=None):
-    """Traverse nested dict by dotted key path."""
-    keys = dotted_key.split(".")
-    for k in keys:
-        if not isinstance(d, dict):
-            return default
-        d = d.get(k, default)
-        if d is default:
-            return default
-    return d
-
 
 # Only used when the caller has no harness name to hand: a results directory
 # name alone cannot be split into harness and treatment, since both may contain
@@ -889,15 +847,17 @@ def _generate_scatter_plots(
     return generated
 
 
-def _extract_per_request_metrics(pr_file: Path) -> dict[str, list[float]]:
-    """Extract per-request TTFT, TPOT, ITL, E2E from a per_request JSON file.
+def _extract_per_request_metrics(payload: bytes) -> dict[str, list[float]]:
+    """Extract per-request TTFT, TPOT, ITL, E2E from per_request JSON bytes.
+
+    Takes bytes rather than a path so a treatment whose results were archived is
+    read straight out of the archive, without expanding the ~1.5 GB file to disk.
 
     Returns dict with keys 'ttft', 'tpot', 'itl', 'e2e', each a list of floats.
     """
     import json
 
-    with open(pr_file, encoding="utf-8") as f:
-        raw = json.load(f)
+    raw = json.loads(payload)
 
     metrics: dict[str, list[float]] = {"ttft": [], "tpot": [], "itl": [], "e2e": []}
 
@@ -942,27 +902,23 @@ def _cache_epoch_from_name(path: Path) -> float | None:
     return float(m.group(1)) if m else None
 
 
-def _cache_parse_snapshot(path: Path) -> dict[str, float]:
+def _cache_parse_snapshot(text: str) -> dict[str, float]:
     """Parse one raw snapshot: {KV: mean, QUERIES: sum, HITS: sum} if present."""
     buckets: dict[str, list[float]] = {
         _CACHE_KV: [],
         _CACHE_QUERIES: [],
         _CACHE_HITS: [],
     }
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                m = _CACHE_METRIC_RE.match(line)
-                if not m:
-                    continue
-                name = m.group(1)
-                if name in buckets:
-                    buckets[name].append(float(m.group(2)))
-    except OSError:
-        return {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = _CACHE_METRIC_RE.match(line)
+        if not m:
+            continue
+        name = m.group(1)
+        if name in buckets:
+            buckets[name].append(float(m.group(2)))
     out: dict[str, float] = {}
     if buckets[_CACHE_KV]:
         out[_CACHE_KV] = sum(buckets[_CACHE_KV]) / len(buckets[_CACHE_KV])
@@ -1006,14 +962,15 @@ def _cache_trim_to_active(
 
 def _cache_load_series(results_dir: Path) -> list[tuple[float, dict[str, float]]]:
     """Return [(elapsed_sec, {metric: value}), ...] for one treatment, trimmed to its active window and re-based to t=0."""
-    files = sorted(glob.glob(str(results_dir / _CACHE_RAW_GLOB)))
     samples: list[tuple[float, dict[str, float]]] = []
-    for f in files:
-        p = Path(f)
-        epoch = _cache_epoch_from_name(p)
+    for relative, payload in sorted(read_members(results_dir, _CACHE_RAW_GLOB).items()):
+        epoch = _cache_epoch_from_name(Path(relative))
         if epoch is None:
             continue
-        values = _cache_parse_snapshot(p)
+        try:
+            values = _cache_parse_snapshot(payload.decode("utf-8"))
+        except UnicodeDecodeError:
+            continue
         if values:
             samples.append((epoch, values))
     if not samples:
@@ -1218,14 +1175,14 @@ def _generate_overlaid_cdf_plots(
         if not subdir.is_dir():
             continue
         # Check both root and analysis/ subdirectory (inference-perf --analyze
-        # moves the file into analysis/)
-        pr_file = subdir / "per_request_lifecycle_metrics.json"
-        if not pr_file.exists():
-            pr_file = subdir / "analysis" / "per_request_lifecycle_metrics.json"
-        if not pr_file.exists():
+        # moves the file into analysis/), plain or inside an archive.
+        payload = read_member(subdir, "per_request_lifecycle_metrics.json")
+        if payload is None:
+            payload = read_member(subdir, "analysis/per_request_lifecycle_metrics.json")
+        if payload is None:
             continue
         try:
-            metrics = _extract_per_request_metrics(pr_file)
+            metrics = _extract_per_request_metrics(payload)
             if any(len(v) > 0 for v in metrics.values()):
                 treatment_data[subdir.name] = metrics
         except Exception:

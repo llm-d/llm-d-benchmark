@@ -456,7 +456,12 @@ else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
 
-optional_tools="oc kustomize skopeo crane"
+# zstd: the driver reads collected result sets out of their archive with it, but
+# only for a compressed one -- read_member returns from the plain file first, and
+# `--no-compress` never writes an archive at all. Optional so a host whose package
+# manager cannot supply it can still run `plan`, and because the pod side already
+# warns-and-degrades on the same dependency rather than failing.
+optional_tools="oc kustomize skopeo crane zstd"
 
 # Demoted from `tools=` above, so install.sh has to keep provisioning them,
 # only without the power to abort the install. `oc` stays report-only, as on
@@ -464,7 +469,7 @@ optional_tools="oc kustomize skopeo crane"
 # and moves ITS kubectl into /usr/local/bin, which would replace a kubectl the
 # user already has. CI installs oc itself where it needs it (see the "Install
 # oc" step in .github/workflows/reusable-ci-nightly-benchmark.yaml).
-autoinstall_optional="kustomize skopeo crane"
+autoinstall_optional="kustomize skopeo crane zstd"
 
 # ---------------------------------------------------------------------------
 # Version helper
@@ -485,6 +490,10 @@ tool_version() {
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
         crane)      crane version 2>&1 | tr -d '\n' ;;
+        # Not $NF: the banner is '*** Zstandard CLI (64-bit) v1.5.7, by ... ***',
+        # so the last field is '***'. Matching the number also keeps version_gte
+        # off its "(unknown)" branch, which returns 1 even against an empty pin.
+        zstd)       zstd --version 2>&1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 ;;
         *)          echo "(unknown)" ;;
     esac
 }
@@ -733,6 +742,8 @@ install_crane_mac()    { brew install crane; }
 install_skopeo_mac()   { brew install skopeo; }
 install_curl_mac()     { brew install curl; }
 install_jq_mac()       { brew install jq; }
+install_zstd_mac()     { brew install zstd; }
+install_zstd_linux()   { ${PKG_MGR} zstd || true; }
 
 # ---------------------------------------------------------------------------
 # Check required tools (fail if missing, upgrade if outdated)

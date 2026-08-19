@@ -1659,6 +1659,16 @@ downloadJob:
 dataAccess:
   rsyncPort: *rsync_port
   runAsUser: ~
+  # Compression runs here, not in the harness pod. `zstd -T0` reads the *host* core
+  # count, ignoring any cgroup quota, and its worker buffers scale with it -- GBs of
+  # RSS on a large benchmark node. The cpu *limit* sets the quota the script reads to
+  # pick a thread count; requests stay small so the pod still schedules on a
+  # single-node Kind cluster that is also running a model server.
+  resources:
+    limitsCpu: 4
+    limitsMemory: 8Gi
+    requestsCpu: 100m
+    requestsMemory: 128Mi
   nodeSelector: {}
   tolerations: []
 

@@ -346,6 +346,8 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
   which has kustomize built in; the standalone binary is only a convenience
 - **skopeo**, **crane** (optional) -- Used to resolve `:auto` image tags; any one
   of `skopeo`, `crane` or `podman` is enough
+- **zstd** (optional) -- Reads a compressed result set back out of its archive.
+  Without it a run collects uncompressed instead of failing
 - **oc** (optional) -- Required for OpenShift clusters (either `kubectl` or `oc` must be present)
 
 ### Administrative Requirements
@@ -377,7 +379,7 @@ The install script:
 
 1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
 2. Validates Python 3.11+ and pip
-3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, jq, yq) and best-effort installs the optional ones (kustomize, skopeo, crane)
+3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, jq, yq) and best-effort installs the optional ones (kustomize, skopeo, crane, zstd)
 4. Installs the `helm-diff` plugin (required by helmfile)
 5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
 6. Verifies all Python packages are importable
@@ -413,6 +415,8 @@ llmdbenchmark --version
 | `--quiet-plan` / `--no-quiet-plan` | `LLMDBENCH_QUIET_PLAN` | Suppress the per-file plan-rendering narration on the console -- the `Rendered: <file>` lines, image overrides and per-stack banners -- replacing it with a one-line summary of what was rendered and where. **On by default** for `standup`, `smoketest`, `teardown`, `run` and `experiment`, where the render is an implicit prelude; **off by default** for `plan`, whose output it is. The detail is never lost: it is written to `<workspace>/logs/` at `DEBUG` either way. `--verbose` overrides this and always shows the full narration. See [Quieting the plan-rendering output](#quieting-the-plan-rendering-output). |
 | `--run-description TEXT` | `LLMDBENCH_DESCRIPTION_TEXT` | Human-readable label for the run, recorded as `run.description` in the benchmark report. Defaults to `<model> [<experiment id>]`. Also settable as `description.text` under a scenario's `common:` (or top-level `shared:`) block, or per treatment in an experiment. |
 | `--run-keywords LIST` | `LLMDBENCH_DESCRIPTION_KEYWORDS` | Comma-separated tags recorded as `run.keywords`. Never auto-populated; omitted entirely when unset. Also settable as `description.keywords` in the same places. |
+| `--compress` / `--no-compress` | `LLMDBENCH_COMPRESS` | Compress output (default: on). Each result set is compressed on the PVC before collection, so the archive rather than the raw tree crosses the tunnel; nothing is compressed on the driver. benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots stay plain at the paths an uncompressed run writes them to; everything else lives in `workspace.tar.zst`. `--no-compress` keeps a fully plain tree. See [Compressed output](#compressed-output). |
+| `--compress-level N` | `LLMDBENCH_COMPRESS_LEVEL` | zstd level (default: 10, the speed/size knee). Raise for archival runs: level 16 costs roughly an order of magnitude more wall clock, for a size gain that measured between 6% and 12% on real result data. |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
 | `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. Available on every subcommand that renders templates. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile — the two can be combined.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set). |
 | `--version` | | Show version |
@@ -601,6 +605,74 @@ llmdbenchmark -v standup --spec gpu
 
 Precedence: `--quiet-plan` / `--no-quiet-plan` > `LLMDBENCH_QUIET_PLAN` >
 per-command default, with `--verbose` overriding all three.
+
+### Compressed output
+
+Output is compressed by default (`--no-compress` opts out). A result set is dominated by
+native harness JSON -- `per_request_lifecycle_metrics.json` alone reaches ~1.5 GB per run --
+and the pipeline is **generate, compress, copy**:
+
+* the harness pod produces every per-result-set artifact (reports, summaries, plots,
+  stage-clipped metrics) *before* anything is compressed;
+* each result set is then compressed in place **on the PVC**, so the archive rather than the
+  raw tree crosses the apiserver exec tunnel. This is a transfer speedup as much as a storage
+  one, and it composes with `--fast-collect`;
+* the archive is copied down as-is. Nothing is compressed, expanded, or re-analysed on the
+  driver.
+
+A small keep-plain set is left as real files so the collected tree stays usable without
+touching the archive:
+
+```
+<workspace>/
+├── latest -> <user>-<timestamp>/
+└── <user>-<timestamp>/
+    ├── plan/<scenario>/                       # teardown reads it live
+    ├── analysis/<experiment_id>/
+    │   └── distributions/*.png                # plain
+    └── results/<experiment_id>/
+        ├── benchmark_report_v0.2,_*.yaml      # plain
+        ├── run_metadata.yaml                  # plain
+        └── workspace.tar.zst                  # everything else
+```
+
+Four keep-plain entries, each earning it: the benchmark reports and `run_metadata.yaml` are
+what `results_store` globs off the live filesystem to resolve a run's uid/model/hardware,
+`experiment-summary.yaml` is a DoE run's only index, and the plots are the artifact people
+open (already-compressed bytes, so archiving them buys nothing).
+
+Everything else -- the per-request JSON, logs including the raw Prometheus snapshots, metric
+summaries, CSV, HTML, traces -- lives in `workspace.tar.zst`, and every component that reads
+one of those goes through the archive rather than requiring a plain copy: the cross-treatment
+overlays, summary extraction, the `eval-containers` roll-up and per-task reports, the failure
+validator, and the FMA comparison table. CI's log-dump steps read through
+`util/dump_result_file.sh`.
+
+Inspect an archive without expanding it:
+
+```bash
+tar -I zstd -tf workspace.tar.zst                        # list contents
+tar -I zstd -xOf workspace.tar.zst ./logs/stdout.log     # one member to stdout
+tar -I zstd -xf workspace.tar.zst                        # expand in place
+```
+
+Grep one member through `-xOf` as above. Piping the whole archive does not work: the tar
+padding reads as binary, so plain `grep` prints nothing and `grep -a` prints the
+surrounding tar block rather than the matching line. Level 10 is the default because it
+is the speed/size knee; `--compress-level` raises it for archival runs.
+
+`zstd` must be present in the benchmark image. Images predating it are detected by a probe
+and fall back to plain collection with a warning, never a failure. Compression is also
+skipped when the harness did not finish (a wait timeout, or `--wait-timeout 0`), since
+deleting files the harness may still be writing is not recoverable.
+
+`zstd` is needed on the driver too, to read a collected archive back. `install.sh`
+installs it best-effort; without it the run collects uncompressed and says so, so a
+host that cannot supply the package still works.
+
+`llmdbenchmark results add <path>` and UID lookups behave identically on a compressed and an
+uncompressed workspace: the plain files stay at `results/<experiment_id>/`, and `plan/`, which
+the store reads the scenario name from, is never touched.
 
 ## Architecture
 

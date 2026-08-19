@@ -1069,6 +1069,8 @@ All flags for the `run` subcommand:
 | `--step` | | string | (all) | Run specific step(s) only (e.g. `--step 4-6`) |
 | `--dry-run` | `-n` | flag | false | Log commands without executing |
 | `--namespace` | `-p` | string | (from plan) | Kubernetes namespace |
+| `--compress` / `--no-compress` | | flag | true | Compress each result set on the PVC before collection (benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots stay plain) |
+| `--compress-level` | | int | `10` | zstd compression level |
 
 ---
 

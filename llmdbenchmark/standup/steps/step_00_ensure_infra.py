@@ -6,6 +6,7 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.deps import (
+    OPTIONAL_TOOL_CONSEQUENCE,
     check_system_dependencies,
     check_python_version,
     check_helm_version,
@@ -275,7 +276,11 @@ class EnsureInfraStep(Step):
         if dep_result.missing_optional:
             if context.logger:
                 for tool in dep_result.missing_optional:
-                    context.logger.log_warning(f"Optional tool not found: {tool}")
+                    cost = OPTIONAL_TOOL_CONSEQUENCE.get(tool)
+                    context.logger.log_warning(
+                        f"Optional tool not found: {tool}"
+                        + (f" -- {cost}" if cost else "")
+                    )
 
         # Helm 4 toolchain guard. Standup deploys via helmfile; a Helm-3 host
         # or a pre-1.5 helmfile makes `helmfile template` panic with an

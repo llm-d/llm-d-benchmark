@@ -25,13 +25,22 @@ def extract_summary(results_dir: Path, marker: str | None) -> Path | None:
     Returns the path written, or None when there was nothing to write.
     """
     stdout_log = results_dir / "stdout.log"
-    if not stdout_log.is_file():
-        return None
-
-    try:
-        text = stdout_log.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
+    if stdout_log.is_file():
+        try:
+            text = stdout_log.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+    else:
+        # Logs are archived, so a driver-side call on a collected tree has to read
+        # it back out. In-pod there is no archive yet and no package to import.
+        try:
+            from llmdbenchmark.utilities.archive import read_member
+        except ImportError:
+            return None
+        payload = read_member(results_dir, "stdout.log")
+        if payload is None:
+            return None
+        text = payload.decode("utf-8", errors="replace")
 
     lines = text.splitlines()
     if marker:

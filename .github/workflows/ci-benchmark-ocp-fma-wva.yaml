@@ -347,9 +347,18 @@ jobs:
             latest=$(find "$base" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
             exp=""
             if [ -n "$latest" ]; then
-              exp=$(find "$latest/results" -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/hpa.txt' \; -print 2>/dev/null | head -1)
+              # Prefer a result dir the dump helper can actually read hpa.txt from.
+              # A plain `test -f` can never succeed now that logs are archived, so it
+              # fell through to the bare listing below -- which, without a sort, picked
+              # an arbitrary dir and could label one arm's diagnostics as another's.
+              for _candidate in $(find "$latest/results" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort); do
+                _probe=$("$GITHUB_WORKSPACE/util/dump_result_file.sh" "$_candidate" "hpa.txt")
+                case "$_probe" in "no hpa.txt"*) continue ;; esac
+                exp="$_candidate"
+                break
+              done
               if [ -z "$exp" ]; then
-                exp=$(find "$latest/results" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)
+                exp=$(find "$latest/results" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | head -1)
               fi
             fi
             echo "${label}_exp=${exp}" >> "$GITHUB_OUTPUT"
@@ -362,141 +371,118 @@ jobs:
       - name: Dump HPA — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/hpa.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa.txt for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.baseline_exp }}" "hpa.txt"
 
       - name: Dump HPA describe — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/hpa-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.baseline_exp }}" "hpa-describe.txt"
 
       - name: Dump ScaledObject — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/scaledobject.txt"
-          [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.baseline_exp }}" "scaledobject.txt"
 
       - name: Dump ScaledObject describe — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/scaledobject-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.baseline_exp }}" "scaledobject-describe.txt"
 
       - name: Dump WVA controller log tail — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/wva-controller.log"
-          [ -f "$f" ] && tail -200 "$f" || echo "no wva-controller.log for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" --tail 200 "${{ steps.cs.outputs.baseline_exp }}" "wva-controller.log"
 
       - name: Dump events — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/events.log"
-          [ -f "$f" ] && cat "$f" || echo "no events.log for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.baseline_exp }}" "events.log"
 
       - name: Dump pods — Baseline (WVA without FMA)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.baseline_exp }}/pods.txt"
-          [ -f "$f" ] && cat "$f" || echo "no pods.txt for baseline"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.baseline_exp }}" "pods.txt"
 
       # ---------------- WVA with FMA (Warm-Start) dumps --------------------
 
       - name: Dump HPA — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa.txt for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "hpa.txt"
 
       - name: Dump HPA describe — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/hpa-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "hpa-describe.txt"
 
       - name: Dump ScaledObject — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/scaledobject.txt"
-          [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "scaledobject.txt"
 
       - name: Dump ScaledObject describe — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/scaledobject-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "scaledobject-describe.txt"
 
       - name: Dump WVA controller log tail — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/wva-controller.log"
-          [ -f "$f" ] && tail -200 "$f" || echo "no wva-controller.log for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" --tail 200 "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "wva-controller.log"
 
       - name: Dump FMA launcher-populator log tail — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f=$(find "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
-          [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" --glob --tail 200 "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" '*launcher-populator*.log'
 
       - name: Dump events — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/events.log"
-          [ -f "$f" ] && cat "$f" || echo "no events.log for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "events.log"
 
       - name: Dump pods — WVA with FMA (Warm-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_warmstart_exp }}/pods.txt"
-          [ -f "$f" ] && cat "$f" || echo "no pods.txt for warm-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_warmstart_exp }}" "pods.txt"
 
       # ---------------- WVA with FMA (Hot-Start) dumps ---------------------
 
       - name: Dump HPA — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa.txt for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "hpa.txt"
 
       - name: Dump HPA describe — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/hpa-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no hpa-describe.txt for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "hpa-describe.txt"
 
       - name: Dump ScaledObject — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/scaledobject.txt"
-          [ -f "$f" ] && cat "$f" || echo "no scaledobject.txt for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "scaledobject.txt"
 
       - name: Dump ScaledObject describe — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/scaledobject-describe.txt"
-          [ -f "$f" ] && cat "$f" || echo "no scaledobject-describe.txt for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "scaledobject-describe.txt"
 
       - name: Dump WVA controller log tail — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/wva-controller.log"
-          [ -f "$f" ] && tail -200 "$f" || echo "no wva-controller.log for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" --tail 200 "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "wva-controller.log"
 
       - name: Dump FMA launcher-populator log tail — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f=$(find "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" -maxdepth 1 -name "*launcher-populator*.log" 2>/dev/null | head -1)
-          [ -n "$f" ] && tail -200 "$f" || echo "no launcher-populator log for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" --glob --tail 200 "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" '*launcher-populator*.log'
 
       - name: Dump events — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/events.log"
-          [ -f "$f" ] && cat "$f" || echo "no events.log for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "events.log"
 
       - name: Dump pods — WVA with FMA (Hot-Start)
         if: always()
         run: |
-          f="${{ steps.cs.outputs.fma_wva_hotstart_exp }}/pods.txt"
-          [ -f "$f" ] && cat "$f" || echo "no pods.txt for hot-start"
+          "$GITHUB_WORKSPACE/util/dump_result_file.sh" "${{ steps.cs.outputs.fma_wva_hotstart_exp }}" "pods.txt"

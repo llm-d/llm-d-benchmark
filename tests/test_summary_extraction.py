@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from llmdbenchmark.analysis.summary import extract_summary
 
@@ -93,3 +96,30 @@ def test_entry_point_imports_flat(tmp_path):
     assert (results / "analysis" / "summary.txt").read_text(
         encoding="utf-8"
     ) == "Result ==\ntail\n"
+
+
+def test_extracts_from_an_archived_stdout_log(tmp_path):
+    """Logs are archived, so a driver-side call on a collected tree has to read
+    stdout.log back out of the archive rather than report nothing to summarise."""
+    from llmdbenchmark.utilities.archive import remote_compress_script
+
+    if shutil.which("zstd") is None:
+        pytest.skip("needs the zstd CLI")
+
+    results = tmp_path / "exp_1"
+    results.mkdir()
+    (results / "stdout.log").write_text("boot\nResult ==\nthroughput: 42\n")
+    (results / "benchmark_report_v0.2,_a.yaml").write_text("y: 1\n")
+
+    script = remote_compress_script(str(results), level=1)
+    assert (
+        subprocess.run(
+            ["bash", "-c", script], capture_output=True, check=False
+        ).returncode
+        == 0
+    )
+    assert not (results / "stdout.log").exists()
+
+    written = extract_summary(results, "Result ==")
+    assert written is not None
+    assert written.read_text(encoding="utf-8") == "Result ==\nthroughput: 42\n"

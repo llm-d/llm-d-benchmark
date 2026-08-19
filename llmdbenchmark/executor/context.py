@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from llmdbenchmark.executor.protocols import LoggerProtocol
+from llmdbenchmark.utilities.archive import DEFAULT_LEVEL as DEFAULT_COMPRESS_LEVEL
 
 if TYPE_CHECKING:
     from llmdbenchmark.executor.command import CommandExecutor
@@ -105,6 +106,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # differs -- but is much faster for large result trees. Relies on the
     # fragile apiserver exec stream (retried). Off by default. See step_07.
     harness_fast_collect: bool = False
+    # Compress each result set on the PVC before collecting, so the archive crosses
+    # the tunnel. Nothing is compressed on the driver; reports, metadata and plots
+    # stay plain so results_store can still index the collected tree.
+    compress_output: bool = True
+    compress_level: int = DEFAULT_COMPRESS_LEVEL
     # When True, reset the vLLM prefix, multimodal, and encoder caches
     # (POST /reset_prefix_cache, /reset_mm_cache, /reset_encoder_cache) on
     # every serving pod before each treatment's run, so every treatment

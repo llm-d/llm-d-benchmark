@@ -1620,10 +1620,39 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     res = Path(results_file)
     root = res.parent.parent if res.parent.name == "task" else res.parent
 
-    def _read(rel: str) -> dict:
+    def _read_text(rel: str) -> str | None:
+        """Text of *rel* under the task dir, plain or from the task's archive.
+
+        Archived by default on a collected run, and every caller here treats a read
+        failure as "no data" -- so a plain-only read yields a report with the reward
+        and every perf field empty, which is indistinguishable from a task that
+        produced nothing.
+        """
+        plain = root / rel
+        if plain.is_file():
+            try:
+                return plain.read_text(encoding="utf-8")
+            except OSError:
+                return None
         try:
-            return json.loads((root / rel).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            from llmdbenchmark.utilities.archive import read_member
+        except ImportError:  # in-pod: shipped flat, no llmdbenchmark package
+            return None
+        payload = read_member(root, rel)
+        if payload is None:
+            return None
+        try:
+            return payload.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
+    def _read(rel: str) -> dict:
+        text = _read_text(rel)
+        if text is None:
+            return {}
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
             return {}
 
     reward = _read("task/result.json")
@@ -1635,9 +1664,9 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     n_calls = 0
     in_tok = out_tok = 0
     t_first = t_last = None
-    traces = root / "traces.jsonl"
-    if traces.exists():
-        for line in traces.read_text(encoding="utf-8").splitlines():
+    traces_text = _read_text("traces.jsonl")
+    if traces_text is not None:
+        for line in traces_text.splitlines():
             line = line.strip()
             if not line:
                 continue

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import shlex
 import subprocess
 import sys
 import time
@@ -277,6 +278,55 @@ class CommandExecutor:
             parts.extend(["--namespace", namespace])
         parts.extend(args)
         return self.execute(" ".join(parts), check=check, force=force)
+
+    def kube_exec(
+        self,
+        pod: str,
+        *remote_argv: str,
+        namespace: str | None = None,
+        check: bool = True,
+        timeout: int | None = None,
+    ) -> CommandResult:
+        """Run ``remote_argv`` inside ``pod`` without a local shell.
+
+        ``kube()`` space-joins its arguments and :meth:`_run_once` feeds the
+        result to ``bash -c``, so a payload meant for the pod's ``sh -c`` is
+        re-parsed by the *local* shell first -- quotes collapse, and anything
+        destructive in it runs against the driver's own filesystem. Passing argv
+        straight to ``subprocess.run`` keeps each element intact, so use this for
+        every ``sh -c`` payload.
+        """
+        argv = [self._kube_bin, *self._kubeconfig_args()]
+        if namespace:
+            argv.extend(["--namespace", namespace])
+        argv.extend(["exec", pod, "--", *remote_argv])
+
+        cmd_str = shlex.join(argv)
+        timestamp = int(time.time() * 1e9)
+        if self.dry_run:
+            return self._handle_dry_run(cmd_str, timestamp)
+
+        self._write_log(f"{timestamp}_command.log", f'---> will execute: "{cmd_str}"')
+        try:
+            proc = subprocess.run(
+                argv, capture_output=True, text=True, check=False, timeout=timeout
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.logger.log_error(f"Exception executing command: {exc}")
+            return CommandResult(command=cmd_str, exit_code=1, stderr=str(exc))
+
+        self._write_log(f"{timestamp}_stdout.log", proc.stdout)
+        self._write_log(f"{timestamp}_stderr.log", proc.stderr)
+        if proc.returncode != 0 and check:
+            self._handle_failure(
+                cmd_str, proc.returncode, proc.stdout, proc.stderr, fatal=False
+            )
+        return CommandResult(
+            command=cmd_str,
+            exit_code=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+        )
 
     def helm(self, *args: str, check: bool = True) -> CommandResult:
         """Execute a helm command with auto-injected kubeconfig flags."""

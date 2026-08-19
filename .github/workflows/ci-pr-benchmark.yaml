@@ -21,9 +21,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      # zstd explicitly: install.sh only installs it best-effort, and without it the
+      # compression tests skip themselves and the suite passes vacuously. The analysis
+      # requirements are image-only, so the plot tests need them installed.
       - name: Install llmdbenchmark
         run: |
+          sudo apt-get update && sudo apt-get install -y zstd
           ./install.sh -y 2>&1
+          pip install -r build/requirements-analysis.txt
           pip install pytest pytest-xdist
 
       - name: Run unit tests

@@ -18,9 +18,13 @@ Per-pass artifacts consumed:
 
 import argparse
 import glob
+import io
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tarfile
 
 # Reuse the dual-pods-controller log parser (workload/harnesses) so hit-rate
 # classification matches the authoritative FMA actuation logic. The script runs
@@ -59,13 +63,80 @@ def _find_one(run_root, filename):
     return matches[-1] if matches else ""
 
 
-def load_json(p):
-    if not p or not os.path.isfile(p):
+def _archives(run_root):
+    """Every result archive under ``run_root``, newest-sorting last."""
+    if not run_root:
+        return []
+    found = glob.glob(os.path.join(run_root, "**/*.tar.zst"), recursive=True)
+    return sorted(f for f in found if os.path.isfile(f))
+
+
+def _read_from_archives(run_root, filename):
+    """Return ``filename``'s bytes from any archive under ``run_root``, or None.
+
+    A compressed run keeps the small artifacts plain, so this is the fallback for
+    a run whose keep-plain list predates them -- or for anything that legitimately
+    travels inside the archive. Matched on basename at any depth, mirroring
+    ``_find_one``. Self-contained on purpose: this script runs in CI from a
+    GCS download, with no llmdbenchmark package importable.
+    """
+    want = os.path.basename(filename)
+    for archive in reversed(_archives(run_root)):
+        try:
+            zstd = shutil.which("zstd")
+            if not zstd:
+                continue
+            proc = subprocess.Popen([zstd, "-dc", archive], stdout=subprocess.PIPE)
+            try:
+                with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
+                    for member in tar:
+                        if member.isfile() and os.path.basename(member.name) == want:
+                            handle = tar.extractfile(member)
+                            if handle is not None:
+                                return handle.read()
+            finally:
+                if proc.stdout is not None:
+                    proc.stdout.close()
+                proc.wait()
+        except (tarfile.TarError, OSError, subprocess.SubprocessError):
+            continue
+    return None
+
+
+def load_text(p, run_root="", filename=""):
+    """Text of ``p``, falling back to an archive under ``run_root``. None if absent."""
+    if p and os.path.isfile(p):
+        try:
+            with open(p, encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            return None
+
+    if not (run_root and filename):
+        return None
+    payload = _read_from_archives(run_root, filename)
+    if payload is None:
+        return None
+    return payload.decode("utf-8", errors="replace")
+
+
+def load_json(p, run_root="", filename=""):
+    """Load JSON from ``p``, falling back to an archive under ``run_root``."""
+    if p and os.path.isfile(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    if not (run_root and filename):
+        return None
+    payload = _read_from_archives(run_root, filename)
+    if payload is None:
         return None
     try:
-        with open(p, encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError):
+        return json.loads(payload.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
 
 
@@ -102,7 +173,9 @@ RUNNING_REQUESTS_METRIC = "llm_d_epp_request_running"
 def replica_stats(rdir):
     """(avg, max) ready replicas, read from process_metrics' pre-aggregated
     ``replica_status.json`` (``aggregate_ready_replicas``)."""
-    data = load_json(_find_one(rdir, "replica_status.json"))
+    data = load_json(
+        _find_one(rdir, "replica_status.json"), rdir, "replica_status.json"
+    )
     agg = (data or {}).get("aggregate_ready_replicas") or {}
     return (agg.get("mean"), agg.get("max"))
 
@@ -110,7 +183,9 @@ def replica_stats(rdir):
 def epp_gauge_mean(rdir, metric):
     """Mean of an EPP pool gauge, read from process_metrics' pre-aggregated
     ``metrics_summary.json`` (``_aggregated.metrics.<metric>.mean``)."""
-    data = load_json(_find_one(rdir, "metrics_summary.json"))
+    data = load_json(
+        _find_one(rdir, "metrics_summary.json"), rdir, "metrics_summary.json"
+    )
     metrics = (((data or {}).get("_aggregated") or {}).get("metrics")) or {}
     return (metrics.get(metric) or {}).get("mean")
 
@@ -118,7 +193,12 @@ def epp_gauge_mean(rdir, metric):
 def pod_startup_mean(rdir):
     """Avg pod startup = pod creation → Ready, read from process_metrics'
     pre-aggregated ``pod_startup_times.json``"""
-    data = load_json(_find_one(rdir, "pod_startup_times.json")) or {}
+    data = (
+        load_json(
+            _find_one(rdir, "pod_startup_times.json"), rdir, "pod_startup_times.json"
+        )
+        or {}
+    )
     agg = data.get("requester_runtime_aggregate") or data.get("aggregate") or {}
     return agg.get("mean")
 
@@ -139,19 +219,23 @@ def fma_hit_rates(rdir):
     process_metrics.py."""
     if parse_dpc_log is None:
         return (None, None, None)
-    log_path = _find_one(rdir, "dual-pods-controller.log")
-    if not log_path:
+    text = load_text(
+        _find_one(rdir, "dual-pods-controller.log"),
+        rdir,
+        "dual-pods-controller.log",
+    )
+    if text is None:
         return (None, None, None)
-    try:
-        with open(log_path, encoding="utf-8", errors="replace") as f:
-            records = parse_dpc_log(f)
-    except OSError:
-        return (None, None, None)
+    records = parse_dpc_log(io.StringIO(text))
 
     # Run start = first replica-status snapshot timestamp, as an epoch float to
     # compare against the DPC anchor times (also epoch). None => no filtering.
     run_start = None
-    ts_data = load_json(_find_one(rdir, "replica_status_timeseries.json"))
+    ts_data = load_json(
+        _find_one(rdir, "replica_status_timeseries.json"),
+        rdir,
+        "replica_status_timeseries.json",
+    )
     snaps = (ts_data or {}).get("snapshots", [])
     if snaps and _parse_rfc3339_nano is not None:
         run_start = _parse_rfc3339_nano(snaps[0].get("timestamp"))
@@ -245,16 +329,19 @@ _PER_WORKER_ROWS = {
 
 
 def _num_workers(rdir, workload):
-    prof = _find_one(rdir, os.path.basename(workload)) if workload else ""
-    if prof:
-        try:
-            with open(prof, encoding="utf-8") as f:
-                for line in f:
-                    s = line.strip()
-                    if s.startswith("num_workers:"):
-                        return int(s.split(":", 1)[1].strip())
-        except (OSError, ValueError):
-            pass
+    if not workload:
+        return 1
+    name = os.path.basename(workload)
+    text = load_text(_find_one(rdir, name), rdir, name)
+    if text is None:
+        return 1
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("num_workers:"):
+            try:
+                return int(s.split(":", 1)[1].strip())
+            except ValueError:
+                return 1
     return 1
 
 
@@ -308,9 +395,10 @@ def main():
 
     dirs = (args.baseline_dir, args.warmstart_dir, args.hotstart_dir)
     rdirs = [newest_run_dir(d) for d in dirs]
-    sums = [_find_one(r, "summary_lifecycle_metrics.json") for r in rdirs]
+    _sum_name = "summary_lifecycle_metrics.json"
+    sums = [_find_one(r, _sum_name) for r in rdirs]
 
-    bl, fw_ws, fw_hs = (load_json(p) for p in sums)
+    bl, fw_ws, fw_hs = (load_json(p, r, _sum_name) for p, r in zip(sums, rdirs))
     summaries = [bl, fw_ws, fw_hs]
 
     workers = [_num_workers(r, args.workload) for r in rdirs]

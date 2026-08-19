@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml as _yaml
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
-from llmdbenchmark.interface.env import env, env_bool, env_bool_optional
+from llmdbenchmark.interface.env import env, env_bool, env_bool_optional, env_int
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.logging.quiet import plan_logger
@@ -57,12 +57,39 @@ from llmdbenchmark.teardown.steps import get_teardown_steps
 
 from llmdbenchmark.run.steps import get_run_steps
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.utilities.archive import DEFAULT_LEVEL as DEFAULT_COMPRESS_LEVEL
 
 
 class PhaseError(Exception):
     """Raised when a lifecycle phase (standup/run/teardown) fails."""
 
     pass
+
+
+def _compress_enabled(args: argparse.Namespace) -> bool:
+    """Whether output compression is on. Defaults to True (opt out with --no-compress)."""
+    value = getattr(args, "compress", None)
+    return True if value is None else bool(value)
+
+
+def _compress_level_arg(value: str) -> int:
+    """Reject levels zstd would refuse, before a whole run relies on them.
+
+    A negative level renders as ``-{level}``, i.e. a zstd *flag*, which fails per
+    directory and leaves the run uncompressed with only a warning.
+    """
+    try:
+        level = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not an integer") from None
+    if not 1 <= level <= 19:
+        raise argparse.ArgumentTypeError(f"{level} is outside the zstd range 1-19")
+    return level
+
+
+def _compress_level(args: argparse.Namespace) -> int:
+    """Requested zstd level, falling back to the measured speed/size knee."""
+    return getattr(args, "compress_level", None) or DEFAULT_COMPRESS_LEVEL
 
 
 def setup_workspace(
@@ -564,6 +591,8 @@ def _do_standup(args, logger, render_plan_errors):
         dry_run=config.dry_run,
         verbose=config.verbose,
         non_admin=getattr(args, "non_admin", False),
+        compress_output=_compress_enabled(args),
+        compress_level=_compress_level(args),
         current_phase=Phase.STANDUP,
         kubeconfig=getattr(args, "kubeconfig", None),
         deployed_methods=deployed_methods,
@@ -719,6 +748,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         dry_run=config.dry_run,
         verbose=config.verbose,
         non_admin=getattr(args, "non_admin", False),
+        compress_output=_compress_enabled(args),
+        compress_level=_compress_level(args),
         current_phase=Phase.SMOKETEST,
         kubeconfig=getattr(args, "kubeconfig", None),
         deployed_methods=deployed_methods,
@@ -924,6 +955,8 @@ def _do_teardown(args, logger, render_plan_errors):
         dry_run=config.dry_run,
         verbose=config.verbose,
         non_admin=getattr(args, "non_admin", False),
+        compress_output=_compress_enabled(args),
+        compress_level=_compress_level(args),
         current_phase=Phase.TEARDOWN,
         kubeconfig=getattr(args, "kubeconfig", None),
         deployed_methods=deployed_methods,
@@ -1050,6 +1083,8 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         dry_run=config.dry_run,
         verbose=config.verbose,
         non_admin=getattr(args, "non_admin", False),
+        compress_output=_compress_enabled(args),
+        compress_level=_compress_level(args),
         current_phase=Phase.RUN,
         kubeconfig=getattr(args, "kubeconfig", None),
         deployed_methods=deployed_methods,
@@ -1794,6 +1829,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_SKIP": ("skip", "--skip"),
         "LLMDBENCH_DEBUG": ("debug", "--debug"),
         "LLMDBENCH_FAST_COLLECT": ("fast_collect", "--fast-collect"),
+        "LLMDBENCH_COMPRESS": ("compress", "--compress"),
+        "LLMDBENCH_COMPRESS_LEVEL": ("compress_level", "--compress-level"),
         "LLMDBENCH_AFFINITY": ("affinity", "--affinity"),
         "LLMDBENCH_ANNOTATIONS": ("annotations", "--annotations"),
         "LLMDBENCH_WVA": ("wva", "--wva"),
@@ -1907,6 +1944,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--skip": ["--skip", "-z"],
         "--debug": ["--debug", "-d"],
         "--fast-collect": ["--fast-collect"],
+        "--compress": ["--compress", "--no-compress"],
+        "--compress-level": ["--compress-level"],
         "--affinity": ["--affinity"],
         "--annotations": ["--annotations"],
         "--wva": ["--wva"],
@@ -2040,6 +2079,24 @@ def cli() -> None:
         help="Supply a workspace directory for placing generated items and logs.",
     )
     parser.add_argument(
+        "--compress",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Compress output: each result set is compressed on the PVC before "
+        "collection, so the archive rather than the raw tree is copied down. "
+        "Benchmark reports, run metadata and plots stay plain "
+        "(env: LLMDBENCH_COMPRESS). Default: on; use --no-compress to keep "
+        "plain text.",
+    )
+    parser.add_argument(
+        "--compress-level",
+        type=_compress_level_arg,
+        default=env_int("LLMDBENCH_COMPRESS_LEVEL"),
+        help=f"zstd compression level 1-19 (env: LLMDBENCH_COMPRESS_LEVEL). "
+        f"Default: {DEFAULT_COMPRESS_LEVEL}, the speed/size knee. Higher levels "
+        f"cost disproportionately more time for little extra saving.",
+    )
+    parser.add_argument(
         "--base-dir",
         "--bd",
         default=env("LLMDBENCH_BASE_DIR", "."),
@@ -2133,6 +2190,25 @@ def cli() -> None:
     )
 
     benchmark_parser.add_argument(
+        "--compress",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="Compress output: each result set is compressed on the PVC before "
+        "collection, so the archive rather than the raw tree is copied down. "
+        "Benchmark reports, run metadata and plots stay plain "
+        "(env: LLMDBENCH_COMPRESS). Default: on; use --no-compress to keep "
+        "plain text.",
+    )
+
+    benchmark_parser.add_argument(
+        "--compress-level",
+        type=_compress_level_arg,
+        default=argparse.SUPPRESS,
+        help=f"zstd compression level 1-19 (env: LLMDBENCH_COMPRESS_LEVEL). "
+        f"Default: {DEFAULT_COMPRESS_LEVEL}, the speed/size knee.",
+    )
+
+    benchmark_parser.add_argument(
         "--telemetry-enabled",
         action="store_true",
         help="Enable telemetry reporting.",
@@ -2218,6 +2294,15 @@ def cli() -> None:
         args.non_admin = env_bool("LLMDBENCH_NON_ADMIN")
     if hasattr(args, "monitoring") and args.monitoring is None:
         args.monitoring = env_bool("LLMDBENCH_MONITORING") or None
+    if getattr(args, "compress", None) is None:
+        args.compress = env_bool("LLMDBENCH_COMPRESS", default=True)
+    if not getattr(args, "compress_level", None):
+        # env_int bypasses the parser's own range check, so clamp rather than let an
+        # out-of-range level silently leave the whole run uncompressed.
+        args.compress_level = min(
+            19,
+            max(1, env_int("LLMDBENCH_COMPRESS_LEVEL", default=DEFAULT_COMPRESS_LEVEL)),
+        )
     if hasattr(args, "deep") and not args.deep:
         args.deep = env_bool("LLMDBENCH_DEEP_CLEAN")
     if hasattr(args, "skip") and not args.skip:

@@ -9,7 +9,7 @@ WORKDIR /workspace
 # -----------------------------
 RUN microdnf clean all && microdnf makecache && \
     microdnf install -y \
-    git jq rsync wget tar \
+    git jq rsync wget tar zstd \
     which findutils \
     bc procps-ng \
     gcc gcc-c++ gcc-gfortran make cmake ninja-build \

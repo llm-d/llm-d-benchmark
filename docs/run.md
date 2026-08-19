@@ -138,6 +138,8 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_LOAD_PARALLELISM             | Controls the number harness pods which will be created to generate load (all pods execute the same workload profile) | Default=`1`, can be overriden with ` -j/--parallelism` |
 | LLMDBENCH_HARNESS_ENVVARS_TO_YAML              | List all environment variables to be added to all harness pods | Default=`LLMDBENCH_RUN_EXPERIMENT`, can be overriden with `-g/--envvarspod` |
 | LLMDBENCH_HARNESS_DEBUG                        | Execute harness in "debug-mode" (i.e., `sleep infinity`) | Default=`0`.  Can be overriden with CLI parameter `-d/--debug`|
+| LLMDBENCH_COMPRESS                             | Compress each result set on the `pvc` before collecting it, so the archive rather than the raw tree crosses the tunnel (benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots stay plain) | Default=`1`. Can be overriden with CLI parameter `--compress/--no-compress` |
+| LLMDBENCH_COMPRESS_LEVEL                       | zstd compression level | Default=`10`. Can be overriden with CLI parameter `--compress-level` |
 
 > [!TIP]
 > In case the full path is ommited for the (workload) profile (either by setting `LLMDBENCH_HARNESS_EXPERIMENT_PROFILE` or CLI parameter `-w/--workload`), it is assumed that the file exists inside the `workload/profiles/<harness name>` folder

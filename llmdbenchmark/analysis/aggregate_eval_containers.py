@@ -28,6 +28,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from llmdbenchmark.utilities.archive import read_member
+
 import yaml
 
 from llmdbenchmark.analysis.benchmark_report.base import Units
@@ -88,17 +90,49 @@ def _polyglot_language(task_id: int | None) -> str:
     return ""
 
 
-def _read_json(path: Path) -> dict:
+def _read_text(task_dir: Path, relative: str) -> str | None:
+    """Text of ``relative`` under ``task_dir``, plain or from the task's archive.
+
+    Every scoring input here is archived by default, and each caller treats a read
+    failure as "no data" -- so without this the whole report comes out blank while
+    still reporting success.
+    """
+    plain = task_dir / relative
+    if plain.is_file():
+        # UnicodeDecodeError too, so both branches agree: catching it only on the
+        # archive side made a non-UTF8 trace raise on a plain tree and be swallowed
+        # on a compressed one.
+        try:
+            return plain.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    payload = read_member(task_dir, relative)
+    if payload is None:
+        return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        return payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _read_json(task_dir: Path, relative: str) -> dict:
+    text = _read_text(task_dir, relative)
+    if text is None:
+        return {}
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
         return {}
 
 
-def _read_yaml(path: Path) -> dict:
+def _read_yaml(task_dir: Path, relative: str) -> dict:
+    text = _read_text(task_dir, relative)
+    if text is None:
+        return {}
     try:
-        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+        loaded = yaml.safe_load(text)
+    except yaml.YAMLError:
         return {}
     return loaded if isinstance(loaded, dict) else {}
 
@@ -113,13 +147,11 @@ def _read_exit_code(task_dir: Path) -> int | None:
     trailing newline, so it must be read per-file -- concatenating several
     yields one run-together string.
     """
-    path = task_dir / "agent" / ".exit-code"
-    try:
-        text = path.read_text(encoding="utf-8").strip()
-    except OSError:
+    text = _read_text(task_dir, "agent/.exit-code")
+    if text is None:
         return None
     try:
-        return int(text)
+        return int(text.strip())
     except ValueError:
         return None
 
@@ -131,12 +163,12 @@ def _read_reward(task_dir: Path) -> tuple[float | None, bool | None, str, int | 
     ``logs/verifier/reward.txt`` (the grader writes it before the result file, so
     it survives a task that died between the two).
     """
-    result = _read_json(task_dir / "task" / "result.json")
+    result = _read_json(task_dir, "task/result.json")
     benchmark = str(result.get("benchmark") or "")
 
     task_id = result.get("task_id")
     if task_id is None:
-        task_id = _read_yaml(task_dir / "run_metadata.yaml").get("task_id")
+        task_id = _read_yaml(task_dir, "run_metadata.yaml").get("task_id")
     try:
         task_id_int = int(task_id)
     except (TypeError, ValueError):
@@ -153,22 +185,22 @@ def _read_reward(task_dir: Path) -> tuple[float | None, bool | None, str, int | 
             passed = reward_f >= 1.0
         return reward_f, passed, benchmark, task_id_int
 
+    text = _read_text(task_dir, "logs/verifier/reward.txt")
+    if text is None:
+        return None, None, benchmark, task_id_int
     try:
-        text = (task_dir / "logs" / "verifier" / "reward.txt").read_text(
-            encoding="utf-8"
-        )
         reward_f = float(text.strip())
-    except (OSError, ValueError):
+    except ValueError:
         return None, None, benchmark, task_id_int
     return reward_f, reward_f >= 1.0, benchmark, task_id_int
 
 
-def _iter_call_spans(traces: Path):
+def _iter_call_spans(task_dir: Path, relative: str = "traces.jsonl"):
     """Yield ``(name, attributes, start_ns, end_ns)`` for every span in a file."""
-    try:
-        lines = traces.read_text(encoding="utf-8").splitlines()
-    except OSError:
+    text = _read_text(task_dir, relative)
+    if text is None:
         return
+    lines = text.splitlines()
     for line in lines:
         line = line.strip()
         if not line:
@@ -211,7 +243,7 @@ class _TaskMetrics:
         self.task_id = task_id
         self.exit_code = _read_exit_code(task_dir)
 
-        metadata = _read_yaml(task_dir / "run_metadata.yaml")
+        metadata = _read_yaml(task_dir, "run_metadata.yaml")
         self.harness_rc = metadata.get("harness_rc")
         self.model = str(metadata.get("model") or "")
         self.task_latency_s = _duration_seconds(metadata.get("harness_delta"))
@@ -227,9 +259,7 @@ class _TaskMetrics:
 
         first_start: int | None = None
         last_end: int | None = None
-        for name, attrs, start_ns, end_ns in _iter_call_spans(
-            task_dir / "traces.jsonl"
-        ):
+        for name, attrs, start_ns, end_ns in _iter_call_spans(task_dir):
             # Usage rides on the provider span, not the HTTP span.
             if "gen_ai.usage.input_tokens" in attrs:
                 self.input_tokens += _int_attr(attrs, "gen_ai.usage.input_tokens")

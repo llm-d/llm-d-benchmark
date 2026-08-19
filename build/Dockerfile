@@ -23,6 +23,7 @@ RUN apt-get update; \
     unzip \
     libpq-dev \
     vim-tiny \
+    zstd \
     && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/*
 
 # Install OpenShift CLI (oc)

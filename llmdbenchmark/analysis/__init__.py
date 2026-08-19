@@ -24,6 +24,7 @@ from llmdbenchmark.analysis.metrics_embed import (  # noqa: F401
     REPORT_STAGE_RE as _REPORT_STAGE_RE,
     stage_windows as _stage_windows,
 )
+from llmdbenchmark.utilities.archive import read_member
 
 if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
@@ -76,7 +77,11 @@ def pod_analysis_present(harness_name: str, results_dir: Path) -> bool:
     if harness_name not in _IN_POD_ANALYZERS:
         return False
     if harness_name == "nop":
-        return (results_dir / "analysis" / "result.txt").is_file()
+        # Archived by default, and sync_analysis_dir moves analysis/ off the tree
+        # during collection either way -- so a plain check reads as "the pod did
+        # nothing" and hands the work to a driver path whose own input is archived
+        # too, failing the run.
+        return read_member(results_dir, "analysis/result.txt") is not None
     return any(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
 
 
@@ -162,6 +167,13 @@ def run_analysis(
     # --- 1. Convert result files to benchmark report format ---
     pattern = _RESULT_PATTERNS.get(harness_name, "*.json")
     result_files = sorted(glob.glob(str(results_dir / pattern)))
+
+    # A fixed-path input may be archived rather than absent. The converters take a
+    # path and resolve the result root from it, reading through read_member, so the
+    # path only has to name the member -- it does not have to exist on disk.
+    if not result_files and not glob.has_magic(pattern):
+        if read_member(results_dir, pattern) is not None:
+            result_files = [str(results_dir / pattern)]
 
     if not result_files:
         _log(context, f"No result files matching '{pattern}' in {results_dir.name}")
@@ -333,7 +345,13 @@ def _convert_via_api(
         br.export_yaml(str(output_file))
         return None
 
-    except Exception as exc:
+    # SystemExit too: the converters share a CLI entry point whose input check calls
+    # sys.exit, and an input that only exists inside the archive trips it. Escaping
+    # here would kill the analysis phase instead of degrading to a warning.
+    except (Exception, SystemExit) as exc:
+        # str(SystemExit(2)) is just "2", which says nothing in a log.
+        if isinstance(exc, SystemExit):
+            return f"converter exited {exc.code}"
         return str(exc)
 
 
