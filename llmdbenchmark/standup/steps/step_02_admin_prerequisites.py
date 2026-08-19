@@ -476,8 +476,8 @@ class AdminPrerequisitesStep(Step):
             ("apply", "--dry-run=client", "-f", ext_url, "-o", "yaml"),
             "Gateway API inference extension",
         )
-        installed_extension_crds = _crds_in_groups(
-            existing_crds, GATEWAY_API_EXTENSION_CRDS
+        installed_extension_crds = sorted(
+            _crd_names(existing_crds) & set(GATEWAY_API_EXTENSION_CRDS)
         )
 
         if not expected_crds:

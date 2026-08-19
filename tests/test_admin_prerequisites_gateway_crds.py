@@ -332,9 +332,8 @@ def test_inference_extension_discovery_failure_preserves_installed_group() -> No
         cmd,
         _plan_config(),
         errors,
-        {"inferencepools.inference.networking.x-k8s.io": None},
+        {"inferencepoolimports.inference.networking.x-k8s.io": None},
     )
-
     assert cmd.kube.call_count == 1
     assert errors == []
 
