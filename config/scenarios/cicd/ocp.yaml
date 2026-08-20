@@ -2,7 +2,7 @@
 # Based on scenarios/cicd/ocp_fb.sh
 #
 # CI/CD scenario for OpenShift clusters.
-# Uses Qwen/Qwen3-8B so the standalone baseline and FMA nightlies exercise a
+# Uses Qwen/Qwen3-4B so the standalone baseline and FMA nightlies exercise a
 # representative model whose cold start is measurable.
 # GPU affinity is auto-detected (commented out in original).
 
@@ -16,12 +16,14 @@ scenario:
         labelValue: NVIDIA-H100-80GB-HBM3
       # Model
       model:
-        name: Qwen/Qwen3-8B
-        shortName: qwen-qwen3-8b
-        path: models/Qwen/Qwen3-8B
-        huggingfaceId: Qwen/Qwen3-8B
-        # Keeping it similar to FMA launcher's vLLM (24_fma-deployment.yaml.j2)
-        maxModelLen: 40960
+        name: Qwen/Qwen3-4B
+        shortName: qwen-qwen3-4b
+        path: models/Qwen/Qwen3-4B
+        huggingfaceId: Qwen/Qwen3-4B
+        # Qwen3-4B native context is 32768; keep maxModelLen within it (only
+        # the standalone/modelservice paths read this -- the FMA launcher in
+        # 24_fma-deployment.yaml.j2 passes no --max-model-len).
+        maxModelLen: 32768
         blockSize: 16
 
       affinity:
