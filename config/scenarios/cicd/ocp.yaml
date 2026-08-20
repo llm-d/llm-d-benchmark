@@ -20,11 +20,17 @@ scenario:
         shortName: qwen-qwen3-4b
         path: models/Qwen/Qwen3-4B
         huggingfaceId: Qwen/Qwen3-4B
-        # Qwen3-4B native context is 32768; keep maxModelLen within it (only
-        # the standalone/modelservice paths read this -- the FMA launcher in
-        # 24_fma-deployment.yaml.j2 passes no --max-model-len).
+        # Qwen3-4B native context is 32768; keep maxModelLen within it. The FMA
+        # launcher DOES pass this through (live instance options show
+        # --max-model-len 32768 alongside --gpu-memory-utilization).
         maxModelLen: 32768
         blockSize: 16
+        # FMA launcher runs vLLM with --enable-sleep-mode; the final warmup
+        # sampler step (flashinfer_sample -> torch.softmax) needs a few hundred
+        # MiB of headroom. At the default 0.95 the KV cache fills the GPU
+        # (~66.8 GiB) leaving ~0.5 GiB free -> flaky ~56 MiB OOM in warmup.
+        # 0.90 matches the FMA guide scenarios and leaves ~4 GiB headroom.
+        gpuMemoryUtilization: 0.90
 
       affinity:
         enabled: true
