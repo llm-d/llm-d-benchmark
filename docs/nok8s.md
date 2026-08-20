@@ -301,7 +301,8 @@ fails at render with the reason, before anything is launched.
 | `nok8s.connection` | Meaning |
 |--------------------|---------|
 | `localhost` (default), `local`, `127.0.0.1`, a `unix://` or `/…` socket path | The local runtime — commands are byte-identical to a pre-`connection` release |
-| `10.0.0.7`, `node1`, `bench@node1` | Read as `ssh://` — the "just give it the IP" case |
+| `10.0.0.7`, `node1` | Read as `ssh://` with **no username**, so SSH picks one — see [Usernames](#usernames-when-yours-differs-from-the-nodes) |
+| `bench@node1`, `remote@10.0.0.7` | Read as `ssh://` with an explicit username |
 | `ssh://[user@]host[:port][/socket-path]` | Explicit. `port` is the **SSH** port; `socket-path` is the daemon socket on the node (rootless podman: `/run/user/<uid>/podman/podman.sock`) |
 | `tcp://…` | **Refused**, with an error at render time |
 
@@ -321,6 +322,87 @@ the port — mounting `/` into a privileged container is a one-liner. Since the
 SSH transport needs no daemon changes at all, there is no case where opening
 that port is the better trade.
 
+### Usernames, when yours differs from the node's
+
+`nok8s.connection` carries the username, and a **bare** address carries *none* —
+it is not silently your local one:
+
+```bash
+--set nok8s.connection=10.0.0.7           # no username: ssh decides
+--set nok8s.connection=remote@10.0.0.7    # explicit
+--set nok8s.connection=ssh://remote@10.0.0.7:2222   # explicit, non-default SSH port
+```
+
+With no username, `ssh` applies its own resolution order — a matching `Host`
+block in `~/.ssh/config` first, then `$USER`. So if you are `local` here and the
+node only knows `remote`, a bare `10.0.0.7` tries `local@10.0.0.7` and fails
+authentication. Either name the user in the connection, or let `~/.ssh/config`
+supply it:
+
+```
+Host 10.0.0.7
+    User remote
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+One value is enough — the username reaches all three places that need it: the
+runtime client (`docker -H ssh://remote@10.0.0.7/var/run/docker.sock`), the
+`ssh` probes, and `scp` staging.
+
+Note that `~` in `nok8s.workspaceHostDir` and `nok8s.vllm.hfCacheDir` expands
+against the **node's** `$HOME` (read live with `ssh … printenv HOME`), so it
+becomes `/home/remote/…`, never your local `/Users/local/…`. A `~other/path`
+names a specific other user and is left alone.
+
+### Authentication: keys, not passwords
+
+Password authentication is not supported. The connection is opened with
+`-o BatchMode=yes`, which disables every prompt, because a standup issues dozens
+of commands — a password would be asked for repeatedly, and a prompt nobody can
+see is indistinguishable from a hang.
+
+Preflight (step 00) turns that into an actionable failure rather than a timeout:
+
+```
+Cannot reach the 'docker' daemon at ssh://remote@10.0.0.7/var/run/docker.sock: …
+Check that 'ssh remote@10.0.0.7 true' succeeds without a prompt (key-based auth,
+key in the agent or nok8s.sshIdentity, host key already known) and that 'docker'
+is running there.
+```
+
+One-time setup:
+
+```bash
+ssh-keygen -t ed25519                # if you have no key
+ssh-copy-id remote@10.0.0.7          # asks for the password, this once
+ssh remote@10.0.0.7 true             # the gate: must succeed silently
+```
+
+That last command is exactly what the tool needs to work. If it prompts,
+standup will fail.
+
+- **Passphrase-protected key** — load it into the agent once
+  (`ssh-add ~/.ssh/id_ed25519`). The agent satisfies `BatchMode=yes`, since no
+  terminal prompt is involved.
+- **Non-default key** — `--set nok8s.sshIdentity=/Users/local/.ssh/id_node`.
+- **First connection to an unknown host** — the host key must already be in
+  `known_hosts` (`ssh-keyscan -H 10.0.0.7 >> ~/.ssh/known_hosts`), or
+  `BatchMode` fails on the confirmation prompt.
+
+> **`sshIdentity` does not reach the `docker` client.** It is applied to every
+> `ssh`/`scp` probe (`-i /path`) and to podman (`podman --url … --identity
+> /path`), but `docker -H ssh://…` takes no `-i` — docker shells out to your
+> system `ssh`, so it reads the key from the agent or `~/.ssh/config`. With
+> docker **and** a non-default key, put it in `~/.ssh/config` as `IdentityFile`;
+> `sshIdentity` alone gives you a passing preflight and failing container
+> commands.
+
+`nok8s.sshArgs` replaces the default args, so `BatchMode` *can* be switched off
+(`sshArgs: ["-o", "BatchMode=no", "-o", "ConnectTimeout=10"]`). This is not a
+supported way to use a password -- it affects only the `ssh`/`scp` probes, not
+the `docker -H` / `podman --url` calls, so you get repeated prompts and a
+standup that still stalls. Use keys.
+
 ### What the node needs
 
 Only what a bare-metal box already has:
@@ -328,13 +410,14 @@ Only what a bare-metal box already has:
 - **A container runtime** (`docker` or `podman`) running, and your SSH user able
   to use it (in the `docker` group, or rootless podman with its socket active —
   `systemctl --user enable --now podman.socket`).
-- **Key-based SSH that works non-interactively.** The connection is opened with
-  `BatchMode=yes`, so a passphrase or an unknown-host prompt fails fast instead
-  of hanging a standup. Verify with the exact command the preflight suggests:
+- **Key-based SSH that works non-interactively** — passwords are not supported.
+  Verify with the exact command the preflight suggests:
   ```bash
-  ssh bench@10.0.0.7 true      # must succeed with no prompt
+  ssh remote@10.0.0.7 true     # must succeed with no prompt
   ```
-  Pass a specific key with `nok8s.sshIdentity: /path/to/key`.
+  See [Authentication](#authentication-keys-not-passwords) for the setup, and
+  [Usernames](#usernames-when-yours-differs-from-the-nodes) when your local user
+  is not the node's.
 - **`curl`, `timeout`, and `ss` or `lsof`** — checked by step 00 on the node.
 
 No `llmdbenchmark`, no Python, and no cluster tooling is installed there, and
@@ -400,7 +483,12 @@ container without ever being written to the node's disk.
   (`ssh <dest> docker info`).
 - **A prompt appears and the standup fails immediately** — `BatchMode=yes` is
   doing its job. Add the host key (`ssh-keyscan -H <host> >> ~/.ssh/known_hosts`)
-  or load the key into your agent.
+  or load the key into your agent. Passwords are not supported at all — see
+  [Authentication](#authentication-keys-not-passwords).
+- **`Permission denied (publickey)` naming the wrong user** — the connection
+  carried no username, so `ssh` used yours. Give it one
+  (`--set nok8s.connection=remote@10.0.0.7`) or set `User` in `~/.ssh/config`;
+  see [Usernames](#usernames-when-yours-differs-from-the-nodes).
 - **`Failed to stage nok8s configs to …`** — fatal on purpose: docker silently
   turns a missing bind-mount source into an *empty directory*, so the EPP would
   come up with no endpoints file and route nothing. Check that

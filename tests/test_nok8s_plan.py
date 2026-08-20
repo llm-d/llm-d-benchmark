@@ -1204,3 +1204,211 @@ def test_remote_dry_run_never_touches_the_node(tmp_path: Path) -> None:
     assert not any(c.startswith("ssh ") for c in cmd.commands)
     assert not any("scp " in c for c in cmd.commands)
     assert not any("curl" in c for c in cmd.commands)
+
+
+# ---------------------------------------------------------------------------
+# Preflight diagnosis: a broken connection must not read as a broken node
+# ---------------------------------------------------------------------------
+
+
+class _ScriptedCmd(_RecordingCmd):
+    """_RecordingCmd with per-command exit codes and stderr.
+
+    _FakeCmd only models success/failure with exit_code 1, but the two bugs
+    covered here are specifically about *which* failure happened: ssh's own 255
+    versus a remote command's non-zero status, and the runtime client's stderr
+    text.
+    """
+
+    def __init__(self, scripted=(), stdout_for=None) -> None:
+        super().__init__((), stdout_for)
+        # (substring, exit_code, stderr), first match wins.
+        self.scripted = scripted
+
+    def execute(self, cmd, *args, **kwargs):
+        self.commands.append(cmd)
+        for needle, code, stderr in self.scripted:
+            if needle in cmd:
+                result = _FakeResult(code == 0)
+                result.exit_code = code
+                result.stderr = stderr
+                return result
+        out = ""
+        for key, val in self.stdout_for.items():
+            if key in cmd:
+                out = val
+        return _FakeResult(True, out)
+
+
+def _remote_ctx(tmp_path: Path, cmd, connection: str, runtime: str = "docker"):
+    ctx = _nok8s_ctx(
+        tmp_path, cmd, nok8s={"enabled": True, "connection": connection, "vllm": {}}
+    )
+    ctx.container_runtime = runtime
+    return ctx
+
+
+PODMAN_AUTH_STDERR = (
+    "Error: unable to connect to Podman socket: failed to connect: ssh: "
+    "handshake failed: ssh: unable to authenticate, attempted methods [none], "
+    "no supported methods remain"
+)
+
+
+def _errors_of(tmp_path: Path, cmd, connection: str, runtime: str = "docker"):
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _remote_ctx(tmp_path, cmd, connection, runtime)
+    result = EnsureInfraStep().execute(ctx)
+    assert result.success is False
+    return result.errors
+
+
+def test_unreachable_node_is_reported_once_not_as_missing_tools(
+    tmp_path: Path,
+) -> None:
+    """One dead connection used to surface as four unrelated failures.
+
+    `ssh -p 2222` to a host whose sshd is on 22 exits 255, and every probe --
+    timeout, curl, nvidia-smi, the port check -- travels that same connection.
+    Reading their non-zero status as a verdict about the node told the user to
+    install coreutils on a machine the tool had never reached.
+    """
+    cmd = _ScriptedCmd(
+        scripted=(
+            (" info", 1, "connect: connection refused"),
+            ("ssh ", 255, "ssh: connect to host 10.0.0.7 port 2222: refused"),
+        )
+    )
+    errors = _errors_of(tmp_path, cmd, "ssh://10.0.0.7:2222")
+
+    assert not any("not found on PATH on" in e for e in errors), errors
+    assert not any("coreutils" in e for e in errors), errors
+
+
+def test_a_remote_command_that_really_fails_is_still_reported(tmp_path: Path) -> None:
+    """The 255 special-case must not swallow a genuinely missing tool.
+
+    A reachable node that lacks `timeout` returns 127 from `command -v`, which
+    is a real answer about that node and has to stay fatal.
+    """
+    cmd = _ScriptedCmd(scripted=(("command -v timeout", 127, ""),))
+    errors = _errors_of(tmp_path, cmd, "10.0.0.7")
+
+    assert any("'timeout' not found on PATH on 10.0.0.7" in e for e in errors), errors
+
+
+def test_podman_masquerading_as_docker_is_named(tmp_path: Path) -> None:
+    """`nok8s.runtime: docker` with a podman binary fails with podman's error.
+
+    podman accepts docker's -H as a synonym for --url, so the mismatch is not
+    caught by the flag -- it surfaces as a podman authentication error under a
+    /var/run/docker.sock URL, and the advice for docker is then wrong.
+    """
+    cmd = _ScriptedCmd(
+        scripted=((" info", 125, PODMAN_AUTH_STDERR),),
+        stdout_for={"docker --version": "podman version 5.8.3"},
+    )
+    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "is actually podman" in daemon, daemon
+    assert "nok8s.runtime=podman" in daemon, daemon
+
+
+def test_podman_auth_failure_points_at_sshidentity(tmp_path: Path) -> None:
+    """'attempted methods [none]' means podman offered no key at all.
+
+    podman's Go SSH client does not fall back to ~/.ssh/id_rsa the way OpenSSH
+    does, so `ssh <dest> true` succeeding proves nothing -- which is exactly
+    what the old generic advice told the user to check.
+    """
+    cmd = _ScriptedCmd(
+        scripted=((" info", 125, PODMAN_AUTH_STDERR),),
+        stdout_for={"podman --version": "podman version 5.8.3"},
+    )
+    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7", runtime="podman")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "nok8s.sshIdentity" in daemon, daemon
+    assert "never falls back" in daemon, daemon
+    assert "a working 'ssh' proves nothing" in daemon, daemon
+
+
+def test_podman_refusing_a_supplied_key_blames_the_node(tmp_path: Path) -> None:
+    """With sshIdentity already set, re-suggesting it would be a dead end."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    cmd = _ScriptedCmd(
+        scripted=((" info", 125, PODMAN_AUTH_STDERR),),
+        stdout_for={"podman --version": "podman version 5.8.3"},
+    )
+    ctx = _nok8s_ctx(
+        tmp_path,
+        cmd,
+        nok8s={
+            "enabled": True,
+            "connection": "root@10.0.0.7",
+            "sshIdentity": "/home/me/.ssh/id_rsa",
+            "vllm": {},
+        },
+    )
+    ctx.container_runtime = "podman"
+    result = EnsureInfraStep().execute(ctx)
+
+    daemon = next(e for e in result.errors if "Cannot reach" in e)
+    assert "authorized_keys" in daemon, daemon
+    assert "Pass nok8s.sshIdentity" not in daemon, daemon
+
+
+def test_docker_auth_failure_does_not_suggest_sshidentity(tmp_path: Path) -> None:
+    """sshIdentity never reaches `docker -H`, so suggesting it would misdirect."""
+    cmd = _ScriptedCmd(
+        scripted=((" info", 1, "ssh: handshake failed: unable to authenticate"),),
+        stdout_for={"docker --version": "Docker version 27.1.1, build 6312585"},
+    )
+    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "ssh-add" in daemon, daemon
+    assert "nok8s.sshIdentity does not reach" in daemon, daemon
+
+
+def test_daemon_down_keeps_the_generic_runtime_advice(tmp_path: Path) -> None:
+    """A reachable node whose daemon is simply not running is neither of the
+    special cases, and must not be told about keys it already has."""
+    cmd = _ScriptedCmd(
+        scripted=((" info", 1, "Cannot connect to the Docker daemon at unix:///..."),),
+        stdout_for={"docker --version": "Docker version 27.1.1"},
+    )
+    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "is running on the node" in daemon, daemon
+    assert "sshIdentity" not in daemon, daemon
+
+
+def test_unreachable_daemon_skips_the_node_probes_entirely(tmp_path: Path) -> None:
+    """No point asking an unreachable node about GPUs or ports."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    cmd = _ScriptedCmd(
+        scripted=(
+            (" info", 1, "ssh: handshake failed: unable to authenticate"),
+            ("ssh ", 255, "Permission denied (publickey)."),
+        ),
+        stdout_for={"docker --version": "Docker version 27.1.1"},
+    )
+    ctx = _remote_ctx(tmp_path, cmd, "root@10.0.0.7")
+    EnsureInfraStep().execute(ctx)
+
+    assert not any("nvidia-smi" in c for c in cmd.commands), cmd.commands
+    assert not any("ss -ltn" in c for c in cmd.commands), cmd.commands
+
+
+def test_local_preflight_is_unaffected_by_the_ssh_special_case(tmp_path: Path) -> None:
+    """A local stack has no ssh in the path at all; 127 stays fatal as before."""
+    cmd = _ScriptedCmd(scripted=(("command -v curl", 127, ""),))
+    errors = _errors_of(tmp_path, cmd, "localhost")
+
+    assert any("'curl' not found on PATH;" in e for e in errors), errors

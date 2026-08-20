@@ -23,6 +23,93 @@ from llmdbenchmark.utilities.container_host import (
 # lsof covers macOS and hosts without iproute2.
 PORT_PROBES = ("ss -ltn", "lsof -nP -iTCP -sTCP:LISTEN")
 
+# Signatures of a runtime client being refused by the node's sshd. Worth
+# recognising because the generic "check your ssh" advice is actively wrong for
+# them: podman's Go SSH client does not read ~/.ssh/id_rsa the way OpenSSH does,
+# so `ssh <dest> true` can succeed while every container command fails.
+_SSH_AUTH_SIGNATURES = (
+    "unable to authenticate",
+    "handshake failed",
+    "no supported methods remain",
+    "permission denied",
+)
+
+
+# ssh exits 255 for its own failures (refused, timed out, auth rejected) and
+# passes the remote command's status through otherwise. A probe that comes back
+# 255 therefore says nothing about the node, so it must not be read as "the tool
+# is missing there".
+SSH_FAILURE_EXIT = 255
+
+
+def _client_flavor(cmd, runtime: str) -> str:
+    """Which implementation the *runtime* binary really is: podman, docker, "".
+
+    ``docker`` is often a podman shim (the ``podman-docker`` package, or an
+    alias), and podman accepts docker's ``-H`` as a synonym for ``--url`` -- so
+    a mismatched pair does not fail on the flag, it fails much later with
+    podman's error text under a docker-shaped socket path. The two clients also
+    authenticate differently, so a connection failure has to name the client
+    that actually produced it rather than the one that was configured.
+    """
+    result = cmd.execute(f"{runtime} --version", check=False, force=True, silent=True)
+    text = f"{result.stdout or ''} {result.stderr or ''}".lower()
+    if "podman" in text:
+        return "podman"
+    if "docker" in text:
+        return "docker"
+    return ""
+
+
+def _daemon_hints(runtime: str, flavor: str, identity: str, stderr: str) -> str:
+    """Guidance for a daemon that would not answer, tailored to the client.
+
+    The generic advice ("check that ssh works") is misleading in the two cases
+    this untangles: the client is not the one configured, and the client is
+    podman refusing to authenticate even though ssh itself is fine.
+    """
+    hints: list[str] = []
+    lowered = (stderr or "").lower()
+    if flavor and flavor != runtime:
+        hints.append(
+            f"the '{runtime}' on PATH is actually {flavor} (it accepts docker's "
+            f"-H, so the mismatch surfaces here rather than as a bad flag) -- "
+            f"set nok8s.runtime={flavor} to match the client and its socket path"
+        )
+    if any(sig in lowered for sig in _SSH_AUTH_SIGNATURES):
+        if "podman" in (flavor, runtime):
+            if identity:
+                # A key was supplied and still refused, so the fix is on the
+                # node, not in the configuration.
+                hints.append(
+                    "podman does its own SSH auth, so a working 'ssh' says "
+                    "nothing about it: the key in nok8s.sshIdentity was offered "
+                    "and refused -- check it is in the node's authorized_keys "
+                    "for that user"
+                )
+            else:
+                hints.append(
+                    "podman does its own SSH auth and, unlike ssh, never falls "
+                    "back to ~/.ssh/id_rsa -- with no key from "
+                    "nok8s.sshIdentity, CONTAINER_SSHKEY, ssh-agent, or 'podman "
+                    "system connection add' it offers none at all (hence "
+                    "'attempted methods [none]'), so a working 'ssh' proves "
+                    "nothing. Pass nok8s.sshIdentity=<path-to-private-key>"
+                )
+        else:
+            hints.append(
+                "docker shells out to your system ssh, so the key must be in the "
+                "agent ('ssh-add <key>') or IdentityFile in ~/.ssh/config -- "
+                "nok8s.sshIdentity does not reach the docker client"
+            )
+    if not hints:
+        hints.append(
+            f"check that '{runtime}' is running on the node and that the SSH user "
+            f"may use it (docker group, or rootless podman with "
+            f"'systemctl --user enable --now podman.socket')"
+        )
+    return "; ".join(hints) + "."
+
 
 def _as_port(value, default: int) -> int | None:
     """Coerce a configured nok8s port to an int, or None if it isn't one.
@@ -219,6 +306,10 @@ class EnsureInfraStep(Step):
         cmd = context.require_cmd()
         errors: list[str] = []
         warnings: list[str] = []
+        # Set when the runtime could not reach a remote daemon: every probe
+        # below travels the same SSH connection, so continuing would turn one
+        # connection failure into a list of bogus "not found on the node" errors.
+        remote_unreachable = False
 
         # 1. Container runtime present and usable (fatal). The *client* binary
         #    must exist locally even for a remote stack -- it is what carries the
@@ -236,13 +327,19 @@ class EnsureInfraStep(Step):
                 host.runtime_cmd("info"), check=False, force=True, silent=True
             )
             if not info.success and host.is_remote:
+                stderr = (info.stderr or "").strip()
+                flavor = _client_flavor(cmd, runtime)
                 errors.append(
                     f"Cannot reach the '{runtime}' daemon at {host.url}: "
-                    f"{(info.stderr or '').strip()[:300]}. Check that "
-                    f"'ssh {host.destination} true' succeeds without a prompt "
-                    f"(key-based auth, key in the agent or nok8s.sshIdentity, host "
-                    f"key already known) and that '{runtime}' is running there."
+                    f"{stderr[:300]}. Check that 'ssh {host.destination} true' "
+                    f"succeeds without a prompt (key-based auth, host key already "
+                    f"known); if it does, the client is at fault, not ssh: "
+                    + _daemon_hints(runtime, flavor, host.identity, stderr)
                 )
+                # The connection is what failed, so the per-tool probes below
+                # would each report the node's tools as missing. Skip them and
+                # let this one error stand.
+                remote_unreachable = True
             elif not info.success:
                 errors.append(
                     f"'{runtime}' is installed but not usable (daemon down or "
@@ -257,9 +354,24 @@ class EnsureInfraStep(Step):
         #     06 and `timeout` bounds the harness container, which also runs
         #     there. For a remote stack `ssh` is needed on the client instead.
         for tool in ("timeout", "curl"):
-            if not cmd.execute(
+            if remote_unreachable:
+                break
+            probe = cmd.execute(
                 host.shell(f"command -v {tool}"), check=False, force=True, silent=True
-            ).success:
+            )
+            if host.is_remote and probe.exit_code == SSH_FAILURE_EXIT:
+                # ssh could not run anything, so the node's PATH is unknown.
+                # Report the connection once instead of every tool.
+                errors.append(
+                    f"Cannot run commands on {host.destination}: "
+                    f"{(probe.stderr or '').strip()[:200] or 'ssh exited 255'}. "
+                    f"The node's tools, accelerator and ports were not checked. "
+                    f"Verify 'ssh {host.destination} true' succeeds without a "
+                    f"prompt."
+                )
+                remote_unreachable = True
+                break
+            if not probe.success:
                 where = f" on {host.destination}" if host.is_remote else ""
                 errors.append(
                     f"'{tool}' not found on PATH{where}; the nok8s path needs it "
@@ -283,7 +395,11 @@ class EnsureInfraStep(Step):
             "intel": "xpu-smi discovery",
             "gaudi": "hl-smi -L",
         }.get(accelerator)
-        if probe:
+        if probe and remote_unreachable:
+            context.logger.log_info(
+                "    skipping accelerator probe: the node was unreachable."
+            )
+        elif probe:
             if not cmd.execute(
                 host.shell(probe), check=False, force=True, silent=True
             ).success:
@@ -307,7 +423,7 @@ class EnsureInfraStep(Step):
             * _as_count(cfg.get("vllm", {}).get("tensorParallel", 1))
             for cfg in stacks
         )
-        if accelerator == "nvidia" and needed > 1:
+        if accelerator == "nvidia" and needed > 1 and not remote_unreachable:
             res_gpu = cmd.execute(
                 host.shell("nvidia-smi -L"), check=False, force=True, silent=True
             )
@@ -367,7 +483,9 @@ class EnsureInfraStep(Step):
             ),
             None,
         )
-        if probe_cmd is None:
+        if remote_unreachable:
+            pass  # Already reported; the ports on an unreachable node are moot.
+        elif probe_cmd is None:
             warnings.append(
                 f"Cannot verify host ports {ports}: none of "
                 f"{', '.join(p.split()[0] for p in PORT_PROBES)} found on PATH"
