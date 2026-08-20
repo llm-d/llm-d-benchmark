@@ -460,7 +460,7 @@ jobs:
         id: prereq_install_yq
         uses: frenck/action-setup-yq@v1
         with:
-          version: 'v4.53.3'
+          version: 'v4.53.4'
 
       - name: Show cluster names
         id: infra_show_cluster_names
