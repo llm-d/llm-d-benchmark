@@ -22,6 +22,7 @@ from llmdbenchmark.parser.cli_overrides import (
     MISSING,
     REDACTED,
     find_broken_parent_paths,
+    find_typo_leaves,
     is_secret_path,
     leaf_entries,
     resolve_segments,
@@ -30,6 +31,10 @@ from llmdbenchmark.parser.cli_overrides import (
 )
 from llmdbenchmark.parser.config_schema import validate_config
 from llmdbenchmark.parser.render_result import StackErrors, RenderResult
+from llmdbenchmark.utilities.container_host import (
+    ContainerHost,
+    ContainerHostError,
+)
 
 
 class RenderPlans:
@@ -1066,6 +1071,30 @@ class RenderPlans:
 
         return values
 
+    def _resolve_nok8s_connection(self, values: dict, stack_name: str) -> list[str]:
+        """Parse ``nok8s.connection`` and publish the host it resolves to.
+
+        The connection string is authored once but consumed by five steps, so
+        it is parsed here -- at render time, before anything is launched -- and
+        the resolved host is written back as ``nok8s.clientHost`` for the
+        templates. A malformed value (or ``tcp://``) is a render error rather
+        than a traceback in the middle of a standup.
+        """
+        nok8s = values.get("nok8s") or {}
+        if not nok8s.get("enabled"):
+            return []
+        try:
+            host = ContainerHost.parse(
+                nok8s.get("connection"),
+                runtime=str(nok8s.get("runtime") or "docker"),
+                identity=str(nok8s.get("sshIdentity") or ""),
+                ssh_args=nok8s.get("sshArgs") or None,
+            )
+        except ContainerHostError as exc:
+            return [f"[{stack_name}] {exc}"]
+        nok8s["clientHost"] = host.host
+        return []
+
     def _validate_nok8s_host_claims(self, values: dict, stack_name: str) -> list[str]:
         """Reject two nok8s stacks claiming the same container name or host port.
 
@@ -2005,7 +2034,8 @@ class RenderPlans:
         """Validate override paths against the pre-override config.
 
         Warns (non-fatally) when a parent key is absent -- usually a typo,
-        but legitimate for free-form blocks. Returns fatal errors for paths
+        but legitimate for free-form blocks -- and when a leaf key looks like
+        a misspelling of an existing sibling. Returns fatal errors for paths
         that descend into a list or scalar: dotted paths cannot index into a
         list here, so the merge would silently replace the whole value.
         """
@@ -2016,6 +2046,20 @@ class RenderPlans:
                 f"[{stack_name}] override path '{path}' does not exist in "
                 "defaults + scenario -- it will be created as a new block. "
                 "Check for a typo if you meant to change an existing value."
+            )
+
+        # A misspelled leaf passes the check above (its parent exists), so it
+        # merges into a dead key while the real one keeps its default -- silent
+        # unless we say something. Warn-only: new leaves are legitimate on
+        # free-form blocks, so only near-misses of an existing sibling qualify.
+        for path, suggestion in find_typo_leaves(overrides, base_values):
+            parent = path.rsplit(".", 1)[0] if "." in path else ""
+            intended = f"{parent}.{suggestion}" if parent else suggestion
+            self.logger.log_warning(
+                f"[{stack_name}] override path '{path}' does not exist, but "
+                f"'{intended}' does -- did you mean that? As written, "
+                f"'{path}' is created as a new unused key and "
+                f"'{intended}' keeps its current value."
             )
 
         errors: list[str] = []
@@ -2191,6 +2235,10 @@ class RenderPlans:
             stack_name=stack_name,
         )
         for msg in kustomize_errors:
+            self.logger.log_error(msg)
+            stack_errors.render_errors.append(msg)
+
+        for msg in self._resolve_nok8s_connection(merged_values, stack_name):
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
 

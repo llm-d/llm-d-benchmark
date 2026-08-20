@@ -46,10 +46,19 @@ def _session() -> requests.Session:
 
 
 def _read_spec(stack_path: Path) -> tuple[str, str, str]:
-    """Return (endpoint, model, error) from the rendered nok8s launch spec."""
+    """Return (endpoint, model, error) from the rendered nok8s launch spec.
+
+    The smoketest runs on the machine invoking llmdbenchmark, so it uses
+    ``clientEndpoint`` -- which names the node for a remote stack and is
+    identical to ``endpoint`` for a local one. ``endpoint`` is the in-host URL
+    and would resolve to the client's own ports here. Older rendered specs have
+    no ``clientEndpoint``, so it falls back to ``endpoint``.
+    """
     for spec_file in sorted(stack_path.glob(f"{_SPEC_PREFIX}*")):
         spec = yaml.safe_load(spec_file.read_text(encoding="utf-8")) or {}
-        endpoint = str(spec.get("endpoint") or "").rstrip("/")
+        endpoint = str(spec.get("clientEndpoint") or spec.get("endpoint") or "").rstrip(
+            "/"
+        )
         model = str(spec.get("model") or "")
         if not endpoint or not model:
             return "", "", f"{spec_file} is missing 'endpoint' and/or 'model'"

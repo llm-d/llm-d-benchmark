@@ -8,11 +8,25 @@
    lets the step build docker vs podman commands correctly.
    ============================================================================ #}
 runtime: {{ nok8s.runtime }}
+{# Where the containers run. "localhost" keeps every command local; an ssh://
+   value is passed to the runtime client (docker -H / podman --url). clientHost
+   is resolved by RenderPlans._resolve_nok8s_connection so consumers never have
+   to parse the URL. #}
+connection: "{{ nok8s.connection | default('localhost') }}"
+sshIdentity: "{{ nok8s.sshIdentity | default('') }}"
+sshArgs: [{% for a in nok8s.sshArgs | default([]) %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 workspaceHostDir: "{{ nok8s.workspaceHostDir }}"
 hfTokenEnv: {{ nok8s.hfTokenEnv }}
 hfCacheDir: "{{ nok8s.vllm.hfCacheDir }}"
 model: {{ model.name }}
+{# Two endpoints, because two different machines dial the front door:
+   `endpoint` is used from *inside* the daemon host -- the harness container
+   runs there with --network host, and keeping it on the node means the
+   measured latency is the stack's, not the SSH link's.
+   `clientEndpoint` is used from the machine running llmdbenchmark (smoketest,
+   manual curl). They are identical for a local stack. #}
 endpoint: "http://localhost:{{ nok8s.envoy.listenPort }}"
+clientEndpoint: "http://{{ nok8s.clientHost | default('localhost') }}:{{ nok8s.envoy.listenPort }}"
 readiness:
   vllmPorts: [{% for i in range(nok8s.vllm.replicas) %}{{ nok8s.vllm.hostPort + i }}{% if not loop.last %}, {% endif %}{% endfor %}]
   envoyPort: {{ nok8s.envoy.listenPort }}

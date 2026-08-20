@@ -332,3 +332,46 @@ def test_do_smoketest_sets_container_only(monkeypatch, tmp_path):
         lambda ctx: pytest.fail("smoketest must not resolve a cluster for nok8s"),
     )
     captured["context"].resolve_cluster()
+
+
+# ---------------------------------------------------------------------------
+# Remote stacks: the probes run on the client, so they use clientEndpoint
+# ---------------------------------------------------------------------------
+
+
+class TestRemoteEndpointSelection:
+    """A remote stack's `endpoint` is in-host; the smoketest is not."""
+
+    def test_client_endpoint_wins_over_the_in_host_endpoint(self, server, tmp_path):
+        # `endpoint` points at a closed port, so a pass proves clientEndpoint
+        # was the one dialed.
+        _responses, port = server
+        stack = tmp_path / "nok8s-remote"
+        stack.mkdir()
+        (stack / "34_nok8s-containers.yaml").write_text(
+            f"runtime: docker\nmodel: {MODEL}\n"
+            f'endpoint: "http://127.0.0.1:{_closed_port()}"\n'
+            f'clientEndpoint: "http://127.0.0.1:{port}"\n',
+            encoding="utf-8",
+        )
+        report = nok8s.health_check(_context(), stack)
+        assert report.passed, report.errors()
+
+    def test_spec_without_client_endpoint_falls_back(self, server, tmp_path):
+        """A spec rendered before clientEndpoint existed must still work."""
+        _responses, port = server
+        report = nok8s.health_check(_context(), _stack_dir(tmp_path, port))
+        assert report.passed, report.errors()
+
+    def test_inference_uses_the_client_endpoint_too(self, server, tmp_path):
+        _responses, port = server
+        stack = tmp_path / "nok8s-remote"
+        stack.mkdir()
+        (stack / "34_nok8s-containers.yaml").write_text(
+            f"runtime: docker\nmodel: {MODEL}\n"
+            f'endpoint: "http://127.0.0.1:{_closed_port()}"\n'
+            f'clientEndpoint: "http://127.0.0.1:{port}"\n',
+            encoding="utf-8",
+        )
+        report = nok8s.inference_test(_context(), stack)
+        assert report.passed, report.errors()

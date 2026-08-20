@@ -893,3 +893,314 @@ def test_kubernetes_scenario_still_resolves_versions(tmp_path: Path) -> None:
     assert not any(resolver.calls), (
         f"expected skip_kubernetes=False off the nok8s path, got {resolver.calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Remote connection (nok8s.connection)
+# ---------------------------------------------------------------------------
+
+REMOTE = "ssh://bench@10.0.0.7"
+
+
+def _remote_scenario(tmp_path: Path, connection: str = REMOTE, **nok8s) -> Path:
+    """The shipped single-stack scenario, pointed at a remote node."""
+    doc = yaml.safe_load(NOK8S_SCENARIO.read_text(encoding="utf-8"))
+    doc["scenario"][0]["nok8s"].update({"connection": connection, **nok8s})
+    path = tmp_path / "remote.yaml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return path
+
+
+def test_local_render_keeps_both_endpoints_on_localhost(tmp_path: Path) -> None:
+    """Back-compat: the default connection changes nothing a consumer reads."""
+    spec = _spec_of(_stack_dir(_render(tmp_path)))
+    assert spec["connection"] == "localhost"
+    assert spec["endpoint"] == "http://localhost:8081"
+    assert spec["clientEndpoint"] == "http://localhost:8081"
+
+
+def test_remote_render_splits_in_host_and_client_endpoints(tmp_path: Path) -> None:
+    """The harness runs on the node; the smoketest dials it from the client.
+
+    Collapsing these two would either point the smoketest at the client's own
+    port 8081 or make every harness request traverse the SSH link and report
+    that latency as the stack's.
+    """
+    result = _render_scenario(tmp_path, _remote_scenario(tmp_path))
+    assert not result.has_errors, result.to_dict()
+    spec = _spec_of(Path(result.rendered_paths[0]))
+
+    assert spec["connection"] == REMOTE
+    assert spec["endpoint"] == "http://localhost:8081"
+    assert spec["clientEndpoint"] == "http://10.0.0.7:8081"
+
+
+def test_remote_render_carries_ssh_identity_and_args(tmp_path: Path) -> None:
+    """The steps re-parse the spec, so the SSH options have to survive render."""
+    scenario = _remote_scenario(
+        tmp_path,
+        sshIdentity="/keys/id_ed25519",
+        sshArgs=["-o", "StrictHostKeyChecking=yes"],
+    )
+    spec = _spec_of(Path(_render_scenario(tmp_path, scenario).rendered_paths[0]))
+    assert spec["sshIdentity"] == "/keys/id_ed25519"
+    assert spec["sshArgs"] == ["-o", "StrictHostKeyChecking=yes"]
+
+
+def test_bare_ip_connection_resolves_the_client_host(tmp_path: Path) -> None:
+    """`connection: 10.0.0.7` is the whole ask -- no scheme, no tunnel."""
+    result = _render_scenario(tmp_path, _remote_scenario(tmp_path, "10.0.0.7"))
+    assert not result.has_errors, result.to_dict()
+    spec = _spec_of(Path(result.rendered_paths[0]))
+    assert spec["clientEndpoint"] == "http://10.0.0.7:8081"
+
+
+def test_tcp_connection_is_a_render_error(tmp_path: Path) -> None:
+    """Fail at render, before any container is launched, and say why."""
+    result = _render_scenario(
+        tmp_path, _remote_scenario(tmp_path, "tcp://10.0.0.7:2375")
+    )
+    assert result.has_errors
+    errors = result.stacks["nok8s-single"].render_errors
+    assert any("tcp://" in e and "ssh://" in e for e in errors), errors
+
+
+def test_unsupported_connection_scheme_is_a_render_error(tmp_path: Path) -> None:
+    result = _render_scenario(tmp_path, _remote_scenario(tmp_path, "http://10.0.0.7"))
+    assert result.stacks["nok8s-single"].render_errors
+
+
+def _remote_stack(tmp_path: Path, connection: str = REMOTE) -> Path:
+    """A rendered-spec stack dir whose containers live on a remote node."""
+    stack = _nok8s_stack(tmp_path)
+    spec_file = stack / "34_nok8s-containers.yaml"
+    spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+    spec["connection"] = connection
+    spec["clientEndpoint"] = "http://10.0.0.7:8081"
+    spec["workspaceHostDir"] = "~/.llmdbench/nok8s"
+    spec["readiness"] = {"vllmPorts": [8000], "envoyPort": 8081}
+    # Give the stack the config files the step stages, so the staging path is
+    # exercised rather than skipped.
+    for prefix in ("31_nok8s-epp-config", "32_nok8s-epp-endpoints", "33_nok8s-envoy"):
+        (stack / f"{prefix}.yaml").write_text("k: v\n", encoding="utf-8")
+    spec_file.write_text(yaml.safe_dump(spec), encoding="utf-8")
+    return stack
+
+
+def test_remote_deploy_puts_the_connection_flag_before_the_subcommand(
+    tmp_path: Path,
+) -> None:
+    """`docker run -H ssh://...` is not valid; the flag has to precede `run`."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+    assert result.success is True, result.message
+
+    runs = [c for c in cmd.commands if " run -d --name " in c]
+    assert len(runs) == 3, cmd.commands
+    for run in runs:
+        assert run.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock run")
+
+
+def test_remote_deploy_stages_configs_on_the_node_before_launching(
+    tmp_path: Path,
+) -> None:
+    """Bind-mount sources resolve on the daemon, so they must exist there first.
+
+    docker turns a missing source into an empty directory, so without the push
+    the EPP would start with no endpoints file and route nothing.
+    """
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    NoK8sDeployStep().execute(ctx, stack)
+
+    scp = next((i for i, c in enumerate(cmd.commands) if "scp " in c), None)
+    first_run = next(i for i, c in enumerate(cmd.commands) if " run -d --name " in c)
+    assert scp is not None, cmd.commands
+    assert scp < first_run, "configs staged after the containers were launched"
+    assert "bench@10.0.0.7:" in cmd.commands[scp]
+
+
+def test_remote_deploy_expands_tilde_against_the_nodes_home(tmp_path: Path) -> None:
+    """`~` in workspaceHostDir belongs to the remote user, not the caller."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    NoK8sDeployStep().execute(ctx, stack)
+
+    envoy_run = next(c for c in cmd.commands if " run -d --name envoy" in c)
+    assert "/home/bench/.llmdbench/nok8s/envoy.yaml" in envoy_run
+    assert "~" not in envoy_run
+
+
+def test_remote_deploy_probes_readiness_on_the_node(tmp_path: Path) -> None:
+    """A curl for `localhost` from the client would probe the client."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    NoK8sDeployStep().execute(ctx, stack)
+
+    probes = [c for c in cmd.commands if "curl -fsS" in c]
+    assert probes, cmd.commands
+    for probe in probes:
+        assert probe.startswith("ssh ")
+        assert "bench@10.0.0.7" in probe
+
+
+def test_remote_deploy_records_the_in_host_endpoint(tmp_path: Path) -> None:
+    """The harness runs on the node, so it benchmarks localhost there."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    NoK8sDeployStep().execute(ctx, stack)
+    assert ctx.deployed_endpoints["stack"] == "http://localhost:8081"
+
+
+def test_remote_staging_failure_stops_before_any_container_starts(
+    tmp_path: Path,
+) -> None:
+    """Fatal, not best-effort: an empty mount is a much worse failure to read."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(
+        fail_substrings=("scp ",), stdout_for={"printenv HOME": "/home/bench\n"}
+    )
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is False
+    assert "stage" in result.message.lower()
+    assert not any(" run -d --name " in c for c in cmd.commands)
+
+
+def test_remote_teardown_removes_containers_on_the_node(tmp_path: Path) -> None:
+    from llmdbenchmark.teardown.steps.step_06_nok8s_teardown import NoK8sTeardownStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sTeardownStep().execute(ctx, stack)
+
+    assert result.success is True
+    assert "10.0.0.7" in result.message
+    assert cmd.removed() == {"vllm-0", "epp", "envoy"}
+    for c in cmd.commands:
+        assert c.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock rm")
+
+
+def test_teardown_refuses_an_unusable_connection_instead_of_going_local(
+    tmp_path: Path,
+) -> None:
+    """Falling back to the local runtime would remove another stack's containers
+    and leave the remote node serving."""
+    from llmdbenchmark.teardown.steps.step_06_nok8s_teardown import NoK8sTeardownStep
+
+    stack = _remote_stack(tmp_path, connection="tcp://10.0.0.7:2375")
+    cmd = _RecordingCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sTeardownStep().execute(ctx, stack)
+
+    assert result.success is False
+    assert cmd.commands == []
+
+
+def test_remote_preflight_tests_the_connection_and_probes_the_node(
+    tmp_path: Path,
+) -> None:
+    """`info` is answered by the daemon, so one call proves the SSH path works;
+    the accelerator and the ports have to be checked on the serving host."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _RecordingCmd(stdout_for={"ss -ltn": "State  Recv-Q\n"}),
+        nok8s={"enabled": True, "connection": REMOTE},
+    )
+    import os
+
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = "hf_test"
+    try:
+        result = EnsureInfraStep().execute(ctx)
+    finally:
+        os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
+
+    assert result.success is True, result.errors
+    commands = ctx.cmd.commands
+    assert any(c.startswith("docker -H ") and c.endswith(" info") for c in commands)
+    # The client binary is checked locally; the host tools on the node.
+    assert "command -v docker" in commands
+    assert any(c.startswith("ssh ") and "nvidia-smi -L" in c for c in commands)
+    assert any(c.startswith("ssh ") and "ss -ltn" in c for c in commands)
+
+
+def test_remote_preflight_reports_an_unreachable_daemon_with_the_fix(
+    tmp_path: Path,
+) -> None:
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _RecordingCmd(fail_substrings=("docker -H ",)),
+        nok8s={"enabled": True, "connection": REMOTE},
+    )
+    result = EnsureInfraStep().execute(ctx)
+
+    assert result.success is False
+    joined = " ".join(result.errors)
+    assert "ssh bench@10.0.0.7 true" in joined
+
+
+def test_preflight_refuses_a_tcp_connection(tmp_path: Path) -> None:
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _RecordingCmd(),
+        nok8s={"enabled": True, "connection": "tcp://10.0.0.7:2375"},
+    )
+    result = EnsureInfraStep().execute(ctx)
+    assert result.success is False
+    assert any("tcp://" in e for e in result.errors)
+
+
+def test_remote_dry_run_never_touches_the_node(tmp_path: Path) -> None:
+    """--dry-run must work with the node unreachable (or nonexistent).
+
+    It proves the plan and the command strings, so reaching out to read $HOME
+    would make a dry-run wait on an SSH timeout for a host that may not be up
+    yet.
+    """
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+    ctx.dry_run = True
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is True
+    assert not any(c.startswith("ssh ") for c in cmd.commands)
+    assert not any("scp " in c for c in cmd.commands)
+    assert not any("curl" in c for c in cmd.commands)

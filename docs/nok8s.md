@@ -22,6 +22,12 @@ equivalent of the upstream
 Use it for HPC/Slurm nodes, bare-metal boxes, or a single GPU workstation
 where standing up Kubernetes is not worth it.
 
+The host running the containers does not have to be the host running
+`llmdbenchmark`. Point `nok8s.connection` at a node and the whole lifecycle —
+standup, smoketest, run, teardown — drives that node over SSH, with nothing to
+install or configure there beyond a container runtime. See
+[Remote host](#remote-host).
+
 ## Prerequisites
 
 `llmdbenchmark standup` validates these automatically in step 00; a missing or
@@ -31,15 +37,23 @@ broken container runtime is fatal, the rest are warnings.
 |-------------|-------|
 | Linux host + NVIDIA GPU(s) | Images/flags are NVIDIA + vLLM specific |
 | NVIDIA driver | `nvidia-smi` must work |
-| Container runtime | **docker** or **podman** (`nok8s.runtime`) |
+| Container runtime | **docker** or **podman** (`nok8s.runtime`), on the host named by `nok8s.connection` |
 | NVIDIA Container Toolkit | docker: `nvidia-ctk runtime configure --runtime=docker`; podman: `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` |
 | Hugging Face token | `export HUGGING_FACE_HUB_TOKEN=hf_...` (only for gated models) |
 | Free host ports | 8000 (vLLM), 8081 (Envoy), 9002/9003/9090 (EPP), 19000 (Envoy admin) |
 | Outbound network | to pull images (docker.io, ghcr.io) and model weights (Hugging Face) |
 | `llmdbenchmark` CLI | `./install.sh` (Python 3.11+) |
 
+Every requirement above applies to the host that runs the containers. For a
+remote `nok8s.connection` the client additionally needs `ssh` and `scp`, and the
+node needs `curl`, `timeout` and a listening-socket tool (`ss` or `lsof`) —
+step 00 checks each one on the side that has to have it.
+
 **Not required:** Kubernetes, `kubectl`/`oc`, `helm`/`helmfile`, Gateway CRDs,
-PVCs, or any cluster access.
+PVCs, or any cluster access. For a remote node, also not required: a
+daemon listening on a TCP port, a manually opened SSH tunnel, an agent or
+anything else installed there, or a login session — `llmdbenchmark` never needs
+you to shell into the node.
 
 Verify GPU-in-container before you start:
 ```bash
@@ -63,7 +77,7 @@ llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dr
 
 | What | Without a GPU |
 |------|---------------|
-| `pytest tests/ -q -n2` | **Works** (739 passed, 31 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
+| `pytest tests/ -q -n2` | **Works** (1389 passed, 32 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
 | `plan` | **Works** -- renders all 36 artifacts, including `31/32/33/34_nok8s-*` |
 | `--dry-run standup --methods nok8s` | **Works** (12/12 steps) -- step 06 logs each `docker run` it *would* execute, and records `http://localhost:8081` |
 | `--dry-run run` | **Works** -- endpoint resolves locally with no cluster query, profiles render, the harness `docker run` is logged |
@@ -108,6 +122,21 @@ llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . tear
 `--methods nok8s` is optional when the scenario sets `nok8s.enabled: true`
 (the method is auto-detected), but harmless to pass explicitly.
 
+To run the same stack on a bare-metal node, add `--set nok8s.connection=<IP>`
+to **each** of those commands — `run` included, since it launches the harness
+on the node:
+
+```bash
+llmdbenchmark --spec guides/nok8s standup  --methods nok8s --set nok8s.connection=10.0.0.7
+llmdbenchmark --spec guides/nok8s smoketest                --set nok8s.connection=10.0.0.7
+llmdbenchmark --spec guides/nok8s run                      --set nok8s.connection=10.0.0.7
+llmdbenchmark --spec guides/nok8s teardown --methods nok8s --set nok8s.connection=10.0.0.7
+```
+
+Or `export LLMDBENCH_SET='nok8s.connection=10.0.0.7'` once and drop the flag
+everywhere — see [Remote host](#remote-host). Nothing else changes, and you
+never log into the node.
+
 Send your own requests to the Envoy front door:
 ```bash
 curl -s http://localhost:8081/v1/completions -H 'Content-Type: application/json' \
@@ -125,6 +154,9 @@ single-GPU example. Key fields (full defaults in
 | Key | Meaning |
 |-----|---------|
 | `nok8s.runtime` | `docker` or `podman` (GPU flag switches to CDI for podman) |
+| `nok8s.connection` | Host whose runtime runs the stack. `localhost` (default), or `ssh://[user@]host[:port][/socket]`. A bare `10.0.0.7` / `user@node` is read as `ssh://`. Settable per run with `--set nok8s.connection=…` instead of editing the scenario. See [Remote host](#remote-host) |
+| `nok8s.sshIdentity` | SSH private key for a remote connection (default: the agent / `~/.ssh` keys) |
+| `nok8s.sshArgs` | Extra `ssh`/`scp` options. **Replaces** the defaults (`BatchMode=yes`, `ConnectTimeout=10`), so restate them if you override |
 | `nok8s.hfTokenEnv` | Host env var passed to vLLM for HF auth |
 | `nok8s.workspaceHostDir` | Host dir where EPP/Envoy configs are staged + bind-mounted |
 | `nok8s.vllm.{image,tag,hostPort,tensorParallel,accelerator,gpus,deviceArgs,shmSize,replicas,extraArgs}` | vLLM worker(s); worker *i* is published on `hostPort + i` (see Accelerators for `accelerator`/`deviceArgs`) |
@@ -170,6 +202,236 @@ nok8s:
 Step 00 probes the accelerator when it can (`nvidia-smi`/`rocm-smi`/`xpu-smi`/
 `hl-smi`); `cpu`/`spyre`/custom are not probed (a note is logged) — ensure the
 device and image match yourself.
+
+## Remote host
+
+By default the containers run on the machine that runs `llmdbenchmark`. Set
+`nok8s.connection` and they run somewhere else instead:
+
+```yaml
+nok8s:
+  enabled: true
+  connection: 10.0.0.7          # or ssh://bench@10.0.0.7, or a hostname
+```
+
+That is the whole change. Everything else — `standup`, `smoketest`, `run`,
+`teardown` — works exactly as it does locally:
+
+```bash
+llmdbenchmark --spec my-scenario.yaml standup --methods nok8s
+llmdbenchmark --spec my-scenario.yaml smoketest
+llmdbenchmark --spec my-scenario.yaml run
+llmdbenchmark --spec my-scenario.yaml teardown --methods nok8s
+```
+
+### Without editing the scenario (`--set`)
+
+The node's address is usually a property of *this run*, not of the scenario, so
+it does not have to be committed to a file. `--set` takes any dotted path into
+the merged stack config, and every subcommand accepts it:
+
+```bash
+llmdbenchmark --spec my-scenario.yaml standup --methods nok8s --set nok8s.connection=10.0.0.7
+```
+
+`run`, `smoketest` and `teardown` take the same flag, and each phase needs it
+for a different reason:
+
+| Phase | What `nok8s.connection` decides |
+|-------|---------------------------------|
+| `standup` | Which host's runtime starts vLLM / EPP / Envoy, and where the configs are staged |
+| `smoketest` | Which address is probed — the node's (`http://10.0.0.7:8081`), from the client |
+| `run` | Which host's runtime runs the harness container, and where its inputs are staged and results pulled from |
+| `teardown` | Which host's containers are removed |
+
+Several keys fit in one flag (comma-separated), and the flag repeats:
+
+```bash
+--set 'nok8s.connection=ssh://bench@10.0.0.7:2222,nok8s.sshIdentity=/keys/id_ed25519'
+```
+
+The override is echoed at render time, which is worth reading back:
+
+```
+[nok8s-single] Scenario override: nok8s.connection: 'localhost' -> '10.0.0.7'
+```
+
+**`--set` applies to one invocation, so it has to be repeated on every phase.**
+A `run` without it starts the harness on *your own* machine against
+`localhost:8081`, where nothing is listening, while the stack sits idle on the
+node — no error, just the wrong machine. The tell is the launch command: a
+remote run reads `docker -H ssh://10.0.0.7/... run -d`, a local one is a bare
+`docker run -d`. Likewise a `teardown` without it leaves the node's containers
+running. To set it once for a whole session, use the env var instead:
+
+```bash
+export LLMDBENCH_SET='nok8s.connection=10.0.0.7'
+```
+
+Precedence is `scenario` < `--cluster-config` < `--set`, so this overrides a
+`connection` already in the scenario file.
+
+> **A typo in the last path segment still renders, and deploys wherever the
+> scenario said.** `--set nok8s.conection=10.0.0.7` (one `n`) gives
+> `Errors: 0` — `nok8s` exists, so the unknown-path check passes and the
+> misspelled key is merged in as a new, unused one while the real
+> `connection` keeps its value. Render warns when the misspelling is close
+> enough to a real sibling to name it:
+>
+> ```
+> ⚠️ [nok8s-single] override path 'nok8s.conection' does not exist, but
+>    'nok8s.connection' does -- did you mean that? As written,
+>    'nok8s.conection' is created as a new unused key and
+>    'nok8s.connection' keeps its current value.
+> ```
+>
+> It is a warning, not an error, because free-form blocks (e.g.
+> `kustomize.guideVariableOverrides`) gain new keys by design — so a key too
+> far from any sibling to be a plausible misspelling passes without comment.
+> The other tell is the echoed override line: a working one reads
+> `'localhost' -> '10.0.0.7'`, a typo'd one reads `<unset> -> '10.0.0.7'`. A
+> typo in a *parent* segment (`nok8ss.connection`) warns too. All of this is
+> how `--set` behaves tool-wide, not just here.
+
+Guardrails still apply through `--set`: `--set nok8s.connection=tcp://10.0.0.7:2375`
+fails at render with the reason, before anything is launched.
+
+### Accepted values
+
+| `nok8s.connection` | Meaning |
+|--------------------|---------|
+| `localhost` (default), `local`, `127.0.0.1`, a `unix://` or `/…` socket path | The local runtime — commands are byte-identical to a pre-`connection` release |
+| `10.0.0.7`, `node1`, `bench@node1` | Read as `ssh://` — the "just give it the IP" case |
+| `ssh://[user@]host[:port][/socket-path]` | Explicit. `port` is the **SSH** port; `socket-path` is the daemon socket on the node (rootless podman: `/run/user/<uid>/podman/podman.sock`) |
+| `tcp://…` | **Refused**, with an error at render time |
+
+### Why SSH, and why not `tcp://`
+
+Both runtimes have a native SSH transport, so nothing has to be reconfigured
+on the node and no tunnel has to be opened by hand:
+
+```bash
+docker -H ssh://bench@10.0.0.7 run ...
+podman --url ssh://bench@10.0.0.7/run/user/1000/podman/podman.sock run ...
+```
+
+`tcp://` is refused on purpose. A docker/podman socket bound to a TCP port with
+no TLS and no authentication grants root on that node to anyone who can reach
+the port — mounting `/` into a privileged container is a one-liner. Since the
+SSH transport needs no daemon changes at all, there is no case where opening
+that port is the better trade.
+
+### What the node needs
+
+Only what a bare-metal box already has:
+
+- **A container runtime** (`docker` or `podman`) running, and your SSH user able
+  to use it (in the `docker` group, or rootless podman with its socket active —
+  `systemctl --user enable --now podman.socket`).
+- **Key-based SSH that works non-interactively.** The connection is opened with
+  `BatchMode=yes`, so a passphrase or an unknown-host prompt fails fast instead
+  of hanging a standup. Verify with the exact command the preflight suggests:
+  ```bash
+  ssh bench@10.0.0.7 true      # must succeed with no prompt
+  ```
+  Pass a specific key with `nok8s.sshIdentity: /path/to/key`.
+- **`curl`, `timeout`, and `ss` or `lsof`** — checked by step 00 on the node.
+
+No `llmdbenchmark`, no Python, and no cluster tooling is installed there, and
+you never need an interactive login.
+
+### What runs where
+
+The distinction that matters is *client* versus *daemon host*, because a path or
+a `localhost` means different things on each side:
+
+| | Runs on | Why |
+|---|---------|-----|
+| `llmdbenchmark` itself | Client | It only drives the runtime client |
+| vLLM / EPP / Envoy | Node | That is the point |
+| **Benchmark harness** | **Node** | Driving load from the client would add the SSH round-trip to every request and report it as the stack's latency |
+| EPP/Envoy configs | Pushed to the node (`scp`) | Bind-mount sources are resolved by the daemon |
+| Readiness probes (`curl`) | Node | `curl localhost:8081` from the client would probe the client |
+| Container logs | Pulled to the client | A failed standup is diagnosable without SSHing in |
+| Results | Pulled to the client | You get the same `workspace/results/` tree as a local run |
+
+Because the harness runs on the node, the rendered
+`34_nok8s-containers.yaml` carries **two** endpoints, and they are identical
+for a local stack:
+
+| Field | Value | Used by |
+|-------|-------|---------|
+| `endpoint` | `http://localhost:<listenPort>` | The harness container (`--network host`, on the node) |
+| `clientEndpoint` | `http://<node>:<listenPort>` | The smoketest and your own `curl`, from the client |
+
+A `run` that follows a `standup` in the same command inherits `endpoint`
+directly. A standalone `llmdbenchmark run` has nothing in memory, so it starts
+from the client URL and step 07 swaps in `endpoint` from the rendered spec
+before launching the harness. An explicit `--endpoint-url` is never swapped --
+if you name a target, that is the target.
+
+So `curl` the node, not localhost:
+```bash
+curl -s http://10.0.0.7:8081/v1/completions -H 'Content-Type: application/json' \
+  -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","prompt":"Hello","max_tokens":32}'
+```
+
+Envoy's `listenPort` has to be reachable from the client for the smoketest (or
+tunnel it: `ssh -L 8081:localhost:8081 bench@10.0.0.7`). The vLLM and EPP ports
+never need to be — they are probed on the node.
+
+Where things land on the node:
+
+| Path | Contents |
+|------|----------|
+| `nok8s.workspaceHostDir` (default `~/.llmdbench/nok8s`) | Staged EPP/Envoy configs. `~` is expanded against the **node's** `$HOME`, not yours |
+| `nok8s.vllm.hfCacheDir` (default `~/.cache/huggingface`) | Model weights, so a re-run does not re-download |
+| `~/.llmdbench/nok8s-runs/<stack>/<workspace-name>/` | Per-run harness inputs and results. Kept after the pull, so a failed run stays inspectable |
+
+The Hugging Face token is passed as a valueless `-e HUGGING_FACE_HUB_TOKEN`,
+which both CLIs expand from your **client** environment. It reaches the vLLM
+container without ever being written to the node's disk.
+
+### Remote troubleshooting
+
+- **`Cannot reach the 'docker' daemon at ssh://…`** — step 00 already ran
+  `docker -H … info`, so the connection, not the config, is the problem. Work
+  through `ssh <dest> true`, then whether your user can use the runtime there
+  (`ssh <dest> docker info`).
+- **A prompt appears and the standup fails immediately** — `BatchMode=yes` is
+  doing its job. Add the host key (`ssh-keyscan -H <host> >> ~/.ssh/known_hosts`)
+  or load the key into your agent.
+- **`Failed to stage nok8s configs to …`** — fatal on purpose: docker silently
+  turns a missing bind-mount source into an *empty directory*, so the EPP would
+  come up with no endpoints file and route nothing. Check that
+  `nok8s.workspaceHostDir` is writable by the SSH user.
+- **Smoketest cannot reach the endpoint but standup passed** — standup probes
+  from the node, the smoketest from the client. The stack is up; Envoy's
+  `listenPort` is firewalled.
+- **Paths containing `~` did not resolve** — step 00 warns when it cannot read
+  `$HOME` on the node. Use absolute paths for `workspaceHostDir` and
+  `hfCacheDir`.
+- **It deployed locally and the node is untouched** — the connection never took
+  effect. Check the render log for
+  `Scenario override: nok8s.connection: 'localhost' -> '<IP>'`; `<unset> ->`
+  means the `--set` path was misspelled, and no line at all means `--set` was
+  missing from *this* command (it is per invocation — see
+  [Without editing the scenario](#without-editing-the-scenario---set)). A
+  targeted command logs `nok8s target: docker @ ssh://…` and every container
+  command carries `-H ssh://…`.
+- **The stack is on the node but the benchmark numbers look like localhost** —
+  `run` was invoked without the connection, so the harness ran on the client
+  against its own port 8081. Re-run `run` with the same `--set` you gave
+  `standup`.
+
+### Several nodes
+
+`nok8s.connection` is per stack, so a multi-stack scenario can spread stacks
+across nodes — and stacks on *different* nodes no longer contend for ports or
+devices. The clash checks are deliberately conservative and treat all stacks as
+sharing one host, so two stacks on different nodes still have to be given
+distinct ports and container names. Benchmark them one at a time with
+`--stack` (see [Several stacks on one host](#several-stacks-on-one-host)).
 
 ## Several stacks on one host
 
@@ -245,13 +507,13 @@ and filing the results under every stack's name.
 
 | Phase | nok8s behaviour |
 |-------|-----------------|
-| standup step 00 | Preflight: runtime / GPU / ports / token (replaces helm/kubectl checks) |
+| standup step 00 | Preflight: runtime / GPU / ports / token (replaces helm/kubectl checks). For a remote `connection`, `<runtime> info` doubles as the connection test, and the GPU/port/tool probes run on the node |
 | standup steps 02–05 | Skipped (no namespace, PVC, model-download Job) |
-| standup step 06 | `step_06_nok8s_deploy` launches the containers, waits for `/v1/models`, records `http://localhost:<listenPort>` |
-| smoketest steps 00–01 | Cluster-free probes: `GET /v1/models` and `POST /v1/completions` against the Envoy front door, read from the rendered `34_nok8s-containers.yaml` (no pods, Service or route) |
-| run step 03 | Endpoint resolves to the local Envoy URL (no cluster query) |
-| run step 07 | `step_07_deploy_harness_local` runs the harness image locally with `--network host`; results land in `workspace/results/` via a bind-mount |
-| teardown step 06 | `step_06_nok8s_teardown` removes the containers |
+| standup step 06 | `step_06_nok8s_deploy` launches the containers, waits for `/v1/models`, records `http://localhost:<listenPort>`. Remote: pushes the staged configs first, expands `~` against the node's `$HOME`, probes readiness on the node |
+| smoketest steps 00–01 | Cluster-free probes: `GET /v1/models` and `POST /v1/completions` against the Envoy front door, read from the rendered `34_nok8s-containers.yaml` (no pods, Service or route). Dials `clientEndpoint`, since it runs on the client |
+| run step 03 | Endpoint resolves to the Envoy URL without a cluster query: `localhost` for a local stack, the node for a remote one |
+| run step 07 | `step_07_deploy_harness_local` runs the harness image with `--network host`; results land in `workspace/results/` via a bind-mount. Remote: the container runs **on the node** (so the measured latency is the stack's), using the in-host `endpoint`, with inputs pushed and results pulled back |
+| teardown step 06 | `step_06_nok8s_teardown` removes the containers on the host the spec names; an unresolvable `connection` fails the step rather than falling back to the local runtime |
 
 ## Multiple GPUs
 
@@ -298,3 +560,5 @@ auto-pinning and puts you in control).
 - **podman + GPU** — ensure the CDI spec exists: `nvidia-ctk cdi list` should show
   `nvidia.com/gpu=all`.
 - **Ports busy** — a stale run; `teardown --methods nok8s`, or change the ports.
+- **Remote (`nok8s.connection`)** — see
+  [Remote troubleshooting](#remote-troubleshooting).

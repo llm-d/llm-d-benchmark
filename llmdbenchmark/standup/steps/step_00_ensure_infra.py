@@ -14,6 +14,10 @@ from llmdbenchmark.executor.deps import (
     MIN_HELMFILE_VERSION,
 )
 from llmdbenchmark.utilities.cluster import print_phase_banner
+from llmdbenchmark.utilities.container_host import (
+    ContainerHost,
+    ContainerHostError,
+)
 
 # Listening-socket probes, first one available wins. ss is iproute2 (Linux);
 # lsof covers macOS and hosts without iproute2.
@@ -167,6 +171,26 @@ class EnsureInfraStep(Step):
         nok8s = plan_config.get("nok8s", {})
         accelerator = str(nok8s.get("vllm", {}).get("accelerator", "nvidia")).lower()
         hf_env = nok8s.get("hfTokenEnv", "HUGGING_FACE_HUB_TOKEN")
+        # The accelerator, the ports and the host tools all have to be present on
+        # the machine that will run the containers, so every probe below is
+        # wrapped in host.shell(). For a local stack that wrapper is the
+        # identity function and the checks are exactly what they were.
+        try:
+            host = ContainerHost.parse(
+                nok8s.get("connection") or context.container_connection,
+                runtime=runtime,
+                identity=nok8s.get("sshIdentity") or "",
+                ssh_args=nok8s.get("sshArgs") or None,
+            )
+        except ContainerHostError as exc:
+            context.logger.log_error(f"    {exc}")
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="nok8s infrastructure checks failed",
+                errors=[str(exc)],
+            )
         # Every nok8s stack in the plan lands on this host, so the port and
         # GPU checks cover all of them, not just the first.
         stacks = [
@@ -182,7 +206,8 @@ class EnsureInfraStep(Step):
         if context.dry_run:
             context.logger.log_info(
                 f"[dry-run] nok8s preflight: would verify '{runtime}' runtime, "
-                f"'{accelerator}' accelerator, free ports {ports}, and ${hf_env}."
+                f"'{accelerator}' accelerator, free ports {ports}, and ${hf_env} "
+                f"on {host.destination}."
             )
             return StepResult(
                 step_number=self.number,
@@ -195,34 +220,60 @@ class EnsureInfraStep(Step):
         errors: list[str] = []
         warnings: list[str] = []
 
-        # 1. Container runtime present and usable (fatal).
+        # 1. Container runtime present and usable (fatal). The *client* binary
+        #    must exist locally even for a remote stack -- it is what carries the
+        #    SSH transport -- but `info` is answered by the daemon, so a single
+        #    call also proves the connection works end to end.
         if not cmd.execute(
             f"command -v {runtime}", check=False, force=True, silent=True
         ).success:
             errors.append(
-                f"Container runtime '{runtime}' not found on PATH. Install docker "
-                f"or podman (or set nok8s.runtime to the one you have)."
+                f"Container runtime client '{runtime}' not found on PATH. Install "
+                f"docker or podman (or set nok8s.runtime to the one you have)."
             )
-        elif not cmd.execute(
-            f"{runtime} info", check=False, force=True, silent=True
-        ).success:
-            errors.append(
-                f"'{runtime}' is installed but not usable (daemon down or "
-                f"permissions). Verify with '{runtime} info'."
+        else:
+            info = cmd.execute(
+                host.runtime_cmd("info"), check=False, force=True, silent=True
             )
+            if not info.success and host.is_remote:
+                errors.append(
+                    f"Cannot reach the '{runtime}' daemon at {host.url}: "
+                    f"{(info.stderr or '').strip()[:300]}. Check that "
+                    f"'ssh {host.destination} true' succeeds without a prompt "
+                    f"(key-based auth, key in the agent or nok8s.sshIdentity, host "
+                    f"key already known) and that '{runtime}' is running there."
+                )
+            elif not info.success:
+                errors.append(
+                    f"'{runtime}' is installed but not usable (daemon down or "
+                    f"permissions). Verify with '{runtime} info'."
+                )
 
         # 1b. Host tools the nok8s path shells out to (fatal). The k8s
         #     toolchain check does not run for nok8s, so these would otherwise
         #     go unchecked: 'timeout' bounds the harness wait in step 07 and
         #     'curl' probes endpoint readiness in step 06.
+        #     Both run on the daemon host: `curl` probes readiness there in step
+        #     06 and `timeout` bounds the harness container, which also runs
+        #     there. For a remote stack `ssh` is needed on the client instead.
         for tool in ("timeout", "curl"):
             if not cmd.execute(
-                f"command -v {tool}", check=False, force=True, silent=True
+                host.shell(f"command -v {tool}"), check=False, force=True, silent=True
             ).success:
+                where = f" on {host.destination}" if host.is_remote else ""
                 errors.append(
-                    f"'{tool}' not found on PATH; the nok8s path needs it "
+                    f"'{tool}' not found on PATH{where}; the nok8s path needs it "
                     f"(install GNU coreutils and curl)."
                 )
+        if host.is_remote:
+            for tool in ("ssh", "scp"):
+                if not cmd.execute(
+                    f"command -v {tool}", check=False, force=True, silent=True
+                ).success:
+                    errors.append(
+                        f"'{tool}' not found on PATH; a remote nok8s connection "
+                        f"needs it to stage configs and probe the node."
+                    )
 
         # 2. Accelerator visible on the host (warning). Probe depends on the
         #    configured accelerator; cpu/spyre/custom are not probed here.
@@ -233,12 +284,15 @@ class EnsureInfraStep(Step):
             "gaudi": "hl-smi -L",
         }.get(accelerator)
         if probe:
-            if not cmd.execute(probe, check=False, force=True, silent=True).success:
+            if not cmd.execute(
+                host.shell(probe), check=False, force=True, silent=True
+            ).success:
                 tool = probe.split()[0]
+                where = f" on {host.destination}" if host.is_remote else ""
                 warnings.append(
-                    f"'{tool}' found no {accelerator} accelerator; vLLM needs the "
-                    f"device + driver present, the matching vLLM image, and the "
-                    f"container toolkit configured for '{runtime}'."
+                    f"'{tool}' found no {accelerator} accelerator{where}; vLLM "
+                    f"needs the device + driver present, the matching vLLM image, "
+                    f"and the container toolkit configured for '{runtime}'."
                 )
         else:
             context.logger.log_info(
@@ -254,7 +308,9 @@ class EnsureInfraStep(Step):
             for cfg in stacks
         )
         if accelerator == "nvidia" and needed > 1:
-            res_gpu = cmd.execute("nvidia-smi -L", check=False, force=True, silent=True)
+            res_gpu = cmd.execute(
+                host.shell("nvidia-smi -L"), check=False, force=True, silent=True
+            )
             if res_gpu.success and res_gpu.stdout:
                 count = sum(
                     1 for ln in res_gpu.stdout.splitlines() if ln.startswith("GPU ")
@@ -303,7 +359,10 @@ class EnsureInfraStep(Step):
                 p
                 for p in PORT_PROBES
                 if cmd.execute(
-                    f"command -v {p.split()[0]}", check=False, force=True, silent=True
+                    host.shell(f"command -v {p.split()[0]}"),
+                    check=False,
+                    force=True,
+                    silent=True,
                 ).success
             ),
             None,
@@ -311,11 +370,14 @@ class EnsureInfraStep(Step):
         if probe_cmd is None:
             warnings.append(
                 f"Cannot verify host ports {ports}: none of "
-                f"{', '.join(p.split()[0] for p in PORT_PROBES)} found on PATH. "
-                f"Install iproute2 or lsof, or check the ports yourself."
+                f"{', '.join(p.split()[0] for p in PORT_PROBES)} found on PATH"
+                + (f" on {host.destination}" if host.is_remote else "")
+                + ". Install iproute2 or lsof, or check the ports yourself."
             )
         else:
-            res = cmd.execute(probe_cmd, check=False, force=True, silent=True)
+            res = cmd.execute(
+                host.shell(probe_cmd), check=False, force=True, silent=True
+            )
             busy = [p for p in ports if f":{p} " in (res.stdout or "")]
             if busy:
                 warnings.append(
@@ -336,12 +398,12 @@ class EnsureInfraStep(Step):
                 errors=errors,
             )
 
-        context.logger.log_info(f"nok8s preflight passed (runtime={runtime}).")
+        context.logger.log_info(f"nok8s preflight passed ({host.describe()}).")
         return StepResult(
             step_number=self.number,
             step_name=self.name,
             success=True,
-            message=f"nok8s infrastructure ready (runtime={runtime})",
+            message=f"nok8s infrastructure ready ({host.describe()})",
         )
 
     # Config path -> whether the value is the base of `vllm.replicas`

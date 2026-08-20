@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-08-19 22:54:35` (UTC)
-- Generated against git ref: `d6c1e3a1a34294bc58ebfca0922f84868660694a`
+- Generated at: `2026-08-20 15:55:52` (UTC)
+- Generated against git ref: `e525662796b19a4a68f6d1b5f4c0344b636b088d`
 
 ## System Tool Dependencies
 
@@ -120,6 +120,7 @@ annotated with their `pyproject.toml` line.
 | **cryptography** | `50.0.0` | version | (transitive in `.venv`) | [cryptography (PyPI)](https://pypi.org/project/cryptography/) |
 | **detect_secrets** | `38ba7e335083e0a4db8c53e9be414795b27891e9` | commit SHA | (transitive in `.venv`) | [detect_secrets (PyPI)](https://pypi.org/project/detect-secrets/) |
 | **distlib** | `0.4.3` | version | (transitive in `.venv`) | [distlib (PyPI)](https://pypi.org/project/distlib/) |
+| **distro** | `1.9.0` | version | (transitive in `.venv`) | [distro (PyPI)](https://pypi.org/project/distro/) |
 | **durationpy** | `0.10` | version | (transitive in `.venv`) | [durationpy (PyPI)](https://pypi.org/project/durationpy/) |
 | **execnet** | `2.1.2` | version | (transitive in `.venv`) | [execnet (PyPI)](https://pypi.org/project/execnet/) |
 | **fastapi** | `0.141.1` | version | (transitive in `.venv`) | [fastapi (PyPI)](https://pypi.org/project/fastapi/) |
@@ -161,7 +162,7 @@ annotated with their `pyproject.toml` line.
 | **nvidia-ml-py3** | `7.352.0` | version | (transitive in `.venv`) | [nvidia-ml-py3 (PyPI)](https://pypi.org/project/nvidia-ml-py3/) |
 | **oauthlib** | `3.3.1` | version | (transitive in `.venv`) | [oauthlib (PyPI)](https://pypi.org/project/oauthlib/) |
 | **ollama** | `0.6.2` | version | (transitive in `.venv`) | [ollama (PyPI)](https://pypi.org/project/ollama/) |
-| **openai** | `3.3.1` | version | (transitive in `.venv`) | [openai (PyPI)](https://pypi.org/project/openai/) |
+| **openai** | `3.2.0` | version | (transitive in `.venv`) | [openai (PyPI)](https://pypi.org/project/openai/) |
 | **packaging** | `26.3` | version | `pyproject.toml` line 10 (direct) | [packaging (PyPI)](https://pypi.org/project/packaging/) |
 | **pandas** | `3.0.3` | version | (transitive in `.venv`) | [pandas (PyPI)](https://pypi.org/project/pandas/) |
 | **planner** | `9def3abea1720bce19823a4b5ae3ff2015ae77f1` | commit SHA | (transitive in `.venv`) | [planner (PyPI)](https://pypi.org/project/planner/) |
@@ -194,7 +195,6 @@ annotated with their `pyproject.toml` line.
 | **requests-oauthlib** | `2.0.0` | version | (transitive in `.venv`) | [requests-oauthlib (PyPI)](https://pypi.org/project/requests-oauthlib/) |
 | **requests-toolbelt** | `1.0.0` | version | (transitive in `.venv`) | [requests-toolbelt (PyPI)](https://pypi.org/project/requests-toolbelt/) |
 | **rich** | `15.0.0` | version | (transitive in `.venv`) | [rich (PyPI)](https://pypi.org/project/rich/) |
-| **ruff** | `0.15.11` | version | (transitive in `.venv`) | [ruff (PyPI)](https://pypi.org/project/ruff/) |
 | **safetensors** | `0.8.0` | version | (transitive in `.venv`) | [safetensors (PyPI)](https://pypi.org/project/safetensors/) |
 | **scipy** | `1.17.1` | version | (transitive in `.venv`) | [scipy (PyPI)](https://pypi.org/project/scipy/) |
 | **shellingham** | `1.5.4` | version | (transitive in `.venv`) | [shellingham (PyPI)](https://pypi.org/project/shellingham/) |
@@ -205,7 +205,7 @@ annotated with their `pyproject.toml` line.
 | **tabulate** | `0.10.0` | version | (transitive in `.venv`) | [tabulate (PyPI)](https://pypi.org/project/tabulate/) |
 | **tokenizers** | `0.22.2` | version | (transitive in `.venv`) | [tokenizers (PyPI)](https://pypi.org/project/tokenizers/) |
 | **tqdm** | `4.70.0` | version | (transitive in `.venv`) | [tqdm (PyPI)](https://pypi.org/project/tqdm/) |
-| **transformers** | `5.15.1` | version | `pyproject.toml` line 16 (direct) | [transformers (PyPI)](https://pypi.org/project/transformers/) |
+| **transformers** | `5.15.0` | version | `pyproject.toml` line 16 (direct) | [transformers (PyPI)](https://pypi.org/project/transformers/) |
 | **truststore** | `0.10.4` | version | (transitive in `.venv`) | [truststore (PyPI)](https://pypi.org/project/truststore/) |
 | **typer** | `0.27.1` | version | (transitive in `.venv`) | [typer (PyPI)](https://pypi.org/project/typer/) |
 | **typing-inspection** | `0.4.4` | version | (transitive in `.venv`) | [typing-inspection (PyPI)](https://pypi.org/project/typing-inspection/) |
