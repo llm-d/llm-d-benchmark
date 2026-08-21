@@ -584,7 +584,7 @@ class AdminPrerequisitesStep(Step):
             cmd.logger.log_info(
                 "✅ gateway.className=epponly -- no Kubernetes Gateway / "
                 "provider control plane is needed (EPP runs llm-d's "
-                "standalone router topology with an Envoy sidecar)"
+                "standalone router topology with a proxy sidecar)"
             )
 
     def _install_lws_if_needed(
