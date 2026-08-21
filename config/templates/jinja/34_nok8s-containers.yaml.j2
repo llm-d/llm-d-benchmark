@@ -8,11 +8,29 @@
    lets the step build docker vs podman commands correctly.
    ============================================================================ #}
 runtime: {{ nok8s.runtime }}
+{# Where the containers run, and how they are reached. "localhost" keeps every
+   command local. For a remote node, transport "ssh" (the default) runs the
+   runtime on the node over plain ssh, and "native" passes the URL to a local
+   client (docker -H / podman --url). Both are recorded so teardown reaches the
+   same daemon standup used. clientHost is resolved by
+   RenderPlans._resolve_nok8s_connection so consumers never have to parse the
+   URL. #}
+connection: "{{ nok8s.connection | default('localhost') }}"
+transport: "{{ nok8s.transport | default('ssh') }}"
+sshIdentity: "{{ nok8s.sshIdentity | default('') }}"
+sshArgs: [{% for a in nok8s.sshArgs | default([]) %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 workspaceHostDir: "{{ nok8s.workspaceHostDir }}"
 hfTokenEnv: {{ nok8s.hfTokenEnv }}
 hfCacheDir: "{{ nok8s.vllm.hfCacheDir }}"
 model: {{ model.name }}
+{# Two endpoints, because two different machines dial the front door:
+   `endpoint` is used from *inside* the daemon host -- the harness container
+   runs there with --network host, and keeping it on the node means the
+   measured latency is the stack's, not the SSH link's.
+   `clientEndpoint` is used from the machine running llmdbenchmark (smoketest,
+   manual curl). They are identical for a local stack. #}
 endpoint: "http://localhost:{{ nok8s.envoy.listenPort }}"
+clientEndpoint: "http://{{ nok8s.clientHost | default('localhost') }}:{{ nok8s.envoy.listenPort }}"
 readiness:
   vllmPorts: [{% for i in range(nok8s.vllm.replicas) %}{{ nok8s.vllm.hostPort + i }}{% if not loop.last %}, {% endif %}{% endfor %}]
   envoyPort: {{ nok8s.envoy.listenPort }}
@@ -46,4 +64,8 @@ containers:
     image: "{{ nok8s.envoy.image }}:{{ nok8s.envoy.tag }}"
     listenPort: {{ nok8s.envoy.listenPort }}
     configMountPath: {{ nok8s.envoy.configMountPath }}
+{# Hot-restart base ID, resolved by RenderPlans._resolve_nok8s_envoy_base_id.
+   Envoy runs with --network host, so its default base ID of 0 is claimed
+   host-wide and a second Envoy on the node dies before it binds. #}
+    baseId: {{ nok8s.envoy.baseId | default(0) }}
 {% endif %}

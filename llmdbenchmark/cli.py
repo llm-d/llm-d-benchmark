@@ -323,6 +323,12 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "nok8s_runtime": (
                     plan_config.get("nok8s", {}).get("runtime", "docker")
                 ),
+                "nok8s_connection": (
+                    plan_config.get("nok8s", {}).get("connection", "localhost")
+                ),
+                "nok8s_client_host": (
+                    plan_config.get("nok8s", {}).get("clientHost", "localhost")
+                ),
                 "harness": plan_config.get("harness", {}),
             }
     except (OSError, _yaml.YAMLError):
@@ -347,13 +353,18 @@ def _load_all_stacks_info(rendered_paths):
 
 
 def _nok8s_endpoint_url(all_stacks_info, stack_filter=None):
-    """Default the nok8s run target to the local Envoy front door.
+    """Default the nok8s run target to that stack's Envoy front door.
 
     Each nok8s stack has its own Envoy, so there is no scenario-wide
     endpoint: picking one stack's port and benchmarking every stack through
     it files stack A's traffic under stack B's name. Refuse instead, unless
     --stack narrows the run to a single nok8s stack (then use that stack's
     port) or the caller passed --endpoint-url.
+
+    For a remote stack the URL names the node, not localhost: this value is
+    what a *client-side* caller would dial, and it is only a fallback -- the
+    harness itself runs on the node and uses the in-host endpoint that step 06
+    recorded in ``deployed_endpoints``.
     """
     stacks = [s for s in all_stacks_info if s.get("nok8s_enabled")]
     if stack_filter:
@@ -365,11 +376,13 @@ def _nok8s_endpoint_url(all_stacks_info, stack_filter=None):
             + " nok8s stacks, each with its own Envoy port, so there is no "
             "single endpoint to benchmark. Run them one at a time with "
             "'--stack <name>', or pass '--endpoint-url "
-            "http://localhost:<that stack's nok8s.envoy.listenPort>'. Stacks: "
+            "http://<node>:<that stack's nok8s.envoy.listenPort>'. Stacks: "
             + ", ".join(f"{s['stack_name']} ({s['nok8s_listen_port']})" for s in stacks)
         )
-    port = (stacks[0] if stacks else {}).get("nok8s_listen_port", 8081)
-    return f"http://localhost:{port}"
+    first = stacks[0] if stacks else {}
+    port = first.get("nok8s_listen_port", 8081)
+    host = first.get("nok8s_client_host") or "localhost"
+    return f"http://{host}:{port}"
 
 
 def _load_plan_info(rendered_paths):
@@ -515,6 +528,7 @@ def _do_standup(args, logger, render_plan_errors):
         logger=logger,
         container_only=container_only,
         container_runtime=plan_info.get("nok8s_runtime", "docker"),
+        container_connection=plan_info.get("nok8s_connection", "localhost"),
         nok8s_deploy_timeout=int(getattr(args, "nok8s_deploy_timeout", 900) or 900),
         standalone_deploy_timeout=int(
             getattr(args, "standalone_deploy_timeout", 900) or 900
@@ -580,12 +594,31 @@ def _report_pod_restarts(context, logger):
     )
 
 
+def _log_failure_artifacts(logger):
+    """Point at the workspace after a phase failed.
+
+    The workspace path is otherwise only printed by the per-phase success
+    summaries and by a startup line that a long render pushes off screen --
+    so the one run whose logs somebody needs is the one that never says
+    where they are. Read from the ``config`` singleton rather than a
+    context, because the failure can be the context construction itself.
+    """
+    workspace = config.workspace
+    if not workspace:
+        return
+    logger.log_error(f"Workspace: {workspace}")
+    logs_dir = Path(workspace) / "setup" / "logs"
+    if logs_dir.is_dir():
+        logger.log_error(f"Step logs and captured container logs: {logs_dir}")
+
+
 def _execute_standup(args, logger, render_plan_errors):
     """Build execution context and run standup steps."""
     try:
         context, result = _do_standup(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
     _print_standup_summary(context, result, logger)
@@ -608,6 +641,7 @@ def _execute_standup(args, logger, render_plan_errors):
             _do_smoketest(args, logger, render_plan_errors)
         except PhaseError as e:
             logger.log_error(str(e))
+            _log_failure_artifacts(logger)
             sys.exit(1)
 
 
@@ -649,6 +683,7 @@ def _do_smoketest(args, logger, render_plan_errors):
         logger=logger,
         container_only=container_only,
         container_runtime=plan_info.get("nok8s_runtime", "docker"),
+        container_connection=plan_info.get("nok8s_connection", "localhost"),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -680,6 +715,7 @@ def _execute_smoketest(args, logger, render_plan_errors):
         _do_smoketest(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
 
@@ -848,6 +884,7 @@ def _do_teardown(args, logger, render_plan_errors):
         deployed_methods=deployed_methods,
         container_only=container_only,
         container_runtime=plan_info.get("nok8s_runtime", "docker"),
+        container_connection=plan_info.get("nok8s_connection", "localhost"),
         deep_clean=getattr(args, "deep", False),
         release=getattr(args, "release", "llmdbench"),
         namespace=namespace,
@@ -880,6 +917,7 @@ def _execute_teardown(args, logger, render_plan_errors):
         context, result = _do_teardown(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
     ns = context.namespace or "unknown"
@@ -1009,6 +1047,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         run_config_file=run_config_file,
         container_only=container_only,
         container_runtime=plan_info.get("nok8s_runtime", "docker"),
+        container_connection=plan_info.get("nok8s_connection", "localhost"),
         generate_config_only=getattr(args, "generate_config", False),
         dataset_url=getattr(args, "dataset", None),
         harness_data_access_timeout=int(
@@ -1174,6 +1213,7 @@ def _execute_run(args, logger, render_plan_errors):
         context, result = _do_run(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
     # --list-endpoints short-circuits the run - no harness pods launched,

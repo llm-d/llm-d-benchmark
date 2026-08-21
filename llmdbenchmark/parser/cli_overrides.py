@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 import datetime
+import difflib
 import fnmatch
 from typing import Any
 
@@ -428,6 +429,62 @@ def resolve_segments(values: dict, segments: tuple[str, ...] | list[str]) -> Any
 
 #: Sentinel returned by :func:`resolve_dotted` for an absent path.
 MISSING = _MISSING
+
+
+# How close a misspelling has to be to an existing sibling before we call it a
+# typo. 0.8 flags "conection"/"connection" and "replias"/"replicas" while
+# leaving genuinely new keys ("INFRA_PROVIDER" beside "FOO_BAR") alone; 0.85
+# already misses "connexion".
+_TYPO_CUTOFF = 0.8
+
+
+def find_typo_leaves(
+    overrides: dict,
+    base: dict,
+    prefix: str = "",
+) -> list[tuple[str, str]]:
+    """Find leaf keys that look like a misspelling of an existing sibling.
+
+    Returns ``(path, suggestion)`` pairs. A leaf whose parent map exists but
+    which is itself absent is *usually* legitimate -- free-form blocks such as
+    ``kustomize.guideVariableOverrides`` gain new keys by design, and so does
+    any brand-new top-level key -- so absence alone says nothing and is not
+    reported. What is suspicious is an absent leaf sitting next to a key that
+    is one or two characters away from it: ``nok8s.conection`` beside
+    ``nok8s.connection``. That override silently creates a dead key and leaves
+    the real one at its default, which for something like ``nok8s.connection``
+    means the deployment quietly lands on the wrong machine.
+
+    Matching is case-insensitive so ``sshidentity`` still suggests
+    ``sshIdentity``, and only the *closest* sibling is offered.
+    """
+    typos: list[tuple[str, str]] = []
+    if not isinstance(base, dict):
+        return typos
+
+    for key, value in overrides.items():
+        path = f"{prefix}.{key}" if prefix else key
+        child = base.get(key) if isinstance(base, dict) else None
+
+        if isinstance(value, dict) and value:
+            # An intermediate node: only recurse where the parent really is a
+            # map. A missing or non-map parent is find_broken_parent_paths's
+            # business (unknown / clobbered), not ours.
+            if isinstance(child, dict):
+                typos.extend(find_typo_leaves(value, child, path))
+            continue
+
+        if key in base:
+            continue
+        siblings = [k for k in base if isinstance(k, str)]
+        lowered = {k.lower(): k for k in siblings}
+        match = difflib.get_close_matches(
+            key.lower(), list(lowered), n=1, cutoff=_TYPO_CUTOFF
+        )
+        if match:
+            typos.append((path, lowered[match[0]]))
+
+    return typos
 
 
 def find_broken_parent_paths(

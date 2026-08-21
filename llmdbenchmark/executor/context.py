@@ -162,6 +162,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # True, cluster resolution is skipped and steps talk to docker/podman.
     container_only: bool = False
     container_runtime: str = "docker"
+    # Where that runtime runs: "localhost" (default) or ssh://[user@]host[:port]
+    # [/socket] for a remote node. Steps read the per-stack value from the
+    # rendered launch spec; this is the scenario-wide fallback.
+    container_connection: str = "localhost"
 
     pvc_bind_timeout: int = 240
 

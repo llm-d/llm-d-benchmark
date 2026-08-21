@@ -124,12 +124,18 @@ class CommandExecutor:
         delay: int = 10,
         check: bool = True,
         force: bool = False,
+        stdin: str = "",
     ) -> CommandResult:
         """Run a shell command with optional retry. Raises ExecutionError if fatal and failed.
 
         When *force* is True the command runs even in dry-run mode.
         Use this for local-only read operations (e.g. ``kubectl config view``)
         whose results are needed to build later commands correctly.
+
+        *stdin* is written to the process's standard input and, unlike the
+        command itself, is **never logged** -- it is the channel for values that
+        must not be persisted (a Hugging Face token forwarded to a remote
+        runtime). It is not replayed on retries other than as given.
         """
         cmd_str = " ".join(cmd) if isinstance(cmd, list) else cmd
         timestamp = int(time.time() * 1e9)
@@ -140,7 +146,7 @@ class CommandExecutor:
         self._write_log(f"{timestamp}_command.log", f'---> will execute: "{cmd_str}"')
 
         exit_code, stdout, stderr = self._run_with_retries(
-            cmd_str, attempts, silent, delay
+            cmd_str, attempts, silent, delay, stdin
         )
 
         if exit_code != 0 and check:
@@ -162,7 +168,7 @@ class CommandExecutor:
         return CommandResult(command=cmd_str, exit_code=0, dry_run=True)
 
     def _run_with_retries(
-        self, cmd_str: str, attempts: int, silent: bool, delay: int
+        self, cmd_str: str, attempts: int, silent: bool, delay: int, stdin: str = ""
     ) -> tuple[int, str, str]:
         """Execute a command with retry logic, returning (exit_code, stdout, stderr)."""
         exit_code = 1
@@ -170,7 +176,7 @@ class CommandExecutor:
         stderr = ""
 
         for attempt in range(1, attempts + 1):
-            exit_code, stdout, stderr = self._run_once(cmd_str, silent)
+            exit_code, stdout, stderr = self._run_once(cmd_str, silent, stdin)
 
             if exit_code == 0:
                 break
@@ -184,7 +190,9 @@ class CommandExecutor:
 
         return exit_code, stdout, stderr
 
-    def _run_once(self, cmd_str: str, silent: bool) -> tuple[int, str, str]:
+    def _run_once(
+        self, cmd_str: str, silent: bool, stdin: str = ""
+    ) -> tuple[int, str, str]:
         """Run a single command attempt, returning (exit_code, stdout, stderr)."""
         timestamp = int(time.time() * 1e9)
         try:
@@ -195,6 +203,9 @@ class CommandExecutor:
                 text=True,
                 check=False,
                 executable="/bin/bash",
+                # None, not "": an empty string would close stdin on commands
+                # that inherit it today, changing behaviour for every caller.
+                input=stdin or None,
             )
             self._write_log(f"{timestamp}_stdout.log", result.stdout)
             self._write_log(f"{timestamp}_stderr.log", result.stderr)

@@ -228,3 +228,272 @@ def test_debug_mode_does_not_check_exit_status(tmp_path: Path) -> None:
 
     assert result.success
     assert _inspect_commands(cmd) == []
+
+
+# ---------------------------------------------------------------------------
+# Remote nok8s (nok8s.connection)
+# ---------------------------------------------------------------------------
+
+REMOTE = "ssh://bench@10.0.0.7"
+
+
+def _remote_context(
+    tmp_path: Path, cmd: _Command, logger: _Logger, transport: str = ""
+):
+    """A context whose stack config points the runtime at a remote node."""
+    context, stack_path = _context(tmp_path, cmd, logger)
+    config = _plan_config()
+    config["nok8s"]["connection"] = REMOTE
+    if transport:
+        config["nok8s"]["transport"] = transport
+    (stack_path / "config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+    return context, stack_path
+
+
+def _remote_cmd() -> _Command:
+    return _Command(
+        {
+            "printenv HOME": _Result(stdout="/home/bench\n"),
+            " inspect ": _Result(stdout="exited 0\n"),
+        }
+    )
+
+
+def test_remote_harness_runs_on_the_node(tmp_path: Path) -> None:
+    """The load generator belongs on the serving host.
+
+    Driving it from the client would add the SSH round-trip to every request
+    and report that as the stack's latency, so the container is launched
+    through the remote runtime, not locally.
+    """
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    # Default transport is ssh: the runtime is invoked on the node, so no
+    # client binary is needed here and no -H/--url flag appears.
+    assert run.startswith("ssh ")
+    assert "bench@10.0.0.7 'docker run -d --name " in run
+    assert " -H ssh://" not in run
+    # It measures the in-host endpoint, which the deploy step recorded.
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://localhost:8081" in run
+
+
+def test_native_transport_still_uses_the_client_connection_flag(
+    tmp_path: Path,
+) -> None:
+    """``transport: native`` keeps the runtimes' own SSH transport.
+
+    Anyone who already has a matching client and prefers ``docker -H`` should
+    get exactly the command they got before the ssh transport existed.
+    """
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger(), transport="native")
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert run.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock run")
+    assert not run.startswith("ssh ")
+
+
+def test_remote_harness_mounts_paths_staged_on_the_node(tmp_path: Path) -> None:
+    """Bind-mount sources resolve on the daemon, so the -v paths are remote."""
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+
+    DeployHarnessLocalStep().execute(context, stack_path)
+
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    remote_root = f"/home/bench/.llmdbench/nok8s-runs/stack/{tmp_path.name}"
+    for mount in ("results:/requests", "profiles:/workspace/profiles"):
+        assert f"{remote_root}/{mount}" in run, run
+    assert f"{remote_root}/harnesses:/workspace/harnesses:ro" in run
+    # Nothing client-side leaks into a mount source.
+    assert str(context.run_results_dir()) not in run
+
+
+def test_remote_harness_pushes_inputs_before_launching(tmp_path: Path) -> None:
+    """Profiles and scripts have to be on the node before the container starts."""
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+
+    DeployHarnessLocalStep().execute(context, stack_path)
+
+    first_scp = next(i for i, c in enumerate(cmd.commands) if "scp " in c)
+    first_run = next(i for i, c in enumerate(cmd.commands) if " run -d --name " in c)
+    assert first_scp < first_run
+
+
+def test_remote_harness_pulls_results_back(tmp_path: Path) -> None:
+    """The caller must end up with the same results tree the local path makes."""
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+
+    DeployHarnessLocalStep().execute(context, stack_path)
+
+    pulls = [c for c in cmd.commands if "scp " in c and "bench@10.0.0.7:" in c]
+    assert pulls, cmd.commands
+    assert any(str(context.run_results_dir()) in c for c in pulls)
+
+
+def test_remote_input_push_failure_is_fatal(tmp_path: Path) -> None:
+    """docker mounts a missing source as an empty dir, so never launch blind."""
+    cmd = _Command(
+        {
+            "printenv HOME": _Result(stdout="/home/bench\n"),
+            "scp ": _Result(exit_code=1),
+        }
+    )
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert not result.success
+    assert any("stage" in error.lower() for error in result.errors)
+    assert not any(" run -d --name " in c for c in cmd.commands)
+
+
+def test_remote_scratch_dir_is_unique_per_invocation(tmp_path: Path) -> None:
+    """Two runs must not share a remote results dir, or the second reports the
+    first's numbers."""
+    seen = set()
+    for name in ("user-20260818-000001-000", "user-20260818-000002-000"):
+        workspace = tmp_path / name
+        workspace.mkdir()
+        cmd = _remote_cmd()
+        context, stack_path = _remote_context(workspace, cmd, _Logger())
+        DeployHarnessLocalStep().execute(context, stack_path)
+        run = next(c for c in cmd.commands if " run -d --name " in c)
+        seen.add(run.split(":/requests")[0].rsplit(" ", 1)[-1])
+    assert len(seen) == 2, seen
+
+
+def _rendered_spec(stack_path: Path) -> None:
+    """The launch spec standup leaves behind, carrying both endpoints."""
+    (stack_path / "34_nok8s-containers.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "endpoint": "http://localhost:8081",
+                "clientEndpoint": "http://10.0.0.7:8081",
+                "model": "test-model",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_standalone_run_measures_the_in_host_endpoint(tmp_path: Path) -> None:
+    """A fresh ``run`` reads the endpoint off the rendered spec, not the CLI.
+
+    ``deployed_endpoints`` is only populated when standup ran in the same
+    process. Without it the step used to fall back to ``context.endpoint_url``,
+    which is the client-side URL -- so a container running *on the node* would
+    have sent every request out to the node's external address and back.
+    """
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+    context.deployed_endpoints.clear()
+    context.endpoint_url = "http://10.0.0.7:8081"
+    _rendered_spec(stack_path)
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://localhost:8081" in run
+    assert "10.0.0.7:8081" not in run
+
+
+def test_standalone_run_without_a_spec_still_falls_back(tmp_path: Path) -> None:
+    """No rendered spec (e.g. a hand-rolled plan) must not break the run."""
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+    context.deployed_endpoints.clear()
+    context.endpoint_url = "http://10.0.0.7:8081"
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://10.0.0.7:8081" in run
+
+
+def test_local_run_ignores_the_spec_endpoint(tmp_path: Path) -> None:
+    """A local stack keeps its previous fallback exactly.
+
+    Both endpoints are identical for a local stack, so reading the spec would
+    change nothing -- and an explicit --endpoint-url must still win over a
+    stale spec left over from an earlier standup.
+    """
+    cmd = _Command({" inspect ": _Result(stdout="exited 0\n")})
+    context, stack_path = _context(tmp_path, cmd, _Logger())
+    context.deployed_endpoints.clear()
+    context.endpoint_url = "http://127.0.0.1:9999"
+    _rendered_spec(stack_path)
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://127.0.0.1:9999" in run
+
+
+def test_client_endpoint_from_step_03_is_swapped_for_the_in_host_one(
+    tmp_path: Path,
+) -> None:
+    """Step 03 copies the CLI's client-side default into deployed_endpoints.
+
+    So the swap cannot only cover an *empty* deployed_endpoints -- by the time
+    this step runs in a standalone ``run``, the client URL is already recorded
+    under the stack's name.
+    """
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+    context.deployed_endpoints["stack"] = "http://10.0.0.7:8081"
+    context.endpoint_url = "http://10.0.0.7:8081"
+    _rendered_spec(stack_path)
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://localhost:8081" in run
+
+
+def test_an_explicit_endpoint_url_is_not_overridden(tmp_path: Path) -> None:
+    """--endpoint-url names a target the caller chose; the spec must not win.
+
+    Only the CLI's derived default (which equals clientEndpoint) is replaced.
+    Anything else -- a proxy, a second front door, another node -- is a
+    deliberate choice and is passed through untouched.
+    """
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+    context.deployed_endpoints["stack"] = "http://proxy.internal:9000"
+    context.endpoint_url = "http://proxy.internal:9000"
+    _rendered_spec(stack_path)
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://proxy.internal:9000" in run
+
+
+def test_a_trailing_slash_still_counts_as_the_client_default(tmp_path: Path) -> None:
+    """The comparison is on the URL, not on its punctuation."""
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger())
+    context.deployed_endpoints["stack"] = "http://10.0.0.7:8081/"
+    _rendered_spec(stack_path)
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://localhost:8081" in run

@@ -25,6 +25,7 @@ from llmdbenchmark.parser.cli_overrides import (
     coerce_value,
     dotted_leaves,
     find_broken_parent_paths,
+    find_typo_leaves,
     is_glob,
     is_secret_path,
     leaf_entries,
@@ -506,6 +507,91 @@ class TestPathHelpers:
 
     def test_top_level_leaf_never_reported(self):
         assert find_broken_parent_paths({"newKey": 1}, {}) == ([], [])
+
+
+class TestFindTypoLeaves:
+    """A misspelled leaf merges into a dead key; only near-misses are flagged."""
+
+    def test_near_miss_leaf_suggests_the_real_sibling(self):
+        # The motivating case: the stack silently deploys to localhost because
+        # nok8s.connection kept its default.
+        assert find_typo_leaves(
+            {"nok8s": {"conection": "10.0.0.7"}},
+            {"nok8s": {"connection": "localhost", "runtime": "docker"}},
+        ) == [("nok8s.conection", "connection")]
+
+    def test_correct_leaf_is_silent(self):
+        assert (
+            find_typo_leaves(
+                {"nok8s": {"connection": "10.0.0.7"}},
+                {"nok8s": {"connection": "localhost"}},
+            )
+            == []
+        )
+
+    def test_case_only_difference_is_flagged(self):
+        assert find_typo_leaves(
+            {"nok8s": {"sshidentity": "/k"}},
+            {"nok8s": {"sshIdentity": "", "sshArgs": []}},
+        ) == [("nok8s.sshidentity", "sshIdentity")]
+
+    def test_genuinely_new_leaf_on_a_free_form_block_is_silent(self):
+        # Same shape the parent-path check deliberately allows: free-form
+        # blocks gain new keys by design, so absence alone must not warn.
+        assert (
+            find_typo_leaves(
+                {"kustomize": {"guideVariableOverrides": {"INFRA_PROVIDER": "base"}}},
+                {"kustomize": {"guideVariableOverrides": {"FOO_BAR": "x"}}},
+            )
+            == []
+        )
+
+    def test_new_leaf_on_an_empty_map_is_silent(self):
+        assert (
+            find_typo_leaves(
+                {"kustomize": {"guideVariableOverrides": {"INFRA_PROVIDER": "base"}}},
+                {"kustomize": {"guideVariableOverrides": {}}},
+            )
+            == []
+        )
+
+    def test_distinct_real_key_is_not_a_typo_of_its_neighbours(self):
+        # extraArgs vs deviceArgs/sshArgs share a suffix but are different keys.
+        assert (
+            find_typo_leaves(
+                {"vllm": {"extraArgs": ["--x"]}},
+                {"vllm": {"deviceArgs": [], "gpus": "all"}},
+            )
+            == []
+        )
+
+    def test_top_level_leaf_is_not_reported(self):
+        # Mirrors find_broken_parent_paths: a bare new top-level key is
+        # indistinguishable from a legitimate one.
+        assert find_typo_leaves({"newKey": 1}, {}) == []
+
+    def test_missing_parent_is_left_to_the_parent_check(self):
+        # nok8ss.* already warns via find_broken_parent_paths; don't double-report.
+        assert find_typo_leaves({"nok8ss": {"connection": "x"}}, {"nok8s": {}}) == []
+
+    def test_non_map_parent_is_not_traversed(self):
+        # Descending into a scalar is a clobber, reported elsewhere.
+        assert find_typo_leaves({"a": {"b": 1}}, {"a": "scalar"}) == []
+
+    def test_nested_leaf_path_is_fully_qualified(self):
+        assert find_typo_leaves(
+            {"nok8s": {"vllm": {"replias": 2}}},
+            {"nok8s": {"vllm": {"replicas": 1, "image": "x"}}},
+        ) == [("nok8s.vllm.replias", "replicas")]
+
+    def test_only_the_closest_sibling_is_suggested(self):
+        typos = find_typo_leaves(
+            {"nok8s": {"conection": "x"}},
+            {"nok8s": {"connection": "a", "connections": "b"}},
+        )
+        assert len(typos) == 1
+        assert typos[0][0] == "nok8s.conection"
+        assert typos[0][1] in ("connection", "connections")
 
 
 # ---------------------------------------------------------------------------
