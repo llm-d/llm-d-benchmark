@@ -106,3 +106,9 @@ scenario:
       name: inference-perf
       profile: sanity_random.yaml
       waitTimeout: 1800
+
+    # Where each invocation's workspace (plan, logs, results) is created, as a
+    # timestamped sub-directory. Without this the CLI falls back to a fresh
+    # mkdtemp per invocation, so a standup's container logs land somewhere
+    # different every time -- and nothing accumulates across runs.
+    workDir: "~/data/nok8s"

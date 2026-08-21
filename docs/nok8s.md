@@ -149,6 +149,32 @@ curl -s http://localhost:8081/v1/completions -H 'Content-Type: application/json'
   -d '{"model":"Qwen/Qwen2.5-0.5B-Instruct","prompt":"Hello","max_tokens":32}'
 ```
 
+### Where the logs go (`workDir`)
+
+Each invocation creates its own timestamped workspace — `plan/`, `logs/`, the
+container logs under `setup/logs/`, and the harness results — inside the
+directory the scenario's `workDir` names. The shipped guide uses
+`~/data/nok8s`, so a standup writes something like:
+
+```
+~/data/nok8s/<user>-20260821-173703-475/
+├── setup/logs/nok8s-{vllm-0,epp,envoy}.log   # captured container logs
+├── logs/                                     # the CLI's own logs, per module
+│   └── llmdbenchmark-stdout.log              #   plus this combined stream
+└── plan/                                     # the rendered launch spec
+```
+
+**A scenario with no `workDir` gets a fresh `mkdtemp` per invocation instead**,
+so the logs land somewhere different every time and nothing accumulates. If you
+wrote your own nok8s scenario, give it a `workDir` (in `shared:` for a
+multi-stack one, since the workspace is scenario-wide). `--ws <dir>` or
+`LLMDBENCH_WORKSPACE` overrides it per invocation.
+
+The `latest` symlink beside the timestamped dirs is repointed by **every**
+subcommand, so after `standup` then `run` it names the *run*. It means "most
+recent invocation", not "most recent standup" — for a specific phase, sort the
+dirs by name (they are chronological) and look at their contents.
+
 ## Configuration
 
 Selected by `nok8s.enabled: true` in a scenario (mutually exclusive with
@@ -170,6 +196,7 @@ single-GPU example. Key fields (full defaults in
 | `nok8s.envoy.{image,tag,listenPort,adminPort,baseId}` | Envoy front door (the run target); `adminPort` is the admin interface, bound on the host (`--network host`). `baseId` is the hot-restart `--base-id`; leave it `0` and it is resolved per stack from `listenPort` |
 | `nok8s.nameSuffix` | Appended to every container name. Filled automatically with `-<stack>` in a multi-stack scenario (see below); leave empty for one stack |
 | `model.{name,huggingfaceId}` | Set both; standup uses `name`, run reads `huggingfaceId` |
+| `workDir` | Directory the per-invocation workspace (plan, logs, results) is created in. Omitting it falls back to a fresh temp dir each run — see [Where the logs go](#where-the-logs-go-workdir) |
 
 Sizing (fp16, single GPU): ~16 GB → 7–8B · ~24 GB → 8B · ~40 GB → 14B ·
 ~80 GB → 32B. For bigger models use `nok8s.vllm.extraArgs`
