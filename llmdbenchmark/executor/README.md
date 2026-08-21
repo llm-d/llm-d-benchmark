@@ -105,8 +105,15 @@ class CommandExecutor:
         kubeconfig=None,
         kube_context=None,
         openshift=False,
+        pod_restart_budget=None,
+        pod_restart_grace=300.0,
     ): ...
 ```
+
+`pod_restart_budget` is a `utilities.podstate.RestartBudget` owned by the
+caller (`ExecutionContext.restart_budget`), not built here -- the executor is
+rebuilt mid-phase after cluster detection, and a budget created here would
+silently reset its counter on every rebuild.
 
 ### Core Methods
 
@@ -119,7 +126,7 @@ class CommandExecutor:
 
 All wait helpers show live terminal progress with progress bars and pod status. In dry-run mode, they log the would-be command and return success immediately.
 
-- `wait_for_pods(label, namespace, timeout=300, poll_interval=10, description="") -> CommandResult` -- Poll pods by label until all are Ready. Detects and aborts on terminal states (`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, etc.).
+- `wait_for_pods(label, namespace, timeout=300, poll_interval=10, description="") -> CommandResult` -- Poll pods by label until all are Ready. Detects and aborts on terminal states (`CrashLoopBackOff`, `OOMKilled`, `ImagePullBackOff`, etc.). When the executor is built with a `pod_restart_budget` (see `--pod-restart-budget`), pods failing in a way a restart may clear are deleted and retried instead of aborting, and the deadline is extended per restart; states a restart cannot fix still fail fast. Remediation is pluggable via `_pod_policies` -- see [utilities/podstate](../utilities/podstate/README.md).
 - `wait_for_job(job_name, namespace, timeout=3600, poll_interval=15, description="") -> CommandResult` -- Poll a Job until it completes or fails. Tracks active/succeeded/failed counts.
 - `wait_for_pvc(pvc_name, namespace, timeout=300, poll_interval=10, description="") -> CommandResult` -- Poll a PVC until it reaches `Bound` phase. Short-circuits to success when the StorageClass uses `volumeBindingMode: WaitForFirstConsumer` (such PVCs stay `Pending` until a consumer pod schedules), returning `wait_skipped=True` so a caller with a tighter next wait can add this `timeout` to it.
 

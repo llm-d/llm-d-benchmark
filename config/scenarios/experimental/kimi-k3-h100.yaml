@@ -1,0 +1,576 @@
+# KIMI K3 (MXFP4) ON 4x8 H100 80GB -- TP8 x PP4
+#
+# Upstream recipe:
+# https://recipes.vllm.ai/moonshotai/Kimi-K3?hardware=h100&nodes=4
+#
+# ---------------------------------------------------------------------------
+# STANDUP / RUN
+# ---------------------------------------------------------------------------
+#   llmdbenchmark standup --spec kimi-k3-h100 \
+#       --modelservice-deploy-timeout 7200
+#   llmdbenchmark run --spec kimi-k3-h100
+#
+# --modelservice-deploy-timeout is REQUIRED. step_09_deploy_modelservice.py
+# waits for decode.replicas x decode.parallelism.workers = 4 Ready pods, and
+# its default ceiling is 1500 s -- a quarter of the measured 5385 s load.
+
+scenario:
+  - name: "kimi-k3-h100"
+
+    # =========================================================================
+    # COMMON -- applies to all deployment methods
+    # =========================================================================
+    common:
+      # -----------------------------------------------------------------------
+      # Multinode (LeaderWorkerSet). Required: the 4 PP stages are 4 pods in
+      # one gang, and the leader address must be stable for the
+      # torch.distributed rendezvous.
+      # -----------------------------------------------------------------------
+      multinode:
+        enabled: true
+
+      # -----------------------------------------------------------------------
+      # Image. defaults.yaml pins docker.io/vllm/vllm-openai to a release tag
+      # that predates the K3 model code, the marlin MXFP4 MoE backend, and the
+      # kimi_k3 reasoning/tool parsers. The `kimi-k3` tag is the image the
+      # measured run used.
+      # -----------------------------------------------------------------------
+      images:
+        vllm:
+          repository: docker.io/vllm/vllm-openai
+          tag: kimi-k3
+          pullPolicy: IfNotPresent
+
+      # -----------------------------------------------------------------------
+      # Affinity / node selection. All 4 pods must land on H100 80GB nodes;
+      # a mixed-accelerator pool would silently schedule a stage onto a card
+      # whose memory the layer split was never sized for.
+      # -----------------------------------------------------------------------
+      affinity:
+        enabled: true
+        nodeSelector:
+          cloud.google.com/gke-accelerator: nvidia-h100-80gb   # GKE a3-highgpu-8g
+          # nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift / NFD
+          # gpu.nvidia.com/model: H100                          # vanilla Kubernetes
+
+      model:
+        name: moonshotai/Kimi-K3
+        shortName: kimi-k3
+        # Directory *within* the model PVC, NOT a HuggingFace-shaped path.
+        # "models/moonshotai/Kimi-K3" here would point the download Job and the
+        # serve command at an empty directory and re-pull 1.42 TiB.
+        path: Kimi-K3
+        huggingfaceId: moonshotai/Kimi-K3
+        # modelArtifacts.size only; the PVC is sized under storage.modelPvc.
+        size: 2Ti
+        maxModelLen: 32768
+        blockSize: 64
+        # 0.90, not the 0.95 default and not the recipe's hopper 0.97: the
+        # marlin MXFP4 MoE kernel allocates a ~1.6 GiB workspace OUTSIDE
+        # vLLM's pool on the first forward pass. 0.95 leaves no room for it.
+        gpuMemoryUtilization: 0.90
+        cacheBase: /model-cache
+        # PP stages hold in-flight microbatches; 5 is what the recipe's
+        # hopper profile specifies and what was measured. Raising it costs
+        # activation memory in every stage at once.
+        maxNumSeq: 5
+        # Caps a prefill chunk so one long request cannot OOM a single
+        # pipeline stage.
+        maxNumBatchedTokens: 8192
+
+      storage:
+        modelPvc:
+          name: kimi-k3-model
+          # ~1.42 TiB of MXFP4 weights across 96 shards. The 300Gi default
+          # fails the download job outright.
+          size: 2Ti
+          # RWX is mandatory: all 4 pods mount the one staged copy. On GKE
+          # this must be a zonal-rwx Filestore tier, not standard-rwx --
+          # standard-rwx does not sustain 4 concurrent readers of a 1.4 TiB
+          # working set. Only consulted if the claim does not already exist;
+          # an already-Bound claim of sufficient size is reused as-is
+          # (_check_existing_pvc returns True and the apply is skipped).
+          storageClassName: zonal-rwx
+        # 2400 s (the default) cannot pull 1.42 TiB. 6 h with headroom for a
+        # cold cache.
+        downloadTimeout: 21600
+
+    vllmCommon:
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Gi
+
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+        - name: dshm
+          mountPath: /dev/shm
+
+    # =========================================================================
+    # KUSTOMIZE
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+    # =========================================================================
+    # MODELSERVICE
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      gateway:
+        className: epponly
+
+      routing:
+        # No routing sidecar. It exists to bridge servicePort -> vllmPort for
+        # P/D disaggregation with a KV connector; this is an aggregated
+        # deployment with no prefill peer, so the extra hop buys nothing.
+        # With the proxy off, vLLM binds $VLLM_INFERENCE_PORT (8000) directly
+        # and the chart's vllmPort helper agrees -- see the customCommand.
+        proxy:
+          enabled: false
+
+      router:
+        extraServicePorts:
+          - name: http
+            port: 80
+            protocol: TCP
+            targetPort: 8081
+        epp:
+          replicas: 1
+          flags:
+            v: 2
+          pluginsConfigFile: "kimi-k3-h100-plugins.yaml"
+          pluginsCustomConfig:
+            kimi-k3-h100-plugins.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
+              plugins:
+              - type: label-selector-filter
+                name: lws-leader-only
+                parameters:
+                  matchLabels:
+                    leaderworkerset.sigs.k8s.io/worker-index: "0"
+              - type: queue-scorer
+              - type: kv-cache-utilization-scorer
+              - type: prefix-cache-scorer
+              schedulingProfiles:
+              - name: default
+                plugins:
+                # Filter first: scoring headless workers would be meaningless
+                # even if the picker never chose one.
+                - pluginRef: lws-leader-only
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: kv-cache-utilization-scorer
+                  weight: 2
+                - pluginRef: prefix-cache-scorer
+                  weight: 3
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        proxy:
+          # Envoy sidecar in front of EPP. Chart defaults are --log-level
+          # trace (expensive) and unbounded --concurrency (Envoy spawns
+          # ~hardware_concurrency() threads, oversubscribing the cgroup).
+          args:
+            - "--service-node"
+            - "envoy-sidecar"
+            - "--log-level"
+            - "warn"
+            - "--concurrency"
+            - "8"
+            - "--drain-strategy"
+            - "immediate"
+            - "--drain-time-s"
+            - "60"
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        inferencePool:
+          failureMode: "FailOpen"
+        modelServers:
+          protocol: http
+          # 13_ms-values.yaml.j2 stamps llm-d.ai/guide from the scenario name
+          # onto modelArtifacts.labels, so this matches all 4 decode pods --
+          # the worker-index filter above narrows it to the leader.
+          matchLabels:
+            llm-d.ai/guide: "kimi-k3-h100"
+
+      # NO httpRoute BLOCK ON PURPOSE.
+      #
+      # gateway.className: epponly means no Gateway is created, and
+      # 08_httproute.yaml.j2 skips itself entirely for 'epponly' and 'none'
+      # (an HTTPRoute would reference a Gateway that does not exist). Clients
+      # -- including the harness -- reach the EPP service directly, so the
+      # template's requestTimeout / backendRequestTimeout knobs never render
+      # and cannot abort a long request here.
+      #
+      # This is worth stating because wide-ep-lws.yaml does carry an
+      # httpRoute block while also setting className: epponly, which reads
+      # like the timeouts are in effect. They are not, in either scenario.
+      # Long-request timeouts on this path are governed by
+      # VLLM_HTTP_TIMEOUT_KEEP_ALIVE and Envoy's own defaults, plus
+      # VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS below. If a Gateway is ever added
+      # here (className: gke / istio / agentgateway), set requestTimeout: "0s"
+      # then -- the 300s default would abort K3's long tail as 502s and the
+      # harness would record gateway artifacts as model failures.
+
+    # -------------------------------------------------------------------------
+    # PREFILL -- disabled. Aggregated serving: 32 GPUs is exactly one
+    # TP8 x PP4 instance, so there is nothing left to disaggregate onto.
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+
+    # -------------------------------------------------------------------------
+    # DECODE -- the TP8 x PP4 gang
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 1
+
+      parallelism:
+        # tensor: 8 x workers: 4 == world_size 32. The chart derives the LWS
+        # leaderWorkerTemplate.size from `workers`, and numGpuPerWorker from
+        # dataLocal x tensor = 8 -- matching the 8 GPUs requested below, so
+        # the chart's acceleratorWarning annotation stays clear.
+        #
+        # There is no `pipeline` key: ParallelismConfig models only
+        # {data, dataLocal, tensor, workers}, and 13_ms-values.yaml.j2 renders
+        # exactly those four. PP therefore rides in vllm.customCommand.
+        tensor: 8
+        data: 1
+        dataLocal: 1
+        workers: 4
+
+      accelerator:
+        # Explicit, though 8 is also what tensor x dataLocal computes. Stated
+        # so a later edit to `tensor` cannot silently change the pod's GPU
+        # request out from under the layer split.
+        count: 8
+
+      # EXPECTED FALSE WARNING from the capacity planner during standup.
+      # utilities/capacity_validator.py:357 hardcodes `pp = 1` ("Pipeline
+      # parallelism not yet exposed per-method"), because PP genuinely is not a
+      # ParallelismConfig field -- this scenario carries it in
+      # vllm.customCommand, where the validator cannot see it. So it sizes the
+      # model against tp x pp x dp = 8 GPUs / 640 GiB instead of the real 32 /
+      # 2.5 TiB, and reports that a 1.42 TiB model does not fit. It does fit;
+      # the measured footprint is 69.5 of 71.3 usable GiB per GPU.
+      #
+      # control.ignoreFailedValidation defaults to true, so this is logged as a
+      # WARNING and standup continues. Do not "fix" it by inflating
+      # accelerator.count -- that value becomes the pod's actual
+      # nvidia.com/gpu request, and 32 would leave every pod unschedulable on
+      # an 8-GPU node.
+
+      vllm:
+        # ---------------------------------------------------------------------
+        # $TP_SIZE comes from the chart's parallelismEnv helper. GPUS_PER_NODE,
+        # PP_SIZE and NNODES are NOT provided by the chart -- they come from
+        # extraEnvVars below. ${LWS_WORKER_INDEX} / ${LWS_LEADER_ADDRESS} are
+        # injected by the LWS controller and are left untouched by the
+        # ${dotted.path} substitution pass (it requires at least one dot).
+        # ---------------------------------------------------------------------
+        customCommand: |
+          ${accelerator.runtimePreamble}
+          . /shared-config/llmdbench_env.sh
+
+          # Only PP stage 0 serves the OpenAI API. --api-server-count 0 is
+          # the same code path as --headless (both reach run_headless).
+          API_SERVER_COUNT=1
+          if [ "${LWS_WORKER_INDEX:-0}" -gt 0 ]; then
+            API_SERVER_COUNT=0
+          fi
+
+          # Every rank, stage 0 included, must resolve the leader before
+          # torch.distributed rendezvous or the gang deadlocks.
+          until getent hosts "${LWS_LEADER_ADDRESS}" >/dev/null 2>&1; do
+            echo "waiting for leader DNS ${LWS_LEADER_ADDRESS} ..."
+            sleep 3
+          done
+
+          exec vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_INFERENCE_PORT \
+          --trust-remote-code \
+          --api-server-count $API_SERVER_COUNT \
+          --tensor-parallel-size $TP_SIZE \
+          --pipeline-parallel-size $PP_SIZE \
+          --nnodes $NNODES \
+          --node-rank ${LWS_WORKER_INDEX:-0} \
+          --master-addr ${LWS_LEADER_ADDRESS} \
+          --master-port 29501 \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seqs $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --block-size $VLLM_BLOCK_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --moe-backend marlin \
+          --attention-backend FLASHMLA \
+          --disable-custom-all-reduce \
+          --no-enable-flashinfer-autotune \
+          --reasoning-parser kimi_k3 \
+          --enable-auto-tool-choice \
+          --tool-call-parser kimi_k3 \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+          # DO NOT ADD --enable-expert-parallel. Measured at TP32: it does not
+          # reduce memory on the marlin MXFP4 path (the 256 dim floor is
+          # per-expert, not per-EP-group) and it re-enables the
+          # use_sequence_parallel branch.
+          #
+          # --reasoning-parser / --tool-call-parser are not cosmetic. Without
+          # them K3 dumps its whole channel-delimited stream into `content`
+          # with `reasoning: null`, markers included:
+          #   <|close|>think<|sep|><|open|>response<|sep|>hello...
+          # The parser also exposes is_reasoning_end() over token IDs, so a
+          # structured-output grammar is enforced only after the think channel
+          # closes rather than from token 0.
+
+      initContainers:
+        - name: preprocess
+          imageKey: benchmark
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      resources:
+        limits:
+          memory: 400Gi
+          cpu: "32"
+        requests:
+          memory: 400Gi
+          cpu: "32"
+
+      # Torch/Triton JIT artifacts and the CUDA cache. Set explicitly:
+      # vllmCommon.ephemeralStorage defaults to "" and a value written
+      # directly into resources.limits is ignored by the template.
+      ephemeralStorage: 1Ti
+
+      extraEnvVars:
+        # --- topology, consumed by customCommand ---
+        - name: PP_SIZE
+          value: "4"
+        - name: NNODES
+          value: "4"
+        - name: GPUS_PER_NODE
+          value: "8"
+
+        # --- even MoE layers per stage ---
+        # get_pp_indices(93, r, 4) defaults to [23,23,24,23], but layer 0 is
+        # dense (first_k_dense_replace=1), so the MoE counts come out
+        # 22/23/24/23 -- a 40.2 vs 43.9 GiB skew, and stage 2 is the one that
+        # OOMs first. 24,23,23,23 groups the dense layer with stage 0 so every
+        # stage owns exactly 23 MoE layers -> a uniform 42.1 GiB.
+        - name: VLLM_PP_LAYER_PARTITION
+          value: "24,23,23,23"
+
+        - name: VLLM_ENGINE_READY_TIMEOUT_S
+          value: "21600"
+        # Long requests can hold a PP stage past vLLM's 300 s default.
+        - name: VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS
+          value: "1800"
+
+        - name: VLLM_USE_V2_MODEL_RUNNER
+          value: "1"
+        - name: VLLM_USE_RUST_FRONTEND
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: NCCL_CUMEM_ENABLE
+          value: "1"
+
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0"
+        - name: GLOO_SOCKET_IFNAME
+          value: "eth0"
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_DEBUG_SUBSYS
+          value: "INIT,NET"
+
+      extraContainerConfig:
+        ports:
+          - containerPort: 8000
+            name: metrics
+            protocol: TCP
+          - containerPort: 29501
+            name: master
+            protocol: TCP
+
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: IfNotPresent
+
+        # ---------------------------------------------------------------------
+        # EXEC PROBES -- these deliberately override the httpGet probes that
+        # 13_ms-values.yaml.j2 renders from decode.probes.*.
+        #
+        # Why they must be exec: PP stages 1-3 run with
+        # --api-server-count 0 and have no HTTP listener, so an httpGet probe
+        # can never pass on 3 of the 4 pods. But
+        # step_09_deploy_modelservice.py waits for ALL
+        # decode.replicas x decode.parallelism.workers pods to be Ready before
+        # standup proceeds, so "let the workers stay NotReady" is not an
+        # option here. Probe stage 0 over HTTP and the workers by process
+        # liveness.
+        #
+        # Why extraContainerConfig and not decode.probes: ProbeConfig models
+        # only path/port/failureThreshold/initialDelaySeconds/periodSeconds/
+        # timeoutSeconds -- it cannot express `exec`. extraContainerConfig
+        # (minus `ports`) is spliced into the same `extraConfig:` mapping
+        # immediately AFTER the generated probes, and duplicate Helm values
+        # keys are last-wins, so these replace them.
+        #
+        # The pgrep pattern MUST stay bracketed ("[v]llm serve", never
+        # "vllm serve"). procps-ng pgrep excludes only its OWN pid
+        # (src/pgrep.c); ancestors are skipped only with -A, which is not
+        # passed. kubelet runs this as `/bin/bash -c '<script>'`, so an
+        # unbracketed pattern matches the probe's own parent shell via
+        # /proc/PID/cmdline and returns 0 even when the engine is dead -- a
+        # false PASS that marks the pod Ready with no engine. Verified on
+        # debian procps-ng 4.0.2. (BSD/macOS pgrep skips ancestors by
+        # default, so this does NOT reproduce locally -- use `pgrep -af`.)
+        #
+        # 800 x 30s = 6.7 h of startup budget. This MUST exceed
+        # VLLM_ENGINE_READY_TIMEOUT_S (6 h) or kubelet kills the pod first and
+        # you learn nothing about whether the engine would have come up.
+        # Whichever ceiling is lower is the one that fires -- raise them
+        # together.
+        startupProbe:
+          exec:
+            command:
+              - /bin/bash
+              - -c
+              - |
+                if [ "${LWS_WORKER_INDEX:-0}" -eq 0 ]; then
+                  curl -fsS http://127.0.0.1:8000/health
+                else
+                  pgrep -f "[v]llm serve" >/dev/null
+                fi
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 800
+        readinessProbe:
+          exec:
+            command:
+              - /bin/bash
+              - -c
+              - |
+                if [ "${LWS_WORKER_INDEX:-0}" -eq 0 ]; then
+                  curl -fsS http://127.0.0.1:8000/health
+                else
+                  pgrep -f "[v]llm serve" >/dev/null
+                fi
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        # The liveness probe MUST be overridden too, and it cannot be deleted.
+        # `livenessProbe: null` does not work: render_plans.py deep_merge()
+        # skips None-valued keys outright ("YAML key with no value -- don't
+        # clobber defaults"), so a null leaves the template's default in place
+        # rather than removing it. That default is `tcpSocket: 8000` -- which
+        # nothing listens on in the three --api-server-count 0 workers. It
+        # would pass startup, then fail liveness 10 x 5 s and restart a worker.
+        #
+        # Restarting one pod of a torch.distributed gang in place is the worst
+        # outcome available: the surviving three block forever on a rendezvous
+        # the restarted rank has already left, and the whole instance is wedged
+        # until someone scales to 0 and back. So liveness gets the same
+        # leader/worker split as the other two probes, and a threshold that
+        # only a genuinely dead process can reach: 30 x 30 s = 15 min of
+        # continuous failure. Anything shorter risks trading a slow engine for
+        # a deadlocked one.
+        livenessProbe:
+          exec:
+            command:
+              - /bin/bash
+              - -c
+              - |
+                if [ "${LWS_WORKER_INDEX:-0}" -eq 0 ]; then
+                  curl -fsS http://127.0.0.1:8000/health
+                else
+                  pgrep -f "[v]llm serve" >/dev/null
+                fi
+          periodSeconds: 30
+          timeoutSeconds: 15
+          failureThreshold: 30
+
+      # PodMonitor scrapes by port NAME. With the routing proxy disabled vLLM
+      # serves /metrics on 8000, which is the port named `metrics` above.
+      monitoring:
+        podmonitor:
+          enabled: true
+          portName: "metrics"
+          path: "/metrics"
+          interval: "30s"
+          # Same headless-worker problem as the probes, one layer out. The
+          # chart hardcodes the PodMonitor's selector.matchLabels to the
+          # decode label set, so it targets all 4 pods -- but only stage 0
+          # serves /metrics. The other three would sit in Prometheus as
+          # permanently-down targets (up == 0), which turns every
+          # scrape-health panel and alert red for the life of the run and
+          # makes a genuinely dead leader indistinguishable from the two
+          # workers that are dead by design.
+          #
+          # selector is not overridable, but relabelings are, and they run
+          # before the scrape. Prometheus exposes pod labels as
+          # __meta_kubernetes_pod_label_<name> with non-alphanumerics
+          # collapsed to underscores, so
+          # leaderworkerset.sigs.k8s.io/worker-index arrives as
+          # ..._leaderworkerset_sigs_k8s_io_worker_index. Keep only "0".
+          relabelings:
+            - action: keep
+              sourceLabels:
+                - __meta_kubernetes_pod_label_leaderworkerset_sigs_k8s_io_worker_index
+              regex: "0"
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "~/data/kimi-k3-h100"
+
+    harness:
+      # inference-perf, for per-request records. Its
+      # report.request_lifecycle.per_request block emits
+      # per_request_lifecycle_metrics.json, which analysis/per_request_plots.py
+      # and cross_treatment.py consume -- that per-request detail is what makes
+      # a PP pipeline legible, since the interesting quantity is the ITL
+      # distribution's shape (stage bubbles) and not its mean.
+      name: inference-perf
+      experimentProfile: guide_kimi-k3-h100_1.yaml
+
+      # Read by step_10_smoketest.py / smoketests/base.py. Not modeled in the
+      # STRICT HarnessConfig, so `validate_config` logs an advisory
+      # "Extra inputs" warning for this block -- expected, and harmless.
+      smoketest:
+        modelReadyTimeout: 7200     # 2 h; the model needs ~1.5 h to load
+        modelReadyPollInterval: 30

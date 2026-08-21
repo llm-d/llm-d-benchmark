@@ -14,11 +14,20 @@ utilities/
 ├── cloud_upload.py        -- GCS/S3 upload
 ├── huggingface.py         -- HuggingFace Hub access checks
 ├── profile_renderer.py    -- Workload profile template renderer
+├── podstate/
+│   ├── __init__.py        -- Public API re-exports
+│   ├── state.py           -- PodState / ContainerState / Health model
+│   ├── observer.py        -- The single `get pods -o json` parser
+│   ├── policy.py          -- PodPolicy seam + RestartBudget(Policy)
+│   └── diagnostics.py     -- Evidence capture and restart reporting
 └── os/
     ├── __init__.py        -- Empty package marker
     ├── filesystem.py      -- Filesystem utilities
     └── platform.py        -- Platform detection
 ```
+
+See [podstate/README.md](podstate/README.md) for the pod state model, the
+`Health` grading, and how to add a remediation policy.
 
 ## cluster.py -- Cluster Connectivity and Platform Detection
 

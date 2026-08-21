@@ -1,0 +1,126 @@
+# Kimi K3 (MXFP4) on 4x8 H100 -- TP8 x PP4
+#
+# Paired with config/scenarios/guides/kimi-k3-h100.yaml. 
+#
+# The serving config runs --max-num-seqs 5, because a 4-stage pipeline holds
+# in-flight microbatches in every stage at once and activation memory is the
+# binding constraint at 69.5 of 71.3 usable GiB. Offering 2048 concurrent
+# requests to a 5-slot engine measures the scheduler's queue, not the model:
+# every request past the 5th waits, so p99 latency becomes a linear function
+# of the offered concurrency and tells you nothing about the hardware. It also
+# collides with the 32768 max-model-len -- 2048 x 2000 input tokens is far past
+# the 2,090,740-token KV budget, so admission would throttle before the GPUs
+# did.
+#
+# So the stages sweep 1 -> 20 instead, straddling max-num-seqs. The
+# interesting boundary is at 5: below it the pipeline is under-filled and
+# stages idle (bubbles), at it the pipeline is nominally full, above it
+# requests queue. Seeing all three regimes in one run is what makes the
+# TP8 x PP4 shape legible.
+load:
+  type: concurrent
+  stages:
+    # Stage 1: single stream. Establishes floor TTFT/ITL with an empty
+    # pipeline -- every token pays the full 4-stage traversal with no
+    # overlapping microbatch to hide it. This is the number to compare against
+    # a hypothetical single-node deployment, and the cost of PP.
+    - concurrency_level: 1
+      num_requests: 20
+    # Stage 2: below max-num-seqs. Pipeline partially filled; ITL should
+    # improve over stage 1 as microbatches begin to overlap across stages.
+    - concurrency_level: 3
+      num_requests: 60
+    # Stage 3: exactly max-num-seqs (5). Pipeline nominally saturated -- peak
+    # expected throughput, and the reference point for the other stages.
+    - concurrency_level: 5
+      num_requests: 100
+    # Stage 4: 2x max-num-seqs. Requests now queue in the scheduler. Throughput
+    # should be flat vs stage 3 while TTFT climbs -- if throughput still rises
+    # here, max-num-seqs is set too low and there is headroom to reclaim.
+    - concurrency_level: 10
+      num_requests: 200
+    # Stage 5: 4x max-num-seqs. Queueing-dominated. Bounds the tail so the
+    # admission-control behavior is on record rather than inferred.
+    - concurrency_level: 20
+      num_requests: 200
+
+api:
+  # Completions, not chat. Chat would route through K3's channel-delimited
+  # template (think/response channels via --reasoning-parser kimi_k3), which
+  # adds a variable, model-decided number of reasoning tokens per request --
+  # output length stops being controlled by output_distribution and the ITL
+  # measurement stops being comparable across stages. Use the chat endpoint
+  # for correctness checks (llmdbenchmark smoketest does), not for timing.
+  type: completion
+  streaming: true
+
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  # Required for a fixed-length sweep: without it K3 emits an EOS wherever it
+  # likes and output_distribution becomes an upper bound instead of a target,
+  # making per-stage output token/s incomparable.
+  ignore_eos: true
+
+tokenizer:
+  # 20_harness_pod.yaml.j2 sets both LLMDBENCH_DEPLOY_CURRENT_MODEL and
+  # LLMDBENCH_DEPLOY_CURRENT_TOKENIZER from model.name, so either token
+  # resolves to moonshotai/Kimi-K3 here.
+  #
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+  # MANDATORY for K3, not a convenience. The repo ships a custom tokenizer
+  # class, so AutoTokenizer.from_pretrained() hits
+  # transformers.dynamic_module_utils.resolve_trust_remote_code(), which in a
+  # pod has no tty: it calls input(), gets EOFError, and re-raises as
+  # "Tokenizer initialization failed" before a single request is sent
+  # (inference_perf/main.py:196-198). The env vars transformers reads for this
+  # are NOT a substitute -- resolve_trust_remote_code() only consults the
+  # argument that inference-perf forwards from this field.
+  trust_remote_code: true
+
+data:
+  type: random
+  input_distribution:
+    # Fixed at 4000, not a spread. With only 5 concurrent slots the sample
+    # count per stage is small (20-200 requests), so a wide input distribution
+    # leaves too few samples per length bucket to separate prefill cost from
+    # pipeline effects. Fix the input, vary the concurrency -- one independent
+    # variable at a time.
+    #
+    # 4000 sits under --max-num-batched-tokens 8192, so a request prefills in
+    # one chunk. Above 8192 vLLM splits it and the TTFT measurement folds in
+    # chunked-prefill scheduling.
+    min: 4000
+    max: 4000
+    mean: 4000
+    std_dev: 0
+  output_distribution:
+    # 1000 tokens: long enough that ITL dominates TTFT in end-to-end latency
+    # (which is what a PP deployment's decode path should be judged on), short
+    # enough that 200 requests at concurrency 5 finish in a bounded window.
+    # 4000 in + 1000 out = 5000 per request, comfortably inside
+    # --max-model-len 32768.
+    min: 1000
+    max: 1000
+    mean: 1000
+    std_dev: 0
+
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    # The reason this scenario uses inference-perf. per_request emits
+    # per_request_lifecycle_metrics.json, which
+    # analysis/per_request_plots.py and cross_treatment.py consume. For a
+    # pipeline the mean ITL is nearly useless -- stage bubbles show up as
+    # structure (multi-modality, periodicity) in the per-request ITL
+    # distribution, and only the per-request records preserve it.
+    #
+    # Costs ~1.5 GB for a run this size. Collect with
+    # `llmdbenchmark run --spec kimi-k3-h100`.
+    per_request: true
+
+storage:
+  local_storage:
+    path: /workspace
