@@ -176,6 +176,7 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
     for metrics_metadata in metadatas:
         name = metrics_metadata["name"]
         pod_start = metrics_metadata["pod_start"]["value"]
+        container_start = metrics_metadata.get("container_start", {}).get("value", 0.0)
         vllm_start = (
             metrics_metadata["vllm_ready_timestamp"]["value"]
             - metrics_metadata["vllm_start_timestamp"]["value"]
@@ -197,6 +198,7 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
 
         file.write(f"\n  Name                              : {name}\n")
         file.write(f"    Pod  Start(secs)                : {pod_start:7.3f}\n")
+        file.write(f"    Container Start(secs)           : {container_start:7.3f}\n")
         file.write(f"    vLLM Start(secs)                : {vllm_start:7.3f}\n")
         file.write("    Model Load\n")
         file.write(f"      Elapsed(secs)                 : {elapsed:7.3f}\n")
