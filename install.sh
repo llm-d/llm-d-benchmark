@@ -76,7 +76,7 @@ esac
 tool_version_for() {
     case "$1" in
         curl)      echo "8_21_0"  ;;
-        yq)        echo "v4.53.4" ;;
+        yq)        echo "v4.53.6" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v3.19.0" ;;
         helm-diff) echo "v3.13.0" ;;
