@@ -64,4 +64,8 @@ containers:
     image: "{{ nok8s.envoy.image }}:{{ nok8s.envoy.tag }}"
     listenPort: {{ nok8s.envoy.listenPort }}
     configMountPath: {{ nok8s.envoy.configMountPath }}
+{# Hot-restart base ID, resolved by RenderPlans._resolve_nok8s_envoy_base_id.
+   Envoy runs with --network host, so its default base ID of 0 is claimed
+   host-wide and a second Envoy on the node dies before it binds. #}
+    baseId: {{ nok8s.envoy.baseId | default(0) }}
 {% endif %}

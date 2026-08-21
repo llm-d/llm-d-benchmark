@@ -1071,6 +1071,44 @@ class RenderPlans:
 
         return values
 
+    def _resolve_nok8s_envoy_base_id(self, values: dict) -> dict:
+        """Give each nok8s Envoy its own hot-restart base ID.
+
+        Envoy's hot-restart machinery claims a shared-memory region and an
+        abstract-namespace domain socket named after ``--base-id`` (default
+        0). nok8s runs Envoy with ``--network host``, so that claim is
+        host-wide rather than per-stack: a second Envoy anywhere on the node
+        -- a sibling stack, or a container still up from an earlier run --
+        exits immediately with ``unable to bind domain socket with
+        base_id=0, id=0, errno=98``. It never binds its listener, so the
+        only symptom the CLI sees is a readiness timeout on a port whose
+        vLLM behind it is perfectly healthy.
+
+        Applied to every stack, not just multi-stack scenarios (unlike
+        ``_resolve_nok8s_stack_scope``): the Envoy this one collides with
+        need not belong to the same scenario.
+
+        ``listenPort`` is the seed because ``_validate_nok8s_host_claims``
+        already proves it unique across the host's stacks, so the base IDs
+        inherit that uniqueness instead of becoming a second set of numbers
+        to keep in sync. A value that validator will reject is left alone:
+        it already has its own error, and deriving from it here would only
+        put a plausible number in front of the real complaint.
+        """
+        nok8s = values.get("nok8s") or {}
+        envoy = nok8s.get("envoy")
+        if not nok8s.get("enabled") or not isinstance(envoy, dict):
+            return values
+        if envoy.get("baseId"):
+            # Authored (or already resolved) -- 0 means "unset", as in Envoy.
+            return values
+        port = envoy.get("listenPort")
+        if isinstance(port, str) and port.strip().isdigit():
+            port = int(port.strip())
+        if isinstance(port, int) and not isinstance(port, bool) and 1 <= port <= 65535:
+            envoy["baseId"] = port
+        return values
+
     def _resolve_nok8s_connection(self, values: dict, stack_name: str) -> list[str]:
         """Parse ``nok8s.connection`` and publish the host it resolves to.
 
@@ -2238,6 +2276,10 @@ class RenderPlans:
         for msg in kustomize_errors:
             self.logger.log_error(msg)
             stack_errors.render_errors.append(msg)
+
+        # After _substitute_config_variables: the base ID is seeded from
+        # envoy.listenPort, which a scenario may write as a ${...} variable.
+        merged_values = self._resolve_nok8s_envoy_base_id(merged_values)
 
         for msg in self._resolve_nok8s_connection(merged_values, stack_name):
             self.logger.log_error(msg)

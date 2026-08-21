@@ -594,12 +594,31 @@ def _report_pod_restarts(context, logger):
     )
 
 
+def _log_failure_artifacts(logger):
+    """Point at the workspace after a phase failed.
+
+    The workspace path is otherwise only printed by the per-phase success
+    summaries and by a startup line that a long render pushes off screen --
+    so the one run whose logs somebody needs is the one that never says
+    where they are. Read from the ``config`` singleton rather than a
+    context, because the failure can be the context construction itself.
+    """
+    workspace = config.workspace
+    if not workspace:
+        return
+    logger.log_error(f"Workspace: {workspace}")
+    logs_dir = Path(workspace) / "setup" / "logs"
+    if logs_dir.is_dir():
+        logger.log_error(f"Step logs and captured container logs: {logs_dir}")
+
+
 def _execute_standup(args, logger, render_plan_errors):
     """Build execution context and run standup steps."""
     try:
         context, result = _do_standup(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
     _print_standup_summary(context, result, logger)
@@ -622,6 +641,7 @@ def _execute_standup(args, logger, render_plan_errors):
             _do_smoketest(args, logger, render_plan_errors)
         except PhaseError as e:
             logger.log_error(str(e))
+            _log_failure_artifacts(logger)
             sys.exit(1)
 
 
@@ -695,6 +715,7 @@ def _execute_smoketest(args, logger, render_plan_errors):
         _do_smoketest(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
 
@@ -896,6 +917,7 @@ def _execute_teardown(args, logger, render_plan_errors):
         context, result = _do_teardown(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
     ns = context.namespace or "unknown"
@@ -1191,6 +1213,7 @@ def _execute_run(args, logger, render_plan_errors):
         context, result = _do_run(args, logger, render_plan_errors)
     except PhaseError as e:
         logger.log_error(str(e))
+        _log_failure_artifacts(logger)
         sys.exit(1)
 
     # --list-endpoints short-circuits the run - no harness pods launched,

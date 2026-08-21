@@ -1504,6 +1504,14 @@ nok8s:
     # one host need distinct admin ports as well as distinct listenPorts.
     adminPort: 19000
     configMountPath: /etc/envoy/envoy.yaml
+    # Envoy's hot-restart base ID (--base-id), which names the shared-memory
+    # region and abstract domain socket it claims. Under --network host that
+    # claim is host-wide, so the Envoy default of 0 lets any second Envoy on
+    # the node -- a sibling stack, or one left running by an earlier standup --
+    # exit with errno=98 before it binds listenPort, which looks only like a
+    # readiness timeout. Left at 0 here and resolved per stack from
+    # listenPort (already unique per host); set it to pin a specific value.
+    baseId: 0
 
 # ============================================================================
 # KUSTOMIZE DEPLOYMENT CONFIGURATION

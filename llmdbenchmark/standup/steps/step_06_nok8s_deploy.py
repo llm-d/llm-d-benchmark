@@ -345,10 +345,19 @@ class NoK8sDeployStep(Step):
             )
         if kind == "envoy":
             mount_path = c.get("configMountPath", "/etc/envoy/envoy.yaml")
+            # Envoy's hot-restart shared memory and domain socket are named
+            # after the base ID, and --network host makes that name host-wide:
+            # with the default 0, a second Envoy on the node exits with
+            # errno=98 before it ever binds its listener. The renderer seeds a
+            # per-stack ID from listenPort; a plan rendered before it did omits
+            # the key, and 0 there means "leave it to Envoy" as it always did.
+            base_id = c.get("baseId")
+            base = f"--base-id {base_id} " if base_id else ""
             return (
                 host.wrap_runtime(
                     f"{run} -d --name {c['name']} --network host "
                     f"-v {workspace / 'envoy.yaml'}:{mount_path}:ro {image} "
+                    f"{base}"
                     f"--service-node envoy-proxy --log-level warn --concurrency 8 "
                     f"--drain-strategy immediate --drain-time-s 60 -c {mount_path}"
                 ),

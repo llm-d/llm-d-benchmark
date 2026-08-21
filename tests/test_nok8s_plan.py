@@ -738,6 +738,99 @@ def test_shared_nok8s_name_suffix_is_a_render_error(tmp_path: Path) -> None:
     assert any("envoy-shared" in e and "nok8s-single" in e for e in errors), errors
 
 
+# ---------------------------------------------------------------------- #
+# Envoy hot-restart base ID
+# ---------------------------------------------------------------------- #
+def _envoy_of(stack_dir: Path) -> dict:
+    return next(c for c in _spec_of(stack_dir)["containers"] if c["kind"] == "envoy")
+
+
+def test_two_stacks_get_distinct_envoy_base_ids(tmp_path: Path) -> None:
+    """Envoy's base ID is a host-wide claim under --network host.
+
+    Two Envoys sharing one would leave the second dead with errno=98 before it
+    bound its listener, which the CLI could only report as a readiness timeout.
+    """
+    result = _render_scenario(tmp_path, _two_stack_scenario(tmp_path, True))
+    assert not result.has_errors, result.to_dict()
+    first, second = (Path(p) for p in result.rendered_paths)
+
+    base_a, base_b = _envoy_of(first)["baseId"], _envoy_of(second)["baseId"]
+    assert base_a != base_b
+    # Seeded from listenPort, which the host-claim validator already proves
+    # unique -- so the IDs are not a second set of numbers to hand-sync.
+    assert (base_a, base_b) == (8081, 8181)
+
+
+def test_single_stack_envoy_also_gets_a_base_id(tmp_path: Path) -> None:
+    """One stack needs it too: the Envoy it collides with can be last run's."""
+    assert _envoy_of(_stack_dir(_render(tmp_path)))["baseId"] == 8081
+
+
+def test_authored_envoy_base_id_is_preserved(tmp_path: Path) -> None:
+    """An explicit baseId wins over the listenPort-derived default."""
+    scenario = _two_stack_scenario(tmp_path, True, both_nok8s={"envoy": {"baseId": 42}})
+    result = _render_scenario(tmp_path, scenario)
+    first = Path(result.rendered_paths[0])
+    assert _envoy_of(first)["baseId"] == 42
+
+
+@pytest.mark.parametrize("port", ["auto", None, 0, 99999])
+def test_unusable_listen_port_leaves_the_base_id_alone(port) -> None:
+    """A port the host-claim validator rejects must not seed a base ID.
+
+    Reporting a plausible-looking ID in front of the real complaint would only
+    make the port error harder to read.
+    """
+    values = {"nok8s": {"enabled": True, "envoy": {"listenPort": port}}}
+    out = _validator()._resolve_nok8s_envoy_base_id(values)
+    assert "baseId" not in out["nok8s"]["envoy"]
+
+
+def test_quoted_listen_port_still_seeds_the_base_id() -> None:
+    """`listenPort: '8081'` is a string; the derived ID is still an int."""
+    values = {"nok8s": {"enabled": True, "envoy": {"listenPort": "8081"}}}
+    out = _validator()._resolve_nok8s_envoy_base_id(values)
+    assert out["nok8s"]["envoy"]["baseId"] == 8081
+
+
+def test_base_id_resolver_skips_a_disabled_nok8s() -> None:
+    values = {"nok8s": {"enabled": False, "envoy": {"listenPort": 8081}}}
+    out = _validator()._resolve_nok8s_envoy_base_id(values)
+    assert "baseId" not in out["nok8s"]["envoy"]
+
+
+def test_envoy_is_launched_with_its_base_id(tmp_path: Path) -> None:
+    """The resolved ID reaches the docker command as --base-id."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _nok8s_stack(tmp_path)
+    spec = yaml.safe_load(
+        (stack / "34_nok8s-containers.yaml").read_text(encoding="utf-8")
+    )
+    for container in spec["containers"]:
+        if container["kind"] == "envoy":
+            container["baseId"] = 8081
+    (stack / "34_nok8s-containers.yaml").write_text(yaml.safe_dump(spec), "utf-8")
+
+    cmd = _RecordingCmd(fail_substrings=("--name envoy",))
+    NoK8sDeployStep().execute(_nok8s_ctx(tmp_path, cmd), stack)
+
+    envoy_run = next(c for c in cmd.commands if " run -d --name envoy" in c)
+    assert "--base-id 8081" in envoy_run
+
+
+def test_a_plan_without_a_base_id_launches_envoy_unchanged(tmp_path: Path) -> None:
+    """Back-compat: a plan rendered before baseId existed gets no flag."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    cmd = _RecordingCmd(fail_substrings=("--name envoy",))
+    NoK8sDeployStep().execute(_nok8s_ctx(tmp_path, cmd), _nok8s_stack(tmp_path))
+
+    envoy_run = next(c for c in cmd.commands if " run -d --name envoy" in c)
+    assert "--base-id" not in envoy_run
+
+
 def _validator() -> RenderPlans:
     return RenderPlans(
         template_dir=TEMPLATE_DIR,

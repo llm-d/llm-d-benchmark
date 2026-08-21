@@ -167,7 +167,7 @@ single-GPU example. Key fields (full defaults in
 | `nok8s.workspaceHostDir` | Host dir where EPP/Envoy configs are staged + bind-mounted |
 | `nok8s.vllm.{image,tag,hostPort,tensorParallel,accelerator,gpus,deviceArgs,shmSize,replicas,extraArgs}` | vLLM worker(s); worker *i* is published on `hostPort + i` (see Accelerators for `accelerator`/`deviceArgs`) |
 | `nok8s.epp.{image,tag,grpcPort,grpcHealthPort,metricsPort}` | Endpoint Picker |
-| `nok8s.envoy.{image,tag,listenPort,adminPort}` | Envoy front door (the run target); `adminPort` is the admin interface, bound on the host (`--network host`) |
+| `nok8s.envoy.{image,tag,listenPort,adminPort,baseId}` | Envoy front door (the run target); `adminPort` is the admin interface, bound on the host (`--network host`). `baseId` is the hot-restart `--base-id`; leave it `0` and it is resolved per stack from `listenPort` |
 | `nok8s.nameSuffix` | Appended to every container name. Filled automatically with `-<stack>` in a multi-stack scenario (see below); leave empty for one stack |
 | `model.{name,huggingfaceId}` | Set both; standup uses `name`, run reads `huggingfaceId` |
 
@@ -636,7 +636,7 @@ distinct ports and container names. Benchmark them one at a time with
 
 A scenario with more than one stack runs every stack's containers on the same
 host, with no namespace to keep them apart, so each stack needs its own
-identity. Two things are automatic and two are on you:
+identity. Three things are automatic and two are on you:
 
 - **Container names** get a `-<stack name>` suffix, e.g. `vllm-0-chat`,
   `epp-chat`, `envoy-chat`. Without this, stack B's idempotency sweep
@@ -645,6 +645,13 @@ identity. Two things are automatic and two are on you:
   punctuation, or a shared explicit `nok8s.nameSuffix`) are a render error.
 - **`nok8s.workspaceHostDir`** gains a per-stack sub-directory, so the staged
   EPP/Envoy configs never overwrite each other.
+- **Envoy's hot-restart base ID** (`--base-id`, seeded from each stack's
+  `listenPort`) is distinct per stack. Envoy runs with `--network host`, and
+  the default base ID of `0` names a shared-memory region and domain socket
+  claimed host-wide, so a second Envoy exits with `errno=98` *before* binding
+  its listener — visible only as a readiness timeout on a port whose vLLM is
+  healthy. This applies to single-stack standups too, where the other claimant
+  is usually an Envoy an earlier run left behind.
 - **Host ports are yours to assign.** They are never derived, because guessing
   would silently bind ports you did not ask for. Two nok8s stacks claiming the
   same port is a render error that names the port and the owning stack, and
@@ -756,6 +763,13 @@ auto-pinning and puts you in control).
   multi-stack scenario). Lower the model size or add
   `--max-model-len`/`--gpu-memory-utilization` via `nok8s.vllm.extraArgs`.
 - **Envoy 503** — a worker isn't up; confirm `curl http://localhost:8000/v1/models`.
+- **`Timed out waiting for http://localhost:<listenPort>/v1/models` while vLLM
+  is healthy** — Envoy never bound. Read
+  `<workspace>/setup/logs/nok8s-envoy*.log`: `unable to bind domain socket with
+  base_id=0` means another Envoy on the host already holds that hot-restart ID.
+  Current renders assign one per stack; a plan rendered before that did not, so
+  re-render it, and `docker rm -f` any Envoy an earlier run left running. The
+  workspace path is printed by the failure itself.
 - **podman + GPU** — ensure the CDI spec exists: `nvidia-ctk cdi list` should show
   `nvidia.com/gpu=all`.
 - **Ports busy** — a stale run; `teardown --methods nok8s`, or change the ports.
