@@ -48,12 +48,11 @@ scenario:
       runtime: docker            # docker | podman
       # Host whose runtime runs the stack. "localhost" (default) is this
       # machine. To deploy to a bare-metal node, give its address -- a bare IP
-      # or hostname is read as ssh://, and the runtime's own SSH transport
-      # carries every command, so the node needs no daemon reconfiguration and
-      # no tunnel:
+      # or hostname is read as ssh://, and every container command is run on
+      # the node over ssh, so the node needs no daemon reconfiguration, no
+      # tunnel, and this machine needs no docker/podman at all:
       #   connection: 10.0.0.7
       #   connection: ssh://bench@10.0.0.7
-      #   connection: ssh://bench@10.0.0.7/run/user/1000/podman/podman.sock
       # It does need key-based SSH that works without a prompt
       # ("ssh bench@10.0.0.7 true"). Then curl the node, not localhost:
       # http://10.0.0.7:8081. See docs/nok8s.md#remote-host.
@@ -63,6 +62,10 @@ scenario:
       # --set applies to ONE invocation: pass it to run/teardown as well, or a
       # run will benchmark this machine while the stack sits on the node.
       connection: localhost
+      # How a remote runtime is driven. "ssh" (default) runs `ssh <node>
+      # docker ...`; "native" uses `docker -H` / `podman --url`, which needs a
+      # matching client on THIS machine. Ignored when connection is localhost.
+      #   transport: native
       # sshIdentity: /path/to/key   # default: the agent / ~/.ssh keys
       hfTokenEnv: HUGGING_FACE_HUB_TOKEN
       workspaceHostDir: "~/.llmdbench/nok8s"

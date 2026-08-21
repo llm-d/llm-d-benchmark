@@ -133,10 +133,10 @@ class NoK8sDeployStep(Step):
             name = c["name"]
             # Idempotency: remove any prior container with this name.
             cmd.execute(host.runtime_cmd("rm", "-f", name), check=False)
-            run_cmd = self._build_run_command(
+            run_cmd, run_stdin = self._build_run_command(
                 c, runtime, workspace, epp_dir, hf_cache, hf_token_env, model, host
             )
-            result = cmd.execute(run_cmd, check=False)
+            result = cmd.execute(run_cmd, check=False, stdin=run_stdin)
             if not result.success and not context.dry_run:
                 # The stack is unusable without every container, so stop at the
                 # first failure instead of launching the rest, and remove what
@@ -186,6 +186,7 @@ class NoK8sDeployStep(Step):
             runtime=runtime,
             identity=spec.get("sshIdentity") or "",
             ssh_args=spec.get("sshArgs") or None,
+            transport=spec.get("transport") or "",
         )
 
     def _daemon_home(
@@ -284,29 +285,39 @@ class NoK8sDeployStep(Step):
         hf_token_env: str,
         model: str,
         host: ContainerHost,
-    ) -> str:
+        environ=None,
+    ) -> tuple[str, str]:
         """Build the docker/podman run command for one container from its spec.
 
+        Returns ``(command, stdin)``; *stdin* carries the Hugging Face token for
+        a remote runtime and is empty otherwise (see :meth:`_token_forward`).
+
         Every path in a ``-v`` flag and every port in a ``-p`` flag is resolved
-        by the daemon, so on a remote host they already refer to that node --
-        the only client-side addition is the connection flag from *host*.
+        by the daemon, so on a remote host they already refer to that node.
+
+        The argument tail is assembled first and handed to ``wrap_runtime`` at
+        the end: under ssh transport the command is quoted as one unit, so
+        appending to an already-wrapped prefix would leave these flags outside
+        the quotes, where the *client's* shell would eat them.
         """
         kind = c["kind"]
         image = c["image"]
-        run = host.runtime_cmd("run")
+        run = "run"
         if kind == "vllm":
             device = self._device_args(runtime, c)
             pin = self._pin_env(c)
             extra = " ".join(c.get("extraArgs") or [])
-            return (
+            # `-e VAR` with no value is expanded by whoever runs the CLI: the
+            # local client under the native transport, the node's shell under
+            # ssh. Either way the token is never written to the node's disk --
+            # for ssh it is piped in, see _token_forward.
+            prefix, stdin = self._token_forward(host, hf_token_env, environ)
+            tail = (
                 f"{run} -d --name {c['name']}"
                 + (f" {device}" if device else "")
                 + (f" {pin}" if pin else "")
                 + f" --shm-size={c.get('shmSize', '20g')} "
                 f"-p {c['hostPort']}:{c.get('containerPort', 8000)} "
-                # `-e VAR` with no value is expanded from the *client's*
-                # environment by both CLIs, so the token reaches a remote
-                # daemon without ever being written to the node's disk.
                 f"-e {hf_token_env} "
                 f"-v {hf_cache}:/root/.cache/huggingface "
                 f"--entrypoint vllm {image} "
@@ -315,28 +326,53 @@ class NoK8sDeployStep(Step):
                 f"--tensor-parallel-size={c.get('tensorParallel', 1)}"
                 + (f" {extra}" if extra else "")
             )
+            return host.wrap_runtime(tail, prefix), stdin
         if kind == "epp":
             mount_dir = c.get("configMountDir", "/etc/epp")
             return (
-                f"{run} -d --name {c['name']} --network host "
-                f"-v {epp_dir}:{mount_dir}:ro {image} "
-                f"--config-file={mount_dir}/config.yaml "
-                f"--pool-name={c.get('poolName', 'file-discovery')} "
-                f"--pool-namespace={c.get('poolNamespace', 'default')} "
-                f"--grpc-port={c['grpcPort']} "
-                f"--grpc-health-port={c['grpcHealthPort']} "
-                f"--metrics-port={c['metricsPort']} "
-                f"--secure-serving=false --v=2"
+                host.wrap_runtime(
+                    f"{run} -d --name {c['name']} --network host "
+                    f"-v {epp_dir}:{mount_dir}:ro {image} "
+                    f"--config-file={mount_dir}/config.yaml "
+                    f"--pool-name={c.get('poolName', 'file-discovery')} "
+                    f"--pool-namespace={c.get('poolNamespace', 'default')} "
+                    f"--grpc-port={c['grpcPort']} "
+                    f"--grpc-health-port={c['grpcHealthPort']} "
+                    f"--metrics-port={c['metricsPort']} "
+                    f"--secure-serving=false --v=2"
+                ),
+                "",
             )
         if kind == "envoy":
             mount_path = c.get("configMountPath", "/etc/envoy/envoy.yaml")
             return (
-                f"{run} -d --name {c['name']} --network host "
-                f"-v {workspace / 'envoy.yaml'}:{mount_path}:ro {image} "
-                f"--service-node envoy-proxy --log-level warn --concurrency 8 "
-                f"--drain-strategy immediate --drain-time-s 60 -c {mount_path}"
+                host.wrap_runtime(
+                    f"{run} -d --name {c['name']} --network host "
+                    f"-v {workspace / 'envoy.yaml'}:{mount_path}:ro {image} "
+                    f"--service-node envoy-proxy --log-level warn --concurrency 8 "
+                    f"--drain-strategy immediate --drain-time-s 60 -c {mount_path}"
+                ),
+                "",
             )
         raise ValueError(f"Unknown nok8s container kind: {kind}")
+
+    @staticmethod
+    def _token_forward(
+        host: ContainerHost, hf_token_env: str, environ=None
+    ) -> tuple[str, str]:
+        """``(env_prefix, stdin)`` carrying the HF token to a remote runtime.
+
+        Under the native transport the local CLI expands ``-e VAR`` from this
+        process's environment, so nothing is needed. Under ssh transport the
+        runtime runs on the node, where that variable is unset -- without this
+        a gated model would fail to download and the only symptom would be a
+        401 deep in the vLLM log.
+
+        The value goes over stdin rather than in the command, because commands
+        are written to the workspace command log and this one is a credential.
+        """
+        env = os.environ if environ is None else environ
+        return host.env_forward_stdin([hf_token_env], env)
 
     # Per-accelerator env var that pins a process to a subset of devices.
     _VISIBLE_DEVICE_ENV = {

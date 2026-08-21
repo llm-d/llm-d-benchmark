@@ -124,8 +124,10 @@ class _FakeCmd:
     def __init__(self, fail_substrings=(), stdout_for=None) -> None:
         self.fail_substrings = fail_substrings
         self.stdout_for = stdout_for or {}
+        self.seen: list[str] = []
 
     def execute(self, cmd, *_, **__):
+        self.seen.append(cmd)
         ok = not any(s in cmd for s in self.fail_substrings)
         out = ""
         for key, val in self.stdout_for.items():
@@ -188,6 +190,70 @@ def test_nok8s_preflight_passes_when_runtime_and_gpu_present(tmp_path: Path) -> 
     finally:
         os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
     assert result.success is True
+
+
+def test_remote_preflight_does_not_require_a_client_here(tmp_path: Path) -> None:
+    """Under the default ssh transport nothing runs a container locally.
+
+    So a missing local docker/podman must not block a remote standup -- that
+    requirement is what forced people to install a client that only relays, and
+    a client of the *same family* as the node's daemon at that.
+    """
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(
+            fail_substrings=("command -v docker",),
+            stdout_for={"ss -ltn": "State  Recv-Q\n"},
+        ),
+        nok8s={"enabled": True, "connection": "bench@10.0.0.7"},
+    )
+    result = EnsureInfraStep().execute(ctx)
+    assert not any("not found on PATH" in e and "docker" in e for e in result.errors), (
+        result.errors
+    )
+
+
+def test_native_transport_still_requires_a_client_here(tmp_path: Path) -> None:
+    """`docker -H` cannot run without docker, and the error should say why."""
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(fail_substrings=("command -v docker",)),
+        nok8s={
+            "enabled": True,
+            "connection": "bench@10.0.0.7",
+            "transport": "native",
+        },
+    )
+    result = EnsureInfraStep().execute(ctx)
+    assert not result.success
+    missing = next(e for e in result.errors if "not found on PATH" in e)
+    # It points at the way out rather than only at the missing binary.
+    assert "transport" in missing and "ssh" in missing
+
+
+def test_timeout_is_probed_on_the_client_not_the_node(tmp_path: Path) -> None:
+    """`timeout` wraps the *client* command (ssh, or the local client binary).
+
+    Probing it on the node passed on a node that had it while the client did
+    not, and the harness wait then ran unbounded. `curl` is the opposite case:
+    it probes readiness from the node, so it is checked there.
+    """
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _FakeCmd(stdout_for={"ss -ltn": "State  Recv-Q\n"}),
+        nok8s={"enabled": True, "connection": "bench@10.0.0.7"},
+    )
+    EnsureInfraStep().execute(ctx)
+    probes = [c for c in ctx.cmd.seen if "command -v timeout" in c]
+    assert probes and not any(c.startswith("ssh ") for c in probes), probes
+    node_probes = [c for c in ctx.cmd.seen if "command -v curl" in c]
+    assert node_probes and all(c.startswith("ssh ") for c in node_probes), node_probes
 
 
 def _busy_warning(ctx) -> str:
@@ -427,13 +493,22 @@ class _RecordingCmd(_FakeCmd):
     def __init__(self, fail_substrings=(), stdout_for=None) -> None:
         super().__init__(fail_substrings, stdout_for)
         self.commands: list[str] = []
+        # Commands passed force=True, which is what actually runs under
+        # --dry-run: everything else the executor only prints.
+        self.forced: list[str] = []
+        self.stdins: list[str] = []
 
     def execute(self, cmd, *args, **kwargs):
         self.commands.append(cmd)
+        self.stdins.append(kwargs.get("stdin", ""))
+        if kwargs.get("force"):
+            self.forced.append(cmd)
         return super().execute(cmd, *args, **kwargs)
 
     def removed(self) -> set[str]:
-        return {c.split()[-1] for c in self.commands if " rm -f " in c}
+        # Under ssh transport the command is quoted as a unit, so the last
+        # token carries the closing quote; the container name is the same.
+        return {c.split()[-1].rstrip("'") for c in self.commands if " rm -f " in c}
 
     def launched(self) -> set[str]:
         return {
@@ -970,12 +1045,16 @@ def test_unsupported_connection_scheme_is_a_render_error(tmp_path: Path) -> None
     assert result.stacks["nok8s-single"].render_errors
 
 
-def _remote_stack(tmp_path: Path, connection: str = REMOTE) -> Path:
+def _remote_stack(
+    tmp_path: Path, connection: str = REMOTE, transport: str = ""
+) -> Path:
     """A rendered-spec stack dir whose containers live on a remote node."""
     stack = _nok8s_stack(tmp_path)
     spec_file = stack / "34_nok8s-containers.yaml"
     spec = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
     spec["connection"] = connection
+    if transport:
+        spec["transport"] = transport
     spec["clientEndpoint"] = "http://10.0.0.7:8081"
     spec["workspaceHostDir"] = "~/.llmdbench/nok8s"
     spec["readiness"] = {"vllmPorts": [8000], "envoyPort": 8081}
@@ -987,10 +1066,13 @@ def _remote_stack(tmp_path: Path, connection: str = REMOTE) -> Path:
     return stack
 
 
-def test_remote_deploy_puts_the_connection_flag_before_the_subcommand(
-    tmp_path: Path,
-) -> None:
-    """`docker run -H ssh://...` is not valid; the flag has to precede `run`."""
+def test_remote_deploy_runs_the_runtime_on_the_node(tmp_path: Path) -> None:
+    """The default transport needs no container client on this machine.
+
+    Every one of the three launches is a remote operation, so the runtime is
+    invoked on the node over ssh rather than through a local client that would
+    only relay -- and would have to match the node's daemon family to do it.
+    """
     from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
@@ -1003,7 +1085,63 @@ def test_remote_deploy_puts_the_connection_flag_before_the_subcommand(
     runs = [c for c in cmd.commands if " run -d --name " in c]
     assert len(runs) == 3, cmd.commands
     for run in runs:
+        assert run.startswith("ssh ")
+        assert "bench@10.0.0.7 'docker run -d --name " in run
+        assert " -H ssh://" not in run
+
+
+def test_native_transport_puts_the_connection_flag_before_the_subcommand(
+    tmp_path: Path,
+) -> None:
+    """`docker run -H ssh://...` is not valid; the flag has to precede `run`."""
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path, transport="native")
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+    assert result.success is True, result.message
+
+    runs = [c for c in cmd.commands if " run -d --name " in c]
+    assert len(runs) == 3, cmd.commands
+    for run in runs:
         assert run.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock run")
+
+
+def test_the_hf_token_reaches_the_node_without_being_logged(tmp_path: Path) -> None:
+    """`-e VAR` with no value is expanded by whoever runs the CLI.
+
+    Natively that is this process, so the token in the operator's shell reaches
+    the container. Over ssh the runtime runs on the *node*, where the variable is
+    unset -- a gated model would 401 with nothing in the logs to explain it. So
+    the value is carried across explicitly, but over stdin: every command string
+    is written to the workspace command log, so a `VAR=value` prefix would leave
+    the token there in cleartext.
+    """
+    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+
+    stack = _remote_stack(tmp_path)
+    cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
+    ctx = _nok8s_ctx(tmp_path, cmd)
+    import os
+
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = "hf_supersecret"
+    try:
+        result = NoK8sDeployStep().execute(ctx, stack)
+    finally:
+        os.environ.pop("HUGGING_FACE_HUB_TOKEN", None)
+    assert result.success is True, result.message
+
+    vllm = next(c for c in cmd.commands if "--name vllm-0" in c)
+    assert "hf_supersecret" not in vllm
+    # It is still requested, and the remote shell has it by then.
+    assert "-e HUGGING_FACE_HUB_TOKEN" in vllm
+    assert 'eval "$(cat)" &&' in vllm
+    token_stdin = next(s for s in cmd.stdins if s)
+    assert "hf_supersecret" in token_stdin
+    # Nothing anywhere in the log carries the value.
+    assert not any("hf_supersecret" in c for c in cmd.commands)
 
 
 def test_remote_deploy_stages_configs_on_the_node_before_launching(
@@ -1105,6 +1243,28 @@ def test_remote_teardown_removes_containers_on_the_node(tmp_path: Path) -> None:
     assert "10.0.0.7" in result.message
     assert cmd.removed() == {"vllm-0", "epp", "envoy"}
     for c in cmd.commands:
+        assert c.startswith("ssh ")
+        assert "bench@10.0.0.7 'docker rm -f " in c
+
+
+def test_native_transport_teardown_reaches_the_same_daemon(tmp_path: Path) -> None:
+    """Teardown reads the transport off the spec standup left behind.
+
+    Defaulting it here instead would leave a native-transport stack running:
+    the removals would go out over a different mechanism than the launches, and
+    on a host with no local client they would not go out at all.
+    """
+    from llmdbenchmark.teardown.steps.step_06_nok8s_teardown import NoK8sTeardownStep
+
+    stack = _remote_stack(tmp_path, transport="native")
+    cmd = _RecordingCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+
+    result = NoK8sTeardownStep().execute(ctx, stack)
+
+    assert result.success is True
+    assert cmd.removed() == {"vllm-0", "epp", "envoy"}
+    for c in cmd.commands:
         assert c.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock rm")
 
 
@@ -1147,14 +1307,57 @@ def test_remote_preflight_tests_the_connection_and_probes_the_node(
 
     assert result.success is True, result.errors
     commands = ctx.cmd.commands
-    assert any(c.startswith("docker -H ") and c.endswith(" info") for c in commands)
-    # The client binary is checked locally; the host tools on the node.
-    assert "command -v docker" in commands
+    assert any(c.startswith("ssh ") and c.endswith("'docker info'") for c in commands)
+    # No local client is consulted -- there is nothing for one to do.
+    assert "command -v docker" not in commands
     assert any(c.startswith("ssh ") and "nvidia-smi -L" in c for c in commands)
     assert any(c.startswith("ssh ") and "ss -ltn" in c for c in commands)
 
 
-def test_remote_preflight_reports_an_unreachable_daemon_with_the_fix(
+def test_a_dead_connection_and_a_dead_daemon_are_reported_differently(
+    tmp_path: Path,
+) -> None:
+    """Under ssh transport the two failures are distinguishable, so distinguish.
+
+    ssh exits 255 for its own failures and passes the remote command's status
+    through otherwise, which separates "never reached the node" from "reached it
+    and the runtime would not answer". Collapsing them sent people to debug SSH
+    keys when their user simply was not in the `docker` group.
+    """
+    from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
+
+    # (a) ssh itself failed.
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _ScriptedCmd(scripted=(("docker info", 255, "Permission denied (publickey)"),)),
+        nok8s={"enabled": True, "connection": REMOTE},
+    )
+    result = EnsureInfraStep().execute(ctx)
+    assert result.success is False
+    joined = " ".join(result.errors)
+    assert "ssh bench@10.0.0.7 true" in joined
+    assert "over ssh" in joined
+    # No local client is implicated -- there is none.
+    assert "nok8s.runtime=" not in joined
+
+    # (b) the node answered; its runtime did not.
+    ctx = _nok8s_ctx(
+        tmp_path,
+        _ScriptedCmd(
+            scripted=(("docker info", 1, "permission denied while trying to connect"),)
+        ),
+        nok8s={"enabled": True, "connection": REMOTE},
+    )
+    result = EnsureInfraStep().execute(ctx)
+    assert result.success is False
+    joined = " ".join(result.errors)
+    assert "ssh bench@10.0.0.7 docker info" in joined
+    assert "'docker' group" in joined, joined
+    # It does not blame the SSH setup, which demonstrably worked.
+    assert "ssh bench@10.0.0.7 true" not in joined
+
+
+def test_native_preflight_reports_an_unreachable_daemon_with_the_fix(
     tmp_path: Path,
 ) -> None:
     from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
@@ -1162,7 +1365,7 @@ def test_remote_preflight_reports_an_unreachable_daemon_with_the_fix(
     ctx = _nok8s_ctx(
         tmp_path,
         _RecordingCmd(fail_substrings=("docker -H ",)),
-        nok8s={"enabled": True, "connection": REMOTE},
+        nok8s={"enabled": True, "connection": REMOTE, "transport": "native"},
     )
     result = EnsureInfraStep().execute(ctx)
 
@@ -1201,7 +1404,13 @@ def test_remote_dry_run_never_touches_the_node(tmp_path: Path) -> None:
     result = NoK8sDeployStep().execute(ctx, stack)
 
     assert result.success is True
-    assert not any(c.startswith("ssh ") for c in cmd.commands)
+    # The launch commands are *built* -- printing them is the point of a dry
+    # run -- and the executor prints rather than runs them. What must not
+    # happen is a `force=True` call, which runs even under --dry-run because
+    # the step needs its output: reading the node's $HOME, staging configs,
+    # probing readiness.
+    assert cmd.forced == [], cmd.forced
+    assert not any("printenv HOME" in c for c in cmd.commands)
     assert not any("scp " in c for c in cmd.commands)
     assert not any("curl" in c for c in cmd.commands)
 
@@ -1240,10 +1449,17 @@ class _ScriptedCmd(_RecordingCmd):
         return _FakeResult(True, out)
 
 
-def _remote_ctx(tmp_path: Path, cmd, connection: str, runtime: str = "docker"):
-    ctx = _nok8s_ctx(
-        tmp_path, cmd, nok8s={"enabled": True, "connection": connection, "vllm": {}}
-    )
+def _remote_ctx(
+    tmp_path: Path,
+    cmd,
+    connection: str,
+    runtime: str = "docker",
+    transport: str = "",
+):
+    nok8s = {"enabled": True, "connection": connection, "vllm": {}}
+    if transport:
+        nok8s["transport"] = transport
+    ctx = _nok8s_ctx(tmp_path, cmd, nok8s=nok8s)
     ctx.container_runtime = runtime
     return ctx
 
@@ -1254,14 +1470,43 @@ PODMAN_AUTH_STDERR = (
     "no supported methods remain"
 )
 
+# docker's equivalent, which reads nothing like podman's: the CLI has no SSH
+# client of its own, so it execs `ssh` and can only report that process's exit
+# status. ssh's own "Permission denied" arrives on the same stream.
+DOCKER_AUTH_STDERR = (
+    "root@10.0.0.7: Permission denied (publickey).\n"
+    "error during connect: Get "
+    '"http://docker.example.com/v1.47/info": command '
+    "[ssh -l root -- 10.0.0.7 docker system dial-stdio] has exited with exit "
+    "status 255"
+)
 
-def _errors_of(tmp_path: Path, cmd, connection: str, runtime: str = "docker"):
+
+def _errors_of(
+    tmp_path: Path,
+    cmd,
+    connection: str,
+    runtime: str = "docker",
+    transport: str = "",
+):
     from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
 
-    ctx = _remote_ctx(tmp_path, cmd, connection, runtime)
+    ctx = _remote_ctx(tmp_path, cmd, connection, runtime, transport)
     result = EnsureInfraStep().execute(ctx)
     assert result.success is False
     return result.errors
+
+
+def _native_errors_of(tmp_path: Path, cmd, connection: str, runtime: str = "docker"):
+    """Errors from a `transport: native` preflight.
+
+    Everything below this point is about *which local client* failed and how it
+    authenticates -- a question that only exists for the native transport, where
+    a client on this machine opens the connection itself. Under the default ssh
+    transport there is no local client to misidentify, so those diagnoses are
+    deliberately not reached; see the ssh-transport tests further down.
+    """
+    return _errors_of(tmp_path, cmd, connection, runtime, transport="native")
 
 
 def test_unreachable_node_is_reported_once_not_as_missing_tools(
@@ -1289,13 +1534,13 @@ def test_unreachable_node_is_reported_once_not_as_missing_tools(
 def test_a_remote_command_that_really_fails_is_still_reported(tmp_path: Path) -> None:
     """The 255 special-case must not swallow a genuinely missing tool.
 
-    A reachable node that lacks `timeout` returns 127 from `command -v`, which
-    is a real answer about that node and has to stay fatal.
+    A reachable node that lacks `curl` returns 127 from `command -v`, which is a
+    real answer about that node and has to stay fatal.
     """
-    cmd = _ScriptedCmd(scripted=(("command -v timeout", 127, ""),))
+    cmd = _ScriptedCmd(scripted=(("command -v curl", 127, ""),))
     errors = _errors_of(tmp_path, cmd, "10.0.0.7")
 
-    assert any("'timeout' not found on PATH on 10.0.0.7" in e for e in errors), errors
+    assert any("'curl' not found on PATH on 10.0.0.7" in e for e in errors), errors
 
 
 def test_podman_masquerading_as_docker_is_named(tmp_path: Path) -> None:
@@ -1309,11 +1554,98 @@ def test_podman_masquerading_as_docker_is_named(tmp_path: Path) -> None:
         scripted=((" info", 125, PODMAN_AUTH_STDERR),),
         stdout_for={"docker --version": "podman version 5.8.3"},
     )
-    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7")
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7")
 
     daemon = next(e for e in errors if "Cannot reach" in e)
     assert "is actually podman" in daemon, daemon
     assert "nok8s.runtime=podman" in daemon, daemon
+
+
+def test_podmans_error_text_outweighs_a_docker_version_string(
+    tmp_path: Path,
+) -> None:
+    """The failure text names the client, even when --version disagrees.
+
+    Reported from a real node: `nok8s.runtime` defaulted to docker, the local
+    `docker` answered "Docker version ...", and yet the connection failed with
+    podman's Go-SSH handshake wording. Keying the advice on the configured
+    runtime handed the user docker's advice ("put the key in your ssh-agent")
+    directly underneath podman's own error -- advice that cannot work, since
+    podman never consults the agent's OpenSSH-side defaults the same way.
+
+    Only one of the two clients can produce this text, so it decides.
+    """
+    cmd = _ScriptedCmd(
+        scripted=((" info", 125, PODMAN_AUTH_STDERR),),
+        stdout_for={"docker --version": "Docker version 27.1.1, build 6312585"},
+    )
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "nok8s.sshIdentity=<path-to-private-key>" in daemon, daemon
+    # And it must not also carry docker's contradictory advice.
+    assert "does not reach the docker client" not in daemon, daemon
+
+
+def test_podman_symlinked_as_docker_reports_docker_in_its_version(
+    tmp_path: Path,
+) -> None:
+    """The shim case is invisible to --version, which is why it cannot decide.
+
+    podman prints "<argv[0]> version <n>", so the *same binary* reached through
+    a symlink named `docker` says "docker version 4.4.1" -- a string with no
+    trace of podman in it, and one that also looks like an old Docker to a
+    reader (Docker prints "Docker version 27.1.1, build <sha>" and never had a
+    4.4.1). Reported from a real client: `--version` corroborated docker, the
+    connection failed with podman's handshake wording, and the advice has to
+    follow the latter.
+    """
+    cmd = _ScriptedCmd(
+        scripted=((" info", 125, PODMAN_AUTH_STDERR),),
+        stdout_for={"docker --version": "docker version 4.4.1"},
+    )
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "is actually podman" in daemon, daemon
+    assert "nok8s.runtime=podman" in daemon, daemon
+    assert "nok8s.sshIdentity=<path-to-private-key>" in daemon, daemon
+    assert "does not reach the docker client" not in daemon, daemon
+
+
+def test_an_attributed_mismatch_shows_its_evidence(tmp_path: Path) -> None:
+    """ "Your docker is really podman" is a surprising claim; justify it."""
+    cmd = _ScriptedCmd(
+        scripted=((" info", 125, PODMAN_AUTH_STDERR),),
+        stdout_for={"docker --version": "podman version 5.8.3"},
+    )
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "is actually podman" in daemon, daemon
+    assert "podman dials SSH itself" in daemon, daemon
+
+
+def test_an_unidentifiable_client_gets_both_recipes(tmp_path: Path) -> None:
+    """A wrapper script may reveal nothing; guessing one client misdirects.
+
+    `--version` can fail or print something unrecognised (a shim, a wrapper,
+    an unusual build). With no evidence either way the message must not assert
+    a client -- it covers both, so whichever it is the user has the right step.
+    """
+    cmd = _ScriptedCmd(
+        scripted=(
+            (" info", 1, "ssh: unable to authenticate"),
+            ("--version", 127, ""),
+        ),
+    )
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7", runtime="ctr-wrapper")
+
+    daemon = next(e for e in errors if "Cannot reach" in e)
+    assert "could not be identified" in daemon, daemon
+    assert "nok8s.sshIdentity=<path>" in daemon, daemon
+    assert "ssh-add <key>" in daemon, daemon
+    assert "is actually" not in daemon, daemon
 
 
 def test_podman_auth_failure_points_at_sshidentity(tmp_path: Path) -> None:
@@ -1327,7 +1659,7 @@ def test_podman_auth_failure_points_at_sshidentity(tmp_path: Path) -> None:
         scripted=((" info", 125, PODMAN_AUTH_STDERR),),
         stdout_for={"podman --version": "podman version 5.8.3"},
     )
-    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7", runtime="podman")
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7", runtime="podman")
 
     daemon = next(e for e in errors if "Cannot reach" in e)
     assert "nok8s.sshIdentity" in daemon, daemon
@@ -1349,6 +1681,7 @@ def test_podman_refusing_a_supplied_key_blames_the_node(tmp_path: Path) -> None:
         nok8s={
             "enabled": True,
             "connection": "root@10.0.0.7",
+            "transport": "native",
             "sshIdentity": "/home/me/.ssh/id_rsa",
             "vllm": {},
         },
@@ -1364,14 +1697,16 @@ def test_podman_refusing_a_supplied_key_blames_the_node(tmp_path: Path) -> None:
 def test_docker_auth_failure_does_not_suggest_sshidentity(tmp_path: Path) -> None:
     """sshIdentity never reaches `docker -H`, so suggesting it would misdirect."""
     cmd = _ScriptedCmd(
-        scripted=((" info", 1, "ssh: handshake failed: unable to authenticate"),),
+        scripted=((" info", 1, DOCKER_AUTH_STDERR),),
         stdout_for={"docker --version": "Docker version 27.1.1, build 6312585"},
     )
-    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7")
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7")
 
     daemon = next(e for e in errors if "Cannot reach" in e)
     assert "ssh-add" in daemon, daemon
     assert "nok8s.sshIdentity does not reach" in daemon, daemon
+    # docker really is docker here, so there is no mismatch to report.
+    assert "is actually" not in daemon, daemon
 
 
 def test_daemon_down_keeps_the_generic_runtime_advice(tmp_path: Path) -> None:
@@ -1381,7 +1716,7 @@ def test_daemon_down_keeps_the_generic_runtime_advice(tmp_path: Path) -> None:
         scripted=((" info", 1, "Cannot connect to the Docker daemon at unix:///..."),),
         stdout_for={"docker --version": "Docker version 27.1.1"},
     )
-    errors = _errors_of(tmp_path, cmd, "root@10.0.0.7")
+    errors = _native_errors_of(tmp_path, cmd, "root@10.0.0.7")
 
     daemon = next(e for e in errors if "Cannot reach" in e)
     assert "is running on the node" in daemon, daemon

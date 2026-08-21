@@ -1089,6 +1089,7 @@ class RenderPlans:
                 runtime=str(nok8s.get("runtime") or "docker"),
                 identity=str(nok8s.get("sshIdentity") or ""),
                 ssh_args=nok8s.get("sshArgs") or None,
+                transport=str(nok8s.get("transport") or ""),
             )
         except ContainerHostError as exc:
             return [f"[{stack_name}] {exc}"]

@@ -1412,18 +1412,32 @@ nok8s:
   # Container runtime: "docker" or "podman".
   runtime: docker
   # Host whose container runtime runs the stack.
-  #   localhost                     -- the machine running llmdbenchmark (default)
-  #   ssh://[user@]host[:port][/socket]  -- a remote node, over the runtime's
-  #                                    native SSH transport (docker -H /
-  #                                    podman --url). A bare "10.0.0.7" or
-  #                                    "user@node" is read as ssh://.
+  #   localhost                          -- the machine running llmdbenchmark
+  #                                         (default)
+  #   ssh://[user@]host[:port][/socket]  -- a remote node. A bare "10.0.0.7"
+  #                                         or "user@node" is read as ssh://.
   # Remote standup needs no daemon reconfiguration and no manual ssh tunnel;
   # it does need key-based SSH to work non-interactively. "tcp://" is refused
   # on purpose: an unauthenticated socket is root on that node.
   # Overridable per run without editing any file, on every subcommand:
   #   --set nok8s.connection=10.0.0.7
   connection: localhost
+  # How a *remote* runtime is driven (ignored when connection is localhost):
+  #   ssh     -- run `ssh <node> docker ...`, i.e. the runtime runs on the
+  #              node. Needs NO container client on this machine, and no
+  #              agreement between the two ends: only the node's runtime
+  #              matters. This is the default.
+  #   native  -- the runtimes' own SSH transport (`docker -H ssh://...` /
+  #              `podman --url ssh://...`). Requires a client here of the SAME
+  #              family as the node's daemon (a podman client cannot drive
+  #              dockerd -- it asks for Libpod endpoints dockerd does not
+  #              serve), and authenticates by that client's own rules: podman's
+  #              Go SSH client ignores ~/.ssh/id_rsa, so `ssh node true` can
+  #              succeed while every container command fails.
+  transport: ssh
   # SSH private key for a remote connection (default: the agent / ~/.ssh keys).
+  # Honoured by both transports, though "native" + podman needs the key to be
+  # one podman itself accepts.
   sshIdentity: ""
   # Extra ssh/scp options for a remote connection. Replaces the defaults
   # (BatchMode=yes, ConnectTimeout=10), so re-state those if you override.

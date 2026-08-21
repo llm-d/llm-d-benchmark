@@ -13,9 +13,13 @@ remote one, and five steps read it, so these tests pin two things:
 
 from __future__ import annotations
 
+import shlex
+
 import pytest
 
 from llmdbenchmark.utilities.container_host import (
+    NATIVE,
+    SSH,
     ContainerHost,
     ContainerHostError,
     expand_remote_path,
@@ -115,18 +119,149 @@ def test_local_commands_are_unchanged() -> None:
 
 def test_docker_uses_dash_h_before_the_subcommand() -> None:
     """`docker run -H ...` is not a thing: the flag has to precede the verb."""
-    cmd = ContainerHost.parse("node1").runtime_cmd("run", "-d", "--name", "epp")
+    cmd = ContainerHost.parse("node1", transport=NATIVE).runtime_cmd(
+        "run", "-d", "--name", "epp"
+    )
     assert cmd.startswith("docker -H ")
     assert cmd.index("-H ") < cmd.index(" run ")
     assert "ssh://node1/var/run/docker.sock" in cmd
 
 
 def test_podman_uses_url_and_identity() -> None:
-    host = ContainerHost.parse("node1", runtime="podman", identity="/keys/id_ed25519")
+    host = ContainerHost.parse(
+        "node1", runtime="podman", identity="/keys/id_ed25519", transport=NATIVE
+    )
     cmd = host.runtime_cmd("ps")
     assert cmd.startswith("podman --url ")
     assert "--identity /keys/id_ed25519" in cmd
     assert cmd.endswith(" ps")
+
+
+# ---------------------------------------------------------------------------
+# transport
+# ---------------------------------------------------------------------------
+
+
+def test_remote_defaults_to_running_the_runtime_on_the_node() -> None:
+    """The default remote transport is plain ssh, not the client's own.
+
+    The native transport charges for a local client that does nothing but relay
+    -- and one that must match the node's daemon family. Running the runtime on
+    the node removes both couplings, so it is what an unqualified remote
+    connection gets.
+    """
+    host = ContainerHost.parse("bench@node1")
+    assert host.transport == SSH
+    cmd = host.runtime_cmd("rm", "-f", "envoy")
+    assert cmd == (
+        "ssh -o BatchMode=yes -o ConnectTimeout=10 bench@node1 'docker rm -f envoy'"
+    )
+    assert " -H " not in cmd
+
+
+def test_ssh_transport_needs_no_client_here_but_native_does() -> None:
+    """The whole point of the default: nothing to install on this machine."""
+    assert not ContainerHost.parse("node1").needs_local_runtime
+    assert ContainerHost.parse("node1", transport=NATIVE).needs_local_runtime
+    # Local always needs one -- that is where the containers run.
+    assert ContainerHost.parse("localhost").needs_local_runtime
+    assert ContainerHost.parse("localhost", transport=NATIVE).needs_local_runtime
+
+
+def test_transport_does_not_change_the_local_path() -> None:
+    """`transport` is meaningless locally and must not leak an ssh wrapper."""
+    for transport in ("", SSH, NATIVE):
+        host = ContainerHost.parse("localhost", transport=transport)
+        assert host.runtime_cmd("ps") == "docker ps"
+        assert not host.uses_ssh
+
+
+def test_ssh_transport_carries_identity_port_and_options() -> None:
+    """sshIdentity works uniformly here -- no podman/docker asymmetry."""
+    host = ContainerHost.parse("ssh://bench@node1:2222", identity="/keys/id_ed25519")
+    cmd = host.runtime_cmd("ps")
+    assert "-i /keys/id_ed25519" in cmd
+    assert "-p 2222" in cmd
+    assert cmd.endswith("bench@node1 'docker ps'")
+
+
+def test_a_quoted_tail_survives_the_extra_shell() -> None:
+    """Go templates are the sharp case: `{{.State.Status}}` must arrive intact."""
+    host = ContainerHost.parse("node1")
+    tail = "inspect -f '{{.State.Status}} {{.State.ExitCode}}' vllm"
+    wrapped = host.wrap_runtime(tail)
+    inner = shlex.split(wrapped)[-1]
+    assert inner == f"docker {tail}"
+    # docker, inspect, -f, template -- the template survives as ONE argv word.
+    assert shlex.split(inner)[3] == "{{.State.Status}} {{.State.ExitCode}}"
+
+
+def test_an_unknown_transport_is_refused_with_both_choices() -> None:
+    with pytest.raises(ContainerHostError) as exc:
+        ContainerHost.parse("node1", transport="tcp")
+    assert SSH in str(exc.value) and NATIVE in str(exc.value)
+
+
+# ---------------------------------------------------------------------------
+# env forwarding
+# ---------------------------------------------------------------------------
+
+
+def test_values_are_carried_across_for_the_node_to_expand() -> None:
+    """`-e VAR` with no value is expanded by whoever runs the CLI.
+
+    Natively that is this process, so the token arrives. Over ssh it is the
+    *node's* shell, where the variable is unset -- and a gated model would then
+    401 with nothing in the logs to explain it.
+    """
+    host = ContainerHost.parse("node1")
+    assert host.env_forward(["TOK"], {"TOK": "v"}) == "TOK=v"
+    # Nothing set, or nothing to transport: no prefix at all.
+    assert host.env_forward(["TOK"], {}) == ""
+    assert ContainerHost.parse("localhost").env_forward(["TOK"], {"TOK": "v"}) == ""
+    assert (
+        ContainerHost.parse("node1", transport=NATIVE).env_forward(
+            ["TOK"], {"TOK": "v"}
+        )
+        == ""
+    )
+
+
+def test_a_secret_travels_on_stdin_and_not_in_the_command() -> None:
+    """Every command string is written to the workspace command log.
+
+    So a token passed as a `VAR=value` prefix would be logged in cleartext. It
+    goes in over stdin instead, which the log never records.
+    """
+    host = ContainerHost.parse("node1")
+    prefix, stdin = host.env_forward_stdin(["TOK"], {"TOK": "hf_secret"})
+    cmd = host.wrap_runtime("run -d -e TOK img", prefix)
+    assert "hf_secret" not in cmd
+    assert "hf_secret" in stdin
+    # The remote shell reads it before exec'ing the runtime, so `-e TOK` resolves.
+    assert 'eval "$(cat)" &&' in cmd
+    assert stdin.startswith("export TOK=")
+
+
+def test_the_forwarding_prefix_lands_inside_the_remote_command() -> None:
+    """Outside the ssh quotes it would run on the client and forward nothing."""
+    host = ContainerHost.parse("node1")
+    prefix, _ = host.env_forward_stdin(["TOK"], {"TOK": "v"})
+    cmd = host.wrap_runtime("run img", prefix)
+    assert prefix.strip() not in cmd.split("'")[0]
+    assert shlex.split(cmd)[-1].startswith('eval "$(cat)" && docker run')
+
+
+def test_nothing_is_forwarded_when_there_is_nothing_to_forward() -> None:
+    host = ContainerHost.parse("node1")
+    assert host.env_forward_stdin(["TOK"], {}) == ("", "")
+    assert host.env_forward_stdin([], {"TOK": "v"}) == ("", "")
+    # Native and local expand client-side already.
+    for other in (
+        ContainerHost.parse("localhost"),
+        ContainerHost.parse("node1", transport=NATIVE),
+    ):
+        assert other.env_forward_stdin(["TOK"], {"TOK": "v"}) == ("", "")
 
 
 def test_runtime_env_matches_the_runtime() -> None:

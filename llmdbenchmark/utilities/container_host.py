@@ -6,11 +6,29 @@ existed; an ``ssh://`` value points the runtime client at a remote daemon over
 SSH, so ``llmdbenchmark standup`` can bring up vLLM + EPP + Envoy on a
 bare-metal node without anybody logging into it.
 
-Both runtimes speak SSH natively, so no hand-rolled ``ssh -L`` tunnel is
-needed for the control plane::
+There are two ways to drive a remote daemon, and this class supports both.
+
+``transport="ssh"`` (the default for a remote host) runs the runtime **on the
+node**, reached over plain ``ssh``::
+
+    ssh user@node 'docker run ...'
+
+``transport="native"`` uses the runtimes' own SSH transport, which requires a
+matching client binary on *this* machine::
 
     docker -H ssh://user@node run ...
     podman --url ssh://user@node/run/user/1000/podman/podman.sock run ...
+
+The native transport is the runtimes' own supported mechanism, but it charges
+for something the control plane never uses: a local client. Nothing is built or
+run locally -- every container command is a remote operation -- yet the client
+must be installed, must be the *same family* as the node's daemon (a podman
+client cannot drive dockerd: it asks for Libpod endpoints dockerd does not
+serve), and authenticates by its own rules (podman's Go SSH client does not read
+``~/.ssh/id_rsa``, so ``ssh node true`` can succeed while every container
+command fails). ``ssh`` transport has none of those coupling problems: it needs
+only the ``ssh`` already required for staging configs, and the runtime only has
+to exist where the containers actually run.
 
 What SSH does *not* solve is that a nok8s standup is more than ``run``: it
 stages EPP/Envoy config files and bind-mounts them, expands ``~``, and probes
@@ -37,6 +55,14 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 LOCAL = "localhost"
+
+# How a remote runtime is driven. SSH is the default: it needs no local client,
+# so the runtime only has to exist on the node where the containers run. NATIVE
+# is the runtimes' own transport (docker -H / podman --url), kept for anyone who
+# wants it -- see the module docstring for the trade-off.
+SSH = "ssh"
+NATIVE = "native"
+_TRANSPORTS = (SSH, NATIVE)
 
 # Default rootful socket paths, used when an ssh:// URL names no path. docker
 # has one well-known socket; podman resolves its own (rootless sockets live
@@ -69,6 +95,7 @@ class ContainerHost:
     socket: str = ""
     identity: str = ""
     ssh_args: tuple[str, ...] = field(default_factory=tuple)
+    transport: str = SSH
 
     # ------------------------------------------------------------------ #
     # construction
@@ -80,6 +107,7 @@ class ContainerHost:
         runtime: str = "docker",
         identity: str = "",
         ssh_args: list[str] | tuple[str, ...] | None = None,
+        transport: str = "",
     ) -> "ContainerHost":
         """Build a host from a ``nok8s.connection`` value.
 
@@ -92,20 +120,31 @@ class ContainerHost:
           scenario can say ``connection: 10.0.0.7`` and mean the obvious
           thing. This is the form the "just give it the node's IP" case wants.
 
+        *transport* selects how a remote runtime is driven -- ``"ssh"`` (default)
+        or ``"native"``; see the module docstring.
+
         Raises:
             ContainerHostError: for ``tcp://`` (unauthenticated), any other
-                scheme, or a value with no host part.
+                scheme, a value with no host part, or an unknown *transport*.
         """
         runtime = (runtime or "docker").strip() or "docker"
+        transport = (transport or "").strip().lower() or SSH
+        if transport not in _TRANSPORTS:
+            raise ContainerHostError(
+                f"nok8s.transport '{transport}' is not supported. Use "
+                f"'{SSH}' (run the runtime on the node over ssh; needs no local "
+                f"client) or '{NATIVE}' (docker -H / podman --url; needs a "
+                f"matching client here)."
+            )
         raw = (connection or "").strip()
         args = tuple(ssh_args or ()) or _DEFAULT_SSH_ARGS
 
         if raw.lower() in ("", LOCAL, "local", "127.0.0.1", "::1"):
-            return cls(runtime=runtime)
+            return cls(runtime=runtime, transport=transport)
         if raw.startswith("unix://") or raw.startswith("/"):
             # A local socket path is still local; keep it as the plain local
             # runtime rather than inventing a flag for the default socket.
-            return cls(runtime=runtime)
+            return cls(runtime=runtime, transport=transport)
 
         scheme, sep, rest = raw.partition("://")
         if not sep:
@@ -153,6 +192,7 @@ class ContainerHost:
             socket=(parsed.path or "").rstrip("/"),
             identity=(identity or "").strip(),
             ssh_args=args,
+            transport=transport,
         )
 
     # ------------------------------------------------------------------ #
@@ -188,14 +228,35 @@ class ContainerHost:
     # ------------------------------------------------------------------ #
     # command construction
     # ------------------------------------------------------------------ #
+    @property
+    def uses_ssh(self) -> bool:
+        """True when remote commands run *on* the node via ``ssh``.
+
+        False for a local host (nothing to transport) and for the native
+        transport (the local client carries the connection itself).
+        """
+        return self.is_remote and self.transport == SSH
+
+    @property
+    def needs_local_runtime(self) -> bool:
+        """Whether a runtime client must exist on *this* machine.
+
+        Only the native transport does: with ssh transport the runtime is
+        invoked on the node, so the client side needs nothing but ``ssh``.
+        """
+        return not self.is_remote or self.transport == NATIVE
+
     def runtime_args(self) -> str:
         """Client flags that point the runtime at this host (``""`` if local).
 
         docker takes ``-H``; podman takes ``--url`` and, for a non-default key,
         ``--identity``. Both must come *before* the subcommand, which is why
         callers build ``f"{runtime} {args} run ..."`` rather than appending.
+
+        Empty under ssh transport: there the runtime runs on the node and needs
+        no flag to find its own daemon.
         """
-        if not self.is_remote:
+        if not self.is_remote or self.transport == SSH:
             return ""
         parts: list[str] = []
         if self.runtime == "podman":
@@ -207,10 +268,90 @@ class ContainerHost:
         return " ".join(parts)
 
     def runtime_cmd(self, *args: str) -> str:
-        """A full runtime command line with the connection flags injected."""
+        """A complete runtime command line, ready to hand to the shell.
+
+        Under ssh transport the whole thing is wrapped in ``ssh`` so it executes
+        on the node; under the native transport the connection flags are
+        injected instead. Local is the bare command, unchanged.
+
+        Callers that append their own flags afterwards -- ``run`` lines are built
+        that way -- must **not** use this, or the appended text would land
+        outside the quoted remote command and be read by the local shell. Build
+        the tail first and pass it to :meth:`wrap_runtime`.
+        """
+        return self.wrap_runtime(" ".join(args))
+
+    def wrap_runtime(self, tail: str, env_prefix: str = "") -> str:
+        """Turn a runtime argument string into a command that reaches this host.
+
+        *tail* is everything after the runtime binary (``"run -d --name x ..."``)
+        and is quoted as one unit under ssh transport, so its own quoting
+        survives the extra shell.
+
+        *env_prefix* comes from :meth:`env_forward` or
+        :meth:`env_forward_stdin`. It is applied here rather than by the caller
+        because it has to end up **inside** the quoted remote command -- prefixed
+        onto the ``ssh`` invocation instead, it would run on the client and never
+        reach the node.
+        """
         flags = self.runtime_args()
         head = f"{self.runtime} {flags}" if flags else self.runtime
-        return " ".join([head, *args])
+        full = f"{env_prefix}{head} {tail}".strip()
+        return self.shell(full) if self.uses_ssh else full
+
+    def env_forward(self, names: list[str] | tuple[str, ...], environ) -> str:
+        """Prefix that makes client-side env vars visible to a remote runtime.
+
+        ``-e VAR`` with no value is expanded by whoever runs the CLI. Under the
+        native transport that is the *local* client, so the token in your shell
+        reaches the container. Under ssh transport the runtime runs on the node,
+        where the variable is unset -- a gated model would then fail to download
+        with no clue why. So the values are carried across explicitly.
+
+        They are passed as a ``VAR=value`` prefix to the remote command, which
+        keeps them out of ``argv`` on the node (a prefix is consumed by that
+        shell, not handed to ``docker``) -- but the command *string* is written
+        to the workspace command log, so a genuine secret must not travel this
+        way. See :meth:`env_forward_stdin` for those.
+
+        Empty unless ssh transport is in use, so the local and native paths keep
+        their previous behaviour byte for byte.
+        """
+        if not self.uses_ssh:
+            return ""
+        parts = [
+            f"{name}={shlex.quote(environ[name])}"
+            for name in names
+            if environ.get(name)
+        ]
+        return " ".join(parts)
+
+    def env_forward_stdin(
+        self, names: list[str] | tuple[str, ...], environ
+    ) -> tuple[str, str]:
+        """Same as :meth:`env_forward` for values that must not be logged.
+
+        Returns ``(prefix, stdin)``. The variables are read from *stdin* by the
+        remote shell, so their values never appear in the command line, the
+        process table on either side, or the command log::
+
+            eval "$(cat)" && docker run -e TOK ...     <-- what is logged
+            TOK='hf_...'                               <-- what is piped in
+
+        Both are empty when there is nothing to forward or the transport does
+        not need it, in which case the caller uses the plain command unchanged.
+        """
+        if not self.uses_ssh:
+            return "", ""
+        assignments = [
+            f"{name}={shlex.quote(environ[name])}"
+            for name in names
+            if environ.get(name)
+        ]
+        if not assignments:
+            return "", ""
+        # `export` so the runtime, a child of this shell, inherits them.
+        return 'eval "$(cat)" && ', "export " + " ".join(assignments) + "\n"
 
     def runtime_env(self) -> str:
         """``VAR=value`` prefix for tools that read the connection from env.

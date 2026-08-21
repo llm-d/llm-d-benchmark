@@ -37,7 +37,7 @@ broken container runtime is fatal, the rest are warnings.
 |-------------|-------|
 | Linux host + NVIDIA GPU(s) | Images/flags are NVIDIA + vLLM specific |
 | NVIDIA driver | `nvidia-smi` must work |
-| Container runtime | **docker** or **podman** (`nok8s.runtime`), on the host named by `nok8s.connection` |
+| Container runtime | **docker** or **podman** (`nok8s.runtime`), on the host named by `nok8s.connection` — for a remote node that means *there*, not here |
 | NVIDIA Container Toolkit | docker: `nvidia-ctk runtime configure --runtime=docker`; podman: `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` |
 | Hugging Face token | `export HUGGING_FACE_HUB_TOKEN=hf_...` (only for gated models) |
 | Free host ports | 8000 (vLLM), 8081 (Envoy), 9002/9003/9090 (EPP), 19000 (Envoy admin) |
@@ -45,15 +45,21 @@ broken container runtime is fatal, the rest are warnings.
 | `llmdbenchmark` CLI | `./install.sh` (Python 3.11+) |
 
 Every requirement above applies to the host that runs the containers. For a
-remote `nok8s.connection` the client additionally needs `ssh` and `scp`, and the
-node needs `curl`, `timeout` and a listening-socket tool (`ss` or `lsof`) —
-step 00 checks each one on the side that has to have it.
+remote `nok8s.connection` the split is:
+
+| Side | Needs |
+|------|-------|
+| The machine running `llmdbenchmark` | `ssh`, `scp`, `timeout` — and **no container runtime at all** under the default transport |
+| The node | the container runtime, the GPU stack, `curl`, and `ss` or `lsof` |
+
+Step 00 checks each one on the side that has to have it. `timeout` is a client
+requirement because it bounds the `ssh` command, not something on the node.
 
 **Not required:** Kubernetes, `kubectl`/`oc`, `helm`/`helmfile`, Gateway CRDs,
-PVCs, or any cluster access. For a remote node, also not required: a
-daemon listening on a TCP port, a manually opened SSH tunnel, an agent or
-anything else installed there, or a login session — `llmdbenchmark` never needs
-you to shell into the node.
+PVCs, or any cluster access. For a remote node, also not required: docker or
+podman on your machine, a daemon listening on a TCP port, a manually opened SSH
+tunnel, an agent or anything else installed there, or a login session —
+`llmdbenchmark` never needs you to shell into the node.
 
 Verify GPU-in-container before you start:
 ```bash
@@ -260,7 +266,7 @@ The override is echoed at render time, which is worth reading back:
 A `run` without it starts the harness on *your own* machine against
 `localhost:8081`, where nothing is listening, while the stack sits idle on the
 node — no error, just the wrong machine. The tell is the launch command: a
-remote run reads `docker -H ssh://10.0.0.7/... run -d`, a local one is a bare
+remote run reads `ssh 10.0.0.7 'docker run -d ...'`, a local one is a bare
 `docker run -d`. Likewise a `teardown` without it leaves the node's containers
 running. To set it once for a whole session, use the env var instead:
 
@@ -306,21 +312,60 @@ fails at render with the reason, before anything is launched.
 | `ssh://[user@]host[:port][/socket-path]` | Explicit. `port` is the **SSH** port; `socket-path` is the daemon socket on the node (rootless podman: `/run/user/<uid>/podman/podman.sock`) |
 | `tcp://…` | **Refused**, with an error at render time |
 
-### Why SSH, and why not `tcp://`
+| `nok8s.transport` | Meaning |
+|-------------------|---------|
+| `ssh` (default) | Run the runtime on the node (`ssh <node> docker …`). No container client needed on this machine |
+| `native` | The runtimes' own transport (`docker -H` / `podman --url`). Needs a matching client here — see [How the node is reached](#how-the-node-is-reached-nok8stransport) |
 
-Both runtimes have a native SSH transport, so nothing has to be reconfigured
-on the node and no tunnel has to be opened by hand:
+Ignored when `connection` is `localhost`: there is nothing to transport.
+
+### How the node is reached (`nok8s.transport`)
+
+Nothing has to be reconfigured on the node and no tunnel has to be opened by
+hand. There are two ways to get the commands there, and the default asks the
+least of your machine.
+
+**`transport: ssh` (default)** runs the runtime *on the node*:
 
 ```bash
-docker -H ssh://bench@10.0.0.7 run ...
+ssh bench@10.0.0.7 'docker run -d --name vllm-0 ...'
+```
+
+`llmdbenchmark` needs **no docker or podman installed locally**. Nothing is
+built or run here — every container command is a remote operation — so the only
+runtime that has to exist is the node's, and the only client-side requirement is
+the `ssh` already needed to stage configs.
+
+**`transport: native`** uses the runtimes' own SSH transport instead:
+
+```bash
+docker -H ssh://bench@10.0.0.7/var/run/docker.sock run ...
 podman --url ssh://bench@10.0.0.7/run/user/1000/podman/podman.sock run ...
 ```
 
-`tcp://` is refused on purpose. A docker/podman socket bound to a TCP port with
-no TLS and no authentication grants root on that node to anyone who can reach
-the port — mounting `/` into a privileged container is a one-liner. Since the
-SSH transport needs no daemon changes at all, there is no case where opening
-that port is the better trade.
+This is each runtime's officially supported mechanism, and it is kept for anyone
+who prefers it — but it charges for a local client that only relays, and couples
+the two ends in three ways the default does not:
+
+- **The families must match.** A podman client cannot drive `dockerd`: it asks
+  for Libpod endpoints (`/libpod/_ping`) that dockerd does not serve, and you
+  get `ping response was 404`. So `nok8s.runtime` has to name what is on the
+  *node*, and the local client has to be the same thing. Watch for `docker`
+  being a shim for podman (the `podman-docker` package, or a symlink) — podman
+  names itself from `argv[0]`, so the same binary prints `docker version 5.8.3`
+  under that name, and `docker --version` will not tell you.
+- **Each client authenticates by its own rules.** See
+  [Authentication](#authentication-keys-not-passwords).
+- **The URL carries a socket path**, which differs between docker
+  (`/var/run/docker.sock`) and rootless podman (`/run/user/<uid>/podman/…`).
+
+Under the default, none of that applies: only the node's runtime matters.
+
+`tcp://` is refused on purpose, under either transport. A docker/podman socket
+bound to a TCP port with no TLS and no authentication grants root on that node
+to anyone who can reach the port — mounting `/` into a privileged container is a
+one-liner. Since SSH needs no daemon changes at all, there is no case where
+opening that port is the better trade.
 
 ### Usernames, when yours differs from the node's
 
@@ -345,8 +390,9 @@ Host 10.0.0.7
     IdentityFile ~/.ssh/id_ed25519
 ```
 
-One value is enough — the username reaches all three places that need it: the
-runtime client (`docker -H ssh://remote@10.0.0.7/var/run/docker.sock`), the
+One value is enough — the username reaches every place that needs it: the
+container commands (`ssh remote@10.0.0.7 'docker …'`, or the runtime client's
+`-H ssh://remote@10.0.0.7/var/run/docker.sock` under `transport: native`), the
 `ssh` probes, and `scp` staging.
 
 Note that `~` in `nok8s.workspaceHostDir` and `nok8s.vllm.hfCacheDir` expands
@@ -389,19 +435,58 @@ standup will fail.
   `known_hosts` (`ssh-keyscan -H 10.0.0.7 >> ~/.ssh/known_hosts`), or
   `BatchMode` fails on the confirmation prompt.
 
-> **`sshIdentity` does not reach the `docker` client.** It is applied to every
-> `ssh`/`scp` probe (`-i /path`) and to podman (`podman --url … --identity
-> /path`), but `docker -H ssh://…` takes no `-i` — docker shells out to your
-> system `ssh`, so it reads the key from the agent or `~/.ssh/config`. With
-> docker **and** a non-default key, put it in `~/.ssh/config` as `IdentityFile`;
-> `sshIdentity` alone gives you a passing preflight and failing container
-> commands.
+Under the default `ssh` transport that is all of it: **one** SSH client — your
+system `ssh` — opens every connection, so `sshIdentity`, `sshArgs` and
+`~/.ssh/config` apply uniformly, and `ssh <dest> true` succeeding really does
+mean the tool can work.
 
-`nok8s.sshArgs` replaces the default args, so `BatchMode` *can* be switched off
-(`sshArgs: ["-o", "BatchMode=no", "-o", "ConnectTimeout=10"]`). This is not a
-supported way to use a password -- it affects only the `ssh`/`scp` probes, not
-the `docker -H` / `podman --url` calls, so you get repeated prompts and a
-standup that still stalls. Use keys.
+<details>
+<summary><strong>With <code>transport: native</code>, each client authenticates
+by its own rules</strong></summary>
+
+The runtime client opens its own connection, and the two clients do it
+differently — so `ssh <dest> true` proves nothing about them.
+
+**`sshIdentity` does not reach the `docker` client.** It is applied to every
+`ssh`/`scp` probe (`-i /path`) and to podman (`podman --url … --identity
+/path`), but `docker -H ssh://…` takes no `-i` — docker shells out to your system
+`ssh`, so it reads the key from the agent or `~/.ssh/config`. With docker **and**
+a non-default key, put it in `~/.ssh/config` as `IdentityFile`; `sshIdentity`
+alone gives you a passing preflight and failing container commands.
+
+**`attempted methods [none]` means podman, whatever `docker --version` says.**
+podman's Go SSH client does not fall back to `~/.ssh/id_rsa` the way OpenSSH
+does. With no key from `sshIdentity`, `CONTAINER_SSHKEY`, the agent, or `podman
+system connection add`, it offers *nothing* and the node rejects it. If you see
+that wording, the client that produced it is podman even when `nok8s.runtime` is
+`docker` and `docker --version` reports Docker: `docker` is often a shim (the
+`podman-docker` package, or a symlink — podman names itself from `argv[0]`), and
+podman accepts docker's `-H` as a synonym for `--url`, so the substitution is
+invisible until it fails. Fix both halves at once:
+
+```bash
+--set nok8s.runtime=podman,nok8s.sshIdentity=$HOME/.ssh/id_rsa
+```
+
+`runtime=podman` matters on its own: with `docker` configured, the URL carries
+docker's socket path (`/var/run/docker.sock`), which is not where podman's socket
+lives. Preflight names the client from the error text for this reason, and quotes
+why — docker's CLI has no SSH client of its own, so it can only ever report the
+`ssh` process's exit status, never Go's handshake wording.
+
+But check the *other* end before acting on either: the client and the node's
+daemon must be the same family, so if the node runs Docker, switching to a
+podman client cannot work no matter how it authenticates (you will get
+`ping response was 404`). The default `ssh` transport removes this whole class of
+problem.
+
+`nok8s.sshArgs` also does not reach the runtime clients, so switching
+`BatchMode` off there (`sshArgs: ["-o", "BatchMode=no", "-o",
+"ConnectTimeout=10"]`) still does not let you authenticate with a password --
+it affects only the `ssh`/`scp` probes, so you get repeated prompts plus a
+standup that stalls anyway. Use keys.
+
+</details>
 
 ### What the node needs
 
@@ -430,7 +515,7 @@ a `localhost` means different things on each side:
 
 | | Runs on | Why |
 |---|---------|-----|
-| `llmdbenchmark` itself | Client | It only drives the runtime client |
+| `llmdbenchmark` itself | Client | It only issues commands; under the default transport it needs no container runtime of its own |
 | vLLM / EPP / Envoy | Node | That is the point |
 | **Benchmark harness** | **Node** | Driving load from the client would add the SSH round-trip to every request and report it as the stack's latency |
 | EPP/Envoy configs | Pushed to the node (`scp`) | Bind-mount sources are resolved by the daemon |
@@ -471,16 +556,41 @@ Where things land on the node:
 | `nok8s.vllm.hfCacheDir` (default `~/.cache/huggingface`) | Model weights, so a re-run does not re-download |
 | `~/.llmdbench/nok8s-runs/<stack>/<workspace-name>/` | Per-run harness inputs and results. Kept after the pull, so a failed run stays inspectable |
 
-The Hugging Face token is passed as a valueless `-e HUGGING_FACE_HUB_TOKEN`,
-which both CLIs expand from your **client** environment. It reaches the vLLM
-container without ever being written to the node's disk.
+The Hugging Face token reaches the vLLM container without ever being written to
+the node's disk, but *how* depends on the transport, because `-e VAR` with no
+value is expanded by whoever runs the CLI:
+
+- **`native`** — the CLI runs here, so it expands the variable from your client
+  environment directly.
+- **`ssh`** — the CLI runs on the node, where the variable is unset. The value is
+  therefore carried across explicitly, piped in over **stdin** and read by the
+  remote shell before it execs the runtime. It is deliberately not passed as a
+  `VAR=value` prefix: every command string is written to the workspace
+  `command.log`, and a prefix would leave the token there in cleartext.
 
 ### Remote troubleshooting
 
-- **`Cannot reach the 'docker' daemon at ssh://…`** — step 00 already ran
-  `docker -H … info`, so the connection, not the config, is the problem. Work
-  through `ssh <dest> true`, then whether your user can use the runtime there
-  (`ssh <dest> docker info`).
+- **`Cannot reach the 'docker' daemon at ssh://…`** — step 00 already ran the
+  runtime's `info`, so the connection or the node's daemon is the problem, not
+  the rendered config. Under the default transport that probe *is*
+  `ssh <dest> docker info`, so work it in two halves: `ssh <dest> true` (the SSH
+  side), then `ssh <dest> docker info` (whether your user can use the runtime
+  there — usually the `docker` group, or `systemctl --user enable --now
+  podman.socket` for rootless podman). Under `transport: native` read the rest of
+  the message first: it names the *client* from the error text and tailors the
+  advice, because `ssh <dest> true` succeeding proves nothing about podman (see
+  [Authentication](#authentication-keys-not-passwords)).
+- **One error instead of a list** — when the connection itself is dead, the
+  probes for `timeout`, `curl`, the accelerator and the ports are skipped rather
+  than run down a broken tunnel; you will see `skipping accelerator probe: the
+  node was unreachable`. They would each have failed for the same single reason
+  and reported it as a missing tool on a node that was never reached.
+- **`unable to connect to Podman socket: ping response was 404`** — only
+  possible under `transport: native`: a podman client is talking to `dockerd`,
+  which does not serve the Libpod endpoints podman asks for. The two ends must be
+  the same family. Either install the matching client, or drop the requirement
+  entirely by using the default transport (remove `transport: native`), where
+  only the node's runtime matters.
 - **A prompt appears and the standup fails immediately** — `BatchMode=yes` is
   doing its job. Add the host key (`ssh-keyscan -H <host> >> ~/.ssh/known_hosts`)
   or load the key into your agent. Passwords are not supported at all — see
@@ -505,8 +615,9 @@ container without ever being written to the node's disk.
   means the `--set` path was misspelled, and no line at all means `--set` was
   missing from *this* command (it is per invocation — see
   [Without editing the scenario](#without-editing-the-scenario---set)). A
-  targeted command logs `nok8s target: docker @ ssh://…` and every container
-  command carries `-H ssh://…`.
+  targeted command logs `nok8s target: docker @ ssh://…`, and every container
+  command is an `ssh <dest> 'docker …'` line (or carries `-H ssh://…` under
+  `transport: native`).
 - **The stack is on the node but the benchmark numbers look like localhost** —
   `run` was invoked without the connection, so the harness ran on the client
   against its own port 8081. Re-run `run` with the same `--set` you gave

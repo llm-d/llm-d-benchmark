@@ -8,11 +8,15 @@
    lets the step build docker vs podman commands correctly.
    ============================================================================ #}
 runtime: {{ nok8s.runtime }}
-{# Where the containers run. "localhost" keeps every command local; an ssh://
-   value is passed to the runtime client (docker -H / podman --url). clientHost
-   is resolved by RenderPlans._resolve_nok8s_connection so consumers never have
-   to parse the URL. #}
+{# Where the containers run, and how they are reached. "localhost" keeps every
+   command local. For a remote node, transport "ssh" (the default) runs the
+   runtime on the node over plain ssh, and "native" passes the URL to a local
+   client (docker -H / podman --url). Both are recorded so teardown reaches the
+   same daemon standup used. clientHost is resolved by
+   RenderPlans._resolve_nok8s_connection so consumers never have to parse the
+   URL. #}
 connection: "{{ nok8s.connection | default('localhost') }}"
+transport: "{{ nok8s.transport | default('ssh') }}"
 sshIdentity: "{{ nok8s.sshIdentity | default('') }}"
 sshArgs: [{% for a in nok8s.sshArgs | default([]) %}"{{ a }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 workspaceHostDir: "{{ nok8s.workspaceHostDir }}"

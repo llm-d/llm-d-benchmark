@@ -21,6 +21,7 @@ Reuses DeployHarnessStep's static command/name helpers so the in-container
 harness invocation matches the pod path exactly.
 """
 
+import os
 import time
 from pathlib import Path
 
@@ -70,6 +71,7 @@ class DeployHarnessLocalStep(Step):
                 runtime=runtime,
                 identity=nok8s_cfg.get("sshIdentity") or "",
                 ssh_args=nok8s_cfg.get("sshArgs") or None,
+                transport=nok8s_cfg.get("transport") or "",
             )
         except ContainerHostError as exc:
             return self._fail(stack_path, str(exc))
@@ -201,8 +203,15 @@ class DeployHarnessLocalStep(Step):
                             errors.append(err)
                             continue
 
-                run_cmd = (
-                    f"{host.runtime_cmd('run')} -d --name {name} --network host "
+                # Built as an argument tail and wrapped once at the end: under
+                # ssh transport the command is quoted as a unit, so appending to
+                # an already-wrapped prefix would strand these flags outside the
+                # quotes. The HF token is forwarded the same way as in standup.
+                token_prefix, token_stdin = host.env_forward_stdin(
+                    [hf_token_env], os.environ
+                )
+                run_tail = (
+                    f"run -d --name {name} --network host "
                     # Stage markers are logged in local time, then compared against
                     # `date -u` scrape timestamps when clipping per-stage series.
                     f"-e TZ=UTC "
@@ -228,8 +237,9 @@ class DeployHarnessLocalStep(Step):
                     # setup script runs -- mirrors the k8s pod's command:[sh,-c].
                     f"--entrypoint sh {image} /tmp/harness-entry.sh"
                 )
+                run_cmd = host.wrap_runtime(run_tail, token_prefix)
                 cmd.execute(host.runtime_cmd("rm", "-f", name), check=False)
-                result = cmd.execute(run_cmd, check=False)
+                result = cmd.execute(run_cmd, check=False, stdin=token_stdin)
                 if not result.success and not context.dry_run:
                     errors.append(f"Failed to start harness container {name}")
                 else:

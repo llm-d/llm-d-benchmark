@@ -38,7 +38,7 @@ class NoK8sTeardownStep(Step):
         cmd = context.require_cmd()
         runtime = context.container_runtime or "docker"
         connection = context.container_connection
-        identity, ssh_args = "", None
+        identity, ssh_args, transport = "", None, ""
 
         names: list[str] = []
         spec_yaml = (
@@ -50,6 +50,7 @@ class NoK8sTeardownStep(Step):
             connection = spec.get("connection") or connection
             identity = spec.get("sshIdentity") or ""
             ssh_args = spec.get("sshArgs") or None
+            transport = spec.get("transport") or ""
             names = [c["name"] for c in spec.get("containers", [])]
 
         # A teardown that cannot resolve its target must not fall back to the
@@ -57,7 +58,11 @@ class NoK8sTeardownStep(Step):
         # would remove the wrong containers and leave the remote node serving.
         try:
             host = ContainerHost.parse(
-                connection, runtime=runtime, identity=identity, ssh_args=ssh_args
+                connection,
+                runtime=runtime,
+                identity=identity,
+                ssh_args=ssh_args,
+                transport=transport,
             )
         except ContainerHostError as exc:
             return StepResult(

@@ -237,11 +237,15 @@ def test_debug_mode_does_not_check_exit_status(tmp_path: Path) -> None:
 REMOTE = "ssh://bench@10.0.0.7"
 
 
-def _remote_context(tmp_path: Path, cmd: _Command, logger: _Logger):
+def _remote_context(
+    tmp_path: Path, cmd: _Command, logger: _Logger, transport: str = ""
+):
     """A context whose stack config points the runtime at a remote node."""
     context, stack_path = _context(tmp_path, cmd, logger)
     config = _plan_config()
     config["nok8s"]["connection"] = REMOTE
+    if transport:
+        config["nok8s"]["transport"] = transport
     (stack_path / "config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
     return context, stack_path
 
@@ -269,9 +273,32 @@ def test_remote_harness_runs_on_the_node(tmp_path: Path) -> None:
 
     assert result.success, result.errors
     run = next(c for c in cmd.commands if " run -d --name " in c)
-    assert run.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock run")
+    # Default transport is ssh: the runtime is invoked on the node, so no
+    # client binary is needed here and no -H/--url flag appears.
+    assert run.startswith("ssh ")
+    assert "bench@10.0.0.7 'docker run -d --name " in run
+    assert " -H ssh://" not in run
     # It measures the in-host endpoint, which the deploy step recorded.
     assert "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL=http://localhost:8081" in run
+
+
+def test_native_transport_still_uses_the_client_connection_flag(
+    tmp_path: Path,
+) -> None:
+    """``transport: native`` keeps the runtimes' own SSH transport.
+
+    Anyone who already has a matching client and prefers ``docker -H`` should
+    get exactly the command they got before the ssh transport existed.
+    """
+    cmd = _remote_cmd()
+    context, stack_path = _remote_context(tmp_path, cmd, _Logger(), transport="native")
+
+    result = DeployHarnessLocalStep().execute(context, stack_path)
+
+    assert result.success, result.errors
+    run = next(c for c in cmd.commands if " run -d --name " in c)
+    assert run.startswith("docker -H ssh://bench@10.0.0.7/var/run/docker.sock run")
+    assert not run.startswith("ssh ")
 
 
 def test_remote_harness_mounts_paths_staged_on_the_node(tmp_path: Path) -> None:
