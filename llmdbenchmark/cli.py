@@ -34,6 +34,7 @@ from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
+from llmdbenchmark.interface import cleanup as cleanup_interface
 from llmdbenchmark.parser.cli_overrides import (
     GLOBAL_SELECTOR,
     REDACTED,
@@ -93,6 +94,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         Command.SMOKETEST.value,
         Command.TEARDOWN.value,
         Command.RUN.value,
+        Command.CLEANUP.value,
     ):
         # Resolve templates, scenarios, and values into the workspace
         try:
@@ -164,7 +166,10 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         # This enables kustomize overlays and full manifest inspection.
         # Runs even in dry-run mode - helmfile template is purely local
         # and does not touch the cluster.
-        _render_helm_manifests(config.plan_dir, logger)
+        # Cleanup deletes by name and label and never reads the manifests,
+        # so it skips the helmfile shell-outs.
+        if args.command != Command.CLEANUP.value:
+            _render_helm_manifests(config.plan_dir, logger)
 
     if args.command == Command.STANDUP.value:
         _execute_standup(args, logger, render_plan_errors)
@@ -177,6 +182,9 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     if args.command == Command.RUN.value:
         _execute_run(args, logger, render_plan_errors)
+
+    if args.command == Command.CLEANUP.value:
+        cleanup_interface.execute(args, logger)
 
 
 def _render_helm_manifests(plan_dir: Path, logger) -> None:
@@ -2074,6 +2082,7 @@ def cli() -> None:
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
+    cleanup_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)
@@ -2102,7 +2111,7 @@ def cli() -> None:
             "the following arguments are required: --specification_file/--spec"
         )
 
-    # Results command is handled separately
+    # Results reads the local store only -- no specification, no plans
     if args.command == Command.RESULTS.value:
         temp_dir = Path(tempfile.gettempdir()) / "llmdbenchmark" / "logs"
         temp_dir.mkdir(parents=True, exist_ok=True)
