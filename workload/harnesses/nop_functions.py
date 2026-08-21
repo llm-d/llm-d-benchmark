@@ -118,6 +118,57 @@ class VllmInfo(ABC):
             logger.exception("error on pod '%s:%s'", self.namespace, self.pod_name)
             return 0.0
 
+    def get_container_start(self) -> float:
+        """get elapsed seconds from the main container's start to Pod-Ready.
+
+        Returns Ready.lastTransitionTime - container.state.running.started_at,
+        the same elapsed-seconds shape as get_pod_start() (which anchors on
+        the Pod's status.startTime instead). Matches the container by
+        self.container_name, falling back to the sole container status when
+        there is exactly one. Returns 0.0 on any failure.
+        """
+        try:
+            start = time.time()
+            elapsed = 0.0
+            while elapsed < self.timeout:
+                pod = self.v1.read_namespaced_pod(
+                    name=self.pod_name, namespace=self.namespace
+                )
+                statuses = pod.status.container_statuses or []
+                cs = None
+                for candidate in statuses:
+                    if candidate.name == self.container_name:
+                        cs = candidate
+                        break
+                if cs is None and len(statuses) == 1:
+                    cs = statuses[0]
+
+                started_at = None
+                if cs is not None:
+                    state = getattr(cs, "state", None)
+                    running = getattr(state, "running", None) if state else None
+                    started_at = (
+                        getattr(running, "started_at", None) if running else None
+                    )
+
+                if started_at is not None:
+                    for cond in pod.status.conditions or []:
+                        if cond.type == "Ready" and cond.status == "True":
+                            return (
+                                cond.last_transition_time - started_at
+                            ).total_seconds()
+
+                time.sleep(2)
+                elapsed = time.time() - start
+            return 0.0
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "error reading container start '%s:%s'",
+                self.namespace,
+                self.pod_name,
+            )
+            return 0.0
+
     def get_pod_logs(self) -> bytes:
         """get pod logs"""
         data = bytes()
