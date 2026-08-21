@@ -763,6 +763,7 @@ class BenchmarkVllmMetrics:
     # pylint: disable=too-many-instance-attributes
     name: str = ""
     pod_start: float = 0.0
+    container_start: float = 0.0
     vllm_start_timestamp: float = 0.0
     vllm_ready_timestamp: float = 0.0
     load: MetricsLoad = field(default_factory=MetricsLoad)
@@ -1819,9 +1820,11 @@ def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positiona
         parse_gpu_logs(benchmark_result.scenario, log_list)
 
     pod_start = vllm_info.get_pod_start()
+    container_start = vllm_info.get_container_start()
     metrics = BenchmarkVllmMetrics()
     metrics.name = engine.name
     metrics.pod_start = pod_start
+    metrics.container_start = container_start
     parse_logs(
         benchmark_result.scenario,
         engine,
@@ -1843,6 +1846,7 @@ def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positiona
         metrics = BenchmarkVllmMetrics()
         metrics.name = engine.name
         metrics.pod_start = pod_start
+        metrics.container_start = container_start
         parse_logs(
             benchmark_result.scenario,
             engine,
