@@ -1582,6 +1582,12 @@ downloadJob:
   name: download-model
   backoffLimit: 3
   mountPath: /cache
+  # `hf download`'s default of 8 workers all lock the same local-dir
+  # metadata directory (.cache/huggingface/*.lock); on a shared/network PVC
+  # (e.g. GKE Premium Filestore RWX) they serialize on that lock instead of
+  # actually parallelizing, which looks like a hung download. Keep this low;
+  # raise it per-scenario only for fast local/non-shared storage.
+  maxWorkers: 1
 
 # ============================================================================
 # DATA ACCESS CONFIGURATION

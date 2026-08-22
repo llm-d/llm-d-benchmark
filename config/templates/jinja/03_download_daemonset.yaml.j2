@@ -45,12 +45,7 @@ spec:
               fi
               echo "Downloading model to ${TARGET_DIR}..."
               mkdir -p "${TARGET_DIR}"
-              pip install huggingface_hub
-              export PATH="${PATH}:${HOME}/.local/bin"
-{% if huggingface.enabled %}
-              hf auth login --token "${HF_TOKEN}"
-{% endif %}
-              hf download "{{ model.huggingfaceId }}" --local-dir "${TARGET_DIR}"
+              hf download "{{ model.huggingfaceId }}" --local-dir "${TARGET_DIR}" --max-workers {{ downloadJob.maxWorkers }}
               echo "Relabelling for non-spc_t readers..."
               chcon -R -t container_file_t "{{ storage.hostPath.path }}"
               touch "${MARKER}"
