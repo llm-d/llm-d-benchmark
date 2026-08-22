@@ -46,7 +46,7 @@ OCI registry at generation (and plan) time.
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 483 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 484 (`chartVersions.istiod`) | (unknown) |
 | **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 485 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
-| **llmDModelservice** | `v0.4.15` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 486 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
+| **llmDModelservice** | `v0.4.16` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 486 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
 | **llmDRouter** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 490 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
 | **lws** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 496 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 
