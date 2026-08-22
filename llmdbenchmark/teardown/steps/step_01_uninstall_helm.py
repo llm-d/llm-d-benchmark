@@ -37,11 +37,14 @@ class UninstallHelmStep(Step):
         }
     )
 
-    # Chart name prefixes used exclusively by modelservice deployments this
-    # tool creates (llm-d-modelservice, llm-d-router-gateway/-standalone).
+    # Chart name prefixes used exclusively by deployments this tool creates
+    # (llm-d-modelservice, llm-d-router-gateway/-standalone, fma-controllers).
     # Used as a fallback match on full-scenario teardowns -- see
-    # _release_matches.
-    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-")
+    # _release_matches. fma-controllers is model-agnostic (its release name
+    # is only model-keyed, e.g. "<model_id_label>-fma-dp"), so without this
+    # entry a mismatched/omitted model label at teardown leaves the release
+    # deployed while teardown still reports success (#1820).
+    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-", "fma-controllers")
 
     def __init__(self):
         super().__init__(
