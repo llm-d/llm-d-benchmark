@@ -80,6 +80,9 @@ tool_version_for() {
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v3.19.0" ;;
         helm-diff) echo "v3.13.0" ;;
+        # helm-diff build compatible with Helm 4's plugin SDK; selected at
+        # install time when an on-PATH helm is already major version 4+.
+        helm-diff-v4) echo "v3.15.7" ;;
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.9"  ;;
@@ -832,7 +835,19 @@ done
 # Ensure helm-diff plugin is installed
 # ---------------------------------------------------------------------------
 helm_diff_url="https://github.com/databus23/helm-diff"
-helm_diff_version=$(tool_version_for helm-diff)   # e.g. v3.15.7
+# The helm-diff pin depends on the Helm major version actually on PATH:
+# helm's own pin is enforced as a minimum (version_gte), so an existing
+# Helm 4 install is left in place even though the default pin below is
+# Helm 3.x. Match the plugin build to whichever Helm is really installed.
+helm_major=0
+if command -v helm &>/dev/null; then
+    helm_major=$(helm version --short 2>/dev/null | sed -n 's/^v\([0-9][0-9]*\).*/\1/p')
+fi
+if [[ "${helm_major:-0}" -ge 4 ]]; then
+    helm_diff_version=$(tool_version_for helm-diff-v4)
+else
+    helm_diff_version=$(tool_version_for helm-diff)
+fi
 
 _install_helm_diff() {
     # Helm 4 requires plugin verification by default; helm-diff ships no
