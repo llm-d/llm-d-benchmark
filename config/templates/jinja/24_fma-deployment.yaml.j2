@@ -38,7 +38,16 @@ spec:
       VLLM_LOGGING_LEVEL: DEBUG
       VLLM_SERVER_DEV_MODE: "1"
       VLLM_USE_V1: "1"
-    options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size 1"
+{# The download job stages a complete copy of the model at
+   <modelMountPath>/<model.path> on the same PVC the launcher mounts.
+   loadModelFromLocalDir (opt-in, #1822) points the launcher at that
+   staged copy instead of letting vLLM re-resolve the repo ID through the
+   HF hub cache -- a second, network-dependent path that can be partial or
+   hit a full PVC. model.name itself must stay the repo ID regardless: it
+   feeds the derived Helm release name elsewhere, and a path mangles that
+   into an invalid (leading-dash) release name. #}
+{% set _fma_model_arg = (fma.modelMountPath + '/' + model.path) if (fma.launcher.loadModelFromLocalDir | default(false)) else model.name %}
+    options: "--model {{ _fma_model_arg }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size 1"
     port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1

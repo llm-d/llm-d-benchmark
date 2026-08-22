@@ -1540,6 +1540,16 @@ fma:
 
   launcher:
     maxInstances: 4
+    # Opt-in: pass the download job's staged local copy
+    # (<modelMountPath>/<model.path>, a complete copy by construction) as
+    # the launcher's --model instead of the repo ID. The repo ID resolves
+    # through the HF hub cache -- a second, network-dependent copy that,
+    # when partial or the PVC is full, re-downloads and can fill the disk
+    # at weight load (#1822). Off by default so this changes no existing
+    # behavior; the model name itself must stay a clean repo ID regardless
+    # -- it feeds the derived Helm release name, and a path mangles that
+    # into an invalid (leading-dash) release name.
+    loadModelFromLocalDir: false
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
       tag: v0.6.4
