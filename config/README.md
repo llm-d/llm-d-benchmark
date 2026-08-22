@@ -421,7 +421,7 @@ The `huggingface` section controls authentication for downloading models from Hu
 
 When `huggingface.enabled` is `false`, the following are skipped:
 - HuggingFace token secret creation in the model namespace
-- `hf auth login` in the download job
+- `secretKeyRef` mount for `HF_TOKEN` on the download job/DaemonSet (`hf download` reads `HF_TOKEN` from the environment directly, no `hf auth login` step is run)
 - `secretKeyRef` mounts for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` on vLLM and harness pods
 - `authSecretName` on the ModelService CR
 

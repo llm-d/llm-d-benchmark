@@ -29,18 +29,13 @@ spec:
           # whatever image a user points images.benchmark at. A user can also pin
           # a hard version tag to get the same effect, but that is a workaround
           # for a default that is wrong for this job -- nothing here needs a fresh
-          # pull, since the container only pip-installs huggingface_hub and exits.
+          # pull, since the container only downloads the model and exits.
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - |
               mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && \
-              pip install -U --user huggingface_hub && \
-              export PATH="${PATH}:${HOME}/.local/bin" && \
-{% if huggingface.enabled %}
-              hf auth login --token "${HF_TOKEN}" && \
-{% endif %}
-              hf download "${HF_MODEL_ID}" --local-dir "{{ downloadJob.mountPath }}/${MODEL_PATH}"
+              hf download "${HF_MODEL_ID}" --local-dir "{{ downloadJob.mountPath }}/${MODEL_PATH}" --max-workers {{ downloadJob.maxWorkers }}
           env:
             - name: MODEL_PATH
               value: {{ model.path }}
