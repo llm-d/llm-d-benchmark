@@ -45,6 +45,9 @@ jobs:
 
   publish:
     needs: build
+    # Only publish from the upstream repo: tags pushed to forks still get the
+    # build job as a dry run, but never attempt to reach PyPI.
+    if: github.repository == 'llm-d/llm-d-benchmark'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
