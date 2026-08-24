@@ -118,6 +118,57 @@ class VllmInfo(ABC):
             logger.exception("error on pod '%s:%s'", self.namespace, self.pod_name)
             return 0.0
 
+    def get_container_start(self) -> float:
+        """get elapsed seconds from the main container's start to Pod-Ready.
+
+        Returns Ready.lastTransitionTime - container.state.running.started_at,
+        the same elapsed-seconds shape as get_pod_start() (which anchors on
+        the Pod's status.startTime instead). Matches the container by
+        self.container_name, falling back to the sole container status when
+        there is exactly one. Returns 0.0 on any failure.
+        """
+        try:
+            start = time.time()
+            elapsed = 0.0
+            while elapsed < self.timeout:
+                pod = self.v1.read_namespaced_pod(
+                    name=self.pod_name, namespace=self.namespace
+                )
+                statuses = pod.status.container_statuses or []
+                cs = None
+                for candidate in statuses:
+                    if candidate.name == self.container_name:
+                        cs = candidate
+                        break
+                if cs is None and len(statuses) == 1:
+                    cs = statuses[0]
+
+                started_at = None
+                if cs is not None:
+                    state = getattr(cs, "state", None)
+                    running = getattr(state, "running", None) if state else None
+                    started_at = (
+                        getattr(running, "started_at", None) if running else None
+                    )
+
+                if started_at is not None:
+                    for cond in pod.status.conditions or []:
+                        if cond.type == "Ready" and cond.status == "True":
+                            return (
+                                cond.last_transition_time - started_at
+                            ).total_seconds()
+
+                time.sleep(2)
+                elapsed = time.time() - start
+            return 0.0
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "error reading container start '%s:%s'",
+                self.namespace,
+                self.pod_name,
+            )
+            return 0.0
+
     def get_pod_logs(self) -> bytes:
         """get pod logs"""
         data = bytes()
@@ -712,6 +763,7 @@ class BenchmarkVllmMetrics:
     # pylint: disable=too-many-instance-attributes
     name: str = ""
     pod_start: float = 0.0
+    container_start: float = 0.0
     vllm_start_timestamp: float = 0.0
     vllm_ready_timestamp: float = 0.0
     load: MetricsLoad = field(default_factory=MetricsLoad)
@@ -1768,9 +1820,11 @@ def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positiona
         parse_gpu_logs(benchmark_result.scenario, log_list)
 
     pod_start = vllm_info.get_pod_start()
+    container_start = vllm_info.get_container_start()
     metrics = BenchmarkVllmMetrics()
     metrics.name = engine.name
     metrics.pod_start = pod_start
+    metrics.container_start = container_start
     parse_logs(
         benchmark_result.scenario,
         engine,
@@ -1792,6 +1846,7 @@ def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positiona
         metrics = BenchmarkVllmMetrics()
         metrics.name = engine.name
         metrics.pod_start = pod_start
+        metrics.container_start = container_start
         parse_logs(
             benchmark_result.scenario,
             engine,
