@@ -50,12 +50,61 @@ When passed, `--monitoring` enables monitoring infrastructure during standup:
 
 This is separate from the run-phase `--monitoring` flag, which controls metrics scraping and log capture during benchmark execution.
 
+## Pod Restarts During Standup (`--pod-restart-budget`)
+
+Some pods come up broken and only recover once deleted -- the replacement the
+controller creates is fine. By default a pod in a crash state fails the
+readiness wait immediately, which fails the whole standup.
+
+`--pod-restart-budget N` (env `LLMDBENCH_POD_RESTART_BUDGET`) lets standup
+absorb that: when a pod lands in a failure state a restart may clear, it is
+deleted and given another chance.
+
+```bash
+llmdbenchmark standup --spec <spec> --pod-restart-budget 3
+```
+
+The budget is a **single total for the whole standup**, shared by every pod,
+every wait, and every stack -- not a per-pod allowance. Three restarts means
+three pod deletions in total, whether they all hit one decode pod or one each
+across three stacks.
+
+What is and is not restarted:
+
+| Situation | Behavior |
+|---|---|
+| `CrashLoopBackOff`, `Error`, `OOMKilled`, pod phase `Failed` | Deleted and retried while budget remains |
+| `ImagePullBackOff`, `ErrImagePull`, `InvalidImageName`, `CreateContainerConfigError` | Fails immediately -- an identical replacement would fail identically |
+| Pod with no controller to recreate it | Fails immediately -- deleting it means it never comes back |
+| Pod already `Terminating` | Left alone; it is not charged twice |
+| Budget exhausted | Fails with `Pod restart budget exhausted (N/N)` |
+
+Each restart adds `--pod-restart-grace` seconds (default 300) to that wait's
+deadline, because the replacement pod re-pulls its image and reloads the model
+from zero.
+
+**Diagnostics are captured before deletion** -- `describe`, current logs,
+previous-container logs, and events are written to
+`<workspace>/setup/logs/pod-restarts/` so a restarted pod can still be
+debugged after the fact. At the end of standup, every consumed restart is
+reported, so a standup that only converged after deleting pods does not read
+the same as one that came up clean.
+
+Applies to every readiness wait in standup: the data-access pod, standalone /
+kustomize / FMA deploys, the gateway, and decode / prefill / inference-pool
+pods. Default is `0` -- disabled, with behavior identical to before the flag
+existed.
+
+Implemented by `llmdbenchmark.utilities.podstate`; see
+[its README](../utilities/podstate/README.md) to add other reactions to pod
+state.
+
 ## Dry-Run Behavior
 
 In dry-run mode:
 
 - Step 00 still connects to the cluster and resolves metadata (needed for subsequent commands).
-- Steps 02-09 log the commands they would execute without applying them. Commands wrapped in `cmd.kube()`, `cmd.helm()`, and `cmd.execute()` return dry-run `CommandResult` objects. Wait helpers (`wait_for_pods`, `wait_for_pvc`) return success immediately.
+- Steps 02-09 log the commands they would execute without applying them. Commands wrapped in `cmd.kube()`, `cmd.helm()`, and `cmd.execute()` return dry-run `CommandResult` objects. Wait helpers (`wait_for_pods`, `wait_for_pvc`) return success immediately, so no pod is ever deleted by the restart budget in dry-run mode.
 
 ## preprocess/ Subdirectory
 

@@ -1,0 +1,43 @@
+{# ============================================================================
+   25a_fma-launcher-rbac.yaml.j2
+
+   Namespace-scoped RBAC letting the launcher (which runs as the SA below) patch
+   its own pod's serving state. SA is set on the LauncherConfig podTemplate in
+   24_fma-deployment.yaml.j2.
+
+   Only rendered when fma.enabled is true.
+   ============================================================================ #}
+{% if fma is defined and fma.enabled | default(false) %}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fma-launcher
+  namespace: {{ namespace.name }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fma-launcher-pod-state-writer
+  namespace: {{ namespace.name }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs:
+      - get
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fma-launcher-pod-state-writer
+  namespace: {{ namespace.name }}
+subjects:
+  - kind: ServiceAccount
+    name: fma-launcher
+    namespace: {{ namespace.name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fma-launcher-pod-state-writer
+{% endif %}

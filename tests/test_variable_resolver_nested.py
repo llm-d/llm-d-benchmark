@@ -33,7 +33,7 @@ def _make_resolver(readme_variables: dict[str, str] | None = None):
     return GuideVariableResolver(
         guide_name="optimized-baseline",
         namespace="llm-d-ns",
-        gaie_version="v1.5.0",
+        gaie_version="v1.6.0",
         repo_path=_REPO_PATH,
         readme_variables=readme_variables or {},
     )
@@ -114,7 +114,7 @@ class TestOptimizedBaselineRegression:
         resolver = GuideVariableResolver(
             guide_name="optimized-baseline",
             namespace="llm-d-nightly-optimized-baseline-gke-gpu",
-            gaie_version="v1.5.0",
+            gaie_version="v1.6.0",
             repo_path="/home/runner/work/llm-d/llm-d",
             readme_variables=readme_vars,
             variable_overrides={

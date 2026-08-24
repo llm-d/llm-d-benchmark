@@ -55,7 +55,7 @@ You need these installed before starting:
 
 > **Resource note:** The `cicd/kind` scenario deploys ~7 pods on a single Kind node. With the default 2 CPUs that Docker Desktop, Colima, and Podman ship with, the harness pod (and sometimes the gateway) cannot schedule due to `Insufficient cpu`. Bump your container runtime to **4 CPUs** before creating the Kind cluster. See [Troubleshooting](#pods-stuck-in-pending-during-standup-or-run) if you hit this.
 
-Everything else - `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` - will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs.
+Everything else - `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` - will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs. `skopeo`, `crane` and `kustomize` are installed best-effort: they are optional, so a failure there is reported and the install continues.
 
 ## 1. Install Kind locally
 
@@ -340,8 +340,8 @@ The workspace directory printed at the top of every run contains all rendered te
 You just ran the same lifecycle CI exercises every PR. From here, natural next steps are:
 
 - **Try a real GPU scenario**: see [`config/specification/examples/gpu.yaml.j2`](../config/specification/examples/gpu.yaml.j2) and run it against a cluster that has GPU nodes.
-- **Explore the well-lit paths**: [`config/specification/guides/`](../config/specification/guides/) has scenarios for `inference-scheduling`, `inference-scheduling-wva`, `multi-model-wva`, `pd-disaggregation`, `precise-prefix-cache-aware`, `tiered-prefix-cache`, and `wide-ep-lws` - each worth a read even if you don't run them.
-- **Try multi-model with WVA**: [`multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml) deploys two models behind one gateway with a single shared HTTPRoute and a single WVA controller autoscaling each pool independently. Standup: `llmdbenchmark --spec examples/multi-model-wva standup -p <namespace>`.
+- **Explore the well-lit paths**: [`config/specification/guides/`](../config/specification/guides/) has scenarios for `optimized-baseline`, `workload-autoscaling`, `pd-disaggregation`, `precise-prefix-cache-routing`, `tiered-prefix-cache`, and `wide-ep-lws` - each worth a read even if you don't run them.
+- **Try multi-model**: [`multi-model-optimized-baseline`](../config/scenarios/examples/multi-model-optimized-baseline.yaml) is the optimized-baseline guide deployed twice - two models behind one gateway, sharing a single HTTPRoute that routes to each pool by path prefix. Standup: `llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p <namespace>`.
 - **Write a custom scenario**: see the [Developer Guide, Section 7](developer-guide.md#7-how-to-add-a-new-scenario-well-lit-path) - "How to Add a New Scenario".
 - **Add a new benchmark step**: see the [Developer Guide, Section 2](developer-guide.md#2-how-to-add-a-new-step) - "How to Add a New Step".
 - **Set up pre-commit** so your first PR passes CI on the first try: see [Local Development Checks in CONTRIBUTING.md](../CONTRIBUTING.md#local-development-checks-pre-commit).

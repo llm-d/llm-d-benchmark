@@ -57,6 +57,7 @@ jobs:
       workload: sanity_random.yaml
 #      harness: nop
 #      workload: nop.yaml
+      admin_privileges: true
     secrets: inherit
 
   # -- FMA deployment (own Kind cluster) --
@@ -85,6 +86,7 @@ jobs:
       verbose: false
       harness: nop
       workload: nop.yaml
+      admin_privileges: true
     secrets: inherit
 
   benchmark-modelservice-istio:
@@ -112,6 +114,7 @@ jobs:
       verbose: false
       harness: inference-perf
       workload: sanity_random.yaml
+      admin_privileges: true
     secrets: inherit
 
   benchmark-modelservice-agentgateway:
@@ -139,6 +142,7 @@ jobs:
       verbose: false
       harness: guidellm
       workload: sanity_random.yaml
+      admin_privileges: true
     secrets: inherit
 
   benchmark-modelservice-epponly:
@@ -166,6 +170,7 @@ jobs:
       verbose: false
       harness: guidellm
       workload: sanity_random.yaml
+      admin_privileges: true
     secrets: inherit
 
   benchmark-kustomize-optimized-baseline:
@@ -193,4 +198,5 @@ jobs:
       verbose: false
       harness: inference-perf
       workload: sanity_random.yaml
+      admin_privileges: true
     secrets: inherit

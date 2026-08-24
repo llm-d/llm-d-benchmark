@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import numpy as np
 import yaml
 
+from . import guidellm_native
 from .base import Units, WorkloadGenerator
 from .core import (
     check_file,
@@ -94,7 +95,59 @@ def _get_harness_meta(key: str, env_name: str, default: str = "") -> str:
         return val
     if not hasattr(_get_harness_meta, "_cache"):
         _get_harness_meta._cache = _load_run_metadata()
-    return str(_get_harness_meta._cache.get(key, default))
+    # A valueless YAML key parses to None; str() would make it the text "None".
+    cached = _get_harness_meta._cache.get(key)
+    return default if cached is None else str(cached)
+
+
+# Producers build every experiment ID as <harness>[-<treatment>]-<timestamp>-<rand>.
+_EXPERIMENT_ID_TAIL = re.compile(r"-\d{10,}-[a-z0-9]+$")
+
+
+def _resolve_experiment_id() -> str:
+    """Return the experiment ID, or "" when no source provides one."""
+    # An unset envar arrives as "", so strip: whitespace would still be truthy.
+    experiment_id = _get_harness_meta(
+        "experiment_id", "LLMDBENCH_RUN_EXPERIMENT_ID"
+    ).strip()
+    if experiment_id:
+        return experiment_id
+    results_dir = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "")
+    if not results_dir:
+        return ""
+    experiment_id = re.sub(
+        r"_\d+$", "", os.path.basename(results_dir.strip().rstrip("/"))
+    ).strip()
+    # A dir renamed to 'results' or a bare harness name would otherwise mint a
+    # plausible eid shared by unrelated runs.
+    if not _EXPERIMENT_ID_TAIL.search(experiment_id):
+        return ""
+    return experiment_id
+
+
+def _user_description() -> str:
+    """Return the submitter-supplied description, or "" when none was given."""
+    return _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+
+
+def _user_keywords() -> list[str]:
+    """Return the submitter-supplied keywords, or [] when none were given."""
+    raw = _get_harness_meta("description_keywords", "LLMDBENCH_DESCRIPTION_KEYWORDS")
+    return [keyword.strip() for keyword in raw.split(",") if keyword.strip()]
+
+
+def _run_description(experiment_id: str) -> str:
+    """A submitter-supplied description wins over the experiment ID.
+
+    The ID is not prefixed with the model: it already encodes the treatment and
+    is unique across a sweep, and the model is reported under scenario.stack, so
+    prefixing it made consumers that show both render the model twice.
+    """
+    user_description = _user_description()
+    if user_description:
+        return user_description
+
+    return experiment_id
 
 
 def config_hash(config: dict) -> str:
@@ -290,6 +343,39 @@ def _resolve_accelerator_model(ev_dict: dict) -> str:
     return accelerator or _detect_accelerator_model(ev_dict)
 
 
+def _populate_run_identity() -> dict:
+    """Create the run identity fields derived from the experiment ID.
+
+    Needs no kubernetes context, so it also applies when analysis runs on the
+    driver rather than in the harness pod. SUBMISSION_POLICY.md reserves
+    run.keywords for curated tags, so it stays absent unless the submitter sets it.
+    """
+    run = {}
+    # Submitter-supplied values stand on their own: neither needs an experiment
+    # ID to be correct, and keywords have no other source at all.
+    user_description = _user_description()
+    if user_description:
+        run["description"] = user_description
+    keywords = _user_keywords()
+    if keywords:
+        run["keywords"] = keywords
+
+    experiment_id = _resolve_experiment_id()
+    if not experiment_id:
+        # Otherwise this surfaces only as an empty dashboard column, long after
+        # the cluster is gone.
+        sys.stderr.write(
+            "WARNING: no experiment ID from LLMDBENCH_RUN_EXPERIMENT_ID, "
+            "run_metadata.yaml:experiment_id, or the results directory name; "
+            "run.eid will be omitted, and run.description too unless supplied\n"
+        )
+        return {"run": run} if run else {}
+
+    run["eid"] = str(uuid.uuid5(uuid.NAMESPACE_URL, experiment_id))
+    run.setdefault("description", _run_description(experiment_id))
+    return {"run": run}
+
+
 def _populate_run(ev_dict: dict) -> dict:
     """Create a benchmark report with run details from environment variables.
 
@@ -301,8 +387,6 @@ def _populate_run(ev_dict: dict) -> dict:
     """
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
-    # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, ev_dict.get("run_experiment_id", "")))
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
@@ -334,7 +418,6 @@ def _populate_run(ev_dict: dict) -> dict:
 
     br_dict = {
         "run": {
-            "eid": eid,
             "cid": cid,
             "pid": pid,
             "user": "namespace=" + namespace,
@@ -347,6 +430,8 @@ def _populate_run(ev_dict: dict) -> dict:
             },
         },
     }
+    update_dict(br_dict, _populate_run_identity())
+
     return br_dict
 
 
@@ -847,7 +932,9 @@ def _populate_benchmark_report_from_envars() -> dict:
     # We make the assumption that if the environment variable
     # LLMDBENCH_MAGIC_ENVAR is defined, then we are inside a harness pod.
     if "LLMDBENCH_MAGIC_ENVAR" not in os.environ:
-        # We are not in a harness pod
+        # No kubernetes context here, but the run identity comes from the
+        # results directory, which the driver does have.
+        update_dict(br_dict, _populate_run_identity())
         return br_dict
 
     # Get Kubernetes context
@@ -1467,6 +1554,57 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+#: Span-name fragments identifying a gateway's per-REQUEST span, one per LLM
+#: call. bifrost names it after the inbound path, which differs per wire:
+#: OpenAI chat/responses (completions, responses), Anthropic (messages), and
+#: Gemini (generatecontent); litellm emits litellm_request. Token usage is NOT
+#: here -- it rides on the provider span ("chat <model>") -- so these names are
+#: used only for counting calls and measuring request latency.
+#:
+#: Lowercase, and matched case-insensitively: Gemini's streaming variant is
+#: ":streamGenerateContent" with a capital G, so a case-sensitive
+#: "generateContent" test silently drops every streamed call. On a 100-task
+#: gemini-cli run that was 738 of 1037 calls (71%), which looks like a quiet
+#: undercount rather than an error.
+AGENTIC_REQUEST_SPAN_NAMES: tuple[str, ...] = (
+    "messages",
+    "completions",
+    "responses",
+    "generatecontent",
+    "litellm_request",
+)
+
+
+def is_agentic_request_span(name: str) -> bool:
+    """True if ``name`` is a gateway per-request span (one per LLM call)."""
+    lowered = name.lower()
+    return any(s in lowered for s in AGENTIC_REQUEST_SPAN_NAMES)
+
+
+def agentic_stat(xs: list[float], units: Units) -> dict | None:
+    """Summarize ``xs`` in the v0.2 ``Statistics`` shape, or None if empty.
+
+    Shared by the per-task converter below and the run-level aggregator in
+    ``llmdbenchmark.analysis.aggregate_eval_containers`` so both report
+    identical numbers. Only the field names the schema's ``Statistics`` model
+    permits -- notably ``p50`` rather than ``median`` -- since that model
+    forbids extras.
+    """
+    if not xs:
+        return None
+    a = np.array(xs, dtype=float)
+    return {
+        "units": units,
+        "mean": float(a.mean()),
+        "stddev": float(a.std()),
+        "min": float(a.min()),
+        "p50": float(np.percentile(a, 50)),
+        "p90": float(np.percentile(a, 90)),
+        "p99": float(np.percentile(a, 99)),
+        "max": float(a.max()),
+    }
+
+
 def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     """Convert eval-containers agentic output into a v0.2 Benchmark Report.
 
@@ -1511,19 +1649,43 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                 for ss in rs.get("scopeSpans", []):
                     for sp in ss.get("spans", []):
                         name = sp.get("name", "")
-                        # one span per LLM request, across gateways: bifrost emits
-                        # /anthropic/v1/messages or /openai/.../completions; litellm
-                        # emits litellm_request. Skip the child provider span
-                        # (llm.call) so requests aren't double-counted.
-                        if not any(
-                            s in name
-                            for s in (
-                                "messages",
-                                "completions",
-                                "responses",
-                                "litellm_request",
-                            )
+                        attrs = {
+                            a.get("key", ""): a.get("value", {})
+                            for a in sp.get("attributes", [])
+                        }
+
+                        # Token usage rides on the PROVIDER span, not the HTTP
+                        # span. bifrost names it "chat <model>"; the HTTP span
+                        # (/openai/v1/responses, /anthropic/v1/messages) carries
+                        # routing only and no gen_ai.usage.* at all. Selecting by
+                        # attribute presence rather than span name keeps this
+                        # working across gateways instead of hard-coding each
+                        # one's naming. Counted separately from n_calls so a
+                        # provider span never inflates the request count.
+                        #
+                        # Exact keys, not endswith():
+                        # gen_ai.usage.reasoning.output_tokens also ends in
+                        # "output_tokens" and would be double-counted into the
+                        # output total on reasoning models.
+                        for tok_key, prompt_key, target in (
+                            ("gen_ai.usage.input_tokens", "prompt_tokens", "in"),
+                            ("gen_ai.usage.output_tokens", "completion_tokens", "out"),
                         ):
+                            val = attrs.get(tok_key)
+                            if val is None:
+                                # litellm/openai-style flat naming fallback
+                                val = attrs.get(prompt_key)
+                            if val is None:
+                                continue
+                            iv = int(val.get("intValue") or 0)
+                            if target == "in":
+                                in_tok += iv
+                            else:
+                                out_tok += iv
+
+                        # One span per LLM request. Skips the provider span
+                        # ("chat <model>") so requests aren't double-counted.
+                        if not is_agentic_request_span(name):
                             continue
                         n_calls += 1
                         st = int(sp.get("startTimeUnixNano", 0) or 0)
@@ -1532,32 +1694,9 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
                             lats_ms.append((en - st) / 1e6)
                             t_first = st if t_first is None else min(t_first, st)
                             t_last = en if t_last is None else max(t_last, en)
-                        for a in sp.get("attributes", []):
-                            k = a.get("key", "")
-                            iv = int(a.get("value", {}).get("intValue") or 0)
-                            if k.endswith("input_tokens") or k.endswith(
-                                "prompt_tokens"
-                            ):
-                                in_tok += iv
-                            elif k.endswith("output_tokens") or k.endswith(
-                                "completion_tokens"
-                            ):
-                                out_tok += iv
 
     def _stat(xs: list[float]):
-        if not xs:
-            return None
-        a = np.array(xs, dtype=float)
-        return {
-            "units": Units.MS,
-            "mean": float(a.mean()),
-            "stddev": float(a.std()),
-            "min": float(a.min()),
-            "p50": float(np.percentile(a, 50)),
-            "p90": float(np.percentile(a, 90)),
-            "p99": float(np.percentile(a, 99)),
-            "max": float(a.max()),
-        }
+        return agentic_stat(xs, Units.MS)
 
     n = n_calls
     dur_s = (
@@ -2417,6 +2556,13 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                         ["successes", "throughput", "total_tokens_per_sec"],
                     ),
                 },
+                "input_token_rate": {
+                    "units": Units.TOKEN_PER_S,
+                    "mean": get_nested(
+                        results,
+                        ["successes", "throughput", "input_tokens_per_sec"],
+                    ),
+                },
                 "request_rate": {
                     "units": Units.QUERY_PER_S,
                     "mean": get_nested(
@@ -2601,19 +2747,12 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
     br_dict = _populate_benchmark_report_from_envars()
 
     native = get_nested(br_dict, ["scenario", "load", "native"])
-    # If config file was loaded, use that, otherwise extract args from results file
+    # If config file was loaded, use that, otherwise extract config from results file
     if not native.get("config"):
-        native["config"] = data["args"]
+        native["config"] = guidellm_native.report_config(data)
     cfg_id = config_hash(native)
 
-    input_args_list = get_nested(data, ["args", "data"])
-    if len(input_args_list) > 1:
-        sys.stderr.write(
-            "WARNING: Multiple data sources not supported in conversion, will"
-            " only record first source\n"
-        )
-    # Deserialize input arguments
-    input_args = yaml.safe_load(input_args_list[0])
+    input_args = guidellm_native.data_args(data)
 
     isl = {
         "value": input_args.get("prompt_tokens"),
@@ -2643,41 +2782,13 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
         else:
             osl["distribution"] = Distribution.FIXED
 
-    if "source" in input_args:
-        source = LoadSource.SAMPLED
-    else:
-        source = LoadSource.RANDOM
+    source = LoadSource(guidellm_native.source(input_args))
 
-    profile = get_nested(data, ["args", "profile"])
+    rate_qps, concurrency = guidellm_native.rate_and_concurrency(data, results, index)
+    concurrency = _normalize_concurrency(concurrency)
 
-    rate_qps = None
-    concurrency = None
-    if profile in ["async", "constant", "poisson"]:
-        rate_qps = get_nested(data, ["args", "rate"])[index]
-    elif profile in ["concurrent", "throughput"]:
-        concurrency = _normalize_concurrency(
-            int(get_nested(data, ["args", "rate"])[index])
-        )
-
-    prefix = None
-    if "prefix_tokens" in input_args:
-        prefix = {
-            "prefix_len": {
-                "distribution": Distribution.FIXED,
-                "value": input_args.get("prefix_tokens"),
-            },
-            "num_groups": 1,
-            "num_users_per_group": 1,
-            "num_prefixes": input_args.get("prefix_count"),
-        }
-    elif "prefix_buckets" in input_args:
-        sys.stderr.write(
-            "WARNING: prefix_buckets used, not capturing in standardized"
-            " section, as description there is too limited. Utilize native"
-            " section to properly capture.\n"
-        )
-
-    multi_turn = None
+    prefix = guidellm_native.prefix(input_args)
+    multi_turn = guidellm_native.multi_turn(input_args)
 
     # Add to that dict the data from GuideLLM
     update_dict(
@@ -3515,8 +3626,15 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                                     ],
                                 ),
                             },
+                            # Seconds, not milliseconds: guidellm's other
+                            # latency metrics are natively suffixed `_ms`, but
+                            # `request_latency` is documented as seconds
+                            # (guidellm schemas/request_stats.py) and printed
+                            # under a "Sec" column in guidellm's own summary.
+                            # Labelling it `ms` made TTFT (15.9ms) exceed the
+                            # end-to-end latency (0.24) it is a component of.
                             "request_latency": {
-                                "units": Units.MS,
+                                "units": Units.S,
                                 "mean": get_nested(
                                     results,
                                     [

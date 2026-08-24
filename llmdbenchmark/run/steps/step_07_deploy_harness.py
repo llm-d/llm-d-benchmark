@@ -25,6 +25,7 @@ from llmdbenchmark.executor.command import CommandResult
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
+    DATA_ACCESS_LABEL,
     find_data_access_pod,
     wait_for_pods_by_label,
     collect_pod_results,
@@ -614,7 +615,7 @@ class DeployHarnessStep(Step):
         parallelism: int,
     ) -> list[str]:
         """otel_traces validator: fail if any per-pod
-        summary_lifecycle_metrics.json is missing, unparseable, or reports
+        summary_lifecycle_metrics.json is missing, unparsable, or reports
         failures.count > 0.
         """
         errs: list[str] = []
@@ -691,11 +692,28 @@ class DeployHarnessStep(Step):
         """
         errors: list[str] = []
 
-        data_pod = find_data_access_pod(cmd, namespace)
+        data_pod = find_data_access_pod(
+            cmd,
+            namespace,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
+            # The results are NOT lost when this fails -- they are on the workload
+            # PVC, written by harness pods that have already completed. Say so, and
+            # say how to get them, because the next thing that happens is cleanup
+            # deleting the pods and the run reporting failure, which reads as
+            # "the work is gone" when it is merely uncollected.
             errors.append(
                 f"Data access pod not found in namespace '{namespace}' -- "
-                f"cannot collect results for {experiment_id}"
+                f"cannot collect results for {experiment_id}. The results are "
+                f"still on the workload PVC; recover them with:\n"
+                f"  pod=$(kubectl get pod -n {namespace} "
+                f"-l {DATA_ACCESS_LABEL} -o name | head -1)\n"
+                f"  kubectl cp -n {namespace} "
+                f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
+                f"# dirs matching {experiment_id}_*"
             )
             return errors
 
@@ -837,11 +855,24 @@ class DeployHarnessStep(Step):
         """
         errors: list[str] = []
 
-        data_pod = find_data_access_pod(cmd, namespace)
+        data_pod = find_data_access_pod(
+            cmd,
+            namespace,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
+            # As above: uncollected is not lost. Point at the PVC copy.
             errors.append(
                 f"Data access pod not found in namespace '{namespace}' \u2014 "
-                f"cannot collect results for {experiment_id}"
+                f"cannot collect results for {experiment_id}. The results are "
+                f"still on the workload PVC; recover them with:\n"
+                f"  pod=$(kubectl get pod -n {namespace} "
+                f"-l {DATA_ACCESS_LABEL} -o name | head -1)\n"
+                f"  kubectl cp -n {namespace} "
+                f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
+                f"# dirs matching {experiment_id}_*"
             )
             return errors
 
@@ -1090,8 +1121,11 @@ class DeployHarnessStep(Step):
         treatment_name = treatment.get("name", "")
         if not treatment_name:
             return base_name
-        stem = Path(base_name).stem
-        suffix = Path(base_name).suffix
+        source_name = treatment.get("profile") or base_name
+        if source_name.endswith(".in"):
+            source_name = source_name[:-3]
+        stem = Path(source_name).stem
+        suffix = Path(source_name).suffix
         return f"{stem}-{treatment_name}{suffix}"
 
     def _load_plan_config(self, context: ExecutionContext) -> dict | None:

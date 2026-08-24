@@ -12,6 +12,7 @@ import yaml
 
 import numpy as np
 
+from . import guidellm_native
 from .base import Units
 from .core import (
     check_file,
@@ -504,10 +505,10 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV01:
         {
             "version": "0.1",
             "scenario": {
-                "model": {"name": data["args"].get("model", "unknown")},
+                "model": {"name": guidellm_native.model(data, results) or "unknown"},
                 "load": {
                     "name": WorkloadGenerator.GUIDELLM,
-                    "args": data.get("args"),
+                    "args": guidellm_native.report_config(data),
                     "metadata": {
                         "stage": index,
                     },
@@ -1231,8 +1232,10 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV01:
                             ["metrics", "inter_token_latency_ms", "successful", "max"],
                         ),
                     },
+                    # Seconds, not milliseconds -- see the matching note in
+                    # native_to_br0_2.py's import_guidellm.
                     "request_latency": {
-                        "units": Units.MS,
+                        "units": Units.S,
                         "mean": get_nested(
                             results,
                             ["metrics", "request_latency", "successful", "mean"],
@@ -2429,6 +2432,10 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
             "pod_start": {
                 "units": Units.S,
                 "value": vllm_metrics["pod_start"],
+            },
+            "container_start": {
+                "units": Units.S,
+                "value": vllm_metrics.get("container_start", 0.0),
             },
             "vllm_start_timestamp": {
                 "units": Units.S,

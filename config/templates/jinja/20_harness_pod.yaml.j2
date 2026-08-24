@@ -37,6 +37,10 @@ spec:
         cpu: "{{ harness.resources.cpu }}"
         memory: {{ harness.resources.memory }}
     env:
+    # Stage markers are logged in local time, then compared against `date -u`
+    # scrape timestamps when clipping per-stage series.
+    - name: TZ
+      value: "UTC"
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
     - name: LLMDBENCH_MAGIC_ENVAR
@@ -61,6 +65,10 @@ spec:
       value: "{{ harness.name }}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "{{ experiment_id }}"
+    - name: LLMDBENCH_DESCRIPTION_TEXT
+      value: {{ (description | default({}, true)).text | default('', true) | string | tojson }}
+    - name: LLMDBENCH_DESCRIPTION_KEYWORDS
+      value: {{ (description | default({}, true)).keywords | default([], true) | join(',') | tojson }}
     - name: RAYON_NUM_THREADS
       value: "{{ harness.inferencePerf.rayonNumThreads }}"
     - name: HOME
@@ -127,6 +135,14 @@ spec:
     - name: LLMDBENCH_TIME_SERIES_METRICS
       value: >-
         {{ monitoring.timeSeriesMetrics | tojson }}
+{% endif %}
+{% if monitoring.embedTimeSeries is defined %}
+    - name: LLMDBENCH_METRICS_EMBED_TIME_SERIES
+      value: "{{ monitoring.embedTimeSeries | lower }}"
+{% endif %}
+{% if monitoring.timeSeriesMaxPoints is defined %}
+    - name: LLMDBENCH_METRICS_TS_MAX_POINTS
+      value: "{{ monitoring.timeSeriesMaxPoints }}"
 {% endif %}
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED

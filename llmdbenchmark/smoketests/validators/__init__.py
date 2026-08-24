@@ -32,6 +32,7 @@ from llmdbenchmark.smoketests.validators.wva import WvaValidator
 from llmdbenchmark.smoketests.validators.cpu import CpuValidator
 from llmdbenchmark.smoketests.validators.gpu import GpuValidator
 from llmdbenchmark.smoketests.validators.spyre import SpyreValidator
+from llmdbenchmark.smoketests.validators.fma import FmaValidator
 
 
 VALIDATORS: dict[str, type] = {
@@ -39,6 +40,13 @@ VALIDATORS: dict[str, type] = {
     "pd-disaggregation": PdDisaggregationValidator,
     "precise-prefix-cache-aware": PrecisePrefixCacheAwareValidator,
     "optimized-baseline": OptimizedBaselineValidator,
+    # All FMA standup paths resolve here:
+    # 1. guide path (standup_method: kustomize) has the
+    # the guide stack name, and
+    # 2.benchmark path (standup_method: fma) is mapped to
+    # "fast-model-actuation" by get_validator.
+    "fast-model-actuation": FmaValidator,
+    "fast-model-actuation-keda": FmaValidator,
     # inference-scheduling-wva reuses the inference-scheduling validator;
     # the WvaSmoketestMixin auto-activates its extra checks when the
     # stack's config has wva.enabled: true.

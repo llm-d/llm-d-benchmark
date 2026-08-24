@@ -346,6 +346,32 @@ def _load_all_stacks_info(rendered_paths):
     return stacks_info
 
 
+def _nok8s_endpoint_url(all_stacks_info, stack_filter=None):
+    """Default the nok8s run target to the local Envoy front door.
+
+    Each nok8s stack has its own Envoy, so there is no scenario-wide
+    endpoint: picking one stack's port and benchmarking every stack through
+    it files stack A's traffic under stack B's name. Refuse instead, unless
+    --stack narrows the run to a single nok8s stack (then use that stack's
+    port) or the caller passed --endpoint-url.
+    """
+    stacks = [s for s in all_stacks_info if s.get("nok8s_enabled")]
+    if stack_filter:
+        stacks = [s for s in stacks if s.get("stack_name") in stack_filter]
+    if len(stacks) > 1:
+        raise PhaseError(
+            "This scenario has "
+            + str(len(stacks))
+            + " nok8s stacks, each with its own Envoy port, so there is no "
+            "single endpoint to benchmark. Run them one at a time with "
+            "'--stack <name>', or pass '--endpoint-url "
+            "http://localhost:<that stack's nok8s.envoy.listenPort>'. Stacks: "
+            + ", ".join(f"{s['stack_name']} ({s['nok8s_listen_port']})" for s in stacks)
+        )
+    port = (stacks[0] if stacks else {}).get("nok8s_listen_port", 8081)
+    return f"http://localhost:{port}"
+
+
 def _load_plan_info(rendered_paths):
     """Read key configuration from the first rendered plan config.yaml.
 
@@ -504,6 +530,8 @@ def _do_standup(args, logger, render_plan_errors):
         kustomize_deploy_timeout=int(
             getattr(args, "kustomize_deploy_timeout", 900) or 900
         ),
+        pod_restart_budget=max(0, int(getattr(args, "pod_restart_budget", 0) or 0)),
+        pod_restart_grace=int(getattr(args, "pod_restart_grace", 300) or 300),
         llmd_repo_path=getattr(args, "llmd_repo_path", None),
         kustomize_skip_infra=not getattr(args, "full_infra", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
@@ -521,10 +549,35 @@ def _do_standup(args, logger, render_plan_errors):
     step_spec = getattr(args, "step", None)
     result = executor.execute(step_spec=step_spec)
 
+    # Reported before the failure check so a standup that died *after*
+    # spending restarts still says what it spent them on.
+    _report_pod_restarts(context, logger)
+
     if result.has_errors:
         raise PhaseError(f"Standup failed:\n{result.summary()}")
 
     return context, result
+
+
+def _report_pod_restarts(context, logger):
+    """Log which pods were restarted, if any.
+
+    A standup that only converged after deleting pods must not read the same
+    as one that came up clean -- especially in CI, where nobody watched it.
+    """
+    from llmdbenchmark.utilities.podstate import evidence_dir, render_restart_summary
+
+    budget = context.restart_budget
+    lines = render_restart_summary(budget)
+    if not lines:
+        return
+
+    logger.log_warning("")
+    for line in lines:
+        logger.log_warning(line)
+    logger.log_warning(
+        f"  Diagnostics for each restarted pod: {evidence_dir(context.workspace)}"
+    )
 
 
 def _execute_standup(args, logger, render_plan_errors):
@@ -538,8 +591,10 @@ def _execute_standup(args, logger, render_plan_errors):
     _print_standup_summary(context, result, logger)
 
     # Auto-chain smoketest after standup unless --skip-smoketest.
-    # nok8s has no cluster/namespace for the smoketest pod and the deploy step
-    # already curls /v1/models for readiness, so skip the chained smoketest.
+    # nok8s stays opt-out here: its deploy step already curls /v1/models for
+    # readiness, so the chained run would only add the inference probe. Run
+    # `llmdbenchmark ... smoketest` (or `experiment`, which chains it) to get
+    # that probe; it no longer needs a cluster.
     skip_smoketest = getattr(args, "skip_smoketest", False) or (
         "nok8s" in (context.deployed_methods or [])
     )
@@ -570,7 +625,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         plan_info,
     )
 
-    if not namespace:
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
         raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
@@ -591,6 +647,8 @@ def _do_smoketest(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        container_only=container_only,
+        container_runtime=plan_info.get("nok8s_runtime", "docker"),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -857,7 +915,9 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     # so the run is fully cluster-free (flips is_run_only_mode, skipping k8s
     # endpoint discovery and namespace validation).
     if container_only and not endpoint_url:
-        endpoint_url = f"http://localhost:{plan_info.get('nok8s_listen_port', 8081)}"
+        endpoint_url = _nok8s_endpoint_url(
+            all_stacks_info, _parse_stack_filter(getattr(args, "stack", None))
+        )
     is_run_only = bool(endpoint_url or run_config_file)
 
     if not namespace and not is_run_only:
@@ -928,6 +988,12 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             getattr(args, "wait_timeout", None)
             if getattr(args, "wait_timeout", None) is not None
             else (plan_info.get("harness", {}) or {}).get("waitTimeout") or 3600
+        ),
+        data_access_lookup_attempts=int(
+            getattr(args, "data_access_lookup_attempts", None) or 5
+        ),
+        data_access_lookup_delay=float(
+            getattr(args, "data_access_lookup_delay", None) or 3.0
         ),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
@@ -1077,8 +1143,9 @@ def _print_endpoints_table(context, logger, args) -> None:
     spec_raw = getattr(args, "specification_file", None)
     spec = str(spec_raw) if spec_raw else "<spec>"
     if "/" in spec or spec.endswith(".yaml.j2"):
-        # Full path (e.g. /abs/path/config/specification/guides/multi-model-wva.yaml.j2)
-        # - trim to the friendly `category/name` form the CLI understands.
+        # Full path (e.g. /abs/path/config/specification/examples/
+        # multi-model-optimized-baseline.yaml.j2) - trim to the friendly
+        # `category/name` form the CLI understands.
         parent = os.path.basename(os.path.dirname(spec)) if "/" in spec else ""
         stem = os.path.basename(spec)
         if stem.endswith(".yaml.j2"):
@@ -1588,6 +1655,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WORKSPACE": ("workspace", "--workspace"),
         "LLMDBENCH_BASE_DIR": ("base_dir", "--base-dir"),
         "LLMDBENCH_SPEC": ("specification_file", "--spec"),
+        "LLMDBENCH_DESCRIPTION_TEXT": ("run_description", "--run-description"),
+        "LLMDBENCH_DESCRIPTION_KEYWORDS": ("run_keywords", "--run-keywords"),
         "LLMDBENCH_TELEMETRY_ENABLED": ("telemetry_enabled", "--telemetry-enabled"),
         "LLMDBENCH_TELEMETRY_PROVIDER": ("telemetry_provider", "--telemetry-provider"),
         "LLMDBENCH_TELEMETRY_ENDPOINT": ("telemetry_endpoint", "--telemetry-endpoint"),
@@ -1622,6 +1691,14 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_OUTPUT": ("output", "--output"),
         "LLMDBENCH_PARALLELISM": ("parallelism", "--parallelism"),
         "LLMDBENCH_WAIT_TIMEOUT": ("wait_timeout", "--wait-timeout"),
+        "LLMDBENCH_DATA_ACCESS_LOOKUP_ATTEMPTS": (
+            "data_access_lookup_attempts",
+            "--data-access-lookup-attempts",
+        ),
+        "LLMDBENCH_DATA_ACCESS_LOOKUP_DELAY": (
+            "data_access_lookup_delay",
+            "--data-access-lookup-delay",
+        ),
         "LLMDBENCH_DATASET": ("dataset", "--dataset"),
         "LLMDBENCH_ENDPOINT_URL": ("endpoint_url", "--endpoint-url"),
         "LLMDBENCH_SKIP": ("skip", "--skip"),
@@ -1657,6 +1734,14 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT": (
             "kustomize_deploy_timeout",
             "--kustomize-deploy-timeout",
+        ),
+        "LLMDBENCH_POD_RESTART_BUDGET": (
+            "pod_restart_budget",
+            "--pod-restart-budget",
+        ),
+        "LLMDBENCH_POD_RESTART_GRACE": (
+            "pod_restart_grace",
+            "--pod-restart-grace",
         ),
     }
 
@@ -1700,6 +1785,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--workspace": ["--workspace", "--ws"],
         "--base-dir": ["--base-dir", "--bd"],
         "--spec": ["--specification_file", "--spec"],
+        "--run-description": ["--run-description"],
+        "--run-keywords": ["--run-keywords"],
         "--dry-run": ["--dry-run", "-n"],
         "--verbose": ["--verbose", "-v"],
         "--non-admin": ["--non-admin", "-i"],
@@ -1723,6 +1810,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--output": ["--output", "-r"],
         "--parallelism": ["--parallelism", "-j"],
         "--wait-timeout": ["--wait-timeout"],
+        "--data-access-lookup-attempts": ["--data-access-lookup-attempts"],
+        "--data-access-lookup-delay": ["--data-access-lookup-delay"],
         "--dataset": ["--dataset", "-x"],
         "--endpoint-url": ["--endpoint-url", "-U"],
         "--skip": ["--skip", "-z"],
@@ -1767,15 +1856,24 @@ def _extract_workspace_from_scenario(
         with open(scenario_path, encoding="utf-8") as f:
             scenario_data = _yaml.safe_load(f)
 
-        scenarios = scenario_data.get("scenario", [])
-        if scenarios and isinstance(scenarios, list):
-            first_stack = scenarios[0]
-            if not isinstance(first_stack, dict):
+        def _work_dir_of(layer: object) -> str | None:
+            """Read `workDir` from a scenario layer, sectioned form first."""
+            if not isinstance(layer, dict):
                 return None
-            common = first_stack.get("common")
+            common = layer.get("common")
             if isinstance(common, dict) and common.get("workDir") is not None:
                 return common["workDir"]
-            return first_stack.get("workDir")
+            return layer.get("workDir")
+
+        # Per-stack wins, matching the render-time merge order
+        # (defaults -> shared -> stack). A multi-stack scenario normally
+        # puts the scenario-wide workDir in `shared:` alone, so falling
+        # back to it here is what makes that spelling take effect.
+        scenarios = scenario_data.get("scenario", [])
+        if scenarios and isinstance(scenarios, list):
+            if (work_dir := _work_dir_of(scenarios[0])) is not None:
+                return work_dir
+        return _work_dir_of(scenario_data.get("shared"))
     except Exception:  # noqa: BLE001 -- best-effort; fall through to temp dir
         pass
     return None
@@ -1837,6 +1935,18 @@ def cli() -> None:
         action="store_true",
         help="Run as non-cluster-level admin user.",
     )
+    parser.add_argument(
+        "--run-description",
+        default=env("LLMDBENCH_DESCRIPTION_TEXT"),
+        help="Description of this run, recorded as run.description in the "
+        "benchmark report. Overrides the generated '<model> [<experiment id>]'.",
+    )
+    parser.add_argument(
+        "--run-keywords",
+        default=env("LLMDBENCH_DESCRIPTION_KEYWORDS"),
+        help="Comma-separated keywords recorded as run.keywords in the "
+        "benchmark report. Left unset unless supplied.",
+    )
 
     benchmark_parser = argparse.ArgumentParser(add_help=False)
     benchmark_parser.add_argument(
@@ -1854,6 +1964,18 @@ def cli() -> None:
         help="Base directory containing templates and scenarios. "
         'The default base directory is the cwd "." - we highly suggest enforcing a '
         'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
+    )
+    benchmark_parser.add_argument(
+        "--run-description",
+        default=argparse.SUPPRESS,
+        help="Description of this run, recorded as run.description in the "
+        "benchmark report. Overrides the generated '<model> [<experiment id>]'.",
+    )
+    benchmark_parser.add_argument(
+        "--run-keywords",
+        default=argparse.SUPPRESS,
+        help="Comma-separated keywords recorded as run.keywords in the "
+        "benchmark report. Left unset unless supplied.",
     )
     benchmark_parser.add_argument(
         "--specification_file",
@@ -1952,7 +2074,6 @@ def cli() -> None:
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
-
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)
@@ -2147,6 +2268,22 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
 
     for warning in warnings:
         logger.log_warning(warning)
+
+    # Scenario-wide, so global-only; an explicit --set of the same path wins.
+    description_overrides = {}
+    text = getattr(args, "run_description", None)
+    if text:
+        description_overrides["text"] = text
+    keywords = getattr(args, "run_keywords", None)
+    if keywords:
+        description_overrides["keywords"] = [
+            keyword.strip() for keyword in keywords.split(",") if keyword.strip()
+        ]
+    if description_overrides:
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            {"description": description_overrides},
+            by_selector.get(GLOBAL_SELECTOR, {}),
+        )
 
     cluster_overrides = getattr(args, "cluster_config_overrides", None)
     if cluster_overrides:

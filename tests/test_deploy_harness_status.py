@@ -444,3 +444,39 @@ def test_debug_harness_uses_generic_name_and_mounts_all_profiles(
     mounts = {mount["name"]: mount["mountPath"] for mount in container["volumeMounts"]}
     assert mounts["guidellm-profiles"] == "/workspace/profiles/guidellm"
     assert mounts["inference-perf-profiles"] == "/workspace/profiles/inference-perf"
+
+
+def test_treatment_profile_name_no_treatment():
+    assert (
+        DeployHarnessStep._treatment_profile_name("shared_prefix.yaml", None)
+        == "shared_prefix.yaml"
+    )
+
+
+def test_treatment_profile_name_no_profile_override():
+    assert (
+        DeployHarnessStep._treatment_profile_name(
+            "shared_prefix.yaml", {"name": "prefix"}
+        )
+        == "shared_prefix-prefix.yaml"
+    )
+
+
+def test_treatment_profile_name_with_profile_override():
+    assert (
+        DeployHarnessStep._treatment_profile_name(
+            "shared_prefix.yaml",
+            {"name": "concurrent", "profile": "concurrent_sessions.yaml"},
+        )
+        == "concurrent_sessions-concurrent.yaml"
+    )
+
+
+def test_treatment_profile_name_strips_in_extension():
+    assert (
+        DeployHarnessStep._treatment_profile_name(
+            "shared_prefix.yaml",
+            {"name": "concurrent", "profile": "concurrent_sessions.yaml.in"},
+        )
+        == "concurrent_sessions-concurrent.yaml"
+    )

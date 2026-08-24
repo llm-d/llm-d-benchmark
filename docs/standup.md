@@ -19,43 +19,45 @@ A scenario may define more than one stack in its `scenario:` list. Standup
 iterates every per-stack step across all stacks (in parallel, bounded by
 `--parallel`), so you can stand up N models behind one gateway in a single
 `llmdbenchmark standup` invocation. Scenario-wide config (gateway class,
-WVA controller, shared HTTPRoute, chart versions) lives in an optional
+shared HTTPRoute, EPP plugin config, chart versions) lives in an optional
 top-level `shared:` block that's merged into every stack before per-stack
 overrides.
 
 Cluster-scoped infrastructure that would race with itself across N parallel
 standup executions is deduplicated at render time - only the first stack
 emits the istio control-plane helmfile and the `infra-llmdbench` Helm
-release; subsequent stacks render empty files for those templates. WVA
-controller installation is deduplicated at the step level (one per
-`wva.namespace`).
+release; subsequent stacks render empty files for those templates. When a
+multi-stack scenario does enable WVA, controller installation is
+deduplicated at the step level too (one per `wva.namespace`).
 
 Currently shipped multi-stack example:
 
-- [`examples/multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml) -
-  two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each with its own EPP +
-  InferencePool + VariantAutoscaling + HPA, one shared WVA controller,
-  one HTTPRoute with two backendRefs routing by path prefix
-  (`/qwen3-06b/*` -> Qwen pool, `/llama-31-8b/*` -> Llama pool).
+- [`examples/multi-model-optimized-baseline`](../config/scenarios/examples/multi-model-optimized-baseline.yaml) -
+  the [optimized-baseline](../config/scenarios/guides/optimized-baseline.yaml)
+  guide deployed twice: two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each
+  with its own EPP + InferencePool + decode Deployment, one HTTPRoute with
+  two backendRefs routing by path prefix (`/qwen3-06b/*` -> Qwen pool,
+  `/llama-31-8b/*` -> Llama pool).
 
 See [`config/README.md`](../config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config)
-for the `shared:` merge semantics and the developer guide's
+for the `shared:` merge semantics, the developer guide's
 [Multi-Stack Scenarios](developer-guide.md#multi-stack-scenarios-and-the-shared-block)
-section for the render-engine details.
+section for the render-engine details, and
+[multi-model.md](multi-model.md) for the day-to-day operations cookbook.
 
 `--stack NAME[,NAME...]` (also `LLMDBENCH_STACK=NAME`) restricts standup to
 a subset of rendered stacks - handy for re-deploying a single pool after a
 scenario edit without tearing down siblings. Global steps (cluster admin
-prereqs, shared-infra helmfile, WVA controller install, scenario-wide
-PVCs) still run as usual; only per-stack steps (06+ for standup) are
-filtered. Unknown names fail loudly with a list of valid ones.
+prereqs, shared-infra helmfile, scenario-wide PVCs) still run as usual;
+only per-stack steps (06+ for standup) are filtered. Unknown names fail
+loudly with a list of valid ones.
 
 ```bash
 # One stack:
-llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qwen3-06b
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace --stack qwen3-06b
 
 # Multiple named stacks (comma-separated):
-llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qwen3-06b,llama-31-8b
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace --stack qwen3-06b,llama-31-8b
 ```
 
 The same flag works on `smoketest`, `run`, and `teardown` with identical
@@ -108,18 +110,19 @@ every stack:
 
 ```bash
 # every stack
-llmdbenchmark --spec examples/multi-model-wva standup --set decode.replicas=2
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup --set decode.replicas=2
 
 # one stack; both are still deployed
-llmdbenchmark --spec examples/multi-model-wva standup \
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
   --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
 
 # a common floor with one exception
-llmdbenchmark --spec examples/multi-model-wva standup \
-  --set 'wva.hpa.maxReplicas=6' --set 'llama-31-8b:wva.hpa.maxReplicas=2'
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'decode.resources.limits.memory=64Gi' \
+  --set 'llama-31-8b:decode.resources.limits.memory=32Gi'
 
 # every stack whose name ends in -8b
-llmdbenchmark --spec examples/multi-model-wva standup \
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
   --set '*-8b:decode.resources.limits.memory=64Gi'
 ```
 
@@ -180,6 +183,55 @@ Three things overrides cannot do:
 
 ## Multiple steps
 The full standup of a stack is a multi-step process. The [lifecycle](lifecycle.md) document go into more details explaning the meaning of each different individual step.
+
+## Recovering from crashed pods (`--pod-restart-budget`)
+
+Some pods come up broken and only recover once deleted -- the replacement the
+controller creates is healthy. By default a pod that lands in a crash state
+fails the readiness wait immediately, and with it the whole standup.
+
+`--pod-restart-budget N` lets standup absorb that:
+
+```bash
+llmdbenchmark standup --spec <spec> --pod-restart-budget 3
+```
+
+```bash
+LLMDBENCH_POD_RESTART_BUDGET=3 llmdbenchmark standup --spec <spec>
+```
+
+The budget is a **single total for the whole standup** -- shared by every pod,
+every readiness wait, and every stack, not a per-pod allowance. `3` means at
+most three pod deletions in total, whether they all hit one stubborn decode
+pod or one each across three stacks.
+
+Only failures a restart can plausibly fix are retried:
+
+| Situation | Behavior |
+|---|---|
+| `CrashLoopBackOff`, `Error`, `OOMKilled`, pod phase `Failed` | Deleted and retried while budget remains |
+| `ImagePullBackOff`, `ErrImagePull`, `InvalidImageName`, `CreateContainerConfigError` | Fails immediately -- an identical replacement fails identically |
+| Pod with no controller to recreate it | Fails immediately -- deleting it means it never comes back |
+| Pod already `Terminating` | Left alone; never charged twice |
+| Budget exhausted | Fails with `Pod restart budget exhausted (N/N)` |
+
+Each restart adds `--pod-restart-grace` seconds (default `300`) to that wait's
+deadline, since the replacement pod re-pulls its image and reloads the model
+from scratch. Without it, a crash late in a wait would leave the replacement
+no time to become Ready.
+
+Before a pod is deleted, its `describe` output, current logs,
+previous-container logs, and events are written to
+`<workspace>/setup/logs/pod-restarts/`. Every consumed restart is reported at
+the end of standup, so a run that only converged after deleting pods does not
+look identical to one that came up clean.
+
+Default is `0` (disabled), which behaves exactly as standup always has.
+
+> [!TIP]
+> If you find yourself needing a large budget, the pods are probably failing
+> for a structural reason. Check the captured diagnostics before raising it --
+> the previous-container logs are usually the ones that explain a crash loop.
 
 ## Use
 A scenario file has to be manually crafted as a YAML file. Once crafted, it can be used by `llmdbenchmark standup`, `llmdbenchmark run` or `llmdbenchmark teardown` commands. Its access is controlled by the following parameters.

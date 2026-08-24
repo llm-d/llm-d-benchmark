@@ -139,7 +139,9 @@ def main() -> None:
             else:
                 print(import_aiperf(args.results_file).get_yaml_str())
         case WorkloadGenerator.GUIDELLM:
-            if args.index:
+            # "is not None", not truthiness: index 0 is a valid selection, and
+            # treating it as unset silently converts every benchmark instead.
+            if args.index is not None:
                 # Generate benchmark report for a specific index
                 if args.output_file:
                     import_guidellm(args.results_file, args.index).export_yaml(

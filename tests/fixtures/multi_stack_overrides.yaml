@@ -1,0 +1,62 @@
+# Test-only multi-stack scenario, owned by tests/test_cli_set_overrides.py.
+#
+# It exists so the `--set` selector tests are not coupled to a scenario
+# under config/scenarios/. Those ship to users and are meant to be edited
+# freely -- retuning replicas or resources, renaming a pool, adding a third
+# model -- without a test suite failing on an unrelated literal.
+#
+# Everything below is load-bearing for an assertion. The contract:
+#
+#   - exactly two stacks, named `qwen3-06b` and `llama-31-8b`. The glob
+#     tests depend on these names: `*-8b` must match llama only, `*-70b`
+#     must match nothing, and `llama-8b` must be an unknown-stack error.
+#   - both stacks start at `decode.replicas: 1`, so an override to any
+#     other value is observable and the "1 -> 4" override log line is
+#     stable.
+#   - `llama-31-8b` sets `decode.resources.limits.cpu`, which must survive
+#     when a test overrides only `decode.resources.limits.memory` (sibling
+#     keys are merged, not replaced).
+#
+# Deliberately minimal otherwise -- defaults.yaml fills in the rest. Keep
+# it that way: this is a fixture for override/selector semantics, not a
+# realistic deployment.
+
+shared:
+  modelservice:
+    enabled: true
+    # Not `epponly` (the defaults.yaml value): the renderer rejects it
+    # outright for scenarios with more than one stack.
+    gateway:
+      className: istio
+  standalone:
+    enabled: false
+
+scenario:
+  - name: "qwen3-06b"
+
+    model:
+      name: Qwen/Qwen3-0.6B
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 8Gi
+
+    decode:
+      replicas: 1
+
+  - name: "llama-31-8b"
+
+    model:
+      name: unsloth/Meta-Llama-3.1-8B
+      path: models/unsloth/Meta-Llama-3.1-8B
+      huggingfaceId: unsloth/Meta-Llama-3.1-8B
+      size: 32Gi
+
+    decode:
+      replicas: 1
+      resources:
+        limits:
+          memory: 48Gi
+          cpu: "16"
+        requests:
+          memory: 48Gi
+          cpu: "16"

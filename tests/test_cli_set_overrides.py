@@ -3,7 +3,11 @@
 Covers the parser (`llmdbenchmark/parser/cli_overrides.py`), the per-stack
 selector resolution and fail-fast validation in ``RenderPlans``, the
 precedence chain assembled in ``cli._build_setup_overrides_by_stack``, and
-end-to-end rendering against the real templates and shipped scenarios.
+end-to-end rendering against the real templates.
+
+Rendering runs against test-owned fixtures in ``tests/fixtures/`` rather
+than shipped scenarios -- see the note on ``SINGLE_STACK`` / ``MULTI_STACK``
+below.
 """
 
 from argparse import Namespace
@@ -23,8 +27,10 @@ from llmdbenchmark.parser.cli_overrides import (
     find_broken_parent_paths,
     is_glob,
     is_secret_path,
+    leaf_entries,
     parse_cli_overrides,
     resolve_dotted,
+    resolve_segments,
     selectors_for_stack,
     split_override_pairs,
     validate_selectors,
@@ -37,17 +43,108 @@ from llmdbenchmark.parser.version_resolver import VersionResolver
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = PROJECT_ROOT / "config" / "templates" / "jinja"
 DEFAULTS = PROJECT_ROOT / "config" / "templates" / "values" / "defaults.yaml"
-SINGLE_STACK = (
-    PROJECT_ROOT / "config" / "scenarios" / "guides" / "optimized-baseline.yaml"
-)
-MULTI_STACK = (
-    PROJECT_ROOT / "config" / "scenarios" / "examples" / "multi-model-wva.yaml"
-)
+# Test-owned fixtures, deliberately NOT scenarios under config/scenarios/.
+# Those ship to users and get retuned freely -- replicas, resources, model
+# choice, pool names -- and the tests below assert on literal stack names
+# and values. Pointing them at a shipped scenario makes an ordinary config
+# edit fail the suite for a reason that has nothing to do with the code
+# under test. Each fixture's header states the contract its tests rely on.
+#
+# Whether the *shipped* scenarios still render is a separate concern,
+# covered by the CI plan-rendering job over config/specification/**.
+SINGLE_STACK = PROJECT_ROOT / "tests" / "fixtures" / "single_stack_overrides.yaml"
+MULTI_STACK = PROJECT_ROOT / "tests" / "fixtures" / "multi_stack_overrides.yaml"
 
 
 # ---------------------------------------------------------------------------
 # Pair splitting
 # ---------------------------------------------------------------------------
+
+
+class TestQuotedDottedKeys:
+    """Keys whose *name* contains dots, e.g. Kubernetes annotations.
+
+    A quoted segment protects its dots from path splitting. The quoting must
+    apply to the KEY half only -- quoting is also load-bearing on the value
+    side (comma protection, and the documented escape hatches for YAML's
+    octal reading and for multi-line folding), so a transform applied to the
+    whole expression would silently break those.
+    """
+
+    def test_annotation_key_with_dots(self):
+        parsed, _ = parse_cli_overrides(
+            ['annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"=multi-nic']
+        )
+        assert parsed == {
+            GLOBAL_SELECTOR: {
+                "annotations": {
+                    "prefill": {"pod": {"k8s.v1.cni.cncf.io/networks": "multi-nic"}}
+                }
+            }
+        }
+
+    def test_dotted_key_in_a_parent_position(self):
+        parsed, _ = parse_cli_overrides(['annotations."k8s.io/zone".pod=east'])
+        assert parsed == {
+            GLOBAL_SELECTOR: {"annotations": {"k8s.io/zone": {"pod": "east"}}}
+        }
+
+    def test_unquoted_dots_still_split_into_a_path(self):
+        parsed, _ = parse_cli_overrides(["decode.resources.limits.cpu=8"])
+        assert parsed == {
+            GLOBAL_SELECTOR: {"decode": {"resources": {"limits": {"cpu": 8}}}}
+        }
+
+    # --- value-side quoting must survive ---------------------------------
+
+    def test_quoted_value_with_a_comma_is_still_one_pair(self):
+        parsed, _ = parse_cli_overrides(
+            ['annotations.pod.note="a,b",decode.replicas=3']
+        )
+        assert parsed[GLOBAL_SELECTOR]["annotations"]["pod"]["note"] == "a,b"
+        assert parsed[GLOBAL_SELECTOR]["decode"]["replicas"] == 3
+
+    def test_quoted_value_keeps_the_octal_escape_hatch(self):
+        parsed, _ = parse_cli_overrides(['model.blockSize="012"'])
+        assert parsed[GLOBAL_SELECTOR]["model"]["blockSize"] == "012"
+
+    def test_quoted_value_keeps_the_multiline_escape_hatch(self):
+        parsed, _ = parse_cli_overrides(
+            [r'decode.vllm.customCommand="export FOO=1\nvllm serve /x"']
+        )
+        assert parsed[GLOBAL_SELECTOR]["decode"]["vllm"]["customCommand"] == (
+            "export FOO=1\nvllm serve /x"
+        )
+
+    def test_dotted_key_and_quoted_value_together(self):
+        parsed, _ = parse_cli_overrides(['annotations.pod."k8s.io/limit"="1,2"'])
+        assert parsed[GLOBAL_SELECTOR]["annotations"]["pod"]["k8s.io/limit"] == "1,2"
+
+    def test_dotted_secret_key_is_still_recognised(self):
+        # Redaction keys off the last path segment; a quoted segment must
+        # not smuggle a credential past it.
+        _, warnings = parse_cli_overrides(
+            ['foo."my.token"=hf_AAA', 'foo."my.token"=hf_BBB']
+        )
+        joined = " ".join(warnings)
+        assert "hf_AAA" not in joined and "hf_BBB" not in joined
+
+    def test_log_reports_the_true_previous_value_of_a_dotted_key(self):
+        # A joined path cannot be split back into segments when a key
+        # contains a dot, so the log used to report <unset> for an override
+        # that was in fact replacing a real value -- which reads as "the
+        # override did not work" even though it did.
+        base = {"annotations": {"pod": {"k8s.io/networks": "old-net"}}}
+        overrides = {"annotations": {"pod": {"k8s.io/networks": "new-net"}}}
+        [(segments, new_value)] = leaf_entries(overrides)
+        assert segments == ("annotations", "pod", "k8s.io/networks")
+        assert resolve_segments(base, segments) == "old-net"
+        # The lossy, display-only form cannot find it:
+        assert resolve_dotted(base, ".".join(segments)) is MISSING
+
+    def test_sentinel_is_not_observable_in_output(self):
+        parsed, _ = parse_cli_overrides(['annotations.pod."a.b"=x'])
+        assert "_PROTECTDOT_" not in str(parsed)
 
 
 class TestSplitOverridePairs:
@@ -609,7 +706,7 @@ class TestClusterConfigStillWorks:
             setup_overrides_by_stack={GLOBAL_SELECTOR: self.CLUSTER_CONFIG},
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["storage"]["workloadPvc"]["storageClassName"] == (
             "ocs-storagecluster-cephfs"
         )
@@ -630,7 +727,7 @@ class TestClusterConfigStillWorks:
             tmp_path, SINGLE_STACK, setup_overrides_by_stack={GLOBAL_SELECTOR: merged}
         ).eval()
         assert result.global_errors == []
-        pvc = _configs(result)["optimized-baseline"]["storage"]["workloadPvc"]
+        pvc = _configs(result)["single-pool"]["storage"]["workloadPvc"]
         assert pvc["storageClassName"] == "from-cli"
         # ...and the file's other values are untouched.
         assert pvc["accessModes"] == ["ReadWriteMany"]
@@ -649,7 +746,7 @@ class TestClusterConfigStillWorks:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["storage"]["workloadPvc"]["storageClassName"] == (
             "from-treatment"
         )
@@ -686,12 +783,16 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["decode"]["replicas"] == 7
 
-    def test_sglang_variant_reproduced_from_base_scenario(self, tmp_path):
-        # The motivating case: guides/optimized-baseline-sglang.yaml is the
-        # base guide plus these two values.
+    def test_kustomize_variant_reproduced_from_base_scenario(self, tmp_path):
+        # The motivating case for `--set`: the repo used to ship a
+        # `*-sglang` twin for each kustomize guide, differing only in the
+        # accelerator backend. Those files are gone -- `-t kustomize` plus
+        # one `--set` reproduces them. `enabled` flips from the CLI method,
+        # `acceleratorBackend` comes from the override, and `guideName`
+        # survives untouched from the scenario.
         result = _renderer(
             tmp_path,
             SINGLE_STACK,
@@ -701,10 +802,10 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["kustomize"]["enabled"] is True
         assert config["kustomize"]["acceleratorBackend"] == "gpu/sglang"
-        assert config["kustomize"]["guideName"] == "optimized-baseline"
+        assert config["kustomize"]["guideName"] == "single-pool-guide"
 
     def test_dedicated_model_flag_beats_override(self, tmp_path):
         result = _renderer(
@@ -716,9 +817,7 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["model"]["name"] == (
-            "facebook/opt-125m"
-        )
+        assert _configs(result)["single-pool"]["model"]["name"] == ("facebook/opt-125m")
 
     def test_dedicated_flags_beat_doe_treatments_too(self, tmp_path):
         # Pins the documented precedence tail:
@@ -739,7 +838,7 @@ class TestSingleStackRender:
             },
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["model"]["name"] == "facebook/opt-125m"
         assert config["gateway"]["className"] == "istio"
 
@@ -752,7 +851,7 @@ class TestSingleStackRender:
             setup_overrides_by_stack={GLOBAL_SELECTOR: {"decode": {"replicas": 3}}},
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["decode"]["replicas"] == 9
+        assert _configs(result)["single-pool"]["decode"]["replicas"] == 9
 
     def test_legacy_setup_overrides_param_still_applies(self, tmp_path):
         # Back-compat: DoE treatments and older callers pass only this.
@@ -760,11 +859,13 @@ class TestSingleStackRender:
             tmp_path, SINGLE_STACK, setup_overrides={"decode": {"replicas": 6}}
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["decode"]["replicas"] == 6
+        assert _configs(result)["single-pool"]["decode"]["replicas"] == 6
 
     def test_no_overrides_leaves_scenario_untouched(self, tmp_path):
+        # Pins the fixture baseline the override tests measure against: if
+        # this moves, "2 -> 4" in the override-log assertions is stale too.
         baseline = _configs(_renderer(tmp_path, SINGLE_STACK).eval())
-        assert baseline["optimized-baseline"]["decode"]["replicas"] == 2
+        assert baseline["single-pool"]["decode"]["replicas"] == 2
 
 
 class TestMultiStackRender:
@@ -792,16 +893,23 @@ class TestMultiStackRender:
         assert configs["llama-31-8b"]["decode"]["replicas"] == 2
 
     def test_global_floor_with_exact_exception(self, tmp_path):
+        # The global selector sets a floor for every stack; the exact-name
+        # selector overrides it for one, regardless of flag order.
         parsed, _ = parse_cli_overrides(
-            ["wva.hpa.maxReplicas=6", "llama-31-8b:wva.hpa.maxReplicas=2"]
+            [
+                "decode.resources.limits.memory=64Gi",
+                "llama-31-8b:decode.resources.limits.memory=32Gi",
+            ]
         )
         result = _renderer(
             tmp_path, MULTI_STACK, setup_overrides_by_stack=parsed
         ).eval()
         assert result.global_errors == []
         configs = _configs(result)
-        assert configs["qwen3-06b"]["wva"]["hpa"]["maxReplicas"] == 6
-        assert configs["llama-31-8b"]["wva"]["hpa"]["maxReplicas"] == 2
+        assert configs["qwen3-06b"]["decode"]["resources"]["limits"]["memory"] == "64Gi"
+        assert (
+            configs["llama-31-8b"]["decode"]["resources"]["limits"]["memory"] == "32Gi"
+        )
 
     def test_glob_selector_matches_subset(self, tmp_path):
         parsed, _ = parse_cli_overrides(["*-8b:decode.replicas=3"])
@@ -915,7 +1023,7 @@ class TestSecretRedaction:
             tmp_path, SINGLE_STACK, setup_overrides_by_stack=parsed
         ).eval()
         assert result.global_errors == []
-        config = _configs(result)["optimized-baseline"]
+        config = _configs(result)["single-pool"]
         assert config["huggingface"]["token"] == "hf_SUPERSECRET123"
 
     def test_duplicate_secret_warning_does_not_echo_values(self):
@@ -986,7 +1094,7 @@ class TestOverrideLogging:
             tmp_path, SINGLE_STACK, setup_overrides_by_stack=parsed
         ).eval()
         assert result.global_errors == []
-        assert _configs(result)["optimized-baseline"]["vllmCommon"]["volumeMounts"] == [
+        assert _configs(result)["single-pool"]["vllmCommon"]["volumeMounts"] == [
             {"name": "only", "mountPath": "/only"}
         ]
 

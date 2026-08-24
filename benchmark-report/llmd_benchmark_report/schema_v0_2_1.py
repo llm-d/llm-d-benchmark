@@ -1,14 +1,19 @@
 """
 Benchmark report v0.2.1
 
-Additive minor revision of v0.2 that adds optional multi-modal payload
-statistics (image / video / audio) to the request aggregates.
+Additive minor revision of v0.2 that adds:
+
+  - optional multi-modal payload statistics (image / video / audio) to the
+    request aggregates;
+  - optional engine and router serving signals to the observability time
+    series (scheduler queue depth, prefix-cache effectiveness, token counters,
+    router pool state), which v0.2 covers for hardware metrics only.
 
 Every field introduced here is Optional, so any document valid under v0.2 is
 also valid under v0.2.1. v0.2 is imported and extended in place rather than
 copied, so the unchanged majority of the schema keeps a single definition and
-this file contains only the multi-modal delta plus the containment shims needed
-to thread the extended aggregates up to a new report root.
+this file contains only the deltas plus the containment shims needed to thread
+the extended models up to a new report root.
 
 Scope note: this revision covers the results side only (the per-modality stats
 the client can derive from the payloads it sent, mirroring the fields emitted by
@@ -24,6 +29,7 @@ from pydantic import BaseModel
 from .base import (
     UNITS_MEDIA_THROUGHPUT,
     UNITS_MEMORY,
+    UNITS_PORTION,
     UNITS_QUANTITY,
     UNITS_RATIO,
     UNITS_TIME,
@@ -37,11 +43,15 @@ from .schema_v0_2 import (
     AggregateRequests as AggregateRequestsV02,
     AggregateThroughput as AggregateThroughputV02,
     BenchmarkReportV02,
+    ComponentObservability as ComponentObservabilityV02,
+    Observability as ObservabilityV02,
     RequestPerformance as RequestPerformanceV02,
     Results as ResultsV02,
     Run,
     Scenario,
     Statistics,
+    TimeSeriesData,
+    TimeSeriesResourceMetrics as TimeSeriesResourceMetricsV02,
 )
 
 # BenchmarkReport schema version
@@ -189,6 +199,75 @@ class AggregateThroughput(AggregateThroughputV02, UnitsValidatedModel):
 
 
 ###############################################################################
+# Extended time-series resource metrics
+#
+# v0.2 covers hardware utilization only. These add the engine-level serving
+# signals that are actually scrapeable from a vLLM/EPP stack: scheduler queue
+# depth, prefix-cache effectiveness, token counters, and router pool state.
+###############################################################################
+
+
+class TimeSeriesResourceMetrics(TimeSeriesResourceMetricsV02, UnitsValidatedModel):
+    """v0.2 hardware time series, plus engine and router serving signals.
+
+    Inherits the v0.2 hardware unit checks and adds declarative rules for the
+    new fields. Counter-derived rates are percent, not fraction, because
+    compute_ratio_series emits num/den*100.
+    """
+
+    model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "num_requests_running": UNITS_QUANTITY,
+        "num_requests_waiting": UNITS_QUANTITY,
+        "num_preemptions": UNITS_QUANTITY,
+        "prefix_cache_queries": UNITS_QUANTITY,
+        "prefix_cache_hits": UNITS_QUANTITY,
+        "prefix_cache_hit_rate": UNITS_PORTION,
+        "external_prefix_cache_queries": UNITS_QUANTITY,
+        "external_prefix_cache_hits": UNITS_QUANTITY,
+        "external_prefix_cache_hit_rate": UNITS_PORTION,
+        "prompt_tokens": UNITS_QUANTITY,
+        "generation_tokens": UNITS_QUANTITY,
+        "pool_avg_kv_cache_utilization": UNITS_PORTION,
+        "pool_avg_queue_size": UNITS_QUANTITY,
+        "pool_avg_running_requests": UNITS_QUANTITY,
+        "pool_ready_pods": UNITS_QUANTITY,
+    }
+
+    num_requests_running: TimeSeriesData | None = None
+    """Requests actively decoding on the engine over time."""
+    num_requests_waiting: TimeSeriesData | None = None
+    """Requests queued ahead of the engine over time."""
+    num_preemptions: TimeSeriesData | None = None
+    """Cumulative scheduler preemptions over time."""
+    prefix_cache_queries: TimeSeriesData | None = None
+    """Cumulative tokens looked up in the local prefix cache."""
+    prefix_cache_hits: TimeSeriesData | None = None
+    """Cumulative tokens served from the local prefix cache."""
+    prefix_cache_hit_rate: TimeSeriesData | None = None
+    """Local prefix cache hit rate over time."""
+    external_prefix_cache_queries: TimeSeriesData | None = None
+    """Cumulative tokens looked up in the external (offloaded) prefix cache."""
+    external_prefix_cache_hits: TimeSeriesData | None = None
+    """Cumulative tokens served from the external prefix cache."""
+    external_prefix_cache_hit_rate: TimeSeriesData | None = None
+    """External prefix cache hit rate over time."""
+    prompt_tokens: TimeSeriesData | None = None
+    """Cumulative prompt tokens processed over time."""
+    generation_tokens: TimeSeriesData | None = None
+    """Cumulative generated tokens over time."""
+    pool_avg_kv_cache_utilization: TimeSeriesData | None = None
+    """Router view of mean KV cache utilization across the pool."""
+    pool_avg_queue_size: TimeSeriesData | None = None
+    """Router view of mean queue depth across the pool."""
+    pool_avg_running_requests: TimeSeriesData | None = None
+    """Router view of mean running requests across the pool."""
+    pool_ready_pods: TimeSeriesData | None = None
+    """Endpoints the router considers ready over time."""
+
+
+###############################################################################
 # Containment shims: re-thread the extended aggregates up to a new report root.
 # Each class redeclares only the field whose type changed; all other fields are
 # inherited from the v0.2 definition.
@@ -204,6 +283,25 @@ class AggregateRequestPerformance(AggregateRequestPerformanceV02):
     """Aggregate request details."""
     throughput: AggregateThroughput | None = None
     """Aggregate response throughput performance metrics."""
+
+
+class ComponentObservability(ComponentObservabilityV02):
+    """Observability metrics for a component (v0.2.1 time series)."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    time_series: TimeSeriesResourceMetrics | None = None
+    """Time series resource metrics."""
+
+
+class Observability(ObservabilityV02):
+    """Observability metrics (v0.2.1 time series)."""
+
+    model_config = MODEL_CONFIG.copy()
+    model_config["extra"] = "allow"
+
+    components: list[ComponentObservability] | None = None
+    """Per-component observability metrics."""
 
 
 class RequestPerformance(RequestPerformanceV02):
@@ -222,6 +320,8 @@ class Results(ResultsV02):
 
     request_performance: RequestPerformance | None = None
     """Request-level performance metrics."""
+    observability: Observability | None = None
+    """Observability metrics (v0.2.1 time series)."""
 
 
 class BenchmarkReportV021(BenchmarkReportV02):

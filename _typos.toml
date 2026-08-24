@@ -7,13 +7,48 @@ extend-exclude = [
     "**/*.ipynb",
 ]
 
+[default]
+extend-ignore-re = [
+    # Hyphenated prefix: "mis-read" is split into `mis` + `read`
+    '\bmis-read\b',
+    # CamelCase splitting turns these into `AN`+`Ded` and `PN`+`Gs`
+    '\bANDed\b',
+    '\bPNGs?\b',
+]
+
 [default.extend-words]
+# Deliberate misspellings fed to the config schema by
+# tests/test_config_schema.py::TestTypoDetection to assert that
+# `extra="forbid"` rejects unknown keys. Correcting these turns them into
+# real fields and the tests silently stop testing anything.
+naem = "naem"
+Timout = "Timout"
+addtional = "addtional"
+replicsa = "replicsa"
+inferenceProt = "inferenceProt"
+# Typo shown as an example inside a docstring (render_plans.py)
+modle = "modle"
 # sed regex pattern (not a typo)
 ba = "ba"
 # Shell variable / abbreviation
 nam = "nam"
 # Parameter abbreviation used in code
 parm = "parm"
+# Local variable abbreviation for `strategy` (guidellm_native.py)
+strat = "strat"
+# "re-tuned" as in adjusted/tweaked freely (comments in fixtures + tests)
+retuned = "retuned"
+
+# OpenShift Data Foundation
+ODF = "ODF"
+# PyPI package name (docs/upstream-versions.md)
+certifi = "certifi"
+# Variable names: pandas_datas / metadatas (nop-analyze_results.py)
+datas = "datas"
+# Deliberate typos asserted on by the CLI-override tests
+queston = "queston"
+decod = "decod"
+resurces = "resurces"
 
 # Pre-existing typos in codebase (to be fixed separately)
 analagous = "analagous"

@@ -35,6 +35,10 @@ PROFILE_TOKENS: dict[str, TokenDef] = {
         config_path="model.name",
         description="Tokenizer model name (defaults to same as model)",
     ),
+    "LLMDBENCH_DEPLOY_CURRENT_MAX_MODEL_LEN": TokenDef(
+        config_path="model.maxModelLen",
+        description="Model max context length (--max-model-len)",
+    ),
     "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL": TokenDef(
         config_path=None,  # runtime: detected in step 02
         description="Model-serving endpoint URL (detected at runtime)",
@@ -206,7 +210,7 @@ def _assign(container: Any, part: str, value: Any) -> bool:
 
 
 def apply_overrides(
-    profile_content: str, overrides: dict[str, str]
+    profile_content: str, overrides: dict[str, Any]
 ) -> tuple[str, list[str]]:
     """Apply dotted key=value overrides to a rendered YAML profile.
 
@@ -254,8 +258,10 @@ def apply_overrides(
         return profile_content, []
 
 
-def _coerce_value(value: str):
-    """Coerce a string to int, float, bool, or leave as str."""
+def _coerce_value(value: Any) -> Any:
+    """Coerce a string to int, float, bool, or leave as str. Non-string values are returned unchanged."""
+    if not isinstance(value, str):
+        return value
     if value.lower() in ("true", "yes"):
         return True
     if value.lower() in ("false", "no"):

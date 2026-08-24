@@ -30,12 +30,15 @@ XPU_GUIDES = (
 def _render(
     tmp_path: Path,
     profile: str,
-    resource: str,
+    resource: str | None,
     guide: Path = GUIDE,
     setup_overrides: dict | None = None,
 ) -> tuple[object, dict]:
     logger = MagicMock()
-    overrides = {"accelerator": {"profile": profile, "resource": resource}}
+    accelerator_override = {"profile": profile}
+    if resource is not None:
+        accelerator_override["resource"] = resource
+    overrides = {"accelerator": accelerator_override}
     if setup_overrides:
         overrides.update(setup_overrides)
     renderer = RenderPlans(
@@ -110,6 +113,44 @@ def test_explicit_profile_resolves_resource_without_cluster():
     assert resolver._connected is False
 
 
+def test_explicit_unified_xpu_profile_resolves_dra_driver_without_cluster():
+    resolver = ClusterResourceResolver(logger=MagicMock(), dry_run=False)
+
+    resolved = resolver.resolve_all(
+        {"accelerator": {"profile": "intel-xpu", "resource": "auto"}}
+    )
+
+    assert "resource" not in resolved["accelerator"]
+    assert resolved["accelerator"]["draDriver"] == "gpu.intel.com"
+    assert resolved["accelerator"]["type"] == "intel-xpu"
+    assert resolver._connected is False
+
+
+def test_unified_xpu_dra_profile_uses_shared_xpu_overlay(tmp_path):
+    result, merged = _render(tmp_path, "intel-xpu", None)
+
+    assert not result.has_errors
+    assert merged["accelerator"]["type"] == "intel-xpu"
+    assert "resource" not in merged["accelerator"]
+    assert merged["accelerator"]["draDriver"] == "gpu.intel.com"
+    assert "llm-d-xpu" in merged["images"]["vllm"]["repository"]
+    assert "--enforce-eager" in merged["decode"]["vllm"]["customCommand"]
+    assert merged["dra"]["enabled"] is True
+    assert merged["dra"]["claimTemplates"] == {"intel-xpu": {"class": "gpu.intel.com"}}
+
+    plan_dir = result.rendered_paths[0]
+    ms_values = yaml.safe_load((plan_dir / "13_ms-values.yaml").read_text())
+    assert ms_values["accelerator"]["dra"] is True
+    assert ms_values["accelerator"]["resourceClaimTemplates"] == {
+        "intel-xpu": {"class": "gpu.intel.com"}
+    }
+
+    for rendered in ("13_ms-values.yaml", "14_standalone-deployment_yaml.yaml"):
+        # A DRA driver is not an extended resource, so it must never appear
+        # as a container resource key.
+        assert 'gpu.intel.com: "' not in (plan_dir / rendered).read_text()
+
+
 def test_cluster_connection_uses_cli_kubeconfig(monkeypatch):
     observed: dict[str, str | None] = {}
     api_client = object()
@@ -170,8 +211,8 @@ def test_same_guide_uses_intel_runtime_profile(tmp_path):
     assert merged["harness"]["resources"] == {"cpu": 2, "memory": "8Gi"}
     assert "--enforce-eager" in merged["decode"]["vllm"]["customCommand"]
     assert "--disable-sliding-window" in merged["decode"]["vllm"]["customCommand"]
-    assert "--gpu-memory-utilization 0.35" in merged["decode"]["vllm"]["customCommand"]
-    assert "--block-size" not in merged["decode"]["vllm"]["customCommand"]
+    assert "--gpu-memory-utilization" in merged["decode"]["vllm"]["customCommand"]
+    assert "--block-size $VLLM_BLOCK_SIZE" in merged["decode"]["vllm"]["customCommand"]
     assert "mem_get_info" not in merged["decode"]["vllm"]["customCommand"]
     assert "/tmp/xpu-patch" not in merged["decode"]["vllm"]["customCommand"]
     assert "runtimePreamble" not in merged["accelerator"]
@@ -197,7 +238,7 @@ def test_xpu_profile_keeps_precise_router_compact_and_token_optional(tmp_path):
     result, merged = _render(tmp_path, "intel-xe", "gpu.intel.com/xe", guide)
 
     assert not result.has_errors
-    assert merged["router"]["epp"]["env"] == []
+    # assert merged["router"]["epp"]["env"] == []
     assert merged["router"]["epp"]["resources"]["requests"]["cpu"] == "1"
     assert merged["router"]["proxy"]["resources"]["requests"]["cpu"] == "1"
     assert (

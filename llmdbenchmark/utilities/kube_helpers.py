@@ -13,81 +13,34 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from llmdbenchmark.utilities.podstate import PodState
+from llmdbenchmark.utilities.podstate import CRASH_STATES as _CRASH_STATES
+
 if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
 
-# Container states that indicate a pod will never succeed.
-CRASH_STATES = {
-    "CrashLoopBackOff",
-    "Error",
-    "OOMKilled",
-    "CreateContainerConfigError",
-    "ImagePullBackOff",
-    "ErrImagePull",
-    "InvalidImageName",
-}
+# Container states that indicate a pod will never succeed. Re-exported from
+# llmdbenchmark.utilities.podstate, which also splits them into the states a
+# restart may clear (DEGRADED_STATES) and those it cannot (TERMINAL_STATES).
+CRASH_STATES = _CRASH_STATES
 
 DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 
-
-def _terminated_state_detail(prefix: str, state: dict) -> str:
-    """Format a terminated container state for a user-facing error."""
-    reason = state.get("reason") or "unknown reason"
-    detail = f"{prefix}{reason}"
-    if state.get("exitCode") is not None:
-        detail += f", exit_code={state['exitCode']}"
-    return detail
+# Retry budget for locating the data-access pod. Deliberately generous relative
+# to what it guards: ~14s of polling against a wave of results that cost hours of
+# GPU time and cannot be regenerated once the harness pods are deleted.
+DATA_ACCESS_LOOKUP_ATTEMPTS = 5
+DATA_ACCESS_LOOKUP_DELAY_SECONDS = 3.0
 
 
 def _pod_crash_details(pod: dict) -> list[str]:
-    """Return concrete crash details for containers in a pod."""
-    metadata = pod.get("metadata", {})
-    status = pod.get("status", {})
-    pod_name = metadata.get("name", "unknown-pod")
-    failures: list[str] = []
+    """Return concrete crash details for containers in a pod.
 
-    status_groups = (
-        status.get("initContainerStatuses", []),
-        status.get("containerStatuses", []),
-        status.get("ephemeralContainerStatuses", []),
-    )
-    for container_statuses in status_groups:
-        for container_status in container_statuses or []:
-            state = container_status.get("state", {})
-            details: list[str] = []
-
-            waiting = state.get("waiting") or {}
-            waiting_reason = waiting.get("reason")
-            if waiting_reason in CRASH_STATES:
-                details.append(waiting_reason)
-
-            terminated = state.get("terminated") or {}
-            terminated_reason = terminated.get("reason")
-            terminated_exit_code = terminated.get("exitCode")
-            if terminated and (
-                terminated_reason in CRASH_STATES
-                or (terminated_exit_code is not None and terminated_exit_code != 0)
-            ):
-                details.append(_terminated_state_detail("terminated: ", terminated))
-
-            if not details:
-                continue
-
-            last_terminated = (container_status.get("lastState") or {}).get(
-                "terminated"
-            )
-            if last_terminated:
-                details.append(
-                    _terminated_state_detail("last terminated: ", last_terminated)
-                )
-
-            container_name = container_status.get("name", "unknown-container")
-            failures.append(f"{pod_name}/{container_name} ({', '.join(details)})")
-
-    if not failures and status.get("reason") in CRASH_STATES:
-        failures.append(f"{pod_name} ({status['reason']})")
-
-    return failures
+    Thin wrapper over :attr:`PodState.crash_details`; kept as a module-level
+    function because callers outside this module (the FMA validator) import it
+    by name.
+    """
+    return PodState.from_api(pod).crash_details
 
 
 # ---------------------------------------------------------------------------
@@ -95,24 +48,65 @@ def _pod_crash_details(pod: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def find_data_access_pod(cmd, namespace: str) -> str | None:
+def find_data_access_pod(
+    cmd,
+    namespace: str,
+    attempts: int = DATA_ACCESS_LOOKUP_ATTEMPTS,
+    delay: float = DATA_ACCESS_LOOKUP_DELAY_SECONDS,
+    context: ExecutionContext | None = None,
+) -> str | None:
     """Find the data-access pod by its well-known label.
 
-    Returns the pod name, or ``None`` if not found.
+    Returns the pod name, or ``None`` if not found after ``attempts`` tries.
+
+    Retries because this lookup gates result collection, and a single failed
+    API call here discards a whole run's results. ``check=False`` makes a
+    transient failure (API server hiccup, DNS blip, the pod restarting because
+    its container definition changed) indistinguishable from a genuinely absent
+    pod, and the caller treats either as fatal -- so one unlucky second can
+    throw away hours of GPU time whose output is sitting intact on the PVC.
+
+    Observed on a 100-task agentic run (2026-08-12): two separate 30-task waves
+    aborted collection this way, and every task directory was still recoverable
+    afterwards with a plain ``kubectl cp``. Retrying costs a few seconds;
+    not retrying costs the run.
     """
-    result = cmd.kube(
-        "get",
-        "pod",
-        "-l",
-        DATA_ACCESS_LABEL,
-        "--namespace",
-        namespace,
-        "-o",
-        "jsonpath={.items[0].metadata.name}",
-        check=False,
-    )
-    if result.success and result.stdout.strip():
-        return result.stdout.strip()
+    for attempt in range(1, max(1, attempts) + 1):
+        result = cmd.kube(
+            "get",
+            "pod",
+            "-l",
+            DATA_ACCESS_LABEL,
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.items[0].metadata.name}",
+            check=False,
+        )
+        name = (result.stdout or "").strip()
+        # An empty label match makes kubectl's jsonpath emit a multi-line
+        # "array index out of bounds" diagnostic on stdout, so a non-empty
+        # stdout is not proof of a pod name. Require a single bare token.
+        if result.success and name and "\n" not in name and " " not in name:
+            return name
+        detail = (result.stderr or "").strip() or name or "no pod matched the label"
+        if attempt < attempts:
+            if context is not None:
+                # Log per attempt rather than only at the end: on a slow apiserver
+                # this is the only signal that collection is retrying rather than
+                # hung, and the reason often differs between attempts.
+                context.logger.log_warning(
+                    f"Data-access pod lookup attempt {attempt}/{attempts} failed "
+                    f"in {namespace} ({detail}); retrying in {delay}s"
+                )
+            time.sleep(delay)
+        elif context is not None:
+            context.logger.log_warning(
+                f"Data-access pod lookup failed after {attempts} attempts in "
+                f"{namespace} ({detail})"
+            )
+    # The caller reports the user-facing failure: it knows which treatment was
+    # being collected and where the results still live on the PVC.
     return None
 
 

@@ -18,6 +18,7 @@ _SUBMODULES = (
     "base",
     "cli",
     "core",
+    "guidellm_native",
     "metrics_processor",
     "native_to_br0_1",
     "native_to_br0_2",
@@ -26,6 +27,7 @@ _SUBMODULES = (
     "schema_v0_2",
     "schema_v0_2_1",
     "schema_v0_2_components",
+    "timeseries",
 )
 
 _this = sys.modules[__name__]

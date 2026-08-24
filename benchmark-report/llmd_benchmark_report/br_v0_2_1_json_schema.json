@@ -529,7 +529,7 @@
     },
     "ComponentObservability": {
       "additionalProperties": false,
-      "description": "Observability metrics for a specific component.",
+      "description": "Observability metrics for a component (v0.2.1 time series).",
       "properties": {
         "component_label": {
           "description": "References the component's label from scenario.stack[].metadata.label",
@@ -1282,7 +1282,7 @@
     },
     "Observability": {
       "additionalProperties": true,
-      "description": "Observability metrics.",
+      "description": "Observability metrics (v0.2.1 time series).",
       "properties": {
         "components": {
           "anyOf": [
@@ -1945,7 +1945,7 @@
             }
           ],
           "default": null,
-          "description": "Observability metrics."
+          "description": "Observability metrics (v0.2.1 time series)."
         },
         "profiling": {
           "anyOf": [
@@ -3063,7 +3063,7 @@
     },
     "TimeSeriesResourceMetrics": {
       "additionalProperties": false,
-      "description": "Time series resource utilization metrics.",
+      "description": "v0.2 hardware time series, plus engine and router serving signals.\n\nInherits the v0.2 hardware unit checks and adds declarative rules for the\nnew fields. Counter-derived rates are percent, not fraction, because\ncompute_ratio_series emits num/den*100.",
       "properties": {
         "kv_cache_usage": {
           "anyOf": [
@@ -3172,6 +3172,186 @@
           ],
           "default": null,
           "description": "Power consumption over time."
+        },
+        "num_requests_running": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests actively decoding on the engine over time."
+        },
+        "num_requests_waiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests queued ahead of the engine over time."
+        },
+        "num_preemptions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative scheduler preemptions over time."
+        },
+        "prefix_cache_queries": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens looked up in the local prefix cache."
+        },
+        "prefix_cache_hits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens served from the local prefix cache."
+        },
+        "prefix_cache_hit_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local prefix cache hit rate over time."
+        },
+        "external_prefix_cache_queries": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens looked up in the external (offloaded) prefix cache."
+        },
+        "external_prefix_cache_hits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens served from the external prefix cache."
+        },
+        "external_prefix_cache_hit_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "External prefix cache hit rate over time."
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative prompt tokens processed over time."
+        },
+        "generation_tokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative generated tokens over time."
+        },
+        "pool_avg_kv_cache_utilization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router view of mean KV cache utilization across the pool."
+        },
+        "pool_avg_queue_size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router view of mean queue depth across the pool."
+        },
+        "pool_avg_running_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router view of mean running requests across the pool."
+        },
+        "pool_ready_pods": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Endpoints the router considers ready over time."
         }
       },
       "title": "TimeSeriesResourceMetrics",

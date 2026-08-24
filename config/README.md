@@ -28,6 +28,8 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Harness Entrypoint Configuration](#harness-entrypoint-configuration)
 - [Flow Control Configuration](#flow-control-configuration)
 - [Monitoring and Metrics](#monitoring-and-metrics)
+- [KEDA Autoscaling](#keda-autoscaling)
+  - [Generic KEDA ScaledObjects (`keda`)](#generic-keda-scaledobjects-keda)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -125,15 +127,16 @@ a shared value:
 
 ```yaml
 shared:
-  modelservice: { enabled: true }
-  wva:
+  modelservice:
     enabled: true
-    image: { tag: v0.6.0 }
+    gateway: { className: istio }
   httpRoute:
     mode: shared
     name: multi-model-route
     pathPrefix: /{stack.name}
     rewriteTo: /
+  router:
+    epp: { pluginsConfigFile: "optimized-baseline-plugins.yaml", ... }
 
 scenario:
   - name: pool-a
@@ -162,8 +165,8 @@ Render-time conveniences that activate only when `len(scenario) >= 2`:
   against the shared PVC. Downloads run in parallel - total wall time
   ~ slowest model, not sum.
 
-See [examples/multi-model-wva.yaml](scenarios/examples/multi-model-wva.yaml) for a
-complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+See [examples/multi-model-optimized-baseline.yaml](scenarios/examples/multi-model-optimized-baseline.yaml)
+for a complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
 section for the merge semantics.
 
 **Example: GPU scenario with a custom vLLM image**
@@ -281,12 +284,13 @@ glob) to scope it; unprefixed applies to every stack:
 
 ```bash
 # Different value per pool, both still deployed
-llmdbenchmark --spec examples/multi-model-wva standup \
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
   --set 'qwen3-06b:decode.replicas=4,llama-31-8b:decode.replicas=1'
 
 # A common floor with one exception (exact name beats the global)
-llmdbenchmark --spec examples/multi-model-wva standup \
-  --set 'wva.hpa.maxReplicas=6' --set 'llama-31-8b:wva.hpa.maxReplicas=2'
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup \
+  --set 'decode.resources.limits.memory=64Gi' \
+  --set 'llama-31-8b:decode.resources.limits.memory=32Gi'
 ```
 
 A selector matching no stack is a hard error, not a silent no-op. Every
@@ -395,6 +399,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes) |
 | `harness` | Benchmark harness configuration |
 | `wva` | Workload Variant Autoscaler settings |
+| `keda` | Generic KEDA ScaledObjects with configurable Prometheus auth (any cluster) |
 | `control` | Context secret name |
 | `lws` | LeaderWorkerSet configuration |
 | `agentgateway` | agentgateway provider configuration |
@@ -481,7 +486,7 @@ scenario:
         pluginsCustomConfig:
           my-config.yaml: |
             plugins:
-              - type: tokenizer
+              - type: token-producer
                 parameters:
                   modelName: "${model.name}"
 ```
@@ -557,7 +562,7 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
 | `chartVersions.agentgateway` | `v2.2.3` | agentgateway chart version |
-| `chartVersions.lws` | `0.9.0` | LeaderWorkerSet chart version |
+| `chartVersions.lws` | `v0.10.0` | LeaderWorkerSet chart version |
 
 Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
 
@@ -991,6 +996,11 @@ scenario:
     # llm-d-router charts; the legacy
     # `inference.networking.x-k8s.io/v1alpha1` is still accepted but
     # deprecated.
+    #
+    # `router.tokenizer.enabled: true` adds the chart's `vllm-render` sidecar
+    # to the EPP pod, serving vLLM's /render endpoints over loopback HTTP on
+    # `router.tokenizer.port` (default 8000); `token-producer` points at it.
+    # `router.tokenizer.modelName` is filled from `model.name` automatically.
     router:
       tokenizer:
         enabled: true
@@ -1001,11 +1011,11 @@ scenario:
             apiVersion: llm-d.ai/v1alpha1
             kind: EndpointPickerConfig
             plugins:
-              - type: tokenizer
+              - type: token-producer
                 parameters:
                   modelName: "${model.name}"
-                  udsTokenizerConfig:
-                    socketFile: /tmp/tokenizer/tokenizer-uds.socket
+                  vllm:
+                    url: http://localhost:8000
               - type: context-length-aware
                 parameters:
                   label: llm-d.ai/context-length-range
@@ -1013,8 +1023,8 @@ scenario:
             schedulingProfiles:
               - name: default
                 plugins:
-                  - pluginRef: tokenizer
-                - pluginRef: context-length-aware
+                  - pluginRef: token-producer
+                  - pluginRef: context-length-aware
 
     # Preprocess script and kubeconfig secret volume are required
     vllmCommon:
@@ -1365,6 +1375,10 @@ This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inf
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
 - `inference_extension_flow_control_queue_size` -- flow control queue depth
 - `inference_extension_flow_control_pool_saturation` -- pool saturation level
+- `llm_d_epp_flow_control_pool_saturation` -- pool saturation (0.0–1.0); KEDA
+  EPP-saturation scale trigger (`saturationThreshold`)
+- `llm_d_epp_request_running` -- running requests; KEDA EPP-saturation scale
+  trigger (`runningRequestsThreshold`)
 
 #### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 
@@ -1423,6 +1437,111 @@ The `21_prometheus-adapter-values.yaml.j2` template configures a Prometheus adap
 
 ---
 
+## KEDA Autoscaling
+
+### Generic KEDA ScaledObjects (`keda`)
+
+Renders one or more `ScaledObject` resources from a user-defined list. Works on any Kubernetes cluster. KEDA must already be installed in the cluster.
+
+**Templates rendered:** `27_keda-scaledobjects.yaml.j2`, `27a_keda-triggerauthentication.yaml.j2`
+
+**Standup wiring:**
+- `step_03` (workload monitoring) applies the `TriggerAuthentication` once per namespace (bearer-secret mode only), then the `ScaledObjects` template.
+- `step_09` (deploy modelservice) re-applies the `ScaledObjects` template per stack (idempotent).
+- Neither step is gated on `is_openshift`.
+
+#### `keda.prometheus` — shared Prometheus connection
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `keda.prometheus.baseUrl` | `http://prometheus` | Base URL of the Prometheus instance (no trailing port) |
+| `keda.prometheus.port` | `9090` | Prometheus port; assembled with `baseUrl` as `baseUrl:port` |
+| `keda.prometheus.authMode` | `none` | Auth mode: `none` or `bearer-secret` |
+| `keda.prometheus.secretName` | `""` | Name of a pre-existing Secret in the **deploy namespace** containing `bearerToken` and `ca.crt` keys (`bearer-secret` only) |
+| `keda.prometheus.unsafeSsl` | `false` | Skip TLS verification; also omits the `ca` secretTargetRef entry from the TriggerAuthentication |
+
+**Auth modes:**
+
+| `authMode` | TriggerAuthentication created? | Secret required? |
+|------------|-------------------------------|-----------------|
+| `none` | No | No |
+| `bearer-secret` | Yes (`keda-prometheus-auth`) | Yes — user must pre-create it in the deploy namespace |
+
+> **Note:** KEDA's `secretTargetRef` does not support cross-namespace Secret references. The Secret must be in the same namespace as the ScaledObject.
+
+#### `keda.scaledObjects` — list of ScaledObjects to create
+
+Each entry in the list produces one `ScaledObject`. The list is empty by default (no ScaledObjects rendered).
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `name` | _(required)_ | `metadata.name` of the ScaledObject |
+| `scaleTargetRef.kind` | `Deployment` | Kind of the scale target |
+| `scaleTargetRef.name` | `model_id_label + "-decode"` | Name of the scale target; defaults to the model's decode Deployment |
+| `minReplicas` | `1` | Minimum replica count |
+| `maxReplicas` | `10` | Maximum replica count |
+| `pollingInterval` | _(omitted)_ | Seconds between KEDA polls; omit to use KEDA's default (15 s) |
+| `triggers` | `[]` | List of KEDA trigger objects (see below) |
+| `behavior` | _(omitted)_ | Optional HPA behavior block rendered under `spec.advanced.horizontalPodAutoscalerConfig.behavior` |
+
+Each entry in `triggers` is a raw KEDA trigger. For Prometheus triggers, `serverAddress` is injected automatically from `keda.prometheus`; you do not set it manually.
+
+| Trigger field | Default | Description |
+|---------------|---------|-------------|
+| `type` | _(required)_ | KEDA trigger type, e.g. `prometheus` |
+| `name` | _(omitted)_ | Optional trigger name |
+| `metricType` | `AverageValue` | HPA metric type |
+| `query` | _(required)_ | PromQL query string |
+| `threshold` | `"1"` | Scale-up threshold |
+| `activationThreshold` | `"0"` | Activation threshold (KEDA `activationThreshold`) |
+
+#### Example
+
+```yaml
+keda:
+  prometheus:
+    baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
+    port: 9090
+    authMode: none
+
+  scaledObjects:
+    - name: decode-saturation
+      scaleTargetRef:
+        kind: Deployment
+        name: ""              # defaults to model_id_label + "-decode"
+      minReplicas: 1
+      maxReplicas: 10
+      pollingInterval: 15
+      triggers:
+        - type: prometheus
+          name: kv-cache
+          metricType: AverageValue
+          query: |
+            max(inference_pool_average_kv_cache_utilization{namespace="my-ns"})
+          threshold: "0.7"
+          activationThreshold: "0"
+```
+
+For `bearer-secret` auth, first create a Secret in the deploy namespace:
+
+```bash
+kubectl create secret generic prometheus-bearer \
+  --from-literal=bearerToken="<token>" \
+  --from-file=ca.crt=/path/to/ca.crt \
+  -n <deploy-namespace>
+```
+
+Then set:
+
+```yaml
+keda:
+  prometheus:
+    authMode: bearer-secret
+    secretName: prometheus-bearer
+```
+
+---
+
 ## Container Images
 
 The tool uses several container images across different components. Which config key controls which image depends on the deployment method (standalone vs. modelservice).
@@ -1439,7 +1558,7 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 | `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod |
 | `images.routerEndpointPicker` | `ghcr.io/llm-d/llm-d-router-endpoint-picker-dev:auto` | llm-d-router EPP |
 | `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar (proxy in front of vLLM) |
-| `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | EPP sidecar (precise-prefix-cache scoring); also used as an init container in some scenarios |
+| `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | Legacy UDS tokenizer. **No longer wired to `router.tokenizer`** -- the llm-d-router chart runs its own `vllm-render` sidecar, configured via `router.tokenizer.image`. Retained only for scenarios that reference it as an init container via `imageKey: udsTokenizer`. |
 | `images.python` | `python:3.10` | Utility containers |
 | `images.vllmOpenai` | `docker.io/vllm/vllm-openai:auto` | Not currently used by any template (reserved) |
 
@@ -1464,7 +1583,6 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 | `13_ms-values.yaml.j2` (prefill) | `images.vllm` | Prefill pods in modelservice |
 | `13_ms-values.yaml.j2` (sidecar) | `images.routingSidecar` | Routing sidecar in modelservice |
 | `13_ms-values.yaml.j2` (init containers) | `images.<imageKey>` | Per-init-container, via `imageKey:` (defaults to `images.benchmark`) |
-| `12_router-values.yaml.j2` (tokenizer) | `images.udsTokenizer` | EPP UDS tokenizer (when `router.tokenizer.enabled: true`) |
 | `14_standalone-deployment_yaml.j2` | `standalone.image` | Standalone vLLM container |
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
 | `19_wva-kustomize.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
@@ -1576,9 +1694,9 @@ scenario:
         tag: v1.2.3
 ```
 
-**Routing sidecar and EPP sidecar:**
+**Routing sidecar:**
 
-These are read directly from `images.routingSidecar` and `images.udsTokenizer` -- override the same way:
+This is read directly from `images.routingSidecar` -- override the same way:
 
 ```yaml
 scenario:
@@ -1586,12 +1704,29 @@ scenario:
     images:
       routingSidecar:
         tag: v0.8.0
-      udsTokenizer:
-        repository: my-registry/uds-tokenizer
-        tag: dev
 ```
 
-There is no per-block image field on `routing.proxy` or `router.tokenizer` -- the `images.*` entry is the single source of truth.
+There is no per-block image field on `routing.proxy` -- the `images.*` entry is the single source of truth.
+
+**EPP tokenizer sidecar:**
+
+`router.tokenizer` is the exception: it is passed through to the llm-d-router
+chart verbatim, so its image is set on the block itself rather than under
+`images.*`. Useful when the chart default (`docker.io/vllm/vllm-openai-cpu`,
+amd64-only) does not match your nodes:
+
+```yaml
+scenario:
+  - name: "my-deployment"
+    modelservice:
+      router:
+        tokenizer:
+          enabled: true
+          image:
+            registry: my-registry
+            repository: vllm-openai-cpu
+            tag: v0.19.1
+```
 
 **Init containers** (`decode.initContainers[*]`, `prefill.initContainers[*]`, `standalone.initContainers[*]`):
 
@@ -1625,6 +1760,48 @@ After standup, the deployed images are recorded in the `llm-d-benchmark-standup-
 ```bash
 oc get configmap llm-d-benchmark-standup-parameters -n <namespace> -o yaml
 ```
+
+---
+
+## Private Registries (`vllmCommon.pullSecret`)
+
+Set `vllmCommon.pullSecret` to the name of an existing pull secret and
+`imagePullSecrets` is added to every pod spec the benchmark renders:
+
+```yaml
+vllmCommon:
+  pullSecret: secret-example  # pragma: allowlist secret
+```
+
+Or without editing the scenario:
+
+```bash
+llmdbenchmark --spec examples/spyre standup --set 'vllmCommon.pullSecret=secret-example'  # pragma: allowlist secret
+```
+
+The secret must already exist in the namespace -- nothing here creates it:
+
+```bash
+oc create secret docker-registry secret-example \
+  --docker-server=<registry-host> \
+  --docker-username=<username> \
+  --docker-password="$REGISTRY_PASSWORD" \
+  -n <namespace>
+```
+
+Covered pod specs: decode and prefill (via the modelservice chart's pod-level
+`extraConfig`), standalone, the model download job and daemonset, the harness
+pod, the harness data-access pod, and the ephemeral pods used by smoketests.
+
+> [!IMPORTANT]
+> This does **not** reach the EPP pod or its `vllm-render` tokenizer sidecar.
+> The llm-d-router chart exposes no `imagePullSecrets` field, so a private
+> `router.tokenizer.image` (or EPP image) needs a different mechanism -- link
+> the secret to the router's service account, or use the cluster-wide pull
+> secret:
+> ```bash
+> oc secrets link <model-id-label> secret-example --for=pull -n <namespace>
+> ```
 
 ---
 

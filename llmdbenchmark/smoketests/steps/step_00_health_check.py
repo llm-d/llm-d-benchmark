@@ -33,7 +33,7 @@ class HealthCheckStep(Step):
             )
 
         stack_name = stack_path.name
-        validator = get_validator(stack_name)
+        validator = get_validator(stack_name, is_fma="fma" in context.deployed_methods)
         report = validator.run_health_checks(context, stack_path)
 
         if report.passed:

@@ -66,10 +66,18 @@ scenario:
         minReplicas: 1
         maxReplicas: 6
         pollingInterval: 15
-        kvCacheThreshold: "0.7"  # scale up when pool-avg KV cache > 70%
-        queueSizeThreshold: "2"  # scale up when pool-avg queue > 2 requests
-        activationThreshold: "0"
         unsafeSsl: true
+        # Triggers mirror the upstream llm-d workload-autoscaling KEDA guides.
+        # Defaults (from defaults.yaml) scale on EPP pool-saturation (the
+        # keda-epp-saturation guide). To scale on EPP queue size instead (the
+        # keda-epp-queue guide), override triggers here:
+        # triggers:
+        #   - name: queue-size
+        #     query: 'sum(llm_d_epp_flow_control_queue_size{model_name="${modelName}"})'
+        #     threshold: "1"
+        #   - name: running-requests
+        #     query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        #     threshold: "16"
         behavior:
           scaleUp:
             stabilizationWindowSeconds: 0
@@ -255,3 +263,8 @@ scenario:
       # Heavy variant -- matched RPS across the baseline and FMA passes.
       experimentProfile: shared_prefix_synthetic_heavy.yaml
       waitTimeout: 5400
+
+    # Match the FMA passes' benchmark image.
+    images:
+      benchmark:
+        tag: nightly

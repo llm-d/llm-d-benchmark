@@ -106,7 +106,7 @@ accelerator:
 {% endif %}
 {% if dra is defined and dra.claimTemplates is defined %}
   resourceClaimTemplates:
-{{ dra.claimTemplates | toyaml | indent(4) }}
+{{ dra.claimTemplates | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# -------------------------------------------------------------------------- #}
@@ -346,12 +346,29 @@ decode:
 
 {% if decode.resourceClaims is defined and decode.resourceClaims %}
   resourceClaims:
-{{ decode.resourceClaims | toyaml | indent(4) }}
+{{ decode.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if decode.podSecurityContext is defined and decode.podSecurityContext %}
   podSecurityContext:
 {{ decode.podSecurityContext | toyaml | indent(4, first=True) }}
+{% endif %}
+
+{# Pod-level extraConfig. The chart splices this into the PodSpec via
+   `llm-d-modelservice.modelPod` (.pdSpec.extraConfig), which is where
+   PodSpec-scoped fields such as `imagePullSecrets` must go -- the
+   container-level `extraConfig` further down lands inside the vllm
+   container, where the kubelet would never read them. #}
+{% set decode_pod_extra = decode.extraPodConfig | default({}, true) %}
+{% if (vllmCommon.pullSecret is defined and vllmCommon.pullSecret) or decode_pod_extra %}
+  extraConfig:
+{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
+    imagePullSecrets:
+    - name: {{ vllmCommon.pullSecret }}
+{% endif %}
+{% if decode_pod_extra %}
+{{ decode_pod_extra | toyaml | indent(4, first=True) }}
+{% endif %}
 {% endif %}
 
 {# LWS / Multinode specific options #}
@@ -407,6 +424,9 @@ decode:
     args:
       - |
 {{ build_vllm_command('decode') | indent(8, first=True) }}
+{% elif decode_model_command == 'imageDefault' and decode.vllm.additionalFlags is defined and decode.vllm.additionalFlags %}
+    args:
+{{ decode.vllm.additionalFlags | toyaml | indent(6, true) }}
 {% endif %}
     env:
 {{ build_ms_env_vars('decode') | indent(6, true) }}
@@ -427,10 +447,10 @@ decode:
       limits:
         memory: {{ decode.resources.limits.memory }}
         cpu: "{{ decode.resources.limits.cpu }}"
-{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource) %}
-{% if decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
+{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource | default('')) %}
+{% if decode_accel_resource and decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.limits[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif decode_accel_resource and decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% set decode_eph_storage = decode.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -450,9 +470,9 @@ decode:
       requests:
         memory: {{ decode.resources.requests.memory }}
         cpu: "{{ decode.resources.requests.cpu }}"
-{% if decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
+{% if decode_accel_resource and decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.requests[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif decode_accel_resource and decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% if decode_eph_storage and decode_eph_resource %}
@@ -462,10 +482,6 @@ decode:
         {{ decode_net_resource }}: "{{ decode_net_nr }}"
 {% endif %}
     extraConfig:
-{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
-      imagePullSecrets:
-      - name: {{ vllmCommon.pullSecret }}
-{% endif %}
       startupProbe:
         httpGet:
           path: {{ decode.probes.startup.path }}
@@ -640,7 +656,7 @@ decode:
 {% endif %}
 {% if decode.monitoring.podmonitor.metricRelabelings is defined %}
       metricRelabelings:
-{{ decode.monitoring.podmonitor.metricRelabelings | toyaml | indent(8) }}
+{{ decode.monitoring.podmonitor.metricRelabelings | toyaml(8) }}
 {% endif %}
 {% endif %}
 {% endif %}
@@ -766,12 +782,26 @@ prefill:
 
 {% if prefill.resourceClaims is defined and prefill.resourceClaims %}
   resourceClaims:
-{{ prefill.resourceClaims | toyaml | indent(4) }}
+{{ prefill.resourceClaims | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if prefill.podSecurityContext is defined and prefill.podSecurityContext %}
   podSecurityContext:
 {{ prefill.podSecurityContext | toyaml | indent(4, first=True) }}
+{% endif %}
+
+{# Pod-level extraConfig -- see the decode block above for why
+   `imagePullSecrets` cannot live in the container-level `extraConfig`. #}
+{% set prefill_pod_extra = prefill.extraPodConfig | default({}, true) %}
+{% if (vllmCommon.pullSecret is defined and vllmCommon.pullSecret) or prefill_pod_extra %}
+  extraConfig:
+{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
+    imagePullSecrets:
+    - name: {{ vllmCommon.pullSecret }}
+{% endif %}
+{% if prefill_pod_extra %}
+{{ prefill_pod_extra | toyaml | indent(4, first=True) }}
+{% endif %}
 {% endif %}
 
 {# LWS / Multinode specific options #}
@@ -824,6 +854,9 @@ prefill:
     args:
       - |
 {{ build_vllm_command('prefill') | indent(8, first=True) }}
+{% elif prefill_model_command == 'imageDefault' and prefill.vllm.additionalFlags is defined and prefill.vllm.additionalFlags %}
+    args:
+{{ prefill.vllm.additionalFlags | toyaml | indent(6, true) }}
 {% endif %}
     env:
 {{ build_ms_env_vars('prefill') | indent(6, true) }}
@@ -844,10 +877,10 @@ prefill:
       limits:
         memory: {{ prefill.resources.limits.memory }}
         cpu: "{{ prefill.resources.limits.cpu }}"
-{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource) %}
-{% if prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
+{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource | default('')) %}
+{% if prefill_accel_resource and prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.limits[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif prefill_accel_resource and prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% set prefill_eph_storage = prefill.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
@@ -867,9 +900,9 @@ prefill:
       requests:
         memory: {{ prefill.resources.requests.memory }}
         cpu: "{{ prefill.resources.requests.cpu }}"
-{% if prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
+{% if prefill_accel_resource and prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.requests[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
+{% elif prefill_accel_resource and prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% if prefill_eph_storage and prefill_eph_resource %}
@@ -879,10 +912,6 @@ prefill:
         {{ prefill_net_resource }}: "{{ prefill_net_nr }}"
 {% endif %}
     extraConfig:
-{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
-      imagePullSecrets:
-      - name: {{ vllmCommon.pullSecret }}
-{% endif %}
       startupProbe:
         httpGet:
           path: {{ prefill.probes.startup.path }}
@@ -1045,19 +1074,19 @@ prefill:
 {% endif %}
 {% if prefill.monitoring.podmonitor.labels is defined %}
       labels:
-{{ prefill.monitoring.podmonitor.labels | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.labels | toyaml(8) }}
 {% endif %}
 {% if prefill.monitoring.podmonitor.annotations is defined %}
       annotations:
-{{ prefill.monitoring.podmonitor.annotations | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.annotations | toyaml(8) }}
 {% endif %}
 {% if prefill.monitoring.podmonitor.relabelings is defined %}
       relabelings:
-{{ prefill.monitoring.podmonitor.relabelings | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.relabelings | toyaml(8) }}
 {% endif %}
 {% if prefill.monitoring.podmonitor.metricRelabelings is defined %}
       metricRelabelings:
-{{ prefill.monitoring.podmonitor.metricRelabelings | toyaml | indent(8) }}
+{{ prefill.monitoring.podmonitor.metricRelabelings | toyaml(8) }}
 {% endif %}
 {% endif %}
 {% endif %}

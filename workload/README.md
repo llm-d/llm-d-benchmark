@@ -164,9 +164,23 @@ The harness script runs inside the **benchmark container image** as a Kubernetes
 | `vllm-benchmark` | `vllm-benchmark-llm-d-benchmark.sh` | `vllm bench serve` | vLLM-native benchmarking with latency percentiles |
 | `inferencemax` | `inferencemax-llm-d-benchmark.sh` | Custom Python script | Benchmarking with warmup and random seed control |
 | `lm-eval` | `lm-eval-llm-d-benchmark.sh` | `lm_eval` (lm-evaluation-harness) | Accuracy/quality evaluation against standard tasks (hellaswag, mmlu, piqa, ...) |
+| `priority-mix` | `priority-mix-llm-d-benchmark.sh` | Custom Python script | Mixed traffic classes with different `x-llm-d-inference-objective` headers |
 | `nop` | `nop-llm-d-benchmark.py` | No-op | Testing and validation without running real benchmarks |
 
 > **lm-eval smoke test:** the `accuracy_default` profile runs the full task set. For a quick pipeline check, cap samples per task and propagate the override into the harness pod, e.g. `LIMIT=10 llmdbenchmark ... -l lm-eval -w accuracy_default.yaml -g LIMIT ...`.
+
+The `priority-mix` harness is intended for EPP flow-control validation. Its
+profile defines traffic classes with different `objective` values; the harness
+converts each objective to an `x-llm-d-inference-objective` request header. The
+target stack must define matching `InferenceObjective` resources, for example
+through `router.inferenceObjectives`, so those headers resolve to configured
+priority bands instead of falling back to priority `0`. Streaming profiles also
+report per-traffic-class TTFT and TPOT so priority impact can be compared across
+classes. Each traffic class may override the global request with its own
+`request.prompt`, `request.promptTemplate`, `request.promptRepeat`, and
+`request.max_tokens`, which is useful for creating high-priority shared-prefix
+traffic and low-priority long-prompt cache pressure when evaluating priority
+based KV eviction.
 
 ### Harness Script Contract
 
@@ -189,6 +203,14 @@ Each harness script is expected to:
 4. Write results (JSON/YAML + stdout.log + stderr.log) to the results directory
 5. Capture timing metadata (start/stop timestamps, elapsed time)
 6. Exit with the benchmark tool's return code
+
+The inference-perf wrapper additionally writes `traffic_complete.yaml` and
+emits `LLMDBENCH_EVENT_V1 traffic_complete` immediately after its final
+explicitly configured stage drains successfully. Campaign orchestrators can
+use this stable boundary to release accelerator resources while inference-perf
+generates reports and llm-d-benchmark collects results. Sweep-generated stages
+do not emit the event because their final stage is not known from the rendered
+profile before load generation starts.
 
 ### How Harness Scripts Are Mounted
 
@@ -229,6 +251,7 @@ Profile templates use a simple token-replacement system (NOT Jinja2). Any occurr
 |-------|--------------|--------|
 | `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL` | Model name | `--model` flag or plan config |
 | `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER` | Model name (same) | `--model` flag or plan config |
+| `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MAX_MODEL_LEN` | Model max context length | `model.maxModelLen` in plan config |
 | `REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL` | Endpoint URL | Detected in step 02 or `--endpoint-url` |
 | `REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR` | Dataset directory | `--dataset` flag |
 

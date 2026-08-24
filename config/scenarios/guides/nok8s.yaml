@@ -63,7 +63,7 @@ scenario:
         extraArgs: []
       epp:
         image: ghcr.io/llm-d/llm-d-router-endpoint-picker
-        tag: v0.9.0
+        tag: v0.10.0
         grpcPort: 9002
         grpcHealthPort: 9003
         metricsPort: 9090

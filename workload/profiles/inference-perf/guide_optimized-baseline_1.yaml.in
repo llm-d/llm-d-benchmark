@@ -39,7 +39,7 @@ load:
       duration: 26
     - rate: 60
       duration: 25
-  request_timeout: 30
+  request_timeout: 300.0
 api:
   type: completion
   streaming: true

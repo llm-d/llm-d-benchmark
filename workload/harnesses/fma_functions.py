@@ -226,7 +226,7 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
     fma_launcher_port: str,
     benchmark_result: BenchmarkResult,
 ) -> list[FMALauncherInfo]:
-    """returns connected launchers info and populates BenchmarResult engine"""
+    """returns connected launchers info and populates BenchmarkResult engine"""
 
     launcher_infos = []
 
@@ -328,7 +328,7 @@ def is_owned_by_rs(pod, rs_uid):
 
 
 def get_ready_timestamp(pod: Any) -> float:
-    """returns pod ready timestemp"""
+    """returns pod ready timestamp"""
     if pod.status.phase == "Running":
         for cond in pod.status.conditions or []:
             if cond.type == "Ready" and cond.status == "True":
@@ -729,7 +729,7 @@ def calculate_vllm_ttft(base_url: str, model: str, timeout: float) -> float:
                 logger.info("TTFT (Time To First vLLM Token): %.4f seconds", ttft)
                 return ttft
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("Error ocurred when calculating vLLM ttft.")
+        logger.exception("Error occurred when calculating vLLM ttft.")
 
     logger.info("No vLLM token received.")
     return 0.0
@@ -806,7 +806,7 @@ def write_controller_log(
                     )
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception(
-            "Error ocurred when writing logs for controller with label selector '%s'.",
+            "Error occurred when writing logs for controller with label selector '%s'.",
             label_selector,
         )
 
