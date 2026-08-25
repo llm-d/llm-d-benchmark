@@ -1,9 +1,18 @@
 {#
   FMA Controllers helmfile — only rendered for fma deployments
+
+  The release is namespace-scoped, not model-keyed: the chart only stands
+  up the dual-pods controller (dualPodsController, launcherPopulator) --
+  all model wiring lives in the separately-applied CRs (24_fma-deployment),
+  and nothing parses this release name. A model-keyed name (the old
+  "<model_id_label>-fma-dp") made every model switch reinstall the
+  controller from scratch and left a stray release behind whenever
+  teardown's re-derived model label didn't match what standup used (#1820,
+  #1821). One release per namespace serves every model size that follows.
 #}
 {% if fma is defined and fma.enabled | default(false) %}
 releases:
-  - name: {{ model_id_label }}-fma-dp
+  - name: fma-controllers
     chart: {{ fma.chart.url }}
     version: {{ fma.chart.version }}
     namespace: {{ namespace.name }}
