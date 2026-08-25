@@ -67,6 +67,20 @@ class TestReleaseMatchesChartFallback:
             full_teardown=True,
         )
 
+    def test_full_teardown_matches_fma_controllers_chart_too(self):
+        """The bug: the FMA controllers release is model-keyed
+        (``<model_id_label>-fma-dp``) but the chart itself is model-agnostic,
+        so it had no chart-identity safety net -- a mismatched/omitted model
+        label at teardown left it deployed while teardown still reported
+        success (#1820)."""
+        assert UninstallHelmStep._release_matches(
+            "qwen-qwe-04b6bb85-fma-dp",
+            "llmdbench",
+            ["some-other-model-label"],
+            "fma-controllers-0.6.4",
+            full_teardown=True,
+        )
+
     def test_partial_stack_teardown_does_not_use_chart_fallback(self):
         """A --stack-filtered teardown must not sweep up sibling stacks'
         releases just because they share a chart -- only a real name/label
