@@ -850,7 +850,7 @@ scenario:
         storage:
           google_cloud_storage: null
           local_storage:
-            path: /requests/inference-perf_1759339259-cache_tracking-run_100_1000_llm-d-0p6b-base
+            path: /requests/inference-perf_1759339259-cache_tracking-run_100_1000_llm-d-0p6b-base #pragma: allowlist secret
             report_file_prefix: null
           simple_storage_service: null
         tokenizer:
