@@ -310,6 +310,41 @@ jobs:
           [ -n "$FW_WARMSTART_DATE" ] && gcloud storage cp -r "${FW_WARMSTART_PREFIX}${FW_WARMSTART_DATE}" "$FMA_WVA_WARMSTART_DIR/" || true
           [ -n "$FW_HOTSTART_DATE" ] && gcloud storage cp -r "${FW_HOTSTART_PREFIX}${FW_HOTSTART_DATE}" "$FMA_WVA_HOTSTART_DIR/" || true
 
+          # Each column's date is resolved independently as "newest folder present",
+          # so a failed pass silently falls back to an earlier run's data. Match on
+          # github_run_id (stamped in by the upload), not the date -- a run crossing
+          # midnight UTC is still current.
+          STALE=""
+          check_provenance() {
+            # $1 = column label, $2 = downloaded dir, $3 = resolved date
+            if [ -z "$3" ]; then
+              echo "| $1 | — | ❌ no data in bucket |" >> "$GITHUB_STEP_SUMMARY"
+              STALE="yes"
+              return
+            fi
+            if grep -rqs "github_run_id: \"${{ github.run_id }}\"" "$2"; then
+              echo "| $1 | $3 | ✅ this run |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $1 | $3 | ⚠️ from an earlier run |" >> "$GITHUB_STEP_SUMMARY"
+              STALE="yes"
+            fi
+          }
+
+          echo "### Data provenance" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Column | Data date | Source |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          check_provenance "Baseline (WVA without FMA)" "$BASELINE_DIR" "$BL_DATE"
+          check_provenance "WVA with FMA Warm Start" "$FMA_WVA_WARMSTART_DIR" "$FW_WARMSTART_DATE"
+          check_provenance "WVA with FMA Hot Start" "$FMA_WVA_HOTSTART_DIR" "$FW_HOTSTART_DATE"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$STALE" ]; then
+            echo "> [!WARNING]" >> "$GITHUB_STEP_SUMMARY"
+            echo "> At least one column is missing or carried over from an earlier run," >> "$GITHUB_STEP_SUMMARY"
+            echo "> so the columns below are not a like-for-like comparison." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           python3 "$GITHUB_WORKSPACE/llmdbenchmark/analysis/scripts/fma_comparison_table.py" \
             --baseline-dir "$BASELINE_DIR" \
             --warmstart-dir "$FMA_WVA_WARMSTART_DIR" \
