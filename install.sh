@@ -85,7 +85,7 @@ tool_version_for() {
         helm-diff-v4) echo "v3.15.7" ;;
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
-        crane)     echo "0.21.9"  ;;
+        crane)     echo "0.22.0"  ;;
         skopeo)    echo "1.20.1"  ;;
         jq)        echo "1.8.2"   ;;
         *)         echo ""        ;;
