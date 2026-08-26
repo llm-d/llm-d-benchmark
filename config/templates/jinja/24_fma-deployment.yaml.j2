@@ -47,7 +47,7 @@ spec:
    feeds the derived Helm release name elsewhere, and a path mangles that
    into an invalid (leading-dash) release name. #}
 {% set _fma_model_arg = (fma.modelMountPath + '/' + model.path) if (fma.launcher.loadModelFromLocalDir | default(false)) else model.name %}
-    options: "--model {{ _fma_model_arg }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size 1"
+    options: "--model {{ _fma_model_arg }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size {{ fma.launcher.tensorParallelSize | default(1) }}{% if fma.launcher.enforceEager | default(false) %} --enforce-eager{% endif %}"
     port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1
@@ -131,12 +131,25 @@ spec:
           # double-book (N launchers + N requesters = 2N GPU requests on an
           # N-GPU node), leaving requesters Pending with Insufficient nvidia.com/gpu.
           volumeMounts:
+{% if (fma.launcher.tensorParallelSize | default(1) | int) > 1 %}
+          # TP>1: vLLM tensor-parallel workers exchange over a shared-memory
+          # message queue; the pod default 64Mi /dev/shm crashes NCCL/multiproc
+          # at init, so give the launcher a real in-memory /dev/shm.
+          - name: dshm
+            mountPath: /dev/shm
+{% endif %}
 {% if fma.mountModelVolume %}
           - name: model-cache
             mountPath: {{ fma.modelMountPath }}
             readOnly: False
 {% endif %}
       volumes:
+{% if (fma.launcher.tensorParallelSize | default(1) | int) > 1 %}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
+{% endif %}
 {% if fma.mountModelVolume %}
       - name: model-cache
         persistentVolumeClaim:

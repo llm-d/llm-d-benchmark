@@ -1589,6 +1589,21 @@ fma:
     # -- it feeds the derived Helm release name, and a path mangles that
     # into an invalid (leading-dash) release name.
     loadModelFromLocalDir: false
+    # Tensor parallelism for models that do not fit on a single GPU (e.g.
+    # Qwen3-32B on an 80GB H100). > 1 feeds --tensor-parallel-size and, since
+    # TP workers exchange over a shared-memory message queue, provisions a
+    # 16Gi in-memory /dev/shm on the launcher (the pod default 64Mi crashes
+    # NCCL at init). Pair with fma.requester.limitsGPU so the requester
+    # reserves matching GPUs. Default 1 leaves single-GPU runs unchanged (#1853).
+    tensorParallelSize: 1
+    # Opt-in: skip torch.compile + CUDA-graph capture on the launcher's vLLM
+    # child. Binds faster on cold boot at the cost of steady-state serving
+    # performance -- every request then runs unoptimized kernels (and small/
+    # low-concurrency requests also pay per-step kernel-launch overhead that
+    # graph replay would have avoided). Off by default so serving deployments
+    # keep the optimized path; useful for actuation-timing runs, where boot
+    # latency matters and serving throughput is not measured.
+    enforceEager: false
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
       tag: v0.6.4
