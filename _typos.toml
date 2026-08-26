@@ -49,6 +49,7 @@ datas = "datas"
 queston = "queston"
 decod = "decod"
 resurces = "resurces"
+conection = "conection"
 
 # Pre-existing typos in codebase (to be fixed separately)
 analagous = "analagous"
