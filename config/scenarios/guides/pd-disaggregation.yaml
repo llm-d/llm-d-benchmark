@@ -362,7 +362,7 @@ scenario:
         # -----------------------------------------------------------------------
         extraEnvVars:
           - name: NCCL_EXCLUDE_IB_HCA
-            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlx5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
           - name: NVSHMEM_DEBUG
             value: "none"
           - name: NCCL_DEBUG
@@ -453,7 +453,7 @@ scenario:
         # -----------------------------------------------------------------------
         extraEnvVars:
           - name: NCCL_EXCLUDE_IB_HCA
-            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlx5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
           - name: NVSHMEM_DEBUG
             value: "none"
           - name: NCCL_DEBUG
