@@ -17,9 +17,10 @@ from pathlib import Path
 import yaml as _yaml
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
-from llmdbenchmark.interface.env import env, env_bool
+from llmdbenchmark.interface.env import env, env_bool, env_bool_optional
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
+from llmdbenchmark.logging.quiet import plan_logger
 from llmdbenchmark.utilities.os.filesystem import (
     create_workspace,
     create_sub_dir_workload,
@@ -70,6 +71,7 @@ def setup_workspace(
     log_dir: Path,
     verbose: bool = False,
     dry_run: bool = False,
+    quiet_plan: bool = False,
 ) -> None:
     """Set workspace paths and runtime flags on the global config singleton."""
     config.workspace = workspace_path
@@ -77,6 +79,7 @@ def setup_workspace(
     config.log_dir = log_dir
     config.verbose = verbose
     config.dry_run = dry_run
+    config.quiet_plan = quiet_plan
 
 
 def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
@@ -104,23 +107,30 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             logger.log_error(f"Invalid specification: {e}")
             sys.exit(1)
 
-        logger.log_info(
+        # Everything from here to the end of the Helm pre-render is the
+        # plan-rendering prelude. On every command but `plan` it is a means
+        # to an end, so it narrates through a logger that demotes INFO to
+        # DEBUG -- console stays clean, workspace logs keep the detail.
+        render_logger = plan_logger(logger, config.quiet_plan)
+
+        render_logger.log_info(
             "Specification file rendered and validated successfully.",
             emoji="✅",
         )
 
-        logger.log_debug(
+        render_logger.log_debug(
             "Using specification file to fully render templates into complete system stack plans."
         )
 
-        version_resolver = VersionResolver(logger=logger, dry_run=args.dry_run)
+        version_resolver = VersionResolver(logger=render_logger, dry_run=args.dry_run)
         cluster_resource_resolver = ClusterResourceResolver(
-            logger=logger,
+            logger=render_logger,
             dry_run=args.dry_run,
             kubeconfig=getattr(args, "kubeconfig", None),
         )
 
         render_plan_errors = RenderPlans(
+            logger=render_logger,
             template_dir=specification_as_dict["template_dir"]["path"],
             defaults_file=specification_as_dict["values_file"]["path"],
             scenarios_file=specification_as_dict["scenario_file"]["path"],
@@ -164,7 +174,9 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         # This enables kustomize overlays and full manifest inspection.
         # Runs even in dry-run mode - helmfile template is purely local
         # and does not touch the cluster.
-        _render_helm_manifests(config.plan_dir, logger)
+        _render_helm_manifests(config.plan_dir, render_logger)
+
+        _log_plan_summary(logger, render_plan_errors, config.plan_dir)
 
     if args.command == Command.STANDUP.value:
         _execute_standup(args, logger, render_plan_errors)
@@ -177,6 +189,39 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     if args.command == Command.RUN.value:
         _execute_run(args, logger, render_plan_errors)
+
+
+def _log_plan_summary(logger, render_result, plan_dir: Path) -> None:
+    """Emit the one-line replacement for the suppressed render narration.
+
+    Under ``--quiet-plan`` the forty-odd "Rendered: <file>" lines are gone
+    from the console, so the user still needs to be told that a plan was
+    produced and where it landed. Skipped when not quieting -- the detailed
+    lines already say all of this.
+    """
+    if not config.quiet_plan:
+        return
+
+    stack_dirs = list(getattr(render_result, "rendered_paths", []) or [])
+    # config.yaml is the resolved-values dump RenderPlans writes alongside
+    # the templates, not a manifest -- counting it would make this line
+    # disagree with the "Success: N" tally it stands in for.
+    manifests = sum(
+        len([f for f in d.glob("*.yaml") if f.name != "config.yaml"])
+        for d in stack_dirs
+    )
+    stacks = len(stack_dirs) or len(getattr(render_result, "stacks", {}) or {})
+
+    logger.log_info(
+        f"Plan rendered: {manifests} manifest(s) across {stacks} stack(s) "
+        f"-> {plan_dir}",
+        emoji="\u2705",
+    )
+    logger.log_info(
+        "Per-file render detail suppressed (--no-quiet-plan or -v to show; "
+        f"always recorded in {config.log_dir})",
+        emoji="\U0001f4dd",
+    )
 
 
 def _render_helm_manifests(plan_dir: Path, logger) -> None:
@@ -1413,14 +1458,17 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         base_dir=args.base_dir,
     ).eval()
 
-    version_resolver = VersionResolver(logger=logger, dry_run=args.dry_run)
+    render_logger = plan_logger(logger, config.quiet_plan)
+
+    version_resolver = VersionResolver(logger=render_logger, dry_run=args.dry_run)
     cluster_resource_resolver = ClusterResourceResolver(
-        logger=logger,
+        logger=render_logger,
         dry_run=args.dry_run,
         kubeconfig=getattr(args, "kubeconfig", None),
     )
 
     render_plan_errors = RenderPlans(
+        logger=render_logger,
         template_dir=specification_as_dict["template_dir"]["path"],
         defaults_file=specification_as_dict["values_file"]["path"],
         scenarios_file=specification_as_dict["scenario_file"]["path"],
@@ -1449,6 +1497,8 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
     if render_plan_errors.has_errors:
         error_dump = json.dumps(render_plan_errors.to_dict(), indent=2)
         raise PhaseError(f"Rendering failed with setup overrides:\n{error_dump}")
+
+    _log_plan_summary(logger, render_plan_errors, config.plan_dir)
 
     return render_plan_errors
 
@@ -1919,6 +1969,32 @@ def _extract_workspace_from_scenario(
     return None
 
 
+def _resolve_quiet_plan(args: argparse.Namespace) -> bool:
+    """Decide whether to quiet the plan-rendering narration on the console.
+
+    Precedence: ``--quiet-plan`` / ``--no-quiet-plan`` > ``LLMDBENCH_QUIET_PLAN``
+    > per-command default. The default is "quiet everywhere except ``plan``":
+    on ``plan`` the render narration is the deliverable, everywhere else it
+    buries the phase output the user is actually watching.
+
+    ``--verbose`` always wins and turns quieting off -- it puts the console
+    handler at DEBUG, which would print the demoted lines anyway, so wrapping
+    would only strip the blank-line separators.
+    """
+    if getattr(args, "verbose", False):
+        return False
+
+    explicit = getattr(args, "quiet_plan", None)
+    if explicit is not None:
+        return bool(explicit)
+
+    from_env = env_bool_optional("LLMDBENCH_QUIET_PLAN")
+    if from_env is not None:
+        return from_env
+
+    return getattr(args, "command", None) != Command.PLAN.value
+
+
 def cli() -> None:
     """Parse arguments, set up workspace and logging, and dispatch the subcommand."""
 
@@ -2042,6 +2118,21 @@ def cli() -> None:
     )
 
     benchmark_parser.add_argument(
+        "--quiet-plan",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Suppress the per-file plan-rendering narration on the console "
+        "(the 'Rendered: <file>' lines, image overrides and per-stack "
+        "banners), replacing it with a one-line summary. The detail is still "
+        "written to <workspace>/logs at DEBUG. Default: on for standup, "
+        "smoketest, teardown, run and experiment -- where the render is an "
+        "implicit prelude -- and off for `plan`, whose output it is. "
+        "--no-quiet-plan restores the full narration, and --verbose always "
+        "shows it. "
+        "Env: LLMDBENCH_QUIET_PLAN.",
+    )
+
+    benchmark_parser.add_argument(
         "--telemetry-enabled",
         action="store_true",
         help="Enable telemetry reporting.",
@@ -2137,6 +2228,7 @@ def cli() -> None:
         args.wva = env_bool("LLMDBENCH_WVA")
     if hasattr(args, "epp_keda_saturation") and not args.epp_keda_saturation:
         args.epp_keda_saturation = env_bool("LLMDBENCH_EPP_KEDA_SATURATION")
+    args.quiet_plan = _resolve_quiet_plan(args)
     if not args.specification_file:
         parser.error(
             "the following arguments are required: --specification_file/--spec"
@@ -2207,6 +2299,7 @@ def cli() -> None:
         log_dir=absolute_workspace_log_dir,
         verbose=args.verbose,
         dry_run=args.dry_run,
+        quiet_plan=args.quiet_plan,
     )
 
     logger = get_logger(config.log_dir, config.verbose, __name__)

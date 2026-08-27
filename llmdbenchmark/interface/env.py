@@ -36,3 +36,15 @@ def env_float(name: str, default: float | None = None) -> float | None:
         return float(val)
     except ValueError:
         return default
+
+
+def env_bool_optional(name: str) -> bool | None:
+    """Return env var as boolean, or ``None`` when unset.
+
+    For tri-state flags where "unset" is distinct from "explicitly false"
+    and the default is decided later (e.g. per subcommand).
+    """
+    val = os.environ.get(name)
+    if val is None:
+        return None
+    return val.strip().lower() in ("1", "true", "yes")

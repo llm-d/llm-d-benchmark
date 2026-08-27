@@ -410,6 +410,7 @@ llmdbenchmark --version
 | `--non-admin` / `-i` | `LLMDBENCH_NON_ADMIN` | Skip admin-only steps |
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
+| `--quiet-plan` / `--no-quiet-plan` | `LLMDBENCH_QUIET_PLAN` | Suppress the per-file plan-rendering narration on the console -- the `Rendered: <file>` lines, image overrides and per-stack banners -- replacing it with a one-line summary of what was rendered and where. **On by default** for `standup`, `smoketest`, `teardown`, `run` and `experiment`, where the render is an implicit prelude; **off by default** for `plan`, whose output it is. The detail is never lost: it is written to `<workspace>/logs/` at `DEBUG` either way. `--verbose` overrides this and always shows the full narration. See [Quieting the plan-rendering output](#quieting-the-plan-rendering-output). |
 | `--run-description TEXT` | `LLMDBENCH_DESCRIPTION_TEXT` | Human-readable label for the run, recorded as `run.description` in the benchmark report. Defaults to `<model> [<experiment id>]`. Also settable as `description.text` under a scenario's `common:` (or top-level `shared:`) block, or per treatment in an experiment. |
 | `--run-keywords LIST` | `LLMDBENCH_DESCRIPTION_KEYWORDS` | Comma-separated tags recorded as `run.keywords`. Never auto-populated; omitted entirely when unset. Also settable as `description.keywords` in the same places. |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
@@ -562,6 +563,45 @@ llmdbenchmark standup -p override-ns           # CLI wins over env var
 
 Boolean env vars accept `1`, `true`, or `yes` (case-insensitive). Active `LLMDBENCH_*` overrides are logged at startup for debugging.
 
+### Quieting the plan-rendering output
+
+`standup`, `smoketest`, `teardown`, `run` and `experiment` all render the plan
+before they do anything else. That render narrates itself in detail -- one line
+per template, plus image overrides and per-stack banners -- which for a typical
+scenario is 40+ lines *per stack*, enough to push the phase output you are
+actually watching off the screen.
+
+By default those commands now print a two-line summary instead:
+
+```text
+✅ Plan rendered: 40 manifest(s) across 1 stack(s) -> /.../workspace/plan
+📝 Per-file render detail suppressed (--no-quiet-plan or -v to show; always recorded in /.../workspace/logs)
+```
+
+`plan` is the exception -- the render narration *is* that command's output, so
+it stays verbose by default.
+
+Nothing is thrown away. The suppressed lines are demoted to `DEBUG`, not
+dropped, so they are still written to `<workspace>/logs/llmdbenchmark-stdout.log`.
+Warnings and errors from the render are never quieted.
+
+```bash
+# full narration on a lifecycle command (one-off)
+llmdbenchmark standup --spec gpu --no-quiet-plan
+
+# ... or for a whole shell / CI job
+export LLMDBENCH_QUIET_PLAN=false
+
+# just the summary from `plan`, when you only want the files on disk
+llmdbenchmark plan --spec gpu --quiet-plan
+
+# --verbose always wins and shows everything
+llmdbenchmark -v standup --spec gpu
+```
+
+Precedence: `--quiet-plan` / `--no-quiet-plan` > `LLMDBENCH_QUIET_PLAN` >
+per-command default, with `--verbose` overriding all three.
+
 ## Architecture
 
 The tool operates in three phases, each composed of numbered steps executed by a shared [`StepExecutor`](llmdbenchmark/executor/README.md) framework.
@@ -687,7 +727,7 @@ llmdbenchmark/                Python package
     run/                      Run phase (see run/README.md)
         steps/                Step implementations (00-11)
 
-    logging/                  Structured logger with emoji support (see logging/README.md)
+    logging/                  Structured logger with emoji support, plus the QuietLogger console-quieting proxy (see logging/README.md)
     exceptions/               Error hierarchy (Template, Configuration, Execution)
     utilities/                Shared helpers (see utilities/README.md)
         cluster.py            Kubernetes connection, platform detection
