@@ -9,8 +9,10 @@ Runs AFTER step_09_collect_results so the local results dir already exists
 and won't trip step_09's "skip if results dir non-empty" gate.
 """
 
+import json
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
@@ -44,6 +46,27 @@ def _kube_logs_with_retry(cmd, *args, attempts: int = 3, backoff: float = 2.0):
         if i < attempts - 1:
             time.sleep(backoff)
     return last
+
+
+def _prometheus_api_status(stdout: str) -> tuple[str, str]:
+    """Return (status, error_detail) from a Prometheus/Thanos API response.
+
+    Status is "" for an absent or unparseable body, so callers fail closed.
+    """
+    if not stdout or not stdout.strip():
+        return "", ""
+    try:
+        body = json.loads(stdout)
+    except (json.JSONDecodeError, ValueError):
+        return "", ""
+    if not isinstance(body, dict):
+        return "", ""
+    status = str(body.get("status") or "")
+    error = str(body.get("error") or "")
+    error_type = str(body.get("errorType") or "")
+    if error and error_type:
+        error = f"{error_type}: {error}"
+    return status, error
 
 
 _FMA_GUIDE_STACK_NAME = "fast-model-actuation"
@@ -222,31 +245,36 @@ class CaptureClusterStateStep(Step):
         # 5. WVA controller logs — every reconcile loop logs the OPTIMIZED
         # replica count it computed. Capped to keep the upload reasonable;
         # bump --tail if we ever need full forensic depth.
-        result = _kube_logs_with_retry(
-            cmd,
-            "deployment/wva-controller-manager",
-            "--namespace",
-            wva_ns,
-            "--tail=50000",
-        )
-        if (
-            result.success
-            and result.stdout
-            and not _is_kubelet_log_sentinel(result.stdout)
-        ):
-            (out_dir / "wva-controller.log").write_text(result.stdout, encoding="utf-8")
-            captured.append("wva-controller.log")
-        elif result.success and result.stdout:
-            (out_dir / "wva-controller.kubelet-error").write_text(
-                result.stdout, encoding="utf-8"
+        # WVA paths only -- KEDA-only scenarios never deploy this Deployment,
+        # so fetching it there is a guaranteed NotFound on every run.
+        if wva_enabled:
+            result = _kube_logs_with_retry(
+                cmd,
+                "deployment/wva-controller-manager",
+                "--namespace",
+                wva_ns,
+                "--tail=50000",
             )
-            warnings.append(
-                "logs wva-controller-manager: kubelet sentinel after retries"
-            )
-        else:
-            warnings.append(
-                f"logs wva-controller-manager failed: {result.stderr[:200]}"
-            )
+            if (
+                result.success
+                and result.stdout
+                and not _is_kubelet_log_sentinel(result.stdout)
+            ):
+                (out_dir / "wva-controller.log").write_text(
+                    result.stdout, encoding="utf-8"
+                )
+                captured.append("wva-controller.log")
+            elif result.success and result.stdout:
+                (out_dir / "wva-controller.kubelet-error").write_text(
+                    result.stdout, encoding="utf-8"
+                )
+                warnings.append(
+                    "logs wva-controller-manager: kubelet sentinel after retries"
+                )
+            else:
+                warnings.append(
+                    f"logs wva-controller-manager failed: {result.stderr[:200]}"
+                )
 
         # 5b. Dual-pods-controller log — its klog lines anchor each FMA actuation
         # (wake / create_instance / launcher-create), the signal the hit-rate
@@ -300,10 +328,26 @@ class CaptureClusterStateStep(Step):
         # "Skipping pod that doesn't match any scale target" even when the
         # pod has the right metadata. Compare baseline-vs-FMA captures of
         # this file to isolate which side of the chain breaks.
-        thanos_proxy = (
-            "/api/v1/namespaces/openshift-monitoring/services/"
-            "thanos-querier:web/proxy/api/v1/query"
+        # Via the route, not the apiserver service proxy: that proxy does not
+        # forward credentials, so Thanos answers 401. Needs `get
+        # prometheuses/api` in openshift-monitoring.
+        thanos_host = ""
+        route_result = cmd.kube(
+            "get",
+            "route",
+            "thanos-querier",
+            "--namespace",
+            "openshift-monitoring",
+            "-o",
+            "jsonpath={.spec.host}",
+            check=False,
         )
+        if route_result.success:
+            thanos_host = route_result.stdout.strip().strip("'\"")
+        token = ""
+        token_result = cmd.kube("whoami", "-t", check=False)
+        if token_result.success:
+            token = token_result.stdout.strip()
         thanos_queries = [
             (
                 "vllm-cache-with-variant",
@@ -317,20 +361,42 @@ class CaptureClusterStateStep(Step):
             ),
             ("epp-pool-queue-size", "inference_pool_average_queue_size"),
         ]
-        for label, query in thanos_queries:
-            result = cmd.kube(
-                "get", "--raw", f"{thanos_proxy}?query={query}", check=False
+        if not thanos_host or not token:
+            warnings.append(
+                "thanos queries skipped: could not resolve "
+                f"{'route' if not thanos_host else 'token'}"
             )
-            if result.success:
-                (out_dir / f"thanos-{label}.json").write_text(
-                    result.stdout, encoding="utf-8"
+        else:
+            for label, query in thanos_queries:
+                # PromQL carries {}, "", =~ and : -- all of which must be
+                # percent-encoded to survive as a single query parameter.
+                url = (
+                    f"https://{thanos_host}/api/v1/query?query={quote(query, safe='')}"
                 )
-                captured.append(f"thanos-{label}.json")
-            else:
-                (out_dir / f"thanos-{label}.error").write_text(
-                    result.stderr, encoding="utf-8"
+                # Token via stdin (`@-`), never on the command line: execute()
+                # logs the command string and keeps it on CommandResult.
+                result = cmd.execute(
+                    f'curl -sS -k -H @- "{url}"',
+                    check=False,
+                    stdin=f"Authorization: Bearer {token}",
                 )
-                warnings.append(f"thanos query '{label}' failed: {result.stderr[:200]}")
+                # Gate on the API's status field: errors come back in the body,
+                # and curl without -f exits 0 on a 4xx.
+                api_status, api_error = _prometheus_api_status(result.stdout)
+                if result.success and api_status == "success":
+                    (out_dir / f"thanos-{label}.json").write_text(
+                        result.stdout, encoding="utf-8"
+                    )
+                    captured.append(f"thanos-{label}.json")
+                else:
+                    detail = (
+                        api_error or result.stderr or result.stdout or "(no output)"
+                    )
+                    (out_dir / f"thanos-{label}.error").write_text(
+                        result.stdout or result.stderr or "(no output)",
+                        encoding="utf-8",
+                    )
+                    warnings.append(f"thanos query '{label}' failed: {detail[:200]}")
 
         # 9. Pod logs for controllers and serving pods. Iterate over every pod
         # in deploy_ns (and the WVA ns if it differs) and dump --tail=5000 per container.

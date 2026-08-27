@@ -1886,6 +1886,15 @@ class BaseSmoketest:
         report: SmoketestReport,
         service_test_passed: bool,
     ):
+        # epponly/none deploy no Gateway, so no route exists to fetch --
+        # looking one up there is a guaranteed warning on every run.
+        gateway_class = _nested_get(plan_config, "gateway", "className") or ""
+        if gateway_class in ("epponly", "none"):
+            context.logger.log_info(
+                f"gateway.className={gateway_class} -- no OpenShift route to test"
+            )
+            return
+
         release = _nested_get(plan_config, "release") or ""
         route_name = f"{release}-inference-gateway-route"
 

@@ -805,13 +805,15 @@ class DeployModelserviceStep(Step):
         fma_enabled = plan_config.get("fma", {}).get("enabled", False)
         hpa_name = f"{model_id_label}-{'fma' if fma_enabled else 'decode'}-saturation"
 
-        for label, resource_name in (
-            ("ScaledObject", hpa_name + "-saturation"),
-            ("HPA", "keda-hpa-" + hpa_name + "-saturation"),
+        # hpa_name already ends in -saturation, and the resource type has to be
+        # a literal: deriving it from the name yielded `oc get qwen` / `keda`.
+        for label, kind, resource_name in (
+            ("ScaledObject", "scaledobjects.keda.sh", hpa_name),
+            ("HPA", "hpa", f"keda-hpa-{hpa_name}"),
         ):
             result = cmd.kube(
                 "get",
-                resource_name.split("-")[0].lower(),
+                kind,
                 resource_name,
                 "-n",
                 epp_keda_ns,

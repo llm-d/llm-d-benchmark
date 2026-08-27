@@ -695,8 +695,11 @@ def capture_infrastructure_logs(
                     script = Path(script_str)
             if script.exists():
                 context.logger.log_info("Processing EPP logs...")
+                # The script resolves <dir>/logs/epp_pods.log; results_dir does
+                # not always contain logs/, so it would silently exit 0.
+                epp_target = log_dir.parent if log_dir.name == "logs" else results_dir
                 result = subprocess.run(
-                    ["python3", str(script), str(results_dir), "--visualize"],
+                    ["python3", str(script), str(epp_target), "--visualize"],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -704,8 +707,19 @@ def capture_infrastructure_logs(
                 if result.returncode == 0:
                     context.logger.log_info("EPP log processing complete")
                 else:
+                    # Summarise from the tail: a traceback's exception is on the
+                    # last line, the head is just the frame list.
+                    detail = (result.stderr or result.stdout or "").strip()
+                    summary = detail.splitlines()[-1] if detail else "(no output)"
                     context.logger.log_warning(
-                        f"EPP log processing failed (non-fatal): {result.stderr[:200]}"
+                        f"EPP log processing failed (non-fatal, rc="
+                        f"{result.returncode}): {summary[:300]}"
                     )
+                    if detail:
+                        context.logger.log_debug(
+                            f"EPP log processing stderr:\n{detail}"
+                        )
         except Exception as e:
-            context.logger.log_warning(f"EPP log processing failed (non-fatal): {e}")
+            context.logger.log_warning(
+                f"EPP log processing failed (non-fatal): {type(e).__name__}: {e}"
+            )

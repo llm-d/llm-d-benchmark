@@ -19,7 +19,7 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 # Optional matplotlib for visualization
@@ -82,9 +82,19 @@ class ScoringSnapshot:
 PREFIX_RE = re.compile(r"^\[pod/([^/]+)/([^\]]+)\]\s*")
 
 
-def parse_timestamp(ts_str: str) -> Optional[datetime]:
-    """Parse an ISO 8601 timestamp, truncating nanoseconds to microseconds."""
+def parse_timestamp(ts_str: Any) -> Optional[datetime]:
+    """Parse an ISO 8601 string or float/int epoch, truncating ns to µs.
+
+    The EPP emits ``ts`` as a float, so string-only handling raises TypeError.
+    """
     if not ts_str:
+        return None
+    if isinstance(ts_str, (int, float)) and not isinstance(ts_str, bool):
+        try:
+            return datetime.fromtimestamp(ts_str, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if not isinstance(ts_str, str):
         return None
     # Handle nanosecond timestamps by truncating to 6 decimal places
     ts_str = re.sub(r"(\.\d{6})\d+", r"\1", ts_str)
