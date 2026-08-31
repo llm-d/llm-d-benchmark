@@ -1,37 +1,28 @@
-"""Regression coverage for #1821: the FMA controllers Helm release must be
-namespace-scoped, not model-keyed.
+"""FMA controllers Helm release must be namespace-scoped, not model-keyed.
 
 A model-keyed release name (the old ``<model_id_label>-fma-dp``) made every
 model switch reinstall the controller from scratch, and was the root cause
-of #1820 (teardown silently leaving a stray per-model release behind). The
+of teardown silently leaving a stray per-model release behind. The
 release only stands up the model-agnostic dual-pods controller -- all model
 wiring lives in the separately-applied CRs (24_fma-deployment.yaml.j2) -- so
 one release should serve every model size in a namespace.
+
+The FMA controllers are now installed via the upstream ``install-fma.sh``
+(see ``FMADeployStep._build_fma_install_command``) rather than a helmfile
+template, so the release name is pinned through ``--chart-instance-name``.
+This test asserts that flag is the fixed, model-agnostic ``fma-controllers``.
 """
 
 from __future__ import annotations
 
-import yaml
-from jinja2 import Environment
+import shlex
 
-from llmdbenchmark.parser.render_plans import RenderPlans
-
-_TEMPLATE_PATH = "config/templates/jinja/26_helmfile-fma-controllers.yaml.j2"
+from llmdbenchmark.standup.steps.step_06_fma_deploy import FMADeployStep
 
 
-def _render(model_id_label: str) -> dict:
-    env = Environment(
-        autoescape=False,
-        trim_blocks=True,
-        lstrip_blocks=True,
-        keep_trailing_newline=False,
-    )
-    env.filters["toyaml"] = RenderPlans._toyaml_filter
-    with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
-        template = env.from_string(fh.read())
-    values = {
+def _plan_config(model_id_label: str) -> dict:
+    return {
         "model_id_label": model_id_label,
-        "namespace": {"name": "bench"},
         "fma": {
             "enabled": True,
             "chart": {
@@ -48,19 +39,27 @@ def _render(model_id_label: str) -> dict:
             },
         },
     }
-    out = template.render(**values)
-    return yaml.safe_load(out)
+
+
+def _chart_instance_name(model_id_label: str) -> str:
+    command = FMADeployStep._build_fma_install_command(
+        script_path="/tmp/install-fma.sh",
+        plan_config=_plan_config(model_id_label),
+        namespace="bench",
+        non_admin=False,
+    )
+    tokens = shlex.split(command)
+    idx = tokens.index("--chart-instance-name")
+    return tokens[idx + 1]
 
 
 class TestFmaControllerReleaseNaming:
     def test_release_name_is_namespace_scoped_not_model_keyed(self):
-        rendered = _render("opt-125m-abc123")
-        assert rendered["releases"][0]["name"] == "fma-controllers"
+        assert _chart_instance_name("opt-125m-abc123") == "fma-controllers"
 
     def test_release_name_is_identical_across_different_models(self):
         """The whole point: switching models must not produce a new release
-        name -- the same release should be reused/no-op'd by helmfile."""
-        first = _render("qwen3-4b-aaa111")
-        second = _render("qwen3-32b-bbb222")
-        assert first["releases"][0]["name"] == second["releases"][0]["name"]
-        assert first["releases"][0]["name"] == "fma-controllers"
+        name -- the same release should be reused/no-op'd by the installer."""
+        first = _chart_instance_name("qwen3-4b-aaa111")
+        second = _chart_instance_name("qwen3-32b-bbb222")
+        assert first == second == "fma-controllers"
