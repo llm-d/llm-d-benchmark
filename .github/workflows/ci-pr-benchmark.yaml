@@ -173,7 +173,7 @@ jobs:
       monitoring_enabled: true
       dry_run: false
       verbose: false
-      harness: guidellm
+      harness: aiperf
       workload: sanity_random.yaml
       admin_privileges: true
     secrets: inherit
