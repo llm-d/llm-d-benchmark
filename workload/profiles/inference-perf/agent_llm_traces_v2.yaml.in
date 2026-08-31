@@ -9,6 +9,7 @@ load:
 api:
   type: chat
   streaming: true
+  session_id_header_key: x-llm-d-inference-fairness-id
 server:
   type: vllm
   model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
@@ -26,6 +27,7 @@ data:
     include_errors: false
     bad_tool_call_handling: use_recorded
     filter: "lambda x: x['max_tokens'] < REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MAX_MODEL_LEN"
+    predecessor_wait_timeout_sec: 0
 report:
   request_lifecycle:
     summary: true
