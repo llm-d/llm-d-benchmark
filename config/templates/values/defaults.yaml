@@ -1551,23 +1551,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.4/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.4/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.4/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.5/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.5/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.5/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.6.4
+    version: 0.6.5
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.6.4
+    tag: v0.6.5
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.4
+      tag: v0.6.5
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1606,7 +1606,7 @@ fma:
     enforceEager: false
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.4
+      tag: v0.6.5
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:

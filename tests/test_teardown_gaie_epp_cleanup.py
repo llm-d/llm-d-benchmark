@@ -77,7 +77,7 @@ class TestReleaseMatchesChartFallback:
             "qwen-qwe-04b6bb85-fma-dp",
             "llmdbench",
             ["some-other-model-label"],
-            "fma-controllers-0.6.4",
+            "fma-controllers-0.6.5",
             full_teardown=True,
         )
 

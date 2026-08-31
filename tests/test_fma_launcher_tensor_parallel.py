@@ -58,7 +58,7 @@ def _base_values(tensor_parallel_size: int = 1, enforce_eager: bool = False) -> 
                 "maxInstances": 4,
                 "image": {
                     "repository": "example.com/launcher",
-                    "tag": "v0.6.4",
+                    "tag": "v0.6.5",
                     "pullPolicy": "IfNotPresent",
                 },
                 "podTemplate": {"metadata": {}},
@@ -66,7 +66,7 @@ def _base_values(tensor_parallel_size: int = 1, enforce_eager: bool = False) -> 
             },
             "launcherConfigurator": {"port": 8001},
             "requester": {
-                "image": {"repository": "example.com/requester", "tag": "v0.6.4"},
+                "image": {"repository": "example.com/requester", "tag": "v0.6.5"},
                 "probePort": 8080,
                 "spiPort": 8081,
                 "limitsGPU": 2,

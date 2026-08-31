@@ -36,9 +36,9 @@ def _render(model_id_label: str) -> dict:
             "enabled": True,
             "chart": {
                 "url": "oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers",
-                "version": "0.6.4",
+                "version": "0.6.5",
             },
-            "image": {"repository": "example.com/fma", "tag": "v0.6.4"},
+            "image": {"repository": "example.com/fma", "tag": "v0.6.5"},
             "dualPod": {"sleeperLimit": 2, "debugAcceleratorMemory": False},
             "launcherPopulatorConfigurator": {
                 "limitsCPU": 2,
