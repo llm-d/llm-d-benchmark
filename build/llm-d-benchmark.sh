@@ -145,5 +145,10 @@ done
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO -eq 0 ]]; then
   echo "Done. Data is available at \"$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR\""
 fi
-# Return with error code of first iteration of experiment analyzer
-exit $((LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC + LLMDBENCH_RUN_EXPERIMENT_HARNESS_REPORT_EC))
+# Only the load generator decides the exit code. Analysis is post-processing over
+# results already on the PVC and is re-runnable, so folding it in here discarded
+# completed benchmarks over a missing plot.
+if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_REPORT_EC -ne 0 ]]; then
+  echo "WARNING: analysis failed after ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_MAX_TRIES} attempt(s); results in \"$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR\" are intact"
+fi
+exit $LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC

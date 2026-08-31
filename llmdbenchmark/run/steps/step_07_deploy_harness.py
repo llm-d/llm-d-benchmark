@@ -34,7 +34,11 @@ from llmdbenchmark.utilities.kube_helpers import (
     capture_pod_logs,
     capture_infrastructure_logs,
 )
-from llmdbenchmark.utilities.archive import read_member, remote_compress_script
+from llmdbenchmark.utilities.archive import (
+    read_member,
+    read_members,
+    remote_compress_script,
+)
 from llmdbenchmark.utilities.cloud_upload import upload_results_dir
 from llmdbenchmark.utilities.endpoint import reset_caches_pods
 
@@ -588,6 +592,22 @@ class DeployHarnessStep(Step):
                 stem = stem[: -len(suffix)]
         return stem
 
+    @staticmethod
+    def _profile_load_type(context: ExecutionContext, profile_name: str | None) -> str:
+        """``load.type`` of the rendered profile, or "" when it cannot be read."""
+        if not profile_name:
+            return ""
+        name = profile_name.rsplit("/", 1)[-1]
+        if name.endswith(".in"):
+            name = name[:-3]
+        try:
+            for path in context.workload_profiles_dir().glob(f"*/{name}"):
+                loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                return str(loaded.get("load", {}).get("type") or "")
+        except (OSError, yaml.YAMLError, AttributeError):
+            return ""
+        return ""
+
     def _validate_failures(
         self,
         context: ExecutionContext,
@@ -602,6 +622,11 @@ class DeployHarnessStep(Step):
         for prefix, validator in self._FAILURE_VALIDATORS.items():
             if stem == prefix or stem.startswith(prefix):
                 return validator(self, context, experiment_id, parallelism)
+
+        if self._profile_load_type(context, profile_name) == "trace_session_replay":
+            return self._validate_failures_session_replay(
+                context, experiment_id, parallelism
+            )
 
         context.logger.log_warning(
             f"validate_failures: no result-failure check implemented for workload "
@@ -645,6 +670,76 @@ class DeployHarnessStep(Step):
             if count > 0:
                 errs.append(
                     f"validate_failures: {count} failed session(s) reported in "
+                    f"{name} under {pod_dir}"
+                )
+        return errs
+
+    # An allow-list, so an unrecognised status still fails.
+    _USABLE_STAGE_STATUSES = frozenset({"COMPLETED", "TIMED_OUT"})
+
+    def _validate_failures_session_replay(
+        self,
+        context: ExecutionContext,
+        experiment_id: str,
+        parallelism: int,
+    ) -> list[str]:
+        """trace_session_replay validator: per-stage status plus session counts.
+
+        A stage that hits its timeout is a shorter measurement, not a broken one.
+        """
+        errs: list[str] = []
+        base = context.run_results_dir()
+        for i in range(1, parallelism + 1):
+            pod_dir = base / f"{experiment_id}_{i}"
+            pattern = "stage_*_session_lifecycle_metrics.json"
+            members = read_members(pod_dir, pattern) or read_members(
+                pod_dir, f"analysis/{pattern}"
+            )
+            if not members:
+                errs.append(f"validate_failures: missing {pattern} under {pod_dir}")
+                continue
+            for name, payload in sorted(members.items()):
+                try:
+                    meta = json.loads(payload)["stage_metadata"]
+                except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                    context.logger.log_warning(
+                        f"validate_failures: no stage_metadata in {name} under "
+                        f"{pod_dir}; judging on session counts alone"
+                    )
+                    continue
+                status = str(meta.get("status") or "")
+                if status not in self._USABLE_STAGE_STATUSES:
+                    errs.append(
+                        f"validate_failures: stage {meta.get('stage_id')} reported "
+                        f"status {status!r} in {name} under {pod_dir}"
+                    )
+                elif status == "TIMED_OUT":
+                    context.logger.log_warning(
+                        f"validate_failures: stage {meta.get('stage_id')} timed out "
+                        f"after {meta.get('actual_duration')}s (cap "
+                        f"{meta.get('timeout_configured')}s); in-flight sessions "
+                        f"were cancelled"
+                    )
+
+            name = "summary_session_lifecycle_metrics.json"
+            payload = read_member(pod_dir, name)
+            if payload is None:
+                payload = read_member(pod_dir, f"analysis/{name}")
+            if payload is None:
+                errs.append(f"validate_failures: missing {name} under {pod_dir}")
+                continue
+            try:
+                summary = json.loads(payload)
+                failed = int(summary["num_sessions_failed"])
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                errs.append(
+                    f"validate_failures: cannot parse num_sessions_failed from "
+                    f"{name} under {pod_dir}"
+                )
+                continue
+            if failed > 0:
+                errs.append(
+                    f"validate_failures: {failed} failed session(s) reported in "
                     f"{name} under {pod_dir}"
                 )
         return errs

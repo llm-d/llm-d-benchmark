@@ -21,8 +21,11 @@ inference_perf_capture_stream() {
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
     printf '%s\n' "${line}" | tee -a "${results_dir}/${log_name}"
-    if [[ -n "${final_stage_id}" && \
-        "${line}" == *"Stage ${final_stage_id} - run completed"* ]] && \
+    # Session-replay stages log "session-based run completed"; rate-based ones
+    # log "run completed". Matches metrics_embed.py's STAGE_MARKER_RE.
+    if [[ -n "${final_stage_id}" && ( \
+        "${line}" == *"Stage ${final_stage_id} - run completed"* || \
+        "${line}" == *"Stage ${final_stage_id} - session-based run completed"* ) ]] && \
         mkdir "${results_dir}/.traffic_complete.lock" 2>/dev/null; then
       marker_tmp="${results_dir}/.traffic_complete.yaml.$$"
       printf 'schema_version: "1"\nevent: "traffic_complete"\nexperiment_id: "%s"\nfinal_stage_id: %s\ncompleted_at: "%s"\n' \

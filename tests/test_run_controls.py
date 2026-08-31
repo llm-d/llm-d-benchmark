@@ -223,3 +223,49 @@ def test_delete_faulty_results_sweeps_discovery_named_dirs(tmp_path: Path):
     disc.mkdir(parents=True, exist_ok=True)
     DeployHarnessStep._delete_faulty_results(ctx, eid, 1)
     assert not disc.exists()
+
+
+# Any name: dispatch is keyed on the rendered load.type, not the profile name.
+_REPLAY = "some_traces-conc8.yaml"
+
+
+def _replay_run(ctx, status, failed=0, load_type="trace_session_replay"):
+    profiles = ctx.workload_profiles_dir() / "inference-perf"
+    profiles.mkdir(parents=True, exist_ok=True)
+    (profiles / _REPLAY).write_text(f"load:\n  type: {load_type}\n", encoding="utf-8")
+    pod_dir = ctx.run_results_dir() / "eid_1"
+    pod_dir.mkdir(parents=True, exist_ok=True)
+    (pod_dir / "stage_0_session_lifecycle_metrics.json").write_text(
+        json.dumps(
+            {
+                "stage_metadata": {
+                    "stage_id": 0,
+                    "status": status,
+                    "timeout_configured": 300.0,
+                    "actual_duration": 300.4,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pod_dir / "summary_session_lifecycle_metrics.json").write_text(
+        json.dumps({"num_sessions_failed": failed}), encoding="utf-8"
+    )
+    return DeployHarnessStep()._validate_failures(ctx, "eid", 1, _REPLAY)
+
+
+def test_session_replay_timed_out_is_usable(tmp_path: Path):
+    """A stage cut short by its cap still measured something; only real failures fail."""
+    ctx = _ctx(tmp_path)
+    assert _replay_run(ctx, "TIMED_OUT") == []
+    assert any("timed out" in w for w in ctx.logger.warnings)
+    assert not any("no result-failure check" in w for w in ctx.logger.warnings)
+
+
+def test_session_replay_rejects_failures(tmp_path: Path):
+    """Failed sessions, an unknown status, and a non-replay load type."""
+    assert "2 failed session" in _replay_run(_ctx(tmp_path / "a"), "TIMED_OUT", 2)[0]
+    assert "NEW" in _replay_run(_ctx(tmp_path / "b"), "SOME_NEW_STATUS")[0]
+    ctx = _ctx(tmp_path / "c")
+    assert _replay_run(ctx, "FAILED", load_type="constant") == []
+    assert any("no result-failure check" in w for w in ctx.logger.warnings)
