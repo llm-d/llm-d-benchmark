@@ -217,6 +217,8 @@ Mutable dataclass populated incrementally across phases. Shared by all steps and
 | `harness_profile` | `str or None` | Workload profile name |
 | `harness_output` | `str` | Output destination (default: `"local"`) |
 | `harness_parallelism` | `int` | Parallel harness pods (default: 1) |
+| `treatment_groups` | `list` | Treatments grouped for concurrent execution; empty = sequential |
+| `max_parallel_treatments` | `int` | Cap on treatments in flight (default: 1) |
 | `harness_wait_timeout` | `int` | Seconds to wait for completion (default: 3600) |
 | `harness_debug` | `bool` | Start pods with `sleep infinity` |
 | `harness_service_account` | `str or None` | Service account for harness pods |

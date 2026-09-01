@@ -48,6 +48,62 @@ Each setup treatment triggers a complete standup to run to teardown cycle.
 
 Run treatments (under `treatments` or `run`) are consumed by the run phase's profile renderer. Multiple run treatments execute against a single stood-up stack. Each treatment can optionally set `profile:` to select a different source file than the one resolved from the stack config or `--workload`, enabling a workload sweep across structurally different profiles without needing separate experiment files. Non-`name`/non-`profile` keys are dotted-path overrides applied to the rendered YAML.
 
+### Concurrent Treatment Groups
+
+By default every treatment runs sequentially, one after another, so each one
+measures its workload in isolation. A top-level `groups:` block instead declares
+which treatments run *together* against the same stack:
+
+```yaml
+max_parallel_treatments: 2      # inferred from the largest group when unset (cap 8)
+
+groups:
+  - name: baseline              # one member -> sequential, as before
+    treatments:
+      - name: solo
+        profile: profile_a.yaml
+
+  - name: combined              # both members run at the same time
+    treatments:
+      - name: first
+        profile: profile_a.yaml
+      - name: second
+        profile: profile_b.yaml
+        load.stages.0.concurrency_level: 32
+```
+
+Groups run in order; a group of one is exactly the sequential path, so an
+experiment file with a flat `treatments:` list and no `groups:` behaves as it
+always has. Combined with per-treatment `profile:`, a group puts several
+structurally different workloads on one endpoint at once.
+
+Each treatment keeps its own rendered profile, experiment ID, result set and pod
+label (`llmdbench.ai/treatment`), so waits and result collection never cross
+between concurrent members.
+
+Notes and limits:
+
+- **Concurrent members compete for the same stack.** Their per-treatment
+  numbers reflect the combined load rather than the workload alone. This is
+  logged as a warning and recorded in the benchmark report under
+  `scenario.load.metadata` (`treatment`, `treatment_group`, `concurrent_with`),
+  so the caveat travels with the data. Pair a group with single-member groups to
+  have a baseline to compare against.
+- **`reset_caches` fires once per group**, never between concurrent members: a
+  reset mid-group would wipe a cache a sibling is still warming. Members of a
+  multi-member group therefore do not each start cold.
+- **`treatment_stop_on_error` stops at a group boundary.** The current group
+  finishes first, since killing in-flight siblings would orphan pods and
+  half-collect results.
+- **`harness` cannot vary per treatment** -- it selects the image, entrypoint,
+  profiles directory and scripts ConfigMap for the whole run. A `harness:` key
+  inside a treatment is rejected.
+- A malformed `groups:` block is a hard error rather than a silent fall back to
+  sequential, which would report a combined run that never happened.
+- Members start back-to-back but reach `Running` subject to image pull and
+  scheduling, so the first seconds of the faster-starting member are
+  uncontended. Over runs of minutes that is noise.
+
 ### Matrix
 
 The total experiment matrix is `setup_treatments x run_treatments`. For example, 3 setup treatments and 4 run treatments produce 12 total runs.
@@ -71,6 +127,19 @@ experiment/
 
 Parse an experiment YAML file into a structured `ExperimentPlan`. Raises `FileNotFoundError` if the file does not exist and `ValueError` if the content is not a YAML mapping.
 
+### `read_treatment_groups(path) -> list[TreatmentGroup]`
+
+Read the top-level `groups` block. Returns `[]` when the file is
+unset/missing/unreadable or carries no `groups` key, so callers fall back to one
+implicit group per treatment. Unlike the other readers in this module it raises
+`ValueError` on a *present but malformed* block, on a treatment named in two
+groups, and on a per-treatment `harness:` key.
+
+### `groups_from_treatments(treatments) -> list[TreatmentGroup]`
+
+Wrap a flat treatment list as one single-member group each -- the sequential
+path, used when a file has no `groups` block.
+
 ### `dotted_to_nested(flat: dict) -> dict`
 
 Convert a flat dict with dotted keys to a nested dict. Raises `ValueError` on key conflicts (e.g. `a.b: 1` alongside `a.b.c: 2`).
@@ -87,6 +156,14 @@ Convert a flat dict with dotted keys to a nested dict. Raises `ValueError` on ke
 class SetupTreatment:
     name: str                              # Treatment identifier
     overrides: dict[str, Any]              # Nested config overrides (post-conversion)
+
+@dataclass
+class TreatmentGroup:
+    name: str                              # Group identifier
+    treatments: list[dict]                 # Members; >1 run concurrently
+
+    @property
+    def is_concurrent(self) -> bool:       # len(treatments) > 1
 
 @dataclass
 class ExperimentPlan:

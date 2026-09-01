@@ -131,7 +131,8 @@ Shared kubectl patterns for the run phase.
 
 ### Pod Waiting
 
-- `wait_for_pods_by_label(cmd, label, namespace, timeout, context) -> list[str]` -- Two-phase wait: (1) `condition=Ready=True` (pods running), (2) `condition=ready=False` (pods finished). Checks for crash states. Returns error list (empty on success).
+- `wait_for_pods_by_selector(cmd, selector, namespace, timeout, context) -> list[str]` -- Two-phase wait: (1) `condition=Ready=True` (pods running), (2) `condition=ready=False` (pods finished). Checks for crash states. Returns error list (empty on success). Takes a full selector so concurrent treatments each wait on -- and are judged by -- only their own pods.
+- `wait_for_pods_by_label(cmd, label, namespace, timeout, context) -> list[str]` -- Thin wrapper waiting on `app=<label>`.
 - `wait_for_pod(cmd, pod_name, namespace, timeout, context, poll_interval=15) -> str` -- Per-pod polling until terminal phase. Returns `"Succeeded"`, `"Failed"`, or an error description. Detects crash states.
 
 ### Result Collection
