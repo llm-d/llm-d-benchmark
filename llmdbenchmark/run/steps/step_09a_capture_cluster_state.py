@@ -51,7 +51,7 @@ def _kube_logs_with_retry(cmd, *args, attempts: int = 3, backoff: float = 2.0):
 def _prometheus_api_status(stdout: str) -> tuple[str, str]:
     """Return (status, error_detail) from a Prometheus/Thanos API response.
 
-    Status is "" for an absent or unparseable body, so callers fail closed.
+    Status is "" for an absent or unparsable body, so callers fail closed.
     """
     if not stdout or not stdout.strip():
         return "", ""
