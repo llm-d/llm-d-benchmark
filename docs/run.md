@@ -289,7 +289,7 @@ The additional environment variables to set are:
 | LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
 | LLMDBENCH_VLLM_STANDALONE_PREPROCESS         | `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py` |
 
-The variable `LMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
+The variable `LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
 
 The variable `LLMDBENCH_VLLM_COMMON_ENABLE_SLEEP_MODE` must be set to `true` in order to run sleep/wake benchmarks.
 
