@@ -118,7 +118,7 @@ def test_treatment_with_wait_errors_is_reported_failed(
 
     monkeypatch.setattr(
         deploy_harness,
-        "wait_for_pods_by_label",
+        "wait_for_pods_by_selector",
         lambda *_args, **_kwargs: ["harness pod failed"],
     )
     monkeypatch.setattr(
@@ -164,7 +164,7 @@ def _patch_run_helpers(monkeypatch: Any) -> None:
     """Stub out the wait/collect/delete helpers so the loop completes."""
     monkeypatch.setattr(
         deploy_harness,
-        "wait_for_pods_by_label",
+        "wait_for_pods_by_selector",
         lambda *_a, **_k: [],
     )
     monkeypatch.setattr(
@@ -263,7 +263,7 @@ def test_treatment_retries_then_succeeds(tmp_path: Path, monkeypatch: Any) -> No
         attempts["n"] += 1
         return ["wait failed"] if attempts["n"] == 1 else []
 
-    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_label", _wait)
+    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_selector", _wait)
     monkeypatch.setattr(
         DeployHarnessStep, "_collect_treatment_results_discovery", lambda *_a, **_k: []
     )
@@ -293,7 +293,7 @@ def test_treatment_exhausts_attempts_records_failure(
     context.experiment_treatments = [{"name": "t0", "overrides": {}}]
 
     monkeypatch.setattr(
-        deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: ["wait failed"]
+        deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: ["wait failed"]
     )
     monkeypatch.setattr(
         DeployHarnessStep, "_collect_treatment_results_discovery", lambda *_a, **_k: []
@@ -331,7 +331,7 @@ def test_stop_on_error_aborts_remaining_treatments(
     # Fail the first treatment's wait; it has no retries (default 1), so
     # stop_on_error should abort before the second treatment runs.
     monkeypatch.setattr(
-        deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: ["wait failed"]
+        deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: ["wait failed"]
     )
     monkeypatch.setattr(
         DeployHarnessStep,
@@ -368,7 +368,9 @@ def test_validate_failures_fails_clean_run(tmp_path: Path, monkeypatch: Any) -> 
         )
         return []
 
-    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: []
+    )
     monkeypatch.setattr(
         DeployHarnessStep,
         "_collect_treatment_results_discovery",
@@ -402,7 +404,9 @@ def test_validate_failures_falls_back_for_non_otel_workload(
         )
         return []
 
-    monkeypatch.setattr(deploy_harness, "wait_for_pods_by_label", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: []
+    )
     monkeypatch.setattr(
         DeployHarnessStep,
         "_collect_treatment_results_discovery",

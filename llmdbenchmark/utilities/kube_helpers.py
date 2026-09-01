@@ -207,12 +207,26 @@ def wait_for_pods_by_label(
     timeout: int,
     context: ExecutionContext,
 ) -> list[str]:
-    """Wait for pods to start and then complete using label-based kubectl wait.
+    """Wait for all pods carrying ``app=<label>``. See wait_for_pods_by_selector."""
+    return wait_for_pods_by_selector(cmd, f"app={label}", namespace, timeout, context)
+
+
+def wait_for_pods_by_selector(
+    cmd,
+    selector: str,
+    namespace: str,
+    timeout: int,
+    context: ExecutionContext,
+) -> list[str]:
+    """Wait for pods matching ``selector`` to start and then complete.
 
     Uses the same two-phase approach as the original bash:
 
     1. ``kubectl wait --for=condition=Ready=True`` -- pods are running
     2. ``kubectl wait --for=condition=ready=False`` -- pods have finished
+
+    Takes a full selector rather than a bare label value so concurrent
+    treatments each wait on -- and are judged by -- only their own pods.
 
     Returns a list of error strings (empty on success).
     """
@@ -231,7 +245,7 @@ def wait_for_pods_by_label(
             "get",
             "pods",
             "-l",
-            f"app={label}",
+            selector,
             "--namespace",
             namespace,
             "-o",
@@ -241,7 +255,7 @@ def wait_for_pods_by_label(
         return r.stdout.split() if r.success else []
 
     context.logger.log_info(
-        f"Waiting for pods (label=app={label}) to start (timeout={timeout}s)..."
+        f"Waiting for pods (selector={selector}) to start (timeout={timeout}s)..."
     )
     ARRIVED = ("Running", "Succeeded", "Failed")
     TERMINAL = ("Succeeded", "Failed")
@@ -262,7 +276,7 @@ def wait_for_pods_by_label(
         return errors
     context.logger.log_info("All pods are running")
     context.logger.log_info(
-        f"Waiting for pods (label=app={label}) to complete (timeout={timeout}s)..."
+        f"Waiting for pods (selector={selector}) to complete (timeout={timeout}s)..."
     )
     done = False
     while waited < timeout:
@@ -281,7 +295,7 @@ def wait_for_pods_by_label(
         "get",
         "pods",
         "-l",
-        f"app={label}",
+        selector,
         "--namespace",
         namespace,
         "-o",

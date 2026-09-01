@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -83,6 +84,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     # Experiment IDs generated in this run (step_06 writes, step_08 reads)
     experiment_ids: list[str] = field(default_factory=list)
+    _experiment_ids_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     # Run-phase configuration (set by _execute_run)
     harness_name: str | None = None
@@ -129,6 +133,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # pod state. Workload-specific (see _FAILURE_VALIDATORS in step_07); an
     # unrecognized workload warns and falls back to pod state.
     validate_failures: bool = False
+    # Empty = one group per treatment. A runtime concern like dry_run, so it
+    # never reaches config.yaml.
+    treatment_groups: list[Any] = field(default_factory=list)
+    max_parallel_treatments: int = 1
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
     analyze_locally: bool = False
@@ -209,6 +217,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
             self._restart_budget = RestartBudget(self.pod_restart_budget)
         return self._restart_budget
+
+    def record_experiment_id(self, experiment_id: str) -> None:
+        """Append a successful treatment's experiment ID under the lock."""
+        with self._experiment_ids_lock:
+            self.experiment_ids.append(experiment_id)
 
     def rebuild_cmd(self) -> CommandExecutor:
         """Create or recreate the shared CommandExecutor from current context fields."""

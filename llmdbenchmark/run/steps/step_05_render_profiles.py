@@ -9,6 +9,10 @@ import yaml
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.experiment.parser import (
+    groups_from_treatments,
+    read_treatment_groups,
+)
 from llmdbenchmark.utilities.profile_renderer import (
     build_env_map,
     render_profile_file,
@@ -247,6 +251,8 @@ class RenderProfilesStep(Step):
 
             # Store treatments in context for step 06
             context.experiment_treatments = treatments
+            if not getattr(context, "treatment_groups", None):
+                context.treatment_groups = groups_from_treatments(treatments)
 
         if errors:
             return StepResult(
@@ -362,11 +368,20 @@ class RenderProfilesStep(Step):
         Returns [] for no treatments, or a list of {name, overrides} dicts.
         A top-level ``constants`` key in the experiments file is merged
         into every treatment's overrides before treatment-specific values.
+
+        A top-level ``groups`` block is flattened here, in group order, so every
+        downstream step keeps consuming one flat treatment list; each treatment
+        carries its ``group`` name for the pod label and the benchmark report.
         """
         treatments: list[dict] = []
 
         # --experiments file takes precedence
         if context.experiment_treatments_file:
+            groups = read_treatment_groups(context.experiment_treatments_file)
+            if groups:
+                context.treatment_groups = groups
+                return [t for group in groups for t in group.treatments]
+
             exp_path = Path(context.experiment_treatments_file)
             if exp_path.exists():
                 with open(exp_path, encoding="utf-8") as f:
