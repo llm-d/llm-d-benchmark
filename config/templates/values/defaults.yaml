@@ -1879,6 +1879,7 @@ harness:
   resources:
     cpu: 16
     memory: 32Gi
+    memoryLimit: 128Gi
   nodeSelector: {}
   tolerations: []
   output: local

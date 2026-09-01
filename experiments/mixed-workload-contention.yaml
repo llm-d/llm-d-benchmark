@@ -22,6 +22,9 @@
 #     --experiments experiments/mixed-workload-contention.yaml \
 #     --monitoring -g METRICS_COLLECTION_INTERVAL \
 #     --analyze
+#
+# Members each hold their own dataset, so a wide group may need
+# `--set harness.resources.memoryLimit=<N>Gi`.
 
 # Cleared once per group, never between concurrent members: a reset mid-group
 # would wipe a cache a sibling is still warming.

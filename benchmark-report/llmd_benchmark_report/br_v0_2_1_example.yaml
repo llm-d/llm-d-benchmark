@@ -791,8 +791,12 @@ scenario:
   load:
     metadata:
       cfg_id: a4e18f265cc33786a42b8a3f7ac2edcb
+      concurrent_with:
+      - agentic_mixed
       description: Optional description of workload
       schema_version: 0.0.1
+      treatment: weka_mixed
+      treatment_group: mixed
     native:
       config:
         api:

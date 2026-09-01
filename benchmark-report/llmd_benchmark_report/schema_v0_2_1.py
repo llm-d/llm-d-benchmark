@@ -46,9 +46,11 @@ from .schema_v0_2 import (
     ComponentObservability as ComponentObservabilityV02,
     Observability as ObservabilityV02,
     RequestPerformance as RequestPerformanceV02,
+    Load as LoadV02,
+    LoadMetadata as LoadMetadataV02,
     Results as ResultsV02,
     Run,
-    Scenario,
+    Scenario as ScenarioV02,
     Statistics,
     TimeSeriesData,
     TimeSeriesResourceMetrics as TimeSeriesResourceMetricsV02,
@@ -272,6 +274,41 @@ class TimeSeriesResourceMetrics(TimeSeriesResourceMetricsV02, UnitsValidatedMode
 # Each class redeclares only the field whose type changed; all other fields are
 # inherited from the v0.2 definition.
 ###############################################################################
+
+
+class LoadMetadata(LoadMetadataV02):
+    """Workload metadata (v0.2.1 treatment grouping)."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    treatment: str | None = None
+    """Name of the experiment treatment that produced this result set."""
+    treatment_group: str | None = None
+    """Group the treatment ran in; members of a group run concurrently."""
+    concurrent_with: list[str] | None = None
+    """Treatments that ran at the same time, against the same endpoint.
+
+    Non-empty means the metrics here reflect the combined load of those
+    treatments rather than this workload in isolation.
+    """
+
+
+class Load(LoadV02):
+    """Experimental workload details (v0.2.1 metadata)."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    metadata: LoadMetadata
+    """Workload metadata."""
+
+
+class Scenario(ScenarioV02):
+    """Stack configuration and workload details (v0.2.1 load)."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    load: Load | None = None
+    """Experimental workload details."""
 
 
 class AggregateRequestPerformance(AggregateRequestPerformanceV02):

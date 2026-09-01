@@ -85,7 +85,7 @@ A `session_performance` report is generated alongside the standard `request_perf
 
 ## v0.2.1 Format Description
 
-Version `0.2.1` is an additive minor revision of `0.2` that adds optional multi-modal payload statistics for image, video, and audio workloads. Every field introduced is optional, so any `0.2` report validates unchanged under `0.2.1` (enforced by `tests/test_benchmark_report_v0_2_1_compat.py`).
+Version `0.2.1` is an additive minor revision of `0.2` that adds optional multi-modal payload statistics for image, video, and audio workloads, plus optional treatment-grouping metadata on `scenario.load.metadata` (`treatment`, `treatment_group`, `concurrent_with`). `concurrent_with` names the treatments that ran at the same time against the same endpoint: when it is non-empty the metrics reflect contention from those workloads rather than this one in isolation. Every field introduced is optional, so any `0.2` report validates unchanged under `0.2.1` (enforced by `tests/test_benchmark_report_v0_2_1_compat.py`).
 
 See [`br_v0_2_1_example.yaml`](llmd_benchmark_report/br_v0_2_1_example.yaml) for a dummy example report, and [`br_v0_2_1_json_schema.json`](llmd_benchmark_report/br_v0_2_1_json_schema.json) for its [JSON Schema](https://json-schema.org/draft/2020-12). All other fields and sections are identical to `0.2`.
 

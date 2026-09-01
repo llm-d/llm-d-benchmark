@@ -25,6 +25,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.experiment.parser import (
@@ -42,6 +43,11 @@ from llmdbenchmark.run.steps.step_07_deploy_harness import (
 # Kubernetes label-value grammar.
 LABEL_VALUE = re.compile(r"[a-z0-9A-Z]([-_.a-z0-9A-Z]*[a-z0-9A-Z])?")
 
+#: Real inference-perf stage output, so the converters run on valid input.
+FIXTURE = (
+    Path(__file__).parent / "fixtures" / "inference_perf_stage_lifecycle_metrics.json"
+)
+
 GROUPED = """\
 max_parallel_treatments: 2
 groups:
@@ -57,6 +63,13 @@ groups:
         profile: profile_b.yaml
         load.stages.0.concurrent_sessions: 32
 """
+
+
+def session_results(tmp_path: Path) -> Path:
+    """Minimum session-lifecycle input: the converter reads none of its fields."""
+    path = tmp_path / "stage_0_session_lifecycle_metrics.json"
+    path.write_text("{}", encoding="utf-8")
+    return path
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -480,3 +493,151 @@ class TestReportMetadata:
         )
 
         assert probe.stdout.split("\n") == [name, group, siblings]
+
+    def test_grouping_belongs_to_v0_2_1_only(self) -> None:
+        """v0.2 forbids these fields, so a populator on the shared v0.2 path
+        makes every report fail validation -- which is how it reached a cluster
+        the first time."""
+        from llmd_benchmark_report.schema_v0_2 import LoadMetadata as LoadMetadataV02
+        from llmd_benchmark_report.schema_v0_2_1 import LoadMetadata
+
+        grouping = {
+            "treatment": "first",
+            "treatment_group": "combined",
+            "concurrent_with": ["second"],
+        }
+
+        accepted = LoadMetadata(**grouping)
+        assert accepted.treatment == "first"
+        assert accepted.concurrent_with == ["second"]
+
+        with pytest.raises(ValidationError):
+            LoadMetadataV02(**grouping)
+
+    def test_v0_2_converter_never_emits_the_grouping(self, monkeypatch) -> None:
+        """The v0.2 populator must stay clean of the v0.2.1-only fields."""
+        import inspect
+
+        from llmd_benchmark_report import native_to_br0_2
+
+        source = inspect.getsource(native_to_br0_2._populate_load)
+
+        assert "LLMDBENCH_TREATMENT" not in source
+
+    @pytest.mark.parametrize(
+        "environment, expected",
+        [
+            (
+                {
+                    "LLMDBENCH_TREATMENT_NAME": "first",
+                    "LLMDBENCH_TREATMENT_GROUP": "combined",
+                    "LLMDBENCH_TREATMENT_CONCURRENT_WITH": "second, third",
+                },
+                {
+                    "treatment": "first",
+                    "treatment_group": "combined",
+                    "concurrent_with": ["second", "third"],
+                },
+            ),
+            ({}, {}),
+        ],
+    )
+    def test_v0_2_1_converter_reads_the_environment(
+        self, monkeypatch, environment, expected
+    ) -> None:
+        for var in (
+            "LLMDBENCH_TREATMENT_NAME",
+            "LLMDBENCH_TREATMENT_GROUP",
+            "LLMDBENCH_TREATMENT_CONCURRENT_WITH",
+        ):
+            monkeypatch.delenv(var, raising=False)
+        for var, value in environment.items():
+            monkeypatch.setenv(var, value)
+
+        from llmd_benchmark_report import native_to_br0_2_1
+
+        assert native_to_br0_2_1._treatment_metadata() == expected
+
+    def test_session_reports_are_v0_2_1_and_carry_the_grouping(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        """Trace-replay workloads produce only a session report.
+
+        The v0.2.1 module re-exported the v0.2 session converter, so ``-b 0.2.1``
+        silently produced a v0.2 report that cannot hold the grouping at all.
+        """
+        monkeypatch.setenv("LLMDBENCH_TREATMENT_NAME", "first")
+        monkeypatch.setenv("LLMDBENCH_TREATMENT_GROUP", "combined")
+        monkeypatch.setenv("LLMDBENCH_TREATMENT_CONCURRENT_WITH", "second")
+
+        from llmd_benchmark_report import native_to_br0_2, native_to_br0_2_1
+
+        assert (
+            native_to_br0_2_1.import_inference_perf_session
+            is not native_to_br0_2.import_inference_perf_session
+        )
+
+        report = native_to_br0_2_1.import_inference_perf_session(
+            str(session_results(tmp_path))
+        )
+        metadata = report.scenario.load.metadata
+
+        assert report.version == "0.2.1"
+        assert metadata.treatment == "first"
+        assert metadata.treatment_group == "combined"
+        assert metadata.concurrent_with == ["second"]
+
+    def test_v0_2_session_reports_omit_the_grouping(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("LLMDBENCH_TREATMENT_NAME", "first")
+
+        from llmd_benchmark_report import native_to_br0_2
+
+        report = native_to_br0_2.import_inference_perf_session(
+            str(session_results(tmp_path))
+        )
+
+        assert report.version == "0.2"
+        assert report.scenario.load.metadata.model_dump().get("treatment") is None
+
+
+class TestHarnessMemory:
+    """A group of concurrent treatments needs more memory than one pod.
+
+    The limit is raised without raising the request, so the ceiling can grow
+    without shrinking the set of nodes a harness pod can schedule onto.
+    """
+
+    @staticmethod
+    def _memory(resources: dict) -> tuple[str, str]:
+        container = render_pod(
+            harness={"resources": resources}, treatment_label_value="t-a1"
+        )["spec"]["containers"][0]
+        return (
+            container["resources"]["requests"]["memory"],
+            container["resources"]["limits"]["memory"],
+        )
+
+    def test_limit_exceeds_request_by_default(self) -> None:
+        import yaml
+
+        defaults = yaml.safe_load(
+            Path("config/templates/values/defaults.yaml").read_text(encoding="utf-8")
+        )
+
+        request, limit = self._memory(defaults["harness"]["resources"])
+
+        assert request != limit
+        assert limit == defaults["harness"]["resources"]["memoryLimit"]
+
+    @pytest.mark.parametrize(
+        "resources, expected",
+        [
+            # Only `memory` set: keeps the pre-split behaviour.
+            ({"cpu": 16, "memory": "8Gi"}, ("8Gi", "8Gi")),
+            ({"cpu": 16, "memory": "4Gi", "memoryLimit": "16Gi"}, ("4Gi", "16Gi")),
+        ],
+    )
+    def test_request_and_limit(self, resources, expected) -> None:
+        assert self._memory(resources) == expected

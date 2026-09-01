@@ -89,6 +89,13 @@ Notes and limits:
   `scenario.load.metadata` (`treatment`, `treatment_group`, `concurrent_with`),
   so the caveat travels with the data. Pair a group with single-member groups to
   have a baseline to compare against.
+- **A group needs more harness memory than a single treatment**, since each
+  member holds its own dataset. `harness.resources.memoryLimit` gives headroom
+  above the `memory` request for exactly this; the default covers a small group.
+  A wider one, or members replaying large traces, may need
+  `--set harness.resources.memoryLimit=<N>Gi` (or `setup.constants` under the
+  `experiment` subcommand -- a top-level treatment override cannot set it, since
+  those apply to the rendered workload profile rather than the pod spec).
 - **`reset_caches` fires once per group**, never between concurrent members: a
   reset mid-group would wipe a cache a sibling is still warming. Members of a
   multi-member group therefore do not each start cold.
