@@ -33,7 +33,7 @@ spec:
     resources:
       limits:
         cpu: "{{ harness.resources.cpu }}"
-        memory: {{ harness.resources.memory }}
+        memory: {{ harness.resources.memoryLimit | default(harness.resources.memory, true) }}
       requests:
         cpu: "{{ harness.resources.cpu }}"
         memory: {{ harness.resources.memory }}

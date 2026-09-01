@@ -27,6 +27,14 @@ for result in $(find $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR -maxdepth 1 -name 'st
     echo "benchmark-report returned with error $rc converting: $result"
     export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$rc
   fi
+
+  echo
+  echo "Converting $result_fname to Benchmark Report v0.2.1"
+  benchmark-report $result -b 0.2.1 -w inference-perf $session_flag $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report_v0.2.1,_$result_fname.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+  rc=$?
+  if [[ $rc -ne 0 ]]; then
+    echo "benchmark-report returned with error $rc converting: $result"
+  fi
 done
 
 if [[ $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
