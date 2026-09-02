@@ -435,6 +435,24 @@ def _populate_run(ev_dict: dict) -> dict:
     return br_dict
 
 
+def _prompt_stat(results: dict, group: str, stat: str) -> Any:
+    """Input-token statistic from a harness result group.
+
+    ``prompt_len`` is the pre-unification name for ``prompt_tokens``; newer
+    harnesses emit only the latter, and a workload with no configured input
+    distribution has nothing else to fall back on -- the report then fails
+    validation on the missing value.
+
+    ``prompt_tokens`` wins where both exist, matching the harness: it is what the
+    server counted, so it includes overhead client-side tokenization misses.
+    """
+    return get_nested(
+        results,
+        [group, "prompt_tokens", stat],
+        get_nested(results, [group, "prompt_len", stat]),
+    )
+
+
 def _populate_load() -> dict:
     """Create a benchmark report with scenario.load from environment variables.
 
@@ -1874,13 +1892,8 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             "value": get_nested(
                                 config,
                                 ["data", "input_distribution", "mean"],
-                                get_nested(
-                                    results,
-                                    ["successes", "prompt_len", "mean"],
-                                    get_nested(
-                                        results, ["failures", "prompt_len", "mean"]
-                                    ),
-                                ),
+                                _prompt_stat(results, "successes", "mean")
+                                or _prompt_stat(results, "failures", "mean"),
                             ),
                             "std_dev": get_nested(
                                 config, ["data", "input_distribution", "std"]
@@ -1888,12 +1901,12 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             "min": get_nested(
                                 config,
                                 ["data", "input_distribution", "min"],
-                                get_nested(results, ["successes", "prompt_len", "min"]),
+                                _prompt_stat(results, "successes", "min"),
                             ),
                             "max": get_nested(
                                 config,
                                 ["data", "input_distribution", "max"],
-                                get_nested(results, ["successes", "prompt_len", "max"]),
+                                _prompt_stat(results, "successes", "max"),
                             ),
                         },
                         "output_seq_len": {
@@ -1946,20 +1959,20 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                 "failures": failures,
                 "input_length": {
                     "units": Units.COUNT,
-                    "mean": get_nested(results, ["successes", "prompt_len", "mean"]),
-                    "min": get_nested(results, ["successes", "prompt_len", "min"]),
-                    "p0p1": get_nested(results, ["successes", "prompt_len", "p0.1"]),
-                    "p1": get_nested(results, ["successes", "prompt_len", "p1"]),
-                    "p5": get_nested(results, ["successes", "prompt_len", "p5"]),
-                    "p10": get_nested(results, ["successes", "prompt_len", "p10"]),
-                    "p25": get_nested(results, ["successes", "prompt_len", "p25"]),
-                    "p50": get_nested(results, ["successes", "prompt_len", "median"]),
-                    "p75": get_nested(results, ["successes", "prompt_len", "p75"]),
-                    "p90": get_nested(results, ["successes", "prompt_len", "p90"]),
-                    "p95": get_nested(results, ["successes", "prompt_len", "p95"]),
-                    "p99": get_nested(results, ["successes", "prompt_len", "p99"]),
-                    "p99p9": get_nested(results, ["successes", "prompt_len", "p99.9"]),
-                    "max": get_nested(results, ["successes", "prompt_len", "max"]),
+                    "mean": _prompt_stat(results, "successes", "mean"),
+                    "min": _prompt_stat(results, "successes", "min"),
+                    "p0p1": _prompt_stat(results, "successes", "p0.1"),
+                    "p1": _prompt_stat(results, "successes", "p1"),
+                    "p5": _prompt_stat(results, "successes", "p5"),
+                    "p10": _prompt_stat(results, "successes", "p10"),
+                    "p25": _prompt_stat(results, "successes", "p25"),
+                    "p50": _prompt_stat(results, "successes", "median"),
+                    "p75": _prompt_stat(results, "successes", "p75"),
+                    "p90": _prompt_stat(results, "successes", "p90"),
+                    "p95": _prompt_stat(results, "successes", "p95"),
+                    "p99": _prompt_stat(results, "successes", "p99"),
+                    "p99p9": _prompt_stat(results, "successes", "p99.9"),
+                    "max": _prompt_stat(results, "successes", "max"),
                 },
                 "output_length": {
                     "units": Units.COUNT,
