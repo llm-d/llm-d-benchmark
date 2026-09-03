@@ -17,7 +17,10 @@ from llmdbenchmark.kustomize.readme_parser import (
     DeployMode,
     parse_guide_readme,
 )
-from llmdbenchmark.kustomize.variable_resolver import GuideVariableResolver
+from llmdbenchmark.kustomize.variable_resolver import (
+    DEFAULT_ACCEL_BACKEND,
+    GuideVariableResolver,
+)
 
 
 class KustomizeDeployStep(Step):
@@ -71,7 +74,7 @@ class KustomizeDeployStep(Step):
         # to v0 (the published llm-d-router-* chart version) when the
         # scenario doesn't pin one.
         router_chart_version = kust_config.get("routerChartVersion", "") or "v0"
-        accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
+        accel_backend = GuideVariableResolver.effective_backend(kust_config)
         monitoring = kust_config.get("monitoring", False)
         overlay_path = kust_config.get("overlayPath", "")
         patches = kust_config.get("patches", [])
@@ -741,7 +744,9 @@ class KustomizeDeployStep(Step):
             "harness_namespace": harness_ns,
             "deploy_methods": ",".join(context.deployed_methods),
             "guide_name": guide_name,
-            "accelerator_backend": kust_cfg.get("acceleratorBackend", "gpu/vllm"),
+            "accelerator_backend": kust_cfg.get(
+                "acceleratorBackend", DEFAULT_ACCEL_BACKEND
+            ),
             "model_name": model_cfg.get("name", ""),
             "gaie_version": kust_cfg.get("gaieVersion", ""),
         }

@@ -9,9 +9,35 @@ from pathlib import Path
 _VAR_RE = re.compile(r"\$\{(\w+)\}")
 _RELATIVE_GUIDE_PATH = re.compile(r"(?<!\S)(guides/\S+)")
 
+# The overlay selector the guide README ships by default. Every consumer that
+# needs a fallback backend must reference this rather than re-typing the
+# literal, so the default lives in exactly one place.
+DEFAULT_ACCEL_BACKEND = "gpu/vllm"
+
 
 class GuideVariableResolver:
     """Replace ``${VAR}`` placeholders and resolve relative ``guides/...`` paths."""
+
+    @staticmethod
+    def effective_backend(kust_config: dict) -> str:
+        """Return the modelserver overlay selector for a ``kustomize`` config.
+
+        This is the single source of truth for how the connector is folded
+        into the backend selector; both the standup deploy step and the
+        teardown step call it so they can never drift.
+
+        The guide README's modelserver apply is
+        ``modelserver/gpu/vllm/${INFRA_PROVIDER}``, which :meth:`resolve`
+        rewrites to ``modelserver/{acceleratorBackend}/${INFRA_PROVIDER}``.
+        ``acceleratorBackend`` alone is ``{accelerator}/{backend}`` (e.g.
+        ``amd/vllm``). To route the deploy at a connector-specific overlay such
+        as ``amd/vllm/moriio/<infra>`` (and thus its image override) instead of
+        the vanilla base, ``kustomize.connector`` is spliced between backend and
+        infra provider here.
+        """
+        backend = kust_config.get("acceleratorBackend", DEFAULT_ACCEL_BACKEND)
+        connector = str(kust_config.get("connector", "") or "").strip().strip("/")
+        return f"{backend}/{connector}" if connector else backend
 
     def __init__(
         self,
@@ -19,7 +45,7 @@ class GuideVariableResolver:
         namespace: str,
         gaie_version: str,
         repo_path: str,
-        accelerator_backend: str = "gpu/vllm",
+        accelerator_backend: str = DEFAULT_ACCEL_BACKEND,
         variable_overrides: dict[str, str] | None = None,
         readme_variables: dict[str, str] | None = None,
         router_chart_version: str = "v0",
@@ -58,6 +84,11 @@ class GuideVariableResolver:
         # REPO_ROOT below.
         if variable_overrides:
             self._variables.update(variable_overrides)
+
+    @property
+    def accelerator_backend(self) -> str:
+        """The effective overlay selector this resolver rewrites paths to."""
+        return self._accelerator_backend
 
     def resolve(self, command: str) -> str:
         """Return *command* with all placeholders resolved and paths absolutised."""
@@ -108,8 +139,9 @@ class GuideVariableResolver:
 
     def _apply_accelerator_backend(self, text: str) -> str:
         """Swap the default ``gpu/vllm`` backend for the configured one."""
-        if self._accelerator_backend == "gpu/vllm":
+        if self._accelerator_backend == DEFAULT_ACCEL_BACKEND:
             return text
         return text.replace(
-            "modelserver/gpu/vllm", f"modelserver/{self._accelerator_backend}"
+            f"modelserver/{DEFAULT_ACCEL_BACKEND}",
+            f"modelserver/{self._accelerator_backend}",
         )

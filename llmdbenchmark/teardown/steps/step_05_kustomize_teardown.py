@@ -55,7 +55,10 @@ class KustomizeTeardownStep(Step):
         # teardown commands reference the same chart, so we need to
         # resolve the same variable as during deploy.
         router_chart_version = kust_config.get("routerChartVersion", "") or "v0"
-        accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
+        # Fold the connector into the overlay selector so teardown resolves the
+        # same modelserver path the deploy step used. Shared derivation — deploy
+        # and teardown cannot drift.
+        accel_backend = GuideVariableResolver.effective_backend(kust_config)
         monitoring = kust_config.get("monitoring", False)
 
         if not guide_name or not repo_path:
