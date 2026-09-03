@@ -272,17 +272,50 @@ class FMADeployStep(Step):
         """The fma.launcherNodeSelection block, or {} (guards an explicit null)."""
         return (plan_config.get("fma", {}) or {}).get("launcherNodeSelection", {}) or {}
 
+    @staticmethod
+    def _node_pinning(plan_config: dict) -> dict:
+        """The shared `nodePinning` block, or {} when disabled/absent.
+
+        Lets one top-level block drive FMA + EPP placement so a scenario does
+        not repeat the node name, label, and tolerations. The per-scenario
+        `fma.launcherNodeSelection` / `fma.tolerations` keys still win.
+        """
+        pinning = plan_config.get("nodePinning") or {}
+        return pinning if pinning.get("enabled", False) else {}
+
     @classmethod
     def _launcher_node_selection_enabled(cls, plan_config: dict) -> bool:
-        """True when fma.launcherNodeSelection.enabled is set for this stack."""
-        return bool(cls._launcher_node_selection(plan_config).get("enabled", False))
+        """True when either the per-scenario block or `nodePinning` opts in."""
+        if cls._launcher_node_selection(plan_config).get("enabled", False):
+            return True
+        return bool(cls._node_pinning(plan_config))
 
     @classmethod
     def _node_label(cls, plan_config: dict) -> str:
         """The node label key to use. `or` guards an explicit null/empty value
         (the .get default only applies to a MISSING key, not an explicit null)."""
         return (
-            cls._launcher_node_selection(plan_config).get("nodeLabel") or "fma-hotstart"
+            cls._launcher_node_selection(plan_config).get("nodeLabel")
+            or cls._node_pinning(plan_config).get("nodeLabel")
+            or "fma-hotstart"
+        )
+
+    @classmethod
+    def _node_label_value(cls, plan_config: dict) -> str:
+        """The node label value to match. Defaults to "true" for back-compat."""
+        return str(
+            cls._launcher_node_selection(plan_config).get("nodeLabelValue")
+            or cls._node_pinning(plan_config).get("nodeLabelValue")
+            or "true"
+        )
+
+    @classmethod
+    def _target_node_name(cls, plan_config: dict) -> str:
+        """Explicit node to pin to, or "" to auto-select one."""
+        return str(
+            cls._launcher_node_selection(plan_config).get("nodeName")
+            or cls._node_pinning(plan_config).get("nodeName")
+            or ""
         )
 
     def _select_and_label_gpu_node(
@@ -316,6 +349,17 @@ class FMADeployStep(Step):
         ``None`` if no node qualified (fatal error appended, standup fails).
         """
         node_label = self._node_label(plan_config)
+        target_node = self._target_node_name(plan_config)
+
+        # Explicit node: skip candidate scanning entirely. Required for a
+        # tainted node -- the scan below ranks on free GPU/CPU and ignores
+        # taints, so it can pick a node whose pods never schedule. The node is
+        # assumed to be pre-labeled (by a cluster admin), so nothing is
+        # relabeled here; we only read its free GPU count for sizing.
+        if target_node:
+            return self._free_gpus_on_node(
+                context, cmd, target_node, node_label, plan_config, errors
+            )
 
         # In dry-run, `kube` short-circuits to empty stdout; force the read so
         # node selection can actually inspect the cluster. Skip entirely if the
@@ -415,11 +459,12 @@ class FMADeployStep(Step):
         # labeled. `<key>-` removes the key; `-l <key>=true` restricts to nodes
         # that have it (no-op when none). Not fatal -- labeling the chosen node
         # below is what matters.
+        node_label_value = self._node_label_value(plan_config)
         clear_result = cmd.kube(
             "label",
             "nodes",
             "-l",
-            f"{node_label}=true",
+            f"{node_label}={node_label_value}",
             f"{node_label}-",
             check=False,
         )
@@ -433,14 +478,14 @@ class FMADeployStep(Step):
             "label",
             "node",
             node_name,
-            f"{node_label}=true",
+            f"{node_label}={node_label_value}",
             "--overwrite",
             check=False,
         )
         if not label_result.success:
             errors.append(
-                f"Failed to label GPU node {node_name} with {node_label}=true: "
-                f"{label_result.stderr}"
+                f"Failed to label GPU node {node_name} with "
+                f"{node_label}={node_label_value}: {label_result.stderr}"
             )
             return None
 
@@ -448,9 +493,82 @@ class FMADeployStep(Step):
             f"    | Selected {'dedicated ' if is_dedicated else ''}GPU node "
             f"{node_name} ({gpu_count} free {product} GPU(s); {free_cpu_m}m free "
             f"CPU{'' if is_dedicated else ', shared with other GPU workloads'}) "
-            f"for FMA launchers; labeled {node_label}=true"
+            f"for FMA launchers; labeled {node_label}={node_label_value}"
         )
         return gpu_count
+
+    def _free_gpus_on_node(
+        self,
+        context: ExecutionContext,
+        cmd: CommandExecutor,
+        node_name: str,
+        node_label: str,
+        plan_config: dict,
+        errors: list[str],
+    ) -> int | None:
+        """Free GPU count on an explicitly requested node, or None on failure.
+
+        Validates the node exists, carries the expected selection label, and
+        has free GPUs. Does NOT label or otherwise mutate the node -- an
+        explicitly named node is assumed to be prepared (labeled, tainted) by
+        whoever owns the cluster.
+        """
+        expected_value = self._node_label_value(plan_config)
+        result = cmd.kube(
+            "get", "node", node_name, "-o", "json", check=False, force=True
+        )
+        if not result.success or not (result.stdout or "").strip():
+            errors.append(
+                f"fma.launcherNodeSelection.nodeName='{node_name}' was requested "
+                f"but reading that node failed: "
+                f"{result.stderr or 'no output from get node'}"
+            )
+            return None
+        try:
+            node = json.loads(result.stdout)
+        except (ValueError, json.JSONDecodeError) as exc:
+            errors.append(f"Failed to parse `get node {node_name} -o json`: {exc}")
+            return None
+
+        labels = (node.get("metadata") or {}).get("labels") or {}
+        actual = labels.get(node_label)
+        if actual != expected_value:
+            errors.append(
+                f"Node '{node_name}' does not carry the expected selection label "
+                f"{node_label}={expected_value} (found "
+                f"{node_label}={actual if actual is not None else '<absent>'}). "
+                "The rendered launchers/requester select on that label, so they "
+                "would never schedule. Ask whoever owns the node to apply it, or "
+                "align fma.launcherNodeSelection.nodeLabel/nodeLabelValue."
+            )
+            return None
+
+        committed = self._committed_resources_by_node(cmd, errors)
+        if committed is None:
+            return None
+        allocatable = (node.get("status") or {}).get("allocatable") or {}
+        alloc_gpu = int(allocatable.get("nvidia.com/gpu") or 0)
+        free_gpu = alloc_gpu - committed.get(node_name, {}).get("gpu", 0)
+        if free_gpu <= 0:
+            errors.append(
+                f"Node '{node_name}' has no free GPUs ({alloc_gpu} allocatable, "
+                f"{committed.get(node_name, {}).get('gpu', 0)} already requested)."
+            )
+            return None
+
+        taints = (node.get("spec") or {}).get("taints") or []
+        if taints and not (plan_config.get("fma", {}) or {}).get("tolerations"):
+            context.logger.log_warning(
+                f"    | Node '{node_name}' carries {len(taints)} taint(s) but "
+                "fma.tolerations is empty -- launchers/requester will stay "
+                "Pending. Set fma.tolerations to match the node's taints."
+            )
+
+        context.logger.log_info(
+            f"    | Using requested GPU node {node_name} ({free_gpu} free "
+            f"GPU(s); label {node_label}={expected_value} already present)"
+        )
+        return free_gpu
 
     @staticmethod
     def _cpu_to_millicores(value) -> int:
