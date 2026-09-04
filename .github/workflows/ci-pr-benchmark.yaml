@@ -61,6 +61,7 @@ jobs:
       verbose: false
       harness: vllm-benchmark
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
 #      harness: nop
 #      workload: nop.yaml
       admin_privileges: true
@@ -92,6 +93,7 @@ jobs:
       verbose: false
       harness: nop
       workload: nop.yaml
+      harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
 
@@ -120,6 +122,7 @@ jobs:
       verbose: false
       harness: inference-perf
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
 
@@ -148,6 +151,7 @@ jobs:
       verbose: false
       harness: guidellm
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
 
@@ -176,6 +180,7 @@ jobs:
       verbose: false
       harness: aiperf
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
 
@@ -204,5 +209,6 @@ jobs:
       verbose: false
       harness: inference-perf
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
