@@ -11,6 +11,7 @@ metadata:
   labels:
     app: {{ harness.podLabel }}
     function: load_generator
+    llmdbench.ai/treatment: {{ treatment_label_value | default('default') }}
 spec:
   containers:
   - name: harness
@@ -32,7 +33,7 @@ spec:
     resources:
       limits:
         cpu: "{{ harness.resources.cpu }}"
-        memory: {{ harness.resources.memory }}
+        memory: {{ harness.resources.memoryLimit | default(harness.resources.memory, true) }}
       requests:
         cpu: "{{ harness.resources.cpu }}"
         memory: {{ harness.resources.memory }}

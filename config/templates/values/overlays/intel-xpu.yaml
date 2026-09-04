@@ -113,3 +113,4 @@ harness:
   resources:
     cpu: 2
     memory: 8Gi
+    memoryLimit: 8Gi

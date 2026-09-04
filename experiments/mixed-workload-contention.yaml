@@ -1,0 +1,58 @@
+# =====================================================================
+# Experiment: Mixed-Workload Contention (inference-perf)
+# =====================================================================
+#
+# Two different load shapes hit the same endpoint at once, so each one's latency
+# reflects contention from the other rather than the shape in isolation. That
+# interference is the result being sought; the solo groups are its baselines.
+#
+# Members start back-to-back but reach Running subject to image pull and
+# scheduling, so the faster one's first seconds are uncontended. Precise
+# simultaneity would need a barrier inside the harness.
+#
+# All treatments in a run share one harness.
+#
+# Usage (run-only against an already-standing endpoint):
+#   llmdbenchmark --spec config/specification/examples/gpu.yaml.j2 run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> \
+#     --namespace <NAMESPACE> \
+#     --harness inference-perf \
+#     --workload weka_traces.yaml \
+#     --experiments experiments/mixed-workload-contention.yaml \
+#     --monitoring -g METRICS_COLLECTION_INTERVAL \
+#     --analyze
+#
+# Members each hold their own dataset, so a wide group may need
+# `--set harness.resources.memoryLimit=<N>Gi`.
+
+# Cleared once per group, never between concurrent members: a reset mid-group
+# would wipe a cache a sibling is still warming.
+reset_caches: true
+
+# A treatment that degrades under contention is the result, not a defect.
+treatment_max_attempts: 1
+treatment_stop_on_error: false
+
+# Inferred from the largest group when unset.
+max_parallel_treatments: 2
+
+groups:
+  # Baselines: one member each, so these run sequentially.
+  - name: weka_solo
+    treatments:
+      - name: weka
+        profile: weka_traces.yaml
+
+  - name: agentic_solo
+    treatments:
+      - name: agentic
+        profile: agent_llm_traces_v2.yaml
+
+  # Both members run at once.
+  - name: mixed
+    treatments:
+      - name: weka_mixed
+        profile: weka_traces.yaml
+      - name: agentic_mixed
+        profile: agent_llm_traces_v2.yaml

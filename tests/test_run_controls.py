@@ -44,6 +44,7 @@ def test_read_run_controls_reads_all_keys(tmp_path: Path):
         "treatment_max_attempts: 5\n"
         "treatment_stop_on_error: true\n"
         "validate_failures: true\n"
+        "max_parallel_treatments: 3\n"
         "treatments:\n  - {name: a, foo: 1}\n",
         encoding="utf-8",
     )
@@ -52,6 +53,7 @@ def test_read_run_controls_reads_all_keys(tmp_path: Path):
         "treatment_max_attempts": 5,
         "treatment_stop_on_error": True,
         "validate_failures": True,
+        "max_parallel_treatments": 3,
     }
 
 

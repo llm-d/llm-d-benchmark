@@ -1,0 +1,24 @@
+{
+  "load_summary": {
+    "count": 368
+  },
+  "successes": {
+    "latency": {
+      "normalized_time_per_output_token": {
+        "mean": 0.059859130628542895
+      },
+      "request_latency": {
+        "mean": 17.102809336084512
+      }
+    },
+    "prompt_tokens": {
+      "mean": 68304.9400544959
+    },
+    "throughput": {
+      "input_tokens_per_sec": 41838.31197488548,
+      "output_tokens_per_sec": 221.39600373164328,
+      "requests_per_sec": 0.6125224901962509,
+      "total_tokens_per_sec": 42059.70797861712
+    }
+  }
+}

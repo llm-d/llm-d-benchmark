@@ -34,6 +34,18 @@ class SetupTreatment:
 
 
 @dataclass
+class TreatmentGroup:
+    """Workload treatments that run concurrently against one stack."""
+
+    name: str
+    treatments: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def is_concurrent(self) -> bool:
+        return len(self.treatments) > 1
+
+
+@dataclass
 class ExperimentPlan:
     """Parsed experiment definition following DoE structure."""
 
@@ -182,7 +194,12 @@ RUN_CONTROL_DEFAULTS = {
     "treatment_max_attempts": 1,
     "treatment_stop_on_error": False,
     "validate_failures": False,
+    "max_parallel_treatments": 1,
 }
+
+#: Each treatment is several pods, so past a handful the endpoint is saturated
+#: by scheduling noise rather than by the load shapes under study.
+MAX_PARALLEL_TREATMENTS_CAP = 8
 
 
 def read_run_controls(experiments_file: str | Path | None) -> dict:
@@ -217,7 +234,115 @@ def read_run_controls(experiments_file: str | Path | None) -> dict:
         controls["treatment_stop_on_error"] = bool(data["treatment_stop_on_error"])
     if "validate_failures" in data:
         controls["validate_failures"] = bool(data["validate_failures"])
+    if "max_parallel_treatments" in data:
+        try:
+            controls["max_parallel_treatments"] = max(
+                1,
+                min(MAX_PARALLEL_TREATMENTS_CAP, int(data["max_parallel_treatments"])),
+            )
+        except (TypeError, ValueError):
+            pass
     return controls
+
+
+def read_treatment_groups(
+    experiments_file: str | Path | None,
+) -> list[TreatmentGroup]:
+    """Read the top-level ``groups`` block from an experiment YAML.
+
+    Returns ``[]`` when there is no ``groups`` key, so callers fall back to one
+    group per treatment.
+
+    Unlike the other readers here, a *present but malformed* block raises:
+    silently degrading it to sequential would report a combined run that never
+    happened.
+    """
+    if not experiments_file:
+        return []
+    path = Path(experiments_file)
+    if not path.exists():
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    if not isinstance(data, dict) or "groups" not in data:
+        return []
+
+    raw_groups = data["groups"]
+    if not isinstance(raw_groups, list) or not raw_groups:
+        raise ValueError(
+            f"{path}: 'groups' must be a non-empty list of "
+            f"{{name, treatments}} mappings, got "
+            f"{type(raw_groups).__name__}"
+        )
+
+    constants: dict[str, Any] = {}
+    raw_constants = data.get("constants")
+    if isinstance(raw_constants, dict):
+        constants = dict(raw_constants)
+
+    groups: list[TreatmentGroup] = []
+    seen_treatments: dict[str, str] = {}
+    for i, raw_group in enumerate(raw_groups):
+        if not isinstance(raw_group, dict):
+            raise ValueError(
+                f"{path}: groups[{i}] must be a mapping with 'name' and "
+                f"'treatments', got {type(raw_group).__name__}"
+            )
+        group_name = str(raw_group.get("name") or f"group-{i}")
+        raw_items = raw_group.get("treatments")
+        if not isinstance(raw_items, list) or not raw_items:
+            raise ValueError(
+                f"{path}: group '{group_name}' must carry a non-empty 'treatments' list"
+            )
+
+        treatments: list[dict[str, Any]] = []
+        for j, item in enumerate(raw_items):
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"{path}: group '{group_name}' treatments[{j}] must be a "
+                    f"mapping, got {type(item).__name__}"
+                )
+            name = str(item.get("name") or f"{group_name}-{j}")
+            if name in seen_treatments:
+                raise ValueError(
+                    f"{path}: treatment '{name}' appears in both group "
+                    f"'{seen_treatments[name]}' and group '{group_name}'; a "
+                    f"treatment renders one profile and one pod label, so it "
+                    f"cannot belong to two groups"
+                )
+            if "harness" in item:
+                raise ValueError(
+                    f"{path}: treatment '{name}' sets 'harness'; the harness is "
+                    f"resolved once per run (use -l/--harness or "
+                    f"experiment.harness). Concurrent treatments share one harness."
+                )
+            seen_treatments[name] = group_name
+
+            flat = dict(constants)
+            flat.update({k: v for k, v in item.items() if k != "name"})
+            treatment: dict[str, Any] = {
+                "name": name,
+                "group": group_name,
+                "overrides": {k: v for k, v in flat.items() if k != "profile"},
+            }
+            if flat.get("profile"):
+                treatment["profile"] = str(flat["profile"])
+            treatments.append(treatment)
+
+        groups.append(TreatmentGroup(name=group_name, treatments=treatments))
+
+    return groups
+
+
+def groups_from_treatments(treatments: list[dict[str, Any]]) -> list[TreatmentGroup]:
+    """Wrap a flat treatment list as one single-member group each."""
+    return [
+        TreatmentGroup(name=t.get("name", f"treatment-{i}"), treatments=[t])
+        for i, t in enumerate(treatments)
+    ]
 
 
 def parse_experiment(path: Path) -> ExperimentPlan:

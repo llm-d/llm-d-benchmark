@@ -940,10 +940,11 @@
     },
     "Load": {
       "additionalProperties": false,
-      "description": "Experimental workload details.",
+      "description": "Experimental workload details (v0.2.1 metadata).",
       "properties": {
         "metadata": {
-          "$ref": "#/$defs/LoadMetadata"
+          "$ref": "#/$defs/LoadMetadata",
+          "description": "Workload metadata."
         },
         "standardized": {
           "$ref": "#/$defs/LoadStandardized"
@@ -962,7 +963,7 @@
     },
     "LoadMetadata": {
       "additionalProperties": false,
-      "description": "Workload metadata.",
+      "description": "Workload metadata (v0.2.1 treatment grouping).",
       "properties": {
         "schema_version": {
           "default": "0.0.1",
@@ -995,6 +996,48 @@
           "default": null,
           "description": "Descriptin of workload.",
           "title": "Description"
+        },
+        "treatment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the experiment treatment that produced this result set.",
+          "title": "Treatment"
+        },
+        "treatment_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Group the treatment ran in; members of a group run concurrently.",
+          "title": "Treatment Group"
+        },
+        "concurrent_with": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Treatments that ran at the same time, against the same endpoint.\n\nNon-empty means the metrics here reflect the combined load of those\ntreatments rather than this workload in isolation.",
+          "title": "Concurrent With"
         }
       },
       "title": "LoadMetadata",
@@ -2138,7 +2181,7 @@
     },
     "Scenario": {
       "additionalProperties": false,
-      "description": "Benchmark run details.",
+      "description": "Stack configuration and workload details (v0.2.1 load).",
       "properties": {
         "stack": {
           "anyOf": [

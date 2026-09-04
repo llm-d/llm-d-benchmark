@@ -1049,7 +1049,13 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     # to every serving pod before each treatment's run. Covers both the
     # `run` and `experiment` subcommands, which both flow their file through
     # ``experiments_file``.
-    from llmdbenchmark.experiment.parser import read_reset_caches, read_run_controls
+    from llmdbenchmark.experiment.parser import (
+        MAX_PARALLEL_TREATMENTS_CAP,
+        RUN_CONTROL_DEFAULTS,
+        read_reset_caches,
+        read_run_controls,
+        read_treatment_groups,
+    )
 
     reset_caches = read_reset_caches(experiments_file)
 
@@ -1074,6 +1080,27 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         if _cli_validate_failures is not None
         else _run_controls["validate_failures"]
     )
+    _cli_max_parallel = getattr(args, "max_parallel_treatments", None)
+    max_parallel_treatments = (
+        max(1, min(MAX_PARALLEL_TREATMENTS_CAP, int(_cli_max_parallel)))
+        if _cli_max_parallel is not None
+        else _run_controls["max_parallel_treatments"]
+    )
+    try:
+        _groups = read_treatment_groups(experiments_file)
+    except ValueError as exc:
+        raise PhaseError(f"Invalid 'groups' in experiment file: {exc}") from exc
+    _largest = max((len(g.treatments) for g in _groups), default=1)
+    if (
+        _largest > max_parallel_treatments
+        and _cli_max_parallel is None
+        and max_parallel_treatments == RUN_CONTROL_DEFAULTS["max_parallel_treatments"]
+    ):
+        max_parallel_treatments = min(MAX_PARALLEL_TREATMENTS_CAP, _largest)
+        logger.log_info(
+            f"max_parallel_treatments inferred as {max_parallel_treatments} "
+            f"from the largest group"
+        )
 
     context = ExecutionContext(
         plan_dir=config.plan_dir,
@@ -1120,6 +1147,8 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         treatment_max_attempts=treatment_max_attempts,
         treatment_stop_on_error=treatment_stop_on_error,
         validate_failures=validate_failures,
+        treatment_groups=_groups,
+        max_parallel_treatments=max_parallel_treatments,
         harness_service_account=getattr(args, "serviceaccount", None),
         harness_envvars_to_pod=getattr(args, "envvarspod", None),
         analyze_locally=getattr(args, "analyze", False),
