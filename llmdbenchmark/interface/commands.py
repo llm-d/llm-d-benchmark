@@ -11,5 +11,6 @@ class Command(Enum):
     SMOKETEST = "smoketest"
     RUN = "run"
     TEARDOWN = "teardown"
+    CLEANUP = "cleanup"
     EXPERIMENT = "experiment"
     RESULTS = "results"

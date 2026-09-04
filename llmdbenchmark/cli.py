@@ -35,6 +35,7 @@ from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
+from llmdbenchmark.interface import cleanup as cleanup_interface
 from llmdbenchmark.parser.cli_overrides import (
     GLOBAL_SELECTOR,
     REDACTED,
@@ -54,6 +55,7 @@ from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.standup.steps import get_standup_steps
 from llmdbenchmark.smoketests.steps import get_smoketest_steps
 from llmdbenchmark.teardown.steps import get_teardown_steps
+from llmdbenchmark.cleanup.steps import get_cleanup_steps
 
 from llmdbenchmark.run.steps import get_run_steps
 from llmdbenchmark.executor.command import CommandExecutor
@@ -123,6 +125,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         Command.SMOKETEST.value,
         Command.TEARDOWN.value,
         Command.RUN.value,
+        Command.CLEANUP.value,
     ):
         # Resolve templates, scenarios, and values into the workspace
         try:
@@ -216,6 +219,9 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     if args.command == Command.RUN.value:
         _execute_run(args, logger, render_plan_errors)
+
+    if args.command == Command.CLEANUP.value:
+        _execute_cleanup(args, logger, render_plan_errors)
 
 
 def _log_plan_summary(logger, render_result, plan_dir: Path) -> None:
@@ -1007,6 +1013,74 @@ def _execute_teardown(args, logger, render_plan_errors):
         f'Namespaces: "{ns}", "{harness_ns}". '
         f"Methods: {', '.join(context.deployed_methods)}. "
         f"Release: {context.release}.",
+        emoji="✅",
+    )
+
+
+def _do_cleanup(args, logger, render_plan_errors):
+    """Core cleanup logic. Returns (context, result). Raises PhaseError on failure."""
+    rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
+    plan_info = _load_plan_info(rendered_paths)
+    deployed_methods = _resolve_deploy_methods(args, plan_info, logger, phase="cleanup")
+
+    namespace, harness_ns = _parse_namespaces(
+        getattr(args, "namespace", None),
+        plan_info,
+    )
+
+    container_only = "nok8s" in deployed_methods
+    if not namespace and not container_only:
+        raise PhaseError(
+            "No namespace specified. Set 'namespace.name' in your scenario "
+            "YAML, defaults.yaml, or pass --namespace on the CLI."
+        )
+
+    context = ExecutionContext(
+        plan_dir=config.plan_dir,
+        workspace=config.workspace,
+        specification_file=getattr(args, "specification_file", None),
+        rendered_stacks=rendered_paths,
+        dry_run=config.dry_run,
+        verbose=config.verbose,
+        non_admin=getattr(args, "non_admin", False),
+        current_phase=Phase.CLEANUP,
+        kubeconfig=getattr(args, "kubeconfig", None),
+        deployed_methods=deployed_methods,
+        container_only=container_only,
+        keep_pvc=getattr(args, "keep_pvc", False),
+        namespace=namespace,
+        harness_namespace=harness_ns,
+        model_name=plan_info.get("model_name"),
+        logger=logger,
+    )
+
+    executor = StepExecutor(
+        steps=get_cleanup_steps(),
+        context=context,
+        logger=logger,
+    )
+
+    result = executor.execute()
+
+    if result.has_errors:
+        raise PhaseError(f"Cleanup failed:\n{result.summary()}")
+
+    return context, result
+
+
+def _execute_cleanup(args, logger, render_plan_errors):
+    """Build execution context and run cleanup steps."""
+    try:
+        context, _result = _do_cleanup(args, logger, render_plan_errors)
+    except PhaseError as e:
+        logger.log_error(str(e))
+        sys.exit(1)
+
+    ns = context.namespace or "unknown"
+    harness_ns = context.harness_namespace or ns
+    logger.line_break()
+    logger.log_info(
+        f'Cleanup complete. Namespaces: "{ns}", "{harness_ns}".',
         emoji="✅",
     )
 
@@ -2281,6 +2355,7 @@ def cli() -> None:
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
+    cleanup_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)

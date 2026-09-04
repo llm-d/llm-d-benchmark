@@ -19,6 +19,7 @@ class Phase(Enum):
     SMOKETEST = "smoketest"
     RUN = "run"
     TEARDOWN = "teardown"
+    CLEANUP = "cleanup"
 
 
 @dataclass
