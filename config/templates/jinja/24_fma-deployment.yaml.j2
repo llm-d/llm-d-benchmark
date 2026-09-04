@@ -4,7 +4,17 @@
    fma-deployment.yaml.j2
 
    Fast Model Actuation Deployment.
+
+   Node pinning resolves from the shared `nodePinning` block (defaults.yaml)
+   unless the scenario sets the fma.* equivalent, which wins.
    ============================================================================ #}
+{% set _np = nodePinning | default({}) %}
+{% set _np_on = _np.enabled | default(false) %}
+{% set _lns = fma.launcherNodeSelection | default({}) %}
+{% set _pin_on = _lns.enabled | default(false) or _np_on %}
+{% set _pin_label = _lns.nodeLabel | default('', true) or (_np.nodeLabel if _np_on else '') or 'fma-hotstart' %}
+{% set _pin_value = _lns.nodeLabelValue | default('', true) or (_np.nodeLabelValue if _np_on else '') or 'true' %}
+{% set _pin_tolerations = fma.tolerations | default([], true) or (_np.tolerations | default([], true) if _np_on else []) %}
 
 apiVersion: fma.llm-d.ai/v1alpha1
 kind: InferenceServerConfig
@@ -84,6 +94,12 @@ spec:
       serviceAccountName: fma-launcher
 {% if fma.launcher.runtimeClassName is defined and fma.launcher.runtimeClassName %}
       runtimeClassName: {{ fma.launcher.runtimeClassName }}
+{% endif %}
+{% if _pin_tolerations %}
+      # Launcher pods are created by the FMA controller from this podTemplate,
+      # so a taint on the target node has to be tolerated here.
+      tolerations:
+{{ _pin_tolerations | toyaml | indent(8, first=True) }}
 {% endif %}
       containers:
         - name: inference-server
@@ -173,9 +189,9 @@ spec:
     labelSelector:
       matchLabels:
         nvidia.com/gpu.present: "true"
-{% if fma.launcherNodeSelection is defined and fma.launcherNodeSelection.enabled | default(false) %}
+{% if _pin_on %}
         # Pin launchers to the single GPU node step_06 selected + labeled.
-        {{ fma.launcherNodeSelection.nodeLabel | default('fma-hotstart') }}: "true"
+        {{ _pin_label }}: "{{ _pin_value }}"
 {% endif %}
       # Skip unhealthy nodes
       matchExpressions:
@@ -216,11 +232,15 @@ spec:
         dual-pods.llm-d.ai/admin-port: "8081"
         dual-pods.llm-d.ai/inference-server-config: fma-{{ model_id_label }}
     spec:
-{% if fma.launcherNodeSelection is defined and fma.launcherNodeSelection.enabled | default(false) %}
+{% if _pin_on %}
       # Pin the requester to the single GPU node step_06 selected + labeled.
       # ANDed with the nodeAffinity below (which stays load-bearing for WVA).
       nodeSelector:
-        {{ fma.launcherNodeSelection.nodeLabel | default('fma-hotstart') }}: "true"
+        {{ _pin_label }}: "{{ _pin_value }}"
+{% endif %}
+{% if _pin_tolerations %}
+      tolerations:
+{{ _pin_tolerations | toyaml | indent(8, first=True) }}
 {% endif %}
       {# Pick a resolved accelerator type from decode/prefill/standalone
          (cluster_resource_resolver.py rewrites `labelValue: auto` into the
