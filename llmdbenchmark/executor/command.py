@@ -370,6 +370,9 @@ class CommandExecutor:
     ) -> CommandResult:
         """Poll pods matching a label selector until all are Ready, showing live progress.
 
+        ``timeout`` resets once, the first time a pod starts, so a long wait
+        for cluster capacity doesn't consume the pod's own startup budget.
+
         When a restart budget is configured (``--pod-restart-budget``), pods
         that fail in a way a restart may clear are deleted and given another
         chance instead of aborting the wait outright. Failures a restart
@@ -391,6 +394,9 @@ class CommandExecutor:
         # Extended by the restart policy: a replacement pod re-pulls its image
         # and reloads the model from zero, so it needs budget of its own.
         deadline = float(timeout)
+        # Reset once a pod starts, so a long wait on cluster capacity doesn't
+        # eat into the pod's own startup budget.
+        deadline_reset = False
 
         while True:
             elapsed = time.time() - start
@@ -440,6 +446,14 @@ class CommandExecutor:
                 continue
 
             ever_found_pods = True
+
+            if not deadline_reset and any(p.has_started for p in pods):
+                deadline_reset = True
+                start = time.time()
+                elapsed = 0.0
+                self.logger.log_info(
+                    f"   {desc}: pod(s) started -- resetting the {int(timeout)}s timeout"
+                )
 
             ready_count = sum(1 for p in pods if p.ready)
             total = len(pods)
