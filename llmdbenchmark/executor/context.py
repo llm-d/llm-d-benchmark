@@ -126,8 +126,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # of recording it failed and continuing to the remaining treatments.
     treatment_stop_on_error: bool = False
     # Gate treatment success on the harness-reported failure count, not just
-    # pod state. Workload-specific (see _FAILURE_VALIDATORS in step_07); an
-    # unrecognized workload warns and falls back to pod state.
+    # pod state. Schema is workload-specific (see _FAILURE_VALIDATORS and the
+    # load.type fallback in step_07); an unrecognized workload warns and
+    # falls back to pod state.
     validate_failures: bool = False
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
