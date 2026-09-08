@@ -218,6 +218,11 @@ run:
 Each combination becomes a treatment. Step 06 runs them sequentially:
 deploy pod, wait, collect, clean, then next treatment.
 
+A top-level `groups:` block in the experiment file instead runs a group's
+treatments concurrently against the same stack, each with its own workload
+profile. Bounded by `--max-parallel-treatments`. See
+`llmdbenchmark/experiment/README.md`.
+
 ### Run with parallel harness pods
 
 Deploy multiple harness pods per treatment for higher aggregate load:

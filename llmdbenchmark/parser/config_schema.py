@@ -387,6 +387,8 @@ class HarnessResourcesConfig(BaseModel):
 
     cpu: int | str
     memory: str
+    memoryLimit: str | None = None
+    """Memory limit; falls back to ``memory`` when unset."""
 
 
 class InferencePerfConfig(BaseModel):

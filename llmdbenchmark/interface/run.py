@@ -177,7 +177,9 @@ def add_subcommands(
         default=None,
         help=(
             "Abort the run's treatment loop once a treatment exhausts its "
-            "attempts, instead of recording it failed and continuing. Default: "
+            "attempts, instead of recording it failed and continuing. Concurrent "
+            "treatments finish their group first, since killing in-flight "
+            "siblings would orphan pods and half-collect results. Default: "
             "continue remaining treatments. Overrides the top-level "
             "treatment_stop_on_error key in --experiments YAML."
         ),
@@ -192,6 +194,17 @@ def add_subcommands(
             "Only applies to the otel_traces workload; other workloads warn and "
             "fall back to Kubernetes pod state. Default: pod state only. "
             "Overrides the top-level validate_failures key in --experiments YAML."
+        ),
+    )
+    run_parser.add_argument(
+        "--max-parallel-treatments",
+        type=int,
+        default=env_int("LLMDBENCH_MAX_PARALLEL_TREATMENTS"),
+        help=(
+            "Cap on treatments running concurrently against one stack (1-8, "
+            "default 1 = sequential). Only takes effect for treatments grouped by "
+            "the top-level groups key in --experiments YAML. Overrides the "
+            "top-level max_parallel_treatments key."
         ),
     )
     run_parser.add_argument(
