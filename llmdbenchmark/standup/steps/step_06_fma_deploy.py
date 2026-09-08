@@ -46,18 +46,7 @@ class FMADeployStep(Step):
         plan_config = self._load_stack_config(stack_path)
         namespace = context.require_namespace()
 
-        clusterrole_yaml = self._find_yaml(stack_path, "25_fma-clusterrole")
-        if not clusterrole_yaml or not self._has_yaml_content(clusterrole_yaml):
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No FMA RBAC YAML found, skipping",
-                errors=["FMA RBAC YAML is required"],
-                stack_name=stack_path.name,
-            )
-
-        launcher_rbac_yaml = self._find_yaml(stack_path, "25a_fma-launcher-rbac")
+        launcher_rbac_yaml = self._find_yaml(stack_path, "25_fma-launcher-rbac")
         if not launcher_rbac_yaml or not self._has_yaml_content(launcher_rbac_yaml):
             return StepResult(
                 step_number=self.number,
@@ -65,17 +54,6 @@ class FMADeployStep(Step):
                 success=False,
                 message="No FMA launcher RBAC YAML found, skipping",
                 errors=["FMA launcher RBAC YAML is required"],
-                stack_name=stack_path.name,
-            )
-
-        fma_helmfile = self._find_yaml(stack_path, "26_helmfile-fma-controllers")
-        if not fma_helmfile or not self._has_yaml_content(fma_helmfile):
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No FMA Controllers helm values found, skipping",
-                errors=["FMA Controllers helm values are required"],
                 stack_name=stack_path.name,
             )
 
@@ -90,29 +68,11 @@ class FMADeployStep(Step):
                 stack_name=stack_path.name,
             )
 
-        # Fast Model Actuation CRDS
-        self._install_fma_crds(
-            context, plan_config, errors
-        )  # pylint disable=too-many-function-args
-
-        # Fast Model Actuation cluster-scoped ClusterRole (create only if missing)
-        self._install_fma_clusterole(context, clusterrole_yaml, errors)
-
         # Namespace-scoped launcher RBAC -- always apply (idempotent, namespaced)
         self._apply_fma_launcher_rbac(context, launcher_rbac_yaml, errors)
 
         if len(errors) == 0:
-            # Fast Model Actuation Controllers chart
-            result = cmd.helmfile(
-                "apply",
-                "-f",
-                str(fma_helmfile),
-                "--skip-diff-on-install",
-            )
-            if not result.success:
-                errors.append(
-                    f"Failed to apply FMA controllets helmfile: {result.stderr}"
-                )
+            self._install_fma(context, plan_config, namespace, errors)
 
         if len(errors) == 0:
             # Wait for fma dual pod to be created, running, and ready
@@ -690,82 +650,148 @@ class FMADeployStep(Step):
                 f"{config_file}: {exc}"
             )
 
-    def _install_fma_crds(
-        self, context: ExecutionContext, plan_config: dict, errors: list[str]
+    def _install_fma(
+        self,
+        context: ExecutionContext,
+        plan_config: dict,
+        namespace: str,
+        errors: list[str],
     ) -> None:
-        if context.non_admin:
-            # --non-admin: CI cannot create cluster-scoped CRDs, so skip
-            # installing them and assume a privileged user already did.
+        """Install the FMA CRDs, the shared node-view ClusterRole, and the
+        controllers helm release via the upstream ``install-fma.sh`` (fetched
+        at the pinned FMA release).
+        """
+        cmd = context.require_cmd()
+        fma = plan_config.get("fma", {}) or {}
+
+        version = str((fma.get("chart", {}) or {}).get("version", "")).strip()
+        if not version:
+            errors.append("fma.chart.version is required to install FMA")
+            return
+        oci_registry = str((fma.get("image", {}) or {}).get("repository", "")).strip()
+        if not oci_registry:
+            errors.append(
+                "fma.image.repository is required (drives install-fma.sh "
+                "--oci-registry)"
+            )
+            return
+
+        script_url = (
+            "https://raw.githubusercontent.com/llm-d-incubation/"
+            f"llm-d-fast-model-actuation/v{version}/scripts/install-fma.sh"
+        )
+        script_path = context.setup_yamls_dir() / "install-fma.sh"
+        context.logger.log_info(
+            "🚚 Fetching Fast Model Actuation installer (install-fma.sh) ..."
+        )
+        download = cmd.execute(
+            f"curl -fsSL {shlex.quote(script_url)} -o {shlex.quote(str(script_path))}"
+        )
+        if not download.success:
+            errors.append(
+                f"Failed to download install-fma.sh from {script_url}: "
+                f"{download.stderr}"
+            )
+            return
+
+        if cmd.kube_context:
             context.logger.log_warning(
-                "--non-admin: skipping Fast Model Actuation CRD setup. "
-                "Will assume a user with proper privileges already performed this action."
+                "    | install-fma.sh targets the KUBECONFIG current-context; "
+                f"the configured --context '{cmd.kube_context}' is not "
+                "forwarded to it."
             )
-            return
 
-        crds = plan_config.get("fma", {}).get("crds", {})
-        crd_urls = {
-            "inferenceserverconfigs.fma.llm-d.ai": crds.get(
-                "inferenceServerConfig", ""
-            ),
-            "launcherconfigs.fma.llm-d.ai": crds.get("launcherConfig", ""),
-            "launcherpopulationpolicies.fma.llm-d.ai": crds.get(
-                "launcherPopulatorConfig", ""
-            ),
-        }
-        cmd = context.require_cmd()
-        result = cmd.kube(
-            "get", "crd", "-o", "jsonpath='{.items[*].metadata.name}'", check=False
+        install_cmd = self._build_fma_install_command(
+            script_path=str(script_path),
+            plan_config=plan_config,
+            namespace=namespace,
+            non_admin=context.non_admin,
+            kubeconfig=cmd.kubeconfig,
         )
+        context.logger.log_info(
+            "🚚 Installing Fast Model Actuation via install-fma.sh ..."
+        )
+        result = cmd.execute(install_cmd)
         if not result.success:
-            errors.append(f"Failed to query crds: {result.stderr}")
+            errors.append(f"Failed to install FMA via install-fma.sh: {result.stderr}")
             return
+        context.logger.log_info("✅ Fast Model Actuation installed")
 
-        crd_names = result.stdout.strip().split()
-        for name in crd_names:
-            if name in crd_urls:
-                del crd_urls[name]
-                context.logger.log_info(
-                    f"✅ Kubernetes Fast Fast Model Actuation CRD {name} already installed"
-                )
+    @staticmethod
+    def _build_fma_install_command(
+        script_path: str,
+        plan_config: dict,
+        namespace: str,
+        non_admin: bool,
+        kubeconfig: str | None = None,
+    ) -> str:
+        """Build the ``install-fma.sh`` invocation as a shell-safe command string."""
+        fma = plan_config.get("fma", {}) or {}
+        version = str((fma.get("chart", {}) or {}).get("version", "")).strip()
+        oci_registry = str((fma.get("image", {}) or {}).get("repository", "")).strip()
+        dual = fma.get("dualPod", {}) or {}
+        lpc = fma.get("launcherPopulatorConfigurator", {}) or {}
 
-        errors = []
-        for name, url in crd_urls.items():
-            context.logger.log_info(f"🚀 Fast Fast Model Actuation API {name} CRD...")
-            result = cmd.kube("apply", "--server-side", "-f", url)
-            if not result.success:
-                errors.append(f"Failed to apply crd '{name}': {result.stderr}")
+        parts = [
+            "bash",
+            shlex.quote(script_path),
+            "--release",
+            shlex.quote(version),
+            "--namespace",
+            shlex.quote(namespace),
+            "--chart-instance-name",
+            "fma-controllers",
+            "--oci-registry",
+            shlex.quote(oci_registry),
+        ]
+
+        if non_admin:
+            # CI without cluster-admin cannot create cluster-scoped objects;
+            # assume a privileged user pre-installed the CRDs and the shared
+            # node-view ClusterRole.
+            parts += [
+                "--install-crds",
+                "false",
+                "--existing-node-view-cluster-role",
+                "fma-node-viewer",
+            ]
+        else:
+            # Idempotent: installs the CRDs and the shared node-view ClusterRole
+            # if missing, repairs an inadequate ClusterRole, no-ops otherwise.
+            parts += [
+                "--install-crds",
+                "true",
+                "--ensure-node-view-cluster-role",
+                "fma-node-viewer",
+            ]
+
+        chart_values = [
+            ("dualPodsController.enabled", "true"),
+            ("dualPodsController.sleeperLimit", dual.get("sleeperLimit")),
+            (
+                "dualPodsController.debugAcceleratorMemory",
+                str(dual.get("debugAcceleratorMemory", False)).lower(),
+            ),
+            ("launcherPopulator.enabled", "true"),
+            ("launcherPopulator.pullPolicy", "IfNotPresent"),
+            ("launcherPopulator.replicaCount", 1),
+            ("launcherPopulator.resources.limits.cpu", lpc.get("limitsCPU")),
+            ("launcherPopulator.resources.limits.memory", lpc.get("limitsMemory")),
+            ("launcherPopulator.resources.requests.cpu", lpc.get("requestsCPU")),
+            (
+                "launcherPopulator.resources.requests.memory",
+                lpc.get("requestsMemory"),
+            ),
+        ]
+        for key, value in chart_values:
+            if value is None or value == "":
                 continue
-            context.logger.log_info(
-                f"✅ Fast Fast Model Actuation API {name} CRD installed"
-            )
+            parts += ["--chart-set", shlex.quote(f"{key}={value}")]
 
-    def _install_fma_clusterole(
-        self, context: ExecutionContext, clusterrole_yaml: Path, errors: list[str]
-    ) -> None:
-        cmd = context.require_cmd()
-        result = cmd.kube(
-            "get", "clusterroles", "-o", "jsonpath='{.items[*].metadata.name}'"
-        )
-        if not result.success:
-            errors.append(f"Failed to query clusterroles: {result.stderr}")
-            return
-
-        clusterrole_names = result.stdout.strip().split()
-        for name in clusterrole_names:
-            if name == "fma-node-viewer":
-                context.logger.log_info(
-                    f"✅ Kubernetes Fast Fast Model Actuation ClusterRole {name} already installed"
-                )
-                return
-
-        context.logger.log_info("🚚 Deploying Fast Model Actuation ClusterRole ...")
-
-        result = cmd.kube("apply", "-f", str(clusterrole_yaml))
-        if not result.success:
-            errors.append(f"Failed to apply fma clusterrole: {result.stderr}")
-            return
-
-        context.logger.log_info("✅ Fast Model Actuation ClusterRole installed")
+        command = " ".join(parts)
+        if kubeconfig:
+            command = f"KUBECONFIG={shlex.quote(kubeconfig)} {command}"
+        return command
 
     def _apply_fma_launcher_rbac(
         self, context: ExecutionContext, launcher_rbac_yaml: Path, errors: list[str]
