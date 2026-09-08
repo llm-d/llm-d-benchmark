@@ -164,7 +164,7 @@ class ModelNamespaceStep(Step):
     def _parse_size_to_gib(raw: str | None) -> float:
         """Parse a k8s resource-size string to GiB as a float.
 
-        Returns 0.0 when input is empty or unparseable - caller treats
+        Returns 0.0 when input is empty or unparsable - caller treats
         that as "unknown, skip comparison", which is the right fallback
         for a warn-only pre-flight.
         """
@@ -226,7 +226,7 @@ class ModelNamespaceStep(Step):
             total_gib += self._parse_size_to_gib(model_size)
 
         if total_gib == 0:
-            return  # all model.size unset/unparseable - skip quietly
+            return  # all model.size unset/unparsable - skip quietly
 
         if total_gib > capacity_gib * 0.9:
             breakdown = ", ".join(f"{n}={s}" for n, s in per_stack_sizes)
@@ -265,16 +265,6 @@ class ModelNamespaceStep(Step):
         ns_yaml = self._find_rendered_yaml(context, "05_namespace_sa_rbac_secret")
         if not ns_yaml:
             return
-
-        if context.non_admin:
-            # The render pipeline elides ClusterRole/ClusterRoleBinding when
-            # --non-admin is set; surface that here so it's not silent and
-            # so the 'nop' harness mismatch is callable out in the log.
-            context.logger.log_info(
-                "--non-admin: skipped ClusterRole/ClusterRoleBinding "
-                "'inference-perf-service-viewer' (only the 'nop' harness "
-                "needs them; use inference-perf / guidellm / vllm-benchmark)"
-            )
 
         result = cmd.kube("apply", "-f", str(ns_yaml))
         if not result.success:

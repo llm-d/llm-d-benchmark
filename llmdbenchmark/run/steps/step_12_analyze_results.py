@@ -109,6 +109,32 @@ class AnalyzeResultsStep(Step):
             except Exception as exc:
                 context.logger.log_warning(f"Cross-treatment comparison failed: {exc}")
 
+        # Run-level roll-up for the agentic harness. Not gated on analyzed >= 2:
+        # this harness puts one TASK per result dir, so even a single-task smoke
+        # run has something to summarize. Cross-treatment cannot answer this --
+        # it reads each dir as a separate experimental treatment and carries no
+        # observability columns, so the score never reaches it.
+        if harness_name == "eval-containers":
+            try:
+                from llmdbenchmark.analysis.aggregate_eval_containers import (
+                    generate_agentic_summary,
+                )
+
+                summary_dir = results_dir / "agentic-summary"
+                summarized = generate_agentic_summary(
+                    results_dir,
+                    output_dir=summary_dir,
+                    context=context,
+                )
+                if summarized:
+                    context.logger.log_info(
+                        f"Agentic summary: {summarized} task(s) aggregated "
+                        f"in {summary_dir}",
+                        emoji="📊",
+                    )
+            except Exception as exc:
+                context.logger.log_warning(f"Agentic summary failed: {exc}")
+
         return StepResult(
             step_number=self.number,
             step_name=self.name,

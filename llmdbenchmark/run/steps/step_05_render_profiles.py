@@ -3,11 +3,16 @@
 import posixpath
 import shutil
 from pathlib import Path
+from typing import Any
 
 import yaml
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.experiment.parser import (
+    groups_from_treatments,
+    read_treatment_groups,
+)
 from llmdbenchmark.utilities.profile_renderer import (
     build_env_map,
     render_profile_file,
@@ -192,17 +197,18 @@ class RenderProfilesStep(Step):
                 treatment_name = treatment.get("name", f"treatment-{i}")
                 treatment_overrides = treatment.get("overrides", {})
 
+                treatment_profile = treatment.get("profile") or profile_name
                 source_file = self._resolve_source_file(
-                    profile_name, profiles_source, source_profile_file
+                    treatment_profile, profiles_source, source_profile_file
                 )
                 if source_file is None:
                     errors.append(
-                        f"Profile '{profile_name}' not found for treatment "
+                        f"Profile '{treatment_profile}' not found for treatment "
                         f"'{treatment_name}'"
                     )
                     continue
 
-                out_name = profile_name
+                out_name = treatment_profile
                 if out_name.endswith(".in"):
                     out_name = out_name[:-3]
                 if source_profile_file is not None:
@@ -245,6 +251,8 @@ class RenderProfilesStep(Step):
 
             # Store treatments in context for step 06
             context.experiment_treatments = treatments
+            if not getattr(context, "treatment_groups", None):
+                context.treatment_groups = groups_from_treatments(treatments)
 
         if errors:
             return StepResult(
@@ -360,20 +368,29 @@ class RenderProfilesStep(Step):
         Returns [] for no treatments, or a list of {name, overrides} dicts.
         A top-level ``constants`` key in the experiments file is merged
         into every treatment's overrides before treatment-specific values.
+
+        A top-level ``groups`` block is flattened here, in group order, so every
+        downstream step keeps consuming one flat treatment list; each treatment
+        carries its ``group`` name for the pod label and the benchmark report.
         """
         treatments: list[dict] = []
 
         # --experiments file takes precedence
         if context.experiment_treatments_file:
+            groups = read_treatment_groups(context.experiment_treatments_file)
+            if groups:
+                context.treatment_groups = groups
+                return [t for group in groups for t in group.treatments]
+
             exp_path = Path(context.experiment_treatments_file)
             if exp_path.exists():
                 with open(exp_path, encoding="utf-8") as f:
                     exp_data = yaml.safe_load(f)
                 if isinstance(exp_data, dict):
-                    constants: dict[str, str] = {}
+                    constants: dict[str, Any] = {}
                     raw_constants = exp_data.get("constants")
                     if isinstance(raw_constants, dict):
-                        constants = {k: str(v) for k, v in raw_constants.items()}
+                        constants = {str(k): v for k, v in raw_constants.items()}
 
                     # Look for 'treatments' or 'run' key
                     raw = exp_data.get("treatments") or exp_data.get("run", [])
@@ -383,14 +400,19 @@ class RenderProfilesStep(Step):
                                 # Constants first, then treatment overrides
                                 overrides = dict(constants)
                                 overrides.update(
-                                    {k: str(v) for k, v in item.items() if k != "name"}
-                                )
-                                treatments.append(
                                     {
-                                        "name": item.get("name", f"t{i}"),
-                                        "overrides": overrides,
+                                        str(k): v
+                                        for k, v in item.items()
+                                        if k not in {"name", "profile"}
                                     }
                                 )
+                                treatment = {
+                                    "name": item.get("name", f"t{i}"),
+                                    "overrides": overrides,
+                                }
+                                if item.get("profile"):
+                                    treatment["profile"] = str(item["profile"])
+                                treatments.append(treatment)
                 return treatments
 
         # --overrides creates a single treatment

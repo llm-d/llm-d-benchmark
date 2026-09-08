@@ -104,7 +104,7 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 --spec guides/optimized-baseline                # optimized baseline guide (formerly inference-scheduling)
 --spec guides/workload-autoscaling              # optimized baseline + WVA autoscaling
 --spec guides/epp-keda-saturation               # optimized baseline + direct EPP+KEDA autoscaling (no WVA controller)
---spec multi-model-wva                          # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
+--spec examples/multi-model-optimized-baseline  # multi-model optimized baseline: N pools, 1 gateway, 1 shared HTTPRoute
 --spec pd-disaggregation                       # prefill-decode disaggregation guide
 ...
 --spec /full/path/to/my-spec.yaml.j2            # custom spec
@@ -137,32 +137,33 @@ Each command renders Kubernetes manifests from your spec's templates and default
 
 ### Deploy multiple models behind one gateway
 
-The `multi-model-wva` scenario deploys N models under a single gateway,
-each with its own EPP + InferencePool + VariantAutoscaling + HPA, sharing
-one WVA controller and one HTTPRoute with N backendRefs:
+The `multi-model-optimized-baseline` scenario is the
+[optimized-baseline](config/scenarios/guides/optimized-baseline.yaml) guide
+deployed N times: N models under a single gateway, each with its own EPP +
+InferencePool + decode Deployment, behind one HTTPRoute with N backendRefs:
 
 ```bash
 # Standup - renders two stacks (qwen3-06b, llama-31-8b), installs shared
-# infra once, deploys a per-model Helm release + VA + HPA for each.
-llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace
+# infra once, deploys a per-model Helm release for each.
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace
 
 # Smoketest - runs stack-by-stack (sequential), hitting each pool at its
 # routing prefix (/qwen3-06b/v1/models, /llama-31-8b/v1/models).
-llmdbenchmark --spec guides/multi-model-wva smoketest -p my-namespace
+llmdbenchmark --spec examples/multi-model-optimized-baseline smoketest -p my-namespace
 
 # Run - iterates every stack, each harness pod targets its own pool's endpoint.
-llmdbenchmark --spec guides/multi-model-wva run -p my-namespace
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p my-namespace
 
 # See what's deployed: list detected endpoints + copy-paste run commands.
-llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p my-namespace --list-endpoints
 
 # Benchmark just one pool (no --endpoint-url needed - auto-resolves):
-llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p my-namespace \
   --stack qwen3-06b \
   -l inference-perf -w sanity_random.yaml
 
 # Teardown - removes both stacks and the shared infra.
-llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace
+llmdbenchmark --spec examples/multi-model-optimized-baseline teardown -p my-namespace
 ```
 
 Stack names (`qwen3-06b`, `llama-31-8b`) double as path prefixes on the
@@ -176,7 +177,7 @@ After standup, `--list-endpoints` detects each pool's routing URL, prints a
 copy-paste-ready table, and exits without launching any harness pods:
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p my-namespace --list-endpoints
 ```
 
 ```
@@ -189,7 +190,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
 💡 Copy-paste to benchmark one pool:
 
   # qwen3-06b - Qwen/Qwen3-0.6B
-  llmdbenchmark --spec guides/multi-model-wva run \
+  llmdbenchmark --spec examples/multi-model-optimized-baseline run \
     --namespace my-namespace \
     --endpoint-url http://10.1.2.3:80/qwen3-06b \
     --model Qwen/Qwen3-0.6B \
@@ -205,7 +206,7 @@ stack - no need to pass `--endpoint-url` manually:
 
 ```bash
 # Benchmark qwen3-06b only with guidellm, two parallel harness pods
-llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p my-namespace \
   --stack qwen3-06b \
   -l guidellm \
   -w sanity_random.yaml \
@@ -230,12 +231,12 @@ shells (different `--workspace` each):
 
 ```bash
 # Terminal 1 - --workspace is a global option, placed before the subcommand
-llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-qwen run -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline --workspace /tmp/run-qwen run -p my-namespace \
   --stack qwen3-06b \
   -l guidellm -w sanity_random.yaml -j 2 &
 
 # Terminal 2 (or same shell, backgrounded)
-llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-llama run -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline --workspace /tmp/run-llama run -p my-namespace \
   --stack llama-31-8b \
   -l guidellm -w sanity_random.yaml -j 2
 ```
@@ -243,22 +244,22 @@ llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-llama run -p my
 `--stack` also works on `standup`, `smoketest`, and `teardown`. Same
 flag, same semantics - restrict execution to the named subset of stacks
 without editing the scenario YAML. Scenario-wide steps (namespace
-creation, admin prereqs, shared infra, WVA controller install) always
-run; only the per-stack steps (06+ for standup) are filtered.
+creation, admin prereqs, shared infra) always run; only the per-stack
+steps (06+ for standup) are filtered.
 
 ```bash
 # Standup only pool qwen3-06b from the multi-model scenario - shared
-# infra (istio, Gateway, WVA controller, model PVC) installs normally,
-# but only qwen3-06b's ms/gaie/VA/HPA resources get created.
-llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
+# infra (istio, Gateway, model PVC) installs normally, but only
+# qwen3-06b's ms/gaie resources get created.
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace \
   --stack qwen3-06b
 
 # Standup two named pools out of a larger scenario:
-llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline standup -p my-namespace \
   --stack qwen3-06b,llama-31-8b
 
 # Tear down just one pool later, leaving the other running:
-llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline teardown -p my-namespace \
   --stack qwen3-06b
 ```
 
@@ -270,7 +271,7 @@ Handy for "rerun pool A against a different model" without touching pool
 B:
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p my-namespace \
   --stack qwen3-06b \
   --model meta-llama/Llama-3.2-3B \
   -l inference-perf -w sanity_random.yaml
@@ -279,12 +280,13 @@ llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
 Without `--stack`, `-m` applies to every stack and emits a warning.
 
 Add a third model by copying a stack block in
-[`config/scenarios/examples/multi-model-wva.yaml`](config/scenarios/examples/multi-model-wva.yaml)
-and changing `name` + `model`. Scenario-wide config (gateway class, WVA
-controller image, shared HTTPRoute, EPP plugin config) lives in the
-top-level `shared:` block and is inherited by every stack. See
-[Workload Variant Autoscaler](docs/workload-variant-autoscaler.md#2c-via-the-multi-model-wva-scenario-multiple-pools-one-wva-controller)
-for the full architecture.
+[`config/scenarios/examples/multi-model-optimized-baseline.yaml`](config/scenarios/examples/multi-model-optimized-baseline.yaml)
+and changing `name` + `model`. Scenario-wide config (gateway class, shared
+HTTPRoute, EPP plugin config, Envoy and InferencePool tuning) lives in the
+top-level `shared:` block and is inherited by every stack. See the
+developer guide's
+[Multi-Stack Scenarios](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+section for the merge semantics.
 
 ### Benchmark an existing endpoint (run-only mode)
 
@@ -311,7 +313,7 @@ See [workload/README.md](workload/README.md) for the full experiment file format
 | Topic | Where to look |
 |-------|---------------|
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
-| Multi-model scenarios and the `shared:` block | [config/README.md](config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config), [developer-guide](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block) |
+| Multi-model scenarios and the `shared:` block | [docs/multi-model.md](docs/multi-model.md), [config/README.md](config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config), [developer-guide](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block) |
 | Workload-variant-autoscaler & EPP+KEDA saturation autoscaling | [docs/workload-variant-autoscaler.md](docs/workload-variant-autoscaler.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
@@ -339,8 +341,13 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
   helmfile is incompatible with Helm 4 (it probes helm with the removed
   `helm version --client` flag and panics). `./install.sh` installs the
   pinned Helm 4 / helmfile combination for you.
-- **kustomize**, **jq**, **yq** -- Required for template rendering
-- **skopeo**, **crane** -- Required for container image management
+- **jq**, **yq** -- Required for template rendering
+- **kustomize** (optional) -- The kustomize deploy path uses `kubectl apply -k`,
+  which has kustomize built in; the standalone binary is only a convenience
+- **skopeo**, **crane** (optional) -- Used to resolve `:auto` image tags; any one
+  of `skopeo`, `crane` or `podman` is enough
+- **zstd** (optional) -- Reads a compressed result set back out of its archive.
+  Without it a run collects uncompressed instead of failing
 - **oc** (optional) -- Required for OpenShift clusters (either `kubectl` or `oc` must be present)
 
 ### Administrative Requirements
@@ -372,7 +379,7 @@ The install script:
 
 1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
 2. Validates Python 3.11+ and pip
-3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo, crane)
+3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, jq, yq) and best-effort installs the optional ones (kustomize, skopeo, crane, zstd)
 4. Installs the `helm-diff` plugin (required by helmfile)
 5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
 6. Verifies all Python packages are importable
@@ -405,6 +412,11 @@ llmdbenchmark --version
 | `--non-admin` / `-i` | `LLMDBENCH_NON_ADMIN` | Skip admin-only steps |
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
+| `--quiet-plan` / `--no-quiet-plan` | `LLMDBENCH_QUIET_PLAN` | Suppress the per-file plan-rendering narration on the console -- the `Rendered: <file>` lines, image overrides and per-stack banners -- replacing it with a one-line summary of what was rendered and where. **On by default** for `standup`, `smoketest`, `teardown`, `run` and `experiment`, where the render is an implicit prelude; **off by default** for `plan`, whose output it is. The detail is never lost: it is written to `<workspace>/logs/` at `DEBUG` either way. `--verbose` overrides this and always shows the full narration. See [Quieting the plan-rendering output](#quieting-the-plan-rendering-output). |
+| `--run-description TEXT` | `LLMDBENCH_DESCRIPTION_TEXT` | Human-readable label for the run, recorded as `run.description` in the benchmark report. Defaults to `<model> [<experiment id>]`. Also settable as `description.text` under a scenario's `common:` (or top-level `shared:`) block, or per treatment in an experiment. |
+| `--run-keywords LIST` | `LLMDBENCH_DESCRIPTION_KEYWORDS` | Comma-separated tags recorded as `run.keywords`. Never auto-populated; omitted entirely when unset. Also settable as `description.keywords` in the same places. |
+| `--compress` / `--no-compress` | `LLMDBENCH_COMPRESS` | Compress output (default: on). Each result set is compressed on the PVC before collection, so the archive rather than the raw tree crosses the tunnel; nothing is compressed on the driver. benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots stay plain at the paths an uncompressed run writes them to; everything else lives in `workspace.tar.zst`. `--no-compress` keeps a fully plain tree. See [Compressed output](#compressed-output). |
+| `--compress-level N` | `LLMDBENCH_COMPRESS_LEVEL` | zstd level (default: 10, the speed/size knee). Raise for archival runs: level 16 costs roughly an order of magnitude more wall clock, for a size gain that measured between 6% and 12% on real result data. |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
 | `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. Available on every subcommand that renders templates. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile — the two can be combined.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set). |
 | `--version` | | Show version |
@@ -433,7 +445,7 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
-| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `guides/multi-model-wva`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `examples/multi-model-optimized-baseline`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
 | `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
 | `--skip-smoketest` | | Skip automatic smoketest after standup completes |
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
@@ -554,6 +566,113 @@ llmdbenchmark standup -p override-ns           # CLI wins over env var
 ```
 
 Boolean env vars accept `1`, `true`, or `yes` (case-insensitive). Active `LLMDBENCH_*` overrides are logged at startup for debugging.
+
+### Quieting the plan-rendering output
+
+`standup`, `smoketest`, `teardown`, `run` and `experiment` all render the plan
+before they do anything else. That render narrates itself in detail -- one line
+per template, plus image overrides and per-stack banners -- which for a typical
+scenario is 40+ lines *per stack*, enough to push the phase output you are
+actually watching off the screen.
+
+By default those commands now print a two-line summary instead:
+
+```text
+✅ Plan rendered: 40 manifest(s) across 1 stack(s) -> /.../workspace/plan
+📝 Per-file render detail suppressed (--no-quiet-plan or -v to show; always recorded in /.../workspace/logs)
+```
+
+`plan` is the exception -- the render narration *is* that command's output, so
+it stays verbose by default.
+
+Nothing is thrown away. The suppressed lines are demoted to `DEBUG`, not
+dropped, so they are still written to `<workspace>/logs/llmdbenchmark-stdout.log`.
+Warnings and errors from the render are never quieted.
+
+```bash
+# full narration on a lifecycle command (one-off)
+llmdbenchmark standup --spec gpu --no-quiet-plan
+
+# ... or for a whole shell / CI job
+export LLMDBENCH_QUIET_PLAN=false
+
+# just the summary from `plan`, when you only want the files on disk
+llmdbenchmark plan --spec gpu --quiet-plan
+
+# --verbose always wins and shows everything
+llmdbenchmark -v standup --spec gpu
+```
+
+Precedence: `--quiet-plan` / `--no-quiet-plan` > `LLMDBENCH_QUIET_PLAN` >
+per-command default, with `--verbose` overriding all three.
+
+### Compressed output
+
+Output is compressed by default (`--no-compress` opts out). A result set is dominated by
+native harness JSON -- `per_request_lifecycle_metrics.json` alone reaches ~1.5 GB per run --
+and the pipeline is **generate, compress, copy**:
+
+* the harness pod produces every per-result-set artifact (reports, summaries, plots,
+  stage-clipped metrics) *before* anything is compressed;
+* each result set is then compressed in place **on the PVC**, so the archive rather than the
+  raw tree crosses the apiserver exec tunnel. This is a transfer speedup as much as a storage
+  one, and it composes with `--fast-collect`;
+* the archive is copied down as-is. Nothing is compressed, expanded, or re-analysed on the
+  driver.
+
+A small keep-plain set is left as real files so the collected tree stays usable without
+touching the archive:
+
+```
+<workspace>/
+├── latest -> <user>-<timestamp>/
+└── <user>-<timestamp>/
+    ├── plan/<scenario>/                       # teardown reads it live
+    ├── analysis/<experiment_id>/
+    │   └── distributions/*.png                # plain
+    └── results/<experiment_id>/
+        ├── benchmark_report_v0.2,_*.yaml      # plain
+        ├── run_metadata.yaml                  # plain
+        └── workspace.tar.zst                  # everything else
+```
+
+Four keep-plain entries, each earning it: the benchmark reports and `run_metadata.yaml` are
+what `results_store` globs off the live filesystem to resolve a run's uid/model/hardware,
+`experiment-summary.yaml` is a DoE run's only index, and the plots are the artifact people
+open (already-compressed bytes, so archiving them buys nothing).
+
+Everything else -- the per-request JSON, logs including the raw Prometheus snapshots, metric
+summaries, CSV, HTML, traces -- lives in `workspace.tar.zst`, and every component that reads
+one of those goes through the archive rather than requiring a plain copy: the cross-treatment
+overlays, summary extraction, the `eval-containers` roll-up and per-task reports, the failure
+validator, and the FMA comparison table. CI's log-dump steps read through
+`util/dump_result_file.sh`.
+
+Inspect an archive without expanding it:
+
+```bash
+tar -I zstd -tf workspace.tar.zst                        # list contents
+tar -I zstd -xOf workspace.tar.zst ./logs/stdout.log     # one member to stdout
+tar -I zstd -xf workspace.tar.zst                        # expand in place
+```
+
+Grep one member through `-xOf` as above. Piping the whole archive does not work: the tar
+padding reads as binary, so plain `grep` prints nothing and `grep -a` prints the
+surrounding tar block rather than the matching line. Level 10 is the default because it
+is the speed/size knee; `--compress-level` raises it for archival runs.
+
+`zstd` must be present in the benchmark image. Images predating it are detected by a probe
+and fall back to plain collection with a warning, never a failure. Compression is also
+skipped when the harness did not finish (a wait timeout, or `--wait-timeout 0`), since
+deleting files the harness may still be writing is not recoverable.
+
+`zstd` is needed on the driver too, to read a collected archive back. `install.sh`
+installs it best-effort; without it the run collects uncompressed and says so, so a
+host that cannot supply the package still works.
+
+`llmdbenchmark results add <path>` and UID lookups behave identically on a compressed and an
+uncompressed workspace: the plain files stay at `results/<experiment_id>/`, and `plan/`, which
+the store reads the scenario name from, is never touched.
 
 ## Architecture
 
@@ -680,7 +799,7 @@ llmdbenchmark/                Python package
     run/                      Run phase (see run/README.md)
         steps/                Step implementations (00-11)
 
-    logging/                  Structured logger with emoji support (see logging/README.md)
+    logging/                  Structured logger with emoji support, plus the QuietLogger console-quieting proxy (see logging/README.md)
     exceptions/               Error hierarchy (Template, Configuration, Execution)
     utilities/                Shared helpers (see utilities/README.md)
         cluster.py            Kubernetes connection, platform detection
@@ -747,9 +866,9 @@ Benchmark load specifications including LLM use case, traffic pattern, input/out
 
 Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations. The `experiment` command automates the full setup x run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary. See [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) for the full experiment lifecycle documentation.
 
-### [Benchmark Report](llmdbenchmark/analysis/benchmark_report/README.md)
+### [Benchmark Report](benchmark-report/README.md)
 
-Results are saved in the native format of each harness, as well as a universal Benchmark Report format (v0.1 and v0.2). The benchmark report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. It acts as a common API for comparing results across different harnesses and configurations. See [llmdbenchmark/analysis/benchmark_report/README.md](llmdbenchmark/analysis/benchmark_report/README.md) for the full schema documentation and Python API.
+Results are saved in the native format of each harness, as well as a universal Benchmark Report format (v0.1 and v0.2). The benchmark report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. It acts as a common API for comparing results across different harnesses and configurations. See [benchmark-report/README.md](benchmark-report/README.md) for the full schema documentation and Python API.
 
 ### [Analysis](docs/analysis.md)
 
@@ -781,6 +900,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Lifecycle](docs/lifecycle.md)
 - [Run](docs/run.md)
 - [Agentic evaluation (eval-containers)](docs/agentic_eval.md)
+- [Benchmarking Agent (Agent Core)](docs/benchmarking-agent.md)
 - [Running eval-containers on OpenShift](docs/openshift-setup.md)
 - [Standup](docs/standup.md)
 - [Kustomize deploy method](docs/kustomize.md)

@@ -1,0 +1,12 @@
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+endpoint-type: chat
+streaming: none
+concurrency: 2
+request-count: 40
+isl: 100
+osl: 20
+extra-inputs: ignore_eos:true
+use-server-token-count: none
+tokenizer-trust-remote-code: none
+no-server-metrics: none

@@ -2,6 +2,7 @@ name: CI - PR Benchmark Run
 
 on:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   # -- Unit tests (no cluster needed) --
@@ -21,13 +22,18 @@ jobs:
         with:
           python-version: "3.12"
 
+      # zstd explicitly: install.sh only installs it best-effort, and without it the
+      # compression tests skip themselves and the suite passes vacuously. The analysis
+      # requirements are image-only, so the plot tests need them installed.
       - name: Install llmdbenchmark
         run: |
+          sudo apt-get update && sudo apt-get install -y zstd
           ./install.sh -y 2>&1
+          pip install -r build/requirements-analysis.txt
           pip install pytest pytest-xdist
 
       - name: Run unit tests
-        run: python -m pytest tests/ -x -q -n2
+        run: python -m pytest tests/ benchmark-report/tests/ -x -q -n2
 
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:
@@ -43,9 +49,9 @@ jobs:
       backend_type: X
       infra_provider: X
       connector: X
-      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number || github.run_id }}
       helm_release: lmdbenchcicdr
-      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      workspace_dir: tmp/cicd-sa-${{ github.event.number || github.run_id }}
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
@@ -55,8 +61,10 @@ jobs:
       verbose: false
       harness: vllm-benchmark
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
 #      harness: nop
 #      workload: nop.yaml
+      admin_privileges: true
     secrets: inherit
 
   # -- FMA deployment (own Kind cluster) --
@@ -73,9 +81,9 @@ jobs:
       backend_type: X
       infra_provider: X
       connector: X
-      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number || github.run_id }}
       helm_release: lmdbenchcicdr
-      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      workspace_dir: tmp/cicd-sa-${{ github.event.number || github.run_id }}
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
@@ -85,6 +93,8 @@ jobs:
       verbose: false
       harness: nop
       workload: nop.yaml
+      harness_resources: 1/2Gi
+      admin_privileges: true
     secrets: inherit
 
   benchmark-modelservice-istio:
@@ -100,9 +110,9 @@ jobs:
       backend_type: X
       infra_provider: X
       connector: X
-      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number || github.run_id }}
       helm_release: lmdbenchcicdr
-      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      workspace_dir: tmp/cicd-sa-${{ github.event.number || github.run_id }}
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
@@ -112,6 +122,8 @@ jobs:
       verbose: false
       harness: inference-perf
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
+      admin_privileges: true
     secrets: inherit
 
   benchmark-modelservice-agentgateway:
@@ -127,9 +139,9 @@ jobs:
       backend_type: X
       infra_provider: X
       connector: X
-      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number || github.run_id }}
       helm_release: lmdbenchcicdr
-      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      workspace_dir: tmp/cicd-sa-${{ github.event.number || github.run_id }}
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
@@ -139,6 +151,8 @@ jobs:
       verbose: false
       harness: guidellm
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
+      admin_privileges: true
     secrets: inherit
 
   benchmark-modelservice-epponly:
@@ -154,9 +168,9 @@ jobs:
       backend_type: X
       infra_provider: X
       connector: X
-      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number || github.run_id }}
       helm_release: lmdbenchcicdr
-      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      workspace_dir: tmp/cicd-sa-${{ github.event.number || github.run_id }}
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
@@ -164,8 +178,10 @@ jobs:
       monitoring_enabled: true
       dry_run: false
       verbose: false
-      harness: guidellm
+      harness: aiperf
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
+      admin_privileges: true
     secrets: inherit
 
   benchmark-kustomize-optimized-baseline:
@@ -181,9 +197,9 @@ jobs:
       backend_type: vllm
       infra_provider: base
       connector:
-      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number || github.run_id }}
       helm_release: lmdbenchcicdr
-      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      workspace_dir: tmp/cicd-sa-${{ github.event.number || github.run_id }}
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
@@ -193,4 +209,6 @@ jobs:
       verbose: false
       harness: inference-perf
       workload: sanity_random.yaml
+      harness_resources: 1/2Gi
+      admin_privileges: true
     secrets: inherit

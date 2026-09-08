@@ -18,6 +18,14 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from llmdbenchmark.analysis.summary import SUMMARY_MARKERS, extract_summary
+
+from llmdbenchmark.analysis.metrics_embed import (  # noqa: F401
+    REPORT_STAGE_RE as _REPORT_STAGE_RE,
+    stage_windows as _stage_windows,
+)
+from llmdbenchmark.utilities.archive import read_member
+
 if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
 
@@ -38,12 +46,44 @@ _RESULT_PATTERNS: dict[str, str] = {
 }
 
 # Summary marker per harness -- the line in stdout.log where the
-# interesting output starts.
-_SUMMARY_MARKERS: dict[str, str] = {
-    "guidellm": "Setup complete, starting benchmarks",
-    "vllm-benchmark": "Result ==",
-    "inferencemax": "Result ==",
-}
+# interesting output starts. Shared with the in-pod extractor.
+_SUMMARY_MARKERS = SUMMARY_MARKERS
+
+# Every harness analyses in the pod at exit. Re-running on the driver only rewrites
+# identical artifacts and forces a collected set to be read back out of its archive.
+# The driver pass stays the fallback for a set the pod did not analyse.
+_IN_POD_ANALYZERS = frozenset(
+    {
+        "inference-perf",
+        "guidellm",
+        "vllm-benchmark",
+        "inferencemax",
+        "aiperf",
+        "nop",
+        "lm-eval",
+        "eval-containers",
+    }
+)
+
+
+def pod_analysis_present(harness_name: str, results_dir: Path) -> bool:
+    """True when *results_dir* already holds the pod's own analysis output.
+
+    Presence is decided on the artifacts, not on the harness name alone: an
+    older image, a failed analyzer, or a hand-assembled directory leaves the
+    reports missing, and re-running on the driver is the fallback for exactly
+    those cases.
+    """
+    if harness_name not in _IN_POD_ANALYZERS:
+        return False
+    if harness_name == "nop":
+        # Archived by default, and sync_analysis_dir moves analysis/ off the tree
+        # during collection either way -- so a plain check reads as "the pod did
+        # nothing" and hands the work to a driver path whose own input is archived
+        # too, failing the run.
+        return read_member(results_dir, "analysis/result.txt") is not None
+    return any(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
+
 
 # Harness name to benchmark_report writer name
 _WRITER_NAMES: dict[str, str] = {
@@ -54,6 +94,36 @@ _WRITER_NAMES: dict[str, str] = {
     "nop": "nop",
     "eval-containers": "eval-containers",
 }
+
+
+def _reset_harness_meta_cache() -> None:
+    """Drop the memoized run_metadata.yaml; one process analyses many subdirs."""
+    from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+        _get_harness_meta,
+    )
+
+    if hasattr(_get_harness_meta, "_cache"):
+        del _get_harness_meta._cache
+
+
+def _recorded_for(results_dir: Path, key: str) -> str:
+    """Read one of this directory's own metadata values, ignoring the ambient envar.
+
+    Args:
+        results_dir (Path): directory being converted.
+        key (str): run_metadata.yaml key to read.
+
+    Returns:
+        str: the recorded value, or "" for a run that predates it.
+    """
+    import yaml
+
+    try:
+        with (results_dir / "run_metadata.yaml").open(encoding="utf-8") as meta_file:
+            metadata = yaml.safe_load(meta_file) or {}
+    except (OSError, yaml.YAMLError):
+        return ""
+    return str(metadata.get(key) or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +151,12 @@ def run_analysis(
     Returns:
         ``None`` on success, or an error string.
     """
+    # Returns None (success) so the caller still counts this result set: the
+    # cross-treatment comparison is gated on that count and is driver-only work.
+    if pod_analysis_present(harness_name, results_dir):
+        _log(context, f"{results_dir.name}: using in-pod analysis")
+        return None
+
     if harness_name == "nop":
         return _run_nop_analysis(results_dir, context)
 
@@ -92,31 +168,66 @@ def run_analysis(
     pattern = _RESULT_PATTERNS.get(harness_name, "*.json")
     result_files = sorted(glob.glob(str(results_dir / pattern)))
 
+    # A fixed-path input may be archived rather than absent. The converters take a
+    # path and resolve the result root from it, reading through read_member, so the
+    # path only has to name the member -- it does not have to exist on disk.
+    if not result_files and not glob.has_magic(pattern):
+        if read_member(results_dir, pattern) is not None:
+            result_files = [str(results_dir / pattern)]
+
     if not result_files:
         _log(context, f"No result files matching '{pattern}' in {results_dir.name}")
         return None  # Nothing to convert -- not an error
 
+    # The converters resolve run identity relative to these envars. The harness
+    # pod sets them, the driver does not, and these reports overwrite the in-pod
+    # ones. Each one outranks the per-directory metadata, so a stale one left in
+    # the driver's environment would stamp every treatment of a sweep with a
+    # single identity -- the bug this scoping exists to prevent. Every envar the
+    # converters consult has to be scoped, not just the identity pair.
+    scoped_env = {
+        "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(results_dir),
+        "LLMDBENCH_RUN_EXPERIMENT_ID": _recorded_for(results_dir, "experiment_id"),
+        "LLMDBENCH_DESCRIPTION_TEXT": _recorded_for(results_dir, "description_text"),
+        "LLMDBENCH_DESCRIPTION_KEYWORDS": _recorded_for(
+            results_dir, "description_keywords"
+        ),
+    }
+    previous_env = {name: os.environ.get(name) for name in scoped_env}
+    os.environ.update(scoped_env)
+    _reset_harness_meta_cache()
+
     errors: list[str] = []
-    for result_file in result_files:
-        result_path = Path(result_file)
-        fname = result_path.name
+    try:
+        for result_file in result_files:
+            result_path = Path(result_file)
+            fname = result_path.name
 
-        for br_version in ("0.1", "0.2"):
-            prefix = (
-                "benchmark_report" if br_version == "0.1" else "benchmark_report_v0.2"
-            )
-            output_name = f"{prefix},_{fname}.yaml"
-            output_path = results_dir / output_name
+            for br_version in ("0.1", "0.2"):
+                prefix = (
+                    "benchmark_report"
+                    if br_version == "0.1"
+                    else "benchmark_report_v0.2"
+                )
+                output_name = f"{prefix},_{fname}.yaml"
+                output_path = results_dir / output_name
 
-            err = _convert_to_benchmark_report(
-                result_path,
-                output_path,
-                writer_name,
-                br_version,
-                context,
-            )
-            if err:
-                errors.append(err)
+                err = _convert_to_benchmark_report(
+                    result_path,
+                    output_path,
+                    writer_name,
+                    br_version,
+                    context,
+                )
+                if err:
+                    errors.append(err)
+    finally:
+        for name, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+        _reset_harness_meta_cache()
 
     # --- 2. Extract summary from stdout.log ---
     marker = _SUMMARY_MARKERS.get(harness_name)
@@ -127,9 +238,10 @@ def run_analysis(
     if harness_name == "inference-perf":
         _run_inference_perf_analyze(results_dir, context)
 
-    # --- 4. Generate metric plots (if metrics were collected) ---
+    # --- 4. Embed metrics + generate plots (if metrics were collected) ---
     metrics_dir = results_dir / "metrics"
     if metrics_dir.exists():
+        _embed_metrics_in_reports(metrics_dir, results_dir, context)
         _run_metric_visualizations(metrics_dir, results_dir, context)
 
     # --- 5. Generate per-request distribution plots ---
@@ -233,7 +345,13 @@ def _convert_via_api(
         br.export_yaml(str(output_file))
         return None
 
-    except Exception as exc:
+    # SystemExit too: the converters share a CLI entry point whose input check calls
+    # sys.exit, and an input that only exists inside the archive trips it. Escaping
+    # here would kill the analysis phase instead of degrading to a warning.
+    except (Exception, SystemExit) as exc:
+        # str(SystemExit(2)) is just "2", which says nothing in a log.
+        if isinstance(exc, SystemExit):
+            return f"converter exited {exc.code}"
         return str(exc)
 
 
@@ -278,38 +396,18 @@ def _convert_via_cli(
 
 def _extract_summary(
     results_dir: Path,
-    marker: str,
+    marker: str | None,
     context: ExecutionContext | None,
 ) -> None:
     """Extract the tail of stdout.log from *marker* into analysis/summary.txt."""
-    stdout_log = results_dir / "stdout.log"
-    if not stdout_log.exists():
-        return
-
-    analysis_dir = results_dir / "analysis"
-    analysis_dir.mkdir(parents=True, exist_ok=True)
-
     try:
-        lines = stdout_log.read_text(
-            encoding="utf-8",
-            errors="replace",
-        ).splitlines()
-        # Find the last occurrence of the marker
-        # (matches bash ``grep | tail -1``)
-        start_idx = None
-        for idx, line in enumerate(lines):
-            if marker in line:
-                start_idx = idx
-        if start_idx is not None:
-            summary_lines = lines[start_idx:]
-            summary_path = analysis_dir / "summary.txt"
-            summary_path.write_text(
-                "\n".join(summary_lines) + "\n",
-                encoding="utf-8",
-            )
-            _log(context, f"Summary extracted to {summary_path.name}")
+        summary_path = extract_summary(results_dir, marker)
     except Exception as exc:
         _log(context, f"Could not extract summary: {exc}", warning=True)
+        return
+
+    if summary_path is not None:
+        _log(context, f"Summary extracted to {summary_path.name}")
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +466,27 @@ def _run_inference_perf_analyze(
 # ---------------------------------------------------------------------------
 
 
+def _embed_metrics_in_reports(
+    metrics_dir: Path,
+    results_dir: Path,
+    context: ExecutionContext | None,
+) -> None:
+    """Merge scraped metrics into the v0.2 reports, clipped per stage.
+
+    The in-pod analyzers run the same pass, via the same module, before the results
+    are collected -- so on a normal run this is a no-op re-do. It stays for the
+    result sets the pod did not analyse: an older image, or a harness with no in-pod
+    analyzer.
+    """
+    from llmdbenchmark.analysis.metrics_embed import embed_metrics
+
+    embed_metrics(
+        metrics_dir,
+        results_dir,
+        log=lambda message, warning=False: _log(context, message, warning=warning),
+    )
+
+
 def _run_metric_visualizations(
     metrics_dir: Path,
     results_dir: Path,
@@ -416,12 +535,8 @@ def _run_per_request_plots(
     Reads ``per_request_lifecycle_metrics.json`` and writes plots to
     ``analysis/distributions/``.  Requires ``matplotlib``.
     """
-    pr_file = results_dir / "per_request_lifecycle_metrics.json"
-    if not pr_file.exists():
-        pr_file = results_dir / "analysis" / "per_request_lifecycle_metrics.json"
-    if not pr_file.exists():
-        return
-
+    # Plain files only, and the in-pod pass runs before compression: on the driver
+    # this is a fallback that no-ops on an already-compressed result set.
     try:
         from llmdbenchmark.analysis.per_request_plots import (
             generate_per_request_plots,
@@ -452,126 +567,16 @@ def _run_session_plots(
     results_dir: Path,
     context: ExecutionContext | None,
 ) -> None:
-    """Generate bar charts for session lifecycle metrics from benchmark report v0.2 files.
-
-    Reads all ``benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml``
-    files in results_dir and produces bar charts in ``analysis/session/``.
-    """
-    try:
-        import yaml as _yaml
-    except ImportError:
-        _log(context, "PyYAML not available -- skipping session plots")
-        return
+    """Generate bar charts for session lifecycle metrics from benchmark report v0.2 files."""
+    from llmdbenchmark.analysis.session_plots import generate_session_plots
 
     try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import numpy as np
-    except ImportError:
-        _log(context, "matplotlib not available -- skipping session plots")
-        return
-
-    session_br_files = sorted(
-        results_dir.glob("benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml")
-    )
-    if not session_br_files:
-        return
-
-    from llmdbenchmark.analysis.cross_treatment import (
-        SESSION_METRICS_OF_INTEREST,
-        deep_get,
-    )
-
-    # Load all stages into rows
-    rows: list[dict] = []
-    for br_file in session_br_files:
-        try:
-            with open(br_file, encoding="utf-8") as f:
-                report = _yaml.safe_load(f)
-            if not report:
-                continue
-        except Exception:
-            continue
-
-        row: dict = {"stage_file": br_file.name}
-        for dotted_path, col_name in SESSION_METRICS_OF_INTEREST:
-            row[col_name] = deep_get(report, dotted_path)
-        rows.append(row)
-
-    if not rows:
-        return
-
-    out_dir = results_dir / "analysis" / "session"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # (column_name, title, unit)
-    plot_specs = [
-        ("session_rate_qps", "Session Rate", "sessions/s"),
-        ("session_duration_mean_s", "Session Duration (Mean)", "seconds"),
-        ("session_duration_p99_s", "Session Duration P99", "seconds"),
-        ("events_per_session_mean", "Events per Session (Mean)", "count"),
-        (
-            "events_cancelled_per_session_mean",
-            "Cancelled Events per Session (Mean)",
-            "count",
-        ),
-        (
-            "output_tokens_per_session_mean",
-            "Output Tokens per Session (Mean)",
-            "tokens",
-        ),
-        ("failed_sessions", "Failed Sessions", "count"),
-    ]
-
-    bar_color = "#3498db"
-    generated = 0
-
-    stage_labels = [
-        r["stage_file"]
-        .replace("benchmark_report_v0.2,_", "")
-        .replace("_session_lifecycle_metrics.json.yaml", "")
-        for r in rows
-    ]
-
-    for col_name, title, unit in plot_specs:
-        values = [r.get(col_name) for r in rows]
-        if all(v is None for v in values):
-            continue
-        values_plot = [float(v) if v is not None else float("nan") for v in values]
-
-        fig, ax = plt.subplots(figsize=(max(6, len(rows) * 1.5), 5))
-        x_pos = range(len(rows))
-        bars = ax.bar(x_pos, values_plot, color=bar_color, alpha=0.85)
-
-        for bar, val in zip(bars, values_plot):
-            if np.isnan(val):
-                continue
-            text = f"{val:.4f}" if val < 10 else f"{val:.1f}"
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                text,
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                fontweight="bold",
-            )
-
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(stage_labels, rotation=30, ha="right", fontsize=9)
-        ax.set_ylabel(unit)
-        ax.set_title(title)
-        ax.grid(axis="y", alpha=0.3)
-
-        plt.tight_layout()
-        plt.savefig(str(out_dir / f"session_{col_name}.png"), dpi=150)
-        plt.close()
-        generated += 1
-
-    if generated:
-        _log(context, f"Generated {generated} session plot(s) in {out_dir}")
+        out_dir = results_dir / "analysis" / "session"
+        count = generate_session_plots(results_dir, output_dir=out_dir)
+        if count:
+            _log(context, f"Generated {count} session plot(s) in {out_dir}")
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        _log(context, f"Session plot generation failed: {exc}", warning=True)
 
 
 # ---------------------------------------------------------------------------

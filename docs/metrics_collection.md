@@ -217,4 +217,4 @@ Extracted from EPP pod structured JSON logs by `process_epp_logs.py`:
 | `workload/harnesses/process_metrics.py` | Raw metric aggregation into `metrics_summary.json` |
 | `workload/harnesses/process_epp_logs.py` | EPP log parsing into `epp_metrics_summary.json` |
 | `llmdbenchmark/analysis/visualize_metrics.py` | Time-series PNG graph generation |
-| `llmdbenchmark/analysis/benchmark_report/metrics_processor.py` | Benchmark report integration |
+| `benchmark-report/llmd_benchmark_report/metrics_processor.py` | Benchmark report integration |

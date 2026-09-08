@@ -4,6 +4,7 @@ import subprocess
 import ipaddress
 import os
 import json
+import sys
 import time
 import shutil
 
@@ -51,6 +52,13 @@ pod_name = os.uname()[1]
 pod_namespace = os.environ.get("LLMDBENCH_POD_NS", "default")
 pod_labels = os.environ.get("LLMDBENCH_POD_LABELS", "")
 kubeconfig_path = os.environ.get("KUBECONFIG", "")
+# Set by the Jinja templates only when the labels originate from
+# `contextLengthRanges`, i.e. when routing correctness depends on them.
+pod_labels_required = os.environ.get("LLMDBENCH_POD_LABELS_REQUIRED", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 lws_leader_address = os.environ.get("LWS_LEADER_ADDRESS", None)
 
@@ -89,7 +97,7 @@ _parser.add_option(
     "--omitenvvars",
     dest="omitenvvars",
     default="",
-    help="List of environment variables which should be ommitted",
+    help="List of environment variables which should be omitted",
 )
 
 _parser.set_defaults()
@@ -650,6 +658,98 @@ if disable_acs == "1":
 env_file_contents.append("echo")
 
 
+def _load_kubeconfig(path):
+    """Load a kubeconfig without requiring PyYAML.
+
+    The vLLM runtime images are not guaranteed to ship PyYAML (the Spyre AIU
+    images do not), and this runs inside the model container, so we cannot
+    pip-install into it. Prefer PyYAML when present; otherwise fall back to a
+    deliberately minimal parser that handles only the nesting kubeconfig
+    actually uses: `clusters`/`users` lists of `name` + mapping entries.
+    """
+    with open(path, "r") as f:
+        text = f.read()
+
+    try:
+        import yaml
+
+        return yaml.safe_load(text)
+    except ImportError:
+        pass
+
+    def scalar(v):
+        v = v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+            return v[1:-1]
+        if v == "{}":
+            return {}
+        if v == "[]":
+            return []
+        return v
+
+    # Stack of (key_column, container): `container` holds keys at exactly
+    # `key_column`, so a line at a shallower-or-equal column pops back out to
+    # the correct parent.
+    root = {}
+    stack = [(0, root)]
+    pending = None  # (key, key_column) whose nested block is not created yet
+
+    for raw in text.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip())
+        line = raw.strip()
+
+        is_item = line.startswith("- ")
+        if is_item:
+            line = line[2:].strip()
+            # Keys of a `- foo: bar` item live 2 columns past the dash.
+            key_col = indent + 2
+        else:
+            key_col = indent
+
+        if pending is not None and (
+            key_col > pending[1] or (is_item and indent >= pending[1])
+        ):
+            # This line opens the nested block belonging to `pending`.
+            # A sequence may be indented at or past its parent key's column.
+            container = [] if is_item else {}
+            stack[-1][1][pending[0]] = container
+            stack.append((key_col, container))
+            pending = None
+        else:
+            pending = None
+            while len(stack) > 1 and key_col < stack[-1][0]:
+                stack.pop()
+
+        if is_item:
+            # Find the nearest enclosing list to append to.
+            while stack and not isinstance(stack[-1][1], list):
+                stack.pop()
+            if not stack:
+                return root
+            item = {}
+            stack[-1][1].append(item)
+            stack.append((key_col, item))
+            if not line:
+                continue
+
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip()
+        target = stack[-1][1]
+        if not isinstance(target, dict):
+            continue
+        if value:
+            target[key] = scalar(value)
+        else:
+            pending = (key, key_col)
+
+    return root
+
+
 def _parse_pod_index(suffix):
     """Safely compute pod index by summing dash-separated integers from a pod name suffix."""
     parts = suffix.split("-")
@@ -684,6 +784,31 @@ for key in dict(os.environ).keys():
                 f'INFO: Variable "{key}" with value "{value}" will be re-exported with "{newvalue}" ({pod_index})'
             )
             env_file_contents.append(f"export {key}={newvalue}")
+
+
+def _pod_labeling_failed(reason):
+    """Report a self-labeling failure, fatally if the labels are load-bearing.
+
+    When the labels come from `contextLengthRanges`, routing decisions depend on
+    them: an unlabeled pod is invisible to the context-length-aware scorer, so
+    the standup would go green while the routing the user asked for is silently
+    inert. Fail the container instead so the deploy surfaces the problem. Plain
+    `podLabels` stay advisory -- nothing in the request path reads them.
+    """
+    if pod_labels_required:
+        print(f"ERROR: Pod self-labeling failed: {reason}", file=sys.stderr)
+        print(
+            "ERROR: contextLengthRanges is set, so context-length-aware routing "
+            "cannot work without this label. Refusing to start vLLM.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"WARNING: Pod self-labeling failed (non-fatal): {reason}")
+    print("WARNING: Context-length-aware routing will not work without pod labels.")
+
+
+if pod_labels.count("_eq_") and not kubeconfig_path:
+    _pod_labeling_failed("KUBECONFIG is unset, so this pod cannot patch its own labels")
 
 if pod_labels.count("_eq_") and kubeconfig_path:
     try:
@@ -723,10 +848,8 @@ if pod_labels.count("_eq_") and kubeconfig_path:
             # Fall back to K8s API via urllib (stdlib, no pip needed)
             import urllib.request
             import ssl
-            import yaml
 
-            with open(kubeconfig_path, "r") as f:
-                kubeconfig = yaml.safe_load(f)
+            kubeconfig = _load_kubeconfig(kubeconfig_path)
 
             # Extract server and credentials from kubeconfig
             cluster = kubeconfig["clusters"][0]["cluster"]
@@ -766,6 +889,31 @@ if pod_labels.count("_eq_") and kubeconfig_path:
             headers = {"Content-Type": "application/merge-patch+json"}
             if "token" in user:
                 headers["Authorization"] = f"Bearer {user['token']}"
+            elif "client-certificate-data" not in user:
+                # No usable credential in the kubeconfig. This is the normal
+                # case on managed clusters (GKE/EKS/AKS), whose kubeconfigs
+                # authenticate via an `exec` credential plugin
+                # (gke-gcloud-auth-plugin, aws-iam-authenticator, kubelogin).
+                # That binary does not exist in the vLLM image, so the request
+                # would go out anonymous and the API server would answer 403.
+                # Fall back to the pod's own projected service-account token,
+                # which is always mounted and needs no external tooling.
+                sa_token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"  # noqa: S105
+                if os.path.isfile(sa_token_path):
+                    with open(sa_token_path, encoding="utf-8") as _tf:
+                        headers["Authorization"] = f"Bearer {_tf.read().strip()}"
+                    exec_cmd = (user.get("exec") or {}).get("command", "none")
+                    print(
+                        "INFO: kubeconfig has no token or client certificate "
+                        f"(auth plugin: {exec_cmd}); using the pod's "
+                        "service-account token instead"
+                    )
+                    # The in-cluster CA must be used with the in-cluster token:
+                    # the kubeconfig's CA may be for the external endpoint.
+                    sa_ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+                    if os.path.isfile(sa_ca_path):
+                        ssl_ctx = ssl.create_default_context(cafile=sa_ca_path)
+                        server = "https://kubernetes.default.svc"
 
             patch_url = f"{server}/api/v1/namespaces/{pod_namespace}/pods/{pod_name}"
             patch_body = json.dumps(
@@ -783,9 +931,10 @@ if pod_labels.count("_eq_") and kubeconfig_path:
             else:
                 raise RuntimeError(f"K8s API returned status {resp.status}")
 
+    except SystemExit:
+        raise
     except Exception as e:
-        print(f"WARNING: Pod self-labeling failed (non-fatal): {e}")
-        print("WARNING: Context-length-aware routing will not work without pod labels.")
+        _pod_labeling_failed(e)
 
 env_file_contents.append('echo "Defined NCCL environment variables"')
 env_file_contents.append(

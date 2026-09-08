@@ -104,6 +104,11 @@ scenario:
       enabled: true
       iterations: 1
 
+      launcher:
+        # Cap KV cache so sleep-mode leaves headroom for sampler warmup (avoids OOM).
+        # Re-tune per model/GPU if changed.
+        kvCacheMemory: 11259300148  # bytes (~10.49 GiB)
+
       # Pin the FMA launchers + requester to ONE GPU node. At standup (step_06)
       # the harness picks a GPU node of a single GPU type with free GPUs and CPU
       # (preferring a fully free/dedicated node, falling back to the most-free
@@ -302,6 +307,12 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS
     # =========================================================================
+    # Enable metrics scraping (collect_metrics.sh in the harness):
+    # captures requester replica counts + EPP KV-cache/queue-depth gauges into
+    # results/metrics/..
+    monitoring:
+      metricsScrapeEnabled: true
+
     workDir: "/tmp/llmdbenchcicd-ocp-wva-fma-hotstart/"
 
     # Custom run-phase warmup step for hot-start scenario.

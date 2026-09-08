@@ -1,0 +1,66 @@
+{# ============================================================================
+   30_keda-scaledobject.yaml.j2
+
+   Per-stack KEDA ScaledObject for direct EPP saturation autoscaling
+   (Prometheus triggers → HPA; no WVA/VariantAutoscaling/prometheus-adapter).
+
+   Triggers come entirely from scaledObject.triggers (see defaults.yaml); a
+   scenario can redefine the whole list. Each entry: query (required),
+   threshold, optional name/metricType/activationThreshold. In `query`,
+   ${poolName} and ${modelName} are substituted at render time.
+
+   Only rendered when eppKedaSaturation.enabled is true.
+   ============================================================================ #}
+{% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
+{% if fma is defined and fma.enabled | default(false) %}
+{% set scale_kind = 'Deployment' %}
+{% set scale_name = 'fma-requester-' ~ model_id_label %}
+{% set hpa_name = model_id_label ~ '-fma' %}
+{% else %}
+{% set scale_kind = 'Deployment' %}
+{% set scale_name = model_id_label ~ '-decode' %}
+{% set hpa_name = model_id_label ~ '-decode' %}
+{% endif %}
+{% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
+{% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router', true) %}
+{% set prom_url = eppKedaSaturation.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local', true) %}
+{% set prom_url = prom_url ~ ':' ~ (eppKedaSaturation.prometheus.port | default(9091, true)) %}
+{% set triggers = eppKedaSaturation.scaledObject.triggers | default([], true) %}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ hpa_name }}-saturation
+  namespace: {{ epp_ns }}
+  annotations:
+    llm-d.ai/managed: "true"
+    llm-d.ai/model-id: "{{ model.name }}"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ scale_kind }}
+    name: {{ scale_name }}
+  minReplicaCount: {{ eppKedaSaturation.scaledObject.minReplicas | default(1) }}
+  maxReplicaCount: {{ eppKedaSaturation.scaledObject.maxReplicas | default(10) }}
+  pollingInterval: {{ eppKedaSaturation.scaledObject.pollingInterval | default(15) }}
+  triggers:
+{% for t in triggers %}
+  - type: prometheus
+    name: {{ t.name | default('trigger-' ~ loop.index) }}
+    metricType: {{ t.metricType | default('AverageValue') }}
+    authenticationRef:
+      name: prometheus-auth
+    metadata:
+      serverAddress: "{{ prom_url }}"
+      authModes: bearer
+      query: |
+        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) }}
+      threshold: "{{ t.threshold | default('1') }}"
+      activationThreshold: "{{ t.activationThreshold | default('0') }}"
+{% endfor %}
+{% if eppKedaSaturation.scaledObject.behavior is defined %}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+{{ eppKedaSaturation.scaledObject.behavior | toyaml | indent(6, first=True) }}
+{% endif %}
+{% endif %}

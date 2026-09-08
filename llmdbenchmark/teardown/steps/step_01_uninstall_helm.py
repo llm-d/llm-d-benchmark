@@ -37,11 +37,14 @@ class UninstallHelmStep(Step):
         }
     )
 
-    # Chart name prefixes used exclusively by modelservice deployments this
-    # tool creates (llm-d-modelservice, llm-d-router-gateway/-standalone).
+    # Chart name prefixes used exclusively by deployments this tool creates
+    # (llm-d-modelservice, llm-d-router-gateway/-standalone, fma-controllers).
     # Used as a fallback match on full-scenario teardowns -- see
-    # _release_matches.
-    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-")
+    # _release_matches. fma-controllers is model-agnostic (its release name
+    # is only model-keyed, e.g. "<model_id_label>-fma-dp"), so without this
+    # entry a mismatched/omitted model label at teardown leaves the release
+    # deployed while teardown still reports success (#1820).
+    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-", "fma-controllers")
 
     def __init__(self):
         super().__init__(
@@ -87,6 +90,12 @@ class UninstallHelmStep(Step):
     def _fma_guide_name(context: ExecutionContext) -> str:
         """Return the guide name if any rendered stack is a kustomize FMA guide,
         else "".
+
+        Matches every ``fast-model-actuation`` variant (the base guide and
+        derivatives like ``fast-model-actuation-keda``): all deploy the FMA
+        dual-pods CRs and need the same finalizer-aware cleanup here. The actual
+        guide name is returned so the ``llm-d.ai/guide=<name>`` requester
+        selector in ``_delete_fma_crs`` stays correct per variant.
         """
         for stack_path in context.rendered_stacks or []:
             cfg_file = stack_path / "config.yaml"
@@ -97,10 +106,11 @@ class UninstallHelmStep(Step):
                     cfg = yaml.safe_load(fh) or {}
             except (OSError, yaml.YAMLError):
                 continue
-            if (cfg.get("kustomize", {}) or {}).get("guideName", "") == (
-                "fast-model-actuation"
+            guide_name = (cfg.get("kustomize", {}) or {}).get("guideName", "")
+            if guide_name == "fast-model-actuation" or guide_name.startswith(
+                "fast-model-actuation-"
             ):
-                return "fast-model-actuation"
+                return guide_name
         return ""
 
     def execute(
@@ -642,7 +652,7 @@ class UninstallHelmStep(Step):
         if not pairs:
             return
 
-        # Per-stack: delete ScaledObject (rendered as 30_epp-keda-saturation-scaledobject.yaml.j2).
+        # Per-stack: delete ScaledObject (rendered as 30_keda-scaledobject.yaml.j2).
         # These are not Helm-managed; `kubectl delete` is idempotent.
         context.logger.log_info("Deleting EPP+KEDA ScaledObjects...")
         for stack_path, cfg in pairs:
@@ -653,9 +663,7 @@ class UninstallHelmStep(Step):
             if not epp_keda_ns:
                 continue
 
-            scaledobject_yaml = _find_yaml(
-                stack_path, "30_epp-keda-saturation-scaledobject"
-            )
+            scaledobject_yaml = _find_yaml(stack_path, "30_keda-scaledobject")
             if scaledobject_yaml and _has_yaml_content(scaledobject_yaml):
                 result = cmd.kube(
                     "delete",

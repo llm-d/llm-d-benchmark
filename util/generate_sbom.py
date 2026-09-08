@@ -179,7 +179,11 @@ _VERSION_LINE_RE = re.compile(
 _INSTALL_FN_RE = re.compile(
     r"^\s*install_(?P<tool>[a-zA-Z0-9_-]+?)_(?:linux|mac)\s*\(\s*\)\s*\{?\s*$"
 )
-_TOOLS_VAR_RE = re.compile(r"^\s*tools=(?P<q>[\"'])(?P<list>[^\"']+)(?P=q)\s*$")
+# Matches both `tools=` and `optional_tools=`: optional tools are still
+# installed by install.sh (pinned static binaries), so they belong in the SBOM.
+_TOOLS_VAR_RE = re.compile(
+    r"^\s*(?:optional_)?tools=(?P<q>[\"'])(?P<list>[^\"']+)(?P=q)\s*$"
+)
 _PLANNER_RE = re.compile(r'^\s*PLANNER_GIT="(?P<url>git\+https://[^"]+)"\s*$')
 _HELM_DIFF_RE = re.compile(r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)")
 # `tool_version_for()` is the authoritative pin table. Its case arms look

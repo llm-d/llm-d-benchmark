@@ -23,6 +23,7 @@ RUN apt-get update; \
     unzip \
     libpq-dev \
     vim-tiny \
+    zstd \
     && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/*
 
 # Install OpenShift CLI (oc)
@@ -65,16 +66,16 @@ WORKDIR /workspace
 RUN pip install --upgrade pip setuptools setuptools-rust wheel
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=v0.6.0
-ARG INFERENCE_PERF_COMMIT=v0.6.0
+ARG INFERENCE_PERF_BRANCH=v0.6.1
+ARG INFERENCE_PERF_COMMIT=v0.6.1
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
     pip install .
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BENCHMARK_BRANCH=v0.24.0
-ARG VLLM_BENCHMARK_COMMIT=v0.24.0
+ARG VLLM_BENCHMARK_BRANCH=v0.26.0
+ARG VLLM_BENCHMARK_COMMIT=v0.26.0
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
@@ -100,8 +101,8 @@ RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.6.1
-ARG GUIDELLM_COMMIT=v0.6.1
+ARG GUIDELLM_BRANCH=v0.7.3
+ARG GUIDELLM_COMMIT=v0.7.3
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
@@ -133,14 +134,20 @@ ADD llmdbenchmark/analysis/scripts/ /tmp/analysis/
 ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
 COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
 
+# Plot modules the analyzers import flat: shipped alongside them, not as a package.
+COPY llmdbenchmark/analysis/per_request_plots.py /usr/local/bin/per_request_plots.py
+COPY llmdbenchmark/analysis/session_plots.py /usr/local/bin/session_plots.py
+COPY llmdbenchmark/analysis/session_metrics.py /usr/local/bin/session_metrics.py
+COPY llmdbenchmark/analysis/summary.py /usr/local/bin/summary.py
+COPY llmdbenchmark/analysis/metrics_embed.py /usr/local/bin/metrics_embed.py
+
 RUN rsync -az --exclude "__pycache__" /tmp/analysis/ /usr/local/bin/; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
 
-COPY llmdbenchmark/analysis/benchmark_report/ /opt/benchmark_report/
-RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
+ADD benchmark-report/ /tmp/benchmark-report/
 
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .
-RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install -e /opt
+RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install --no-cache-dir /tmp/benchmark-report/
 
 ADD install.sh /usr/local/bin/llmdbench_install.sh
 RUN chmod +x /usr/local/bin/*; \

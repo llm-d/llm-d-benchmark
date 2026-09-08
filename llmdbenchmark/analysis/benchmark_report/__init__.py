@@ -1,31 +1,40 @@
-"""
-Benchmark Report standardized reporting format.
+"""Compatibility shim for the extracted ``llmd-benchmark-report`` package.
+
+The Benchmark Report library now lives in ``benchmark-report/`` at the
+repository root and is distributed on PyPI as ``llmd-benchmark-report``
+(import name ``llmd_benchmark_report``). This shim keeps the historical
+``llmdbenchmark.analysis.benchmark_report`` import path working; new code
+should import ``llmd_benchmark_report`` directly.
+
+Submodules are aliased with identity preserved, so
+``from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import
+BenchmarkReportV02`` returns the same class object as the canonical import.
 """
 
-from .base import BenchmarkReport
-from .core import (
-    get_nested,
-    import_benchmark_report,
-    import_yaml,
-    load_benchmark_report,
-    make_json_schema,
-    update_dict,
-    yaml_str_to_benchmark_report,
+import importlib
+import sys
+
+_SUBMODULES = (
+    "base",
+    "cli",
+    "core",
+    "guidellm_native",
+    "metrics_processor",
+    "native_to_br0_1",
+    "native_to_br0_2",
+    "native_to_br0_2_1",
+    "schema_v0_1",
+    "schema_v0_2",
+    "schema_v0_2_1",
+    "schema_v0_2_components",
+    "timeseries",
 )
-from .schema_v0_1 import BenchmarkReportV01
-from .schema_v0_2 import BenchmarkReportV02
-from .schema_v0_2_1 import BenchmarkReportV021
 
-__all__ = [
-    "BenchmarkReport",
-    "BenchmarkReportV01",
-    "BenchmarkReportV02",
-    "BenchmarkReportV021",
-    "get_nested",
-    "import_benchmark_report",
-    "import_yaml",
-    "load_benchmark_report",
-    "make_json_schema",
-    "update_dict",
-    "yaml_str_to_benchmark_report",
-]
+_this = sys.modules[__name__]
+for _sub in _SUBMODULES:
+    _mod = importlib.import_module(f"llmd_benchmark_report.{_sub}")
+    sys.modules[f"{__name__}.{_sub}"] = _mod
+    setattr(_this, _sub, _mod)
+
+from llmd_benchmark_report import *  # noqa: E402,F401,F403
+from llmd_benchmark_report import __all__ as __all__  # noqa: E402,F401

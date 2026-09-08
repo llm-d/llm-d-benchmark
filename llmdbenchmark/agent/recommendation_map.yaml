@@ -1,0 +1,55 @@
+# Recommendation Map for the Agent Core.
+#
+# recommendation_map_version is an explicit semver, never a file hash, so
+# that Recommendation ID determinism is documented rather than incidental.
+#
+# The PRD names an `inference-scheduling` guide. It does not exist: the spec
+# was renamed upstream to optimized-baseline. See README.md:104 ("optimized
+# baseline guide (formerly inference-scheduling)") and util/test-scenarios.sh:91.
+recommendation_map_version: "0.1.0"
+
+rules:
+  - workload_intent: "Interactive Chat"
+    prefix_reuse: false
+    specification: "guides/optimized-baseline"
+    harness: "inference-perf"
+    workload_profile: "chatbot_synthetic.yaml"
+    recommendation_confidence: "high"
+    rationale: >-
+      Interactive Chat is a synthetic chatbot-shaped load against the
+      optimized baseline guide, scored by inference-perf.
+
+  - workload_intent: "Interactive Chat"
+    prefix_reuse: true
+    specification: "guides/optimized-baseline"
+    harness: "inference-perf"
+    workload_profile: "shared_prefix_synthetic.yaml"
+    recommendation_confidence: "high"
+    rationale: >-
+      Prefix reuse is best exercised with the shared-prefix synthetic
+      profile so repeated system-prompt prefixes are actually present in
+      the load.
+
+  - workload_intent: "Long-Context Generation"
+    prefix_reuse: false
+    specification: "guides/pd-disaggregation"
+    harness: "inference-perf"
+    workload_profile: "summarization_synthetic.yaml"
+    recommendation_confidence: "medium"
+    rationale: >-
+      Long inputs and long outputs are the pd-disaggregation guide's target
+      shape; --harness and --workload are rendered explicitly because the
+      guide's scenario otherwise defaults to vllm-benchmark and
+      random_concurrent.yaml.
+
+  - workload_intent: "Batch Throughput"
+    prefix_reuse: false
+    specification: "guides/optimized-baseline"
+    harness: "guidellm"
+    workload_profile: "summarization_synthetic.yaml"
+    fallback_workload_profile: "sanity_concurrent.yaml"
+    recommendation_confidence: "medium"
+    rationale: >-
+      Batch Throughput is scored with guidellm's rate ladder against a
+      summarization-shaped profile; sanity_concurrent.yaml is the fallback
+      when the primary profile is not present on disk.

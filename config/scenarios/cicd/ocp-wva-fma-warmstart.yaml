@@ -141,6 +141,11 @@ scenario:
                                        # are created once at standup and WVA drives
                                        # scale during the run.
 
+      launcher:
+        # Cap KV cache so sleep-mode leaves headroom for sampler warmup (avoids OOM).
+        # Re-tune per model/GPU if changed.
+        kvCacheMemory: 11259300148  # bytes (~10.49 GiB)
+
       requester:
         replicas: 1
 
@@ -438,6 +443,12 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS
     # =========================================================================
+    # Enable metrics scraping (collect_metrics.sh in the harness):
+    # captures requester replica counts + EPP KV-cache/queue-depth gauges into
+    # results/metrics/..
+    monitoring:
+      metricsScrapeEnabled: true
+
     workDir: "/tmp/llmdbenchcicd-ocp-wva-fma-warmstart/"
 
     harness:

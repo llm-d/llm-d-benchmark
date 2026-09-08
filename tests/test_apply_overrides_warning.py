@@ -119,6 +119,35 @@ class TestApplyOverridesMatching:
         assert unmatched == []
         assert yaml.safe_load(content)["load"]["stages"][-1]["duration"] == 90
 
+    def test_native_int_value_is_preserved(self):
+        content, unmatched = apply_overrides(PROFILE, {"load.stages.0.rate": 10})
+        assert unmatched == []
+        import yaml
+
+        assert yaml.safe_load(content)["load"]["stages"][0]["rate"] == 10
+
+    def test_native_bool_value_is_preserved(self):
+        content, unmatched = apply_overrides(PROFILE, {"api.streaming": False})
+        assert unmatched == []
+        import yaml
+
+        assert yaml.safe_load(content)["api"]["streaming"] is False
+
+    def test_native_list_value_replaces_existing_list(self):
+        content, unmatched = apply_overrides(PROFILE, {"load.stages": []})
+        assert unmatched == []
+        import yaml
+
+        assert yaml.safe_load(content)["load"]["stages"] == []
+
+    def test_native_list_with_items_replaces_existing_list(self):
+        import yaml
+
+        new_stages = [{"rate": 5, "duration": 30}, {"rate": 20, "duration": 60}]
+        content, unmatched = apply_overrides(PROFILE, {"load.stages": new_stages})
+        assert unmatched == []
+        assert yaml.safe_load(content)["load"]["stages"] == new_stages
+
     def test_out_of_range_list_index_is_reported(self):
         """A list index past the end can't be reached (we set, never grow)."""
         _, unmatched = apply_overrides(PROFILE, {"load.stages.5.rate": "10"})

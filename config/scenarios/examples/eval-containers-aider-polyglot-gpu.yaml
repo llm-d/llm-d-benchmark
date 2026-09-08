@@ -1,13 +1,13 @@
 # eval-containers / aider-polyglot example scenario -- GPU-SERVED variant
-# (cluster-generic), serving Qwen/Qwen3-32B on a single GPU (TP=1).
+# (cluster-generic), serving Qwen/Qwen3.6-27B on a single GPU (TP=1).
 #
 # Unlike the run-only "-pp" scenario (external LiteLLM via `-U`), this STANDS UP
-# Qwen/Qwen3-32B on a GPU the standard llm-d way (modelservice) and drives the
+# Qwen/Qwen3.6-27B on a GPU the standard llm-d way (modelservice) and drives the
 # eval-containers harness against that IN-CLUSTER endpoint -- no `-U`, no key.
 #
-# Served model: Qwen/Qwen3-32B, TP=1, on a single GPU.
-# The eval agent (gemini-cli) calls `openai/Qwen/Qwen3-32B` (EVAL_MODEL is
-# openai/<model.name>), which the in-pod gateway forwards to the discovered
+# Served model: Qwen/Qwen3.6-27B, TP=1, on a single GPU.
+# The eval agent (gemini-cli) calls `Qwen/Qwen3.6-27B` (EVAL_MODEL is
+# <model.name>), which the in-pod gateway forwards to the discovered
 # in-cluster endpoint (epponly -> *-router-epp Service).
 #
 # Cluster-specific values (storage class, serviceAccount, runAsUser) live in a
@@ -24,112 +24,128 @@
 #   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu teardown \
 #     --cluster-config <cc> -p "$NS"
 #
-# aider-polyglot runs fully offline. Qwen3-32B is public on HF.
+# aider-polyglot runs fully offline. Qwen3.6-27B is public on HF.
 #
 # All parameters not defined here use defaults.yaml.
 
 scenario:
   - name: "eval-aider-polyglot-gpu"
 
-    # -------------------------------------------------------------------------
-    # Model -- the SERVED model. model.name flows to EVAL_MODEL=openai/<name>.
-    # -------------------------------------------------------------------------
-    model:
-      name: Qwen/Qwen3.6-27B
-      shortName: qwen-qwen36-27b
-      path: models/Qwen/Qwen3.6-27B
-      huggingfaceId: Qwen/Qwen3.6-27B
-      size: 1Ti
-      maxModelLen: 16000
-      blockSize: 64
-      gpuMemoryUtilization: 0.95
+    common:
+      model:
+        name: Qwen/Qwen3.6-27B
+        shortName: qwen-qwen36-27b
+        path: models/Qwen/Qwen3.6-27B
+        huggingfaceId: Qwen/Qwen3.6-27B
+        size: 1Ti
+        # 32768, not 16000: at 16k, tasks that carry a repo's worth of context
+        # plus a <think> block hit the ceiling mid-solution and the request is
+        # rejected rather than answered. Note this HALVES per-pod concurrency --
+        # KV cache is a fixed token budget, so doubling context doubles the
+        # per-request reservation. Size -j off free GPUs accordingly.
+        maxModelLen: 32768
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
 
-    affinity:
-      enabled: true
-      nodeSelector:
-        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+      storage:
+        modelPvc:
+          size: 1Ti
+        uriProtocol: hf
 
-    # NOTE: deliberately NO top-level `accelerator:` block (a count:0 would force
-    # accelerator.type=cpu and stamp no GPU). GPU/pod = decode.parallelism.tensor
-    # * dataLocal = 1 (TP=1, single GPU).
+      # NOTE: this block must sit at `common.images`, NOT nested inside
+      # `common.storage`. Indented one level deeper it parses as
+      # common.storage.images, which nothing reads -- the harness then silently
+      # falls back to images.benchmark from defaults.yaml
+      # (ghcr.io/llm-d/llm-d-benchmark), an image with no /entrypoint.sh and no
+      # /usr/local/bin/run, so the harness container dies with exit 127 after
+      # ~18s having produced no task artifacts.
+      images:
+        vllm:
+          repository: docker.io/vllm/vllm-openai
+          tag: latest
+        benchmark:
+          # 2026-08-11 latest: 2-attempt grading (agent receives test failures
+          # after first attempt and gets one more try), plus fixed unpassable
+          # tasks and hidden test suite (PR #337 + #347, Exgentic/eval-containers).
+          repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
+          tag: latest
+          pullPolicy: Always
 
-    images:
-      vllm:
-        repository: docker.io/vllm/vllm-openai
-        tag: latest
-      benchmark:
-        repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
-        tag: latest
-        pullPolicy: Always
+      vllmCommon:
+        shmMemory: 4Gi
+        volumes:
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 4Gi
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
 
-    # Qwen3-32B weights are public; the eval itself pulls nothing from HF, so
-    # skip the framework's HF_TOKEN injection (no llm-d-hf-token secret needed).
-    huggingface:
+    standalone:
       enabled: false
 
     modelservice:
       enabled: true
-    standalone:
-      enabled: false
 
-    inferenceExtension:
-      monitoring:
-        prometheus:
+      inferenceExtension:
+        monitoring:
+          prometheus:
+            enabled: false
+
+      routing:
+        proxy:
           enabled: false
 
-    vllmCommon:
-      shmMemory: 4Gi
-      volumes:
-        - name: dshm
-          type: emptyDir
-          emptyDir:
-            medium: Memory
-            sizeLimit: 4Gi
-      volumeMounts:
-        - name: dshm
-          mountPath: /dev/shm
+      gateway:
+        className: epponly
+        resources:
+          requests:
+            cpu: "500m"
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
 
-    prefill:
-      enabled: false
+      prefill:
+        enabled: false
 
-    decode:
-      enabled: true
-      # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
-      # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
-      replicas: 10
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-H100-80GB-HBM3
-      # TP=1 => 1 GPU per decode pod (tensor * dataLocal = 1).
-      parallelism:
-        tensor: 1
-        data: 1
-        dataLocal: 1
-        workers: 1
-      resources:
-        limits:
-          memory: 64Gi
-          cpu: "16"
-        requests:
-          memory: 16Gi
-          cpu: "4"
-      vllm:
-        # `custom` auto-generates the full serve command honoring maxModelLen,
-        # gpuMemoryUtilization, and tensor-parallel-size.
-        modelCommand: custom
-        # Qwen3.6 tool/function calling: qwen3_coder parser.
-        additionalFlags:
-          - --enable-auto-tool-choice
-          - --tool-call-parser
-          - qwen3_coder
-
-    storage:
-      modelPvc:
-        size: 1Ti
-      uriProtocol: hf
-
-    timeouts:
-      controlWait: 300
+      decode:
+        enabled: true
+        # 10 decode pods (10 GPUs, ~3 concurrent tasks/GPU at -j30), load-balanced
+        # by the EPP router. One GPU per pod (TP=1). Raise/lower with the task count.
+        replicas: 10
+        acceleratorType:
+          labelKey: nvidia.com/gpu.product
+          labelValue: NVIDIA-H100-80GB-HBM3
+        # TP=1 => 1 GPU per decode pod (tensor * dataLocal = 1).
+        parallelism:
+          tensor: 1
+          data: 1
+          dataLocal: 1
+          workers: 1
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 16Gi
+            cpu: "4"
+        vllm:
+          # `custom` auto-generates the full serve command honoring maxModelLen,
+          # gpuMemoryUtilization, and tensor-parallel-size.
+          modelCommand: custom
+          # Qwen3.6 tool/function calling: qwen3_coder parser.
+          additionalFlags:
+            - --enable-auto-tool-choice
+            - --tool-call-parser
+            - qwen3_coder
+            # --reasoning-parser qwen3: Qwen3.6-27B is a hybrid-reasoning model.
+            # Without this flag vLLM returns the <think> trace as ordinary content,
+            # so the agent receives reasoning prose where it expects a tool call.
+            - --reasoning-parser
+            - qwen3
 
     harness:
       name: eval-containers
@@ -147,22 +163,24 @@ scenario:
       extraEnvVars:
         - name: EVAL_TIMEOUT
           value: "1500"
-
-    routing:
-      proxy:
-        enabled: false
-
-    gateway:
-      className: epponly
-
-    infrastructure:
-      gateway:
-        resources:
-          requests:
-            cpu: "500m"
-            memory: 512Mi
-          limits:
-            cpu: "2"
-            memory: 2Gi
+        # Force the OpenAI wire. gemini-cli speaks the Gemini v1beta protocol
+        # (`/v1beta/models/<model>:generateContent`), but llm-d/vLLM serves the
+        # OpenAI wire only. Without this, /opt/gateway/start renders its NATIVE
+        # ROUTING mode -- caddy stamps X-Eval-Wire from the inbound path and one
+        # governance rule per provider keys on it -- so gemini-cli's requests are
+        # routed to bifrost's gemini provider and every call fails with:
+        #   BadRequest - no parser registered matching path suffix for:
+        #   /v1beta/models/Qwen/Qwen3.6-27B:generateContent
+        # The agent then silently writes a stub solution (observed: a literal
+        # `???` where a Rust type belonged), so the task scores 0 for what looks
+        # like a model-quality failure rather than a transport one.
+        #
+        # Setting EVAL_MODEL_API selects the image's WIRE OVERRIDE mode instead:
+        # a single cel_expression="true" rule pinning provider=openai and
+        # model=EVAL_MODEL. EVAL_MODEL itself stays the bare slashed handle.
+        # Verified against the image: renders id=pin, cel="true",
+        # provider="openai", model="Qwen/Qwen3.6-27B".
+        - name: EVAL_MODEL_API
+          value: openai
 
     workDir: "~/data/eval-aider-polyglot-gpu"

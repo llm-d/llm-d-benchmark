@@ -158,6 +158,33 @@ def add_subcommands(
         "(some dynamic provisioners take 1-3 minutes per volume).",
     )
     standup_parser.add_argument(
+        "--pod-restart-budget",
+        type=int,
+        default=env_int("LLMDBENCH_POD_RESTART_BUDGET"),
+        help="Total number of pod restarts (deletions) allowed across the "
+        "whole standup when a pod lands in a failure state a restart may "
+        "clear (CrashLoopBackOff, Error, OOMKilled). Some pods come up broken "
+        "and only recover once deleted; this lets standup absorb that instead "
+        "of failing. The budget is a single phase-wide total shared by every "
+        "pod and every stack -- not a per-pod allowance. Failures a restart "
+        "cannot fix (ImagePullBackOff, InvalidImageName, "
+        "CreateContainerConfigError) still fail immediately, as do pods with "
+        "no controller to recreate them. Each restarted pod's logs, events, "
+        "and description are saved under "
+        "<workspace>/setup/logs/pod-restarts/ before deletion. "
+        "Default: 0 (disabled).",
+    )
+    standup_parser.add_argument(
+        "--pod-restart-grace",
+        type=int,
+        default=env_int("LLMDBENCH_POD_RESTART_GRACE"),
+        help="Seconds added to a pod readiness wait for each restart "
+        "consumed, covering the replacement pod's image pull and model load. "
+        "Without it, a crash late in the wait would leave the replacement no "
+        "time to become Ready. Only used when --pod-restart-budget > 0. "
+        "Default: 300.",
+    )
+    standup_parser.add_argument(
         "--data-access-timeout",
         type=int,
         default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),

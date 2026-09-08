@@ -138,6 +138,8 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_LOAD_PARALLELISM             | Controls the number harness pods which will be created to generate load (all pods execute the same workload profile) | Default=`1`, can be overriden with ` -j/--parallelism` |
 | LLMDBENCH_HARNESS_ENVVARS_TO_YAML              | List all environment variables to be added to all harness pods | Default=`LLMDBENCH_RUN_EXPERIMENT`, can be overriden with `-g/--envvarspod` |
 | LLMDBENCH_HARNESS_DEBUG                        | Execute harness in "debug-mode" (i.e., `sleep infinity`) | Default=`0`.  Can be overriden with CLI parameter `-d/--debug`|
+| LLMDBENCH_COMPRESS                             | Compress each result set on the `pvc` before collecting it, so the archive rather than the raw tree crosses the tunnel (benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots stay plain) | Default=`1`. Can be overriden with CLI parameter `--compress/--no-compress` |
+| LLMDBENCH_COMPRESS_LEVEL                       | zstd compression level | Default=`10`. Can be overriden with CLI parameter `--compress-level` |
 
 > [!TIP]
 > In case the full path is ommited for the (workload) profile (either by setting `LLMDBENCH_HARNESS_EXPERIMENT_PROFILE` or CLI parameter `-w/--workload`), it is assumed that the file exists inside the `workload/profiles/<harness name>` folder
@@ -145,11 +147,13 @@ The following table displays a comprehensive list of environment variables (and 
 ## Multi-Stack Runs
 
 When a scenario defines more than one stack (e.g.
-[`examples/multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml)),
+[`examples/multi-model-optimized-baseline`](../config/scenarios/examples/multi-model-optimized-baseline.yaml)),
 every per-stack step in the `run` phase executes once per rendered stack -
 endpoint detection, model verification, profile rendering, configmap creation,
 harness deploy, wait, and collect. Each stack's results are collected into
-its own experiment-ID-keyed subdirectory under the workspace.
+its own experiment-ID-keyed subdirectory under the workspace. For
+copy-paste recipes covering the whole multi-model lifecycle, see
+[multi-model.md](multi-model.md).
 
 **Per-stack endpoints.** For shared-HTTPRoute scenarios (`httpRoute.mode: shared`
 in the scenario file), step 03 `detect_endpoint` bakes the stack's path prefix
@@ -180,7 +184,7 @@ and a copy-paste block of ready-to-run invocations - no harness pods
 launched:
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> --list-endpoints
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <namespace> --list-endpoints
 ```
 
 Useful when you've forgotten the stack names, the gateway IP, or just want
@@ -197,7 +201,7 @@ pass `--endpoint-url` manually:
 
 ```bash
 # Benchmark qwen3-06b only with guidellm, two parallel harness pods
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <namespace> \
   --stack qwen3-06b \
   -l guidellm -w sanity_random.yaml -j 2
 ```
@@ -224,7 +228,7 @@ names fail loudly with a list of valid ones. Available via
 So the clean pattern for "rerun pool A against a different model":
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p <ns> \
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <ns> \
   --stack qwen3-06b \
   --model meta-llama/Llama-3.2-3B \
   -l inference-perf -w sanity_random.yaml
@@ -243,8 +247,8 @@ harness, workload) uniformly across every stack - or, when combined with
 Preferred - use `--stack`, endpoint auto-resolves:
 
 ```bash
-# After standup of guides/multi-model-wva
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+# After standup of examples/multi-model-optimized-baseline
+llmdbenchmark --spec examples/multi-model-optimized-baseline run -p <namespace> \
   --stack qwen3-06b \
   -l inference-perf -w sanity_random.yaml
 ```

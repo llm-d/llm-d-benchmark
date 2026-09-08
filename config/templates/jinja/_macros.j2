@@ -93,6 +93,12 @@
 {% else -%}
 {% set preprocess_script = vllmCommon.preprocessScript -%}
 {% endif -%}
+{# Preprocess is normally best-effort, so it is chained with `;` and vLLM starts
+   regardless. With contextLengthRanges the preprocess also self-labels the pod,
+   and an unlabeled pod is invisible to the context-length-aware scorer -- the
+   deploy would look healthy while serving no context-aware traffic. Chain with
+   `&&` there so a preprocess failure actually stops the container. #}
+{% set preprocess_sep = '&&' if (config.contextLengthRanges is defined and config.contextLengthRanges | length > 0) else ';' -%}
 
 {# Pre-calculate which optional flags are enabled #}
 {% set has_enforce_eager = vllmCommon.flags.enforceEager | default(false) -%}
@@ -106,7 +112,7 @@
 
 {# Custom command provided #}
 {% if config.vllm.customCommand is defined and config.vllm.customCommand is not none -%}
-{{ preprocess_script }}; {{ config.vllm.customCommand | trim }}
+{{ preprocess_script }} {{ preprocess_sep }} {{ config.vllm.customCommand | trim }}
 {%- if has_kv_transfer %} \
   --kv-transfer-config '{{ build_kv_transfer_config() }}'
 {%- endif %}
@@ -131,7 +137,7 @@
 {% set port_var = '$VLLM_INFERENCE_PORT' if use_inference_port else '$VLLM_METRICS_PORT' -%}
 {% set use_hf_id = (modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf') -%}
 {% set model_ref = model.huggingfaceId | default(model.name) if use_hf_id else model.cacheBase ~ '/' ~ model.path -%}
-{{ preprocess_script }}; vllm serve {{ model_ref }} \
+{{ preprocess_script }} {{ preprocess_sep }} vllm serve {{ model_ref }} \
   --host {{ vllmCommon.host }} \
   --served-model-name {{ model.name }} \
   --port {{ port_var }} \
@@ -301,6 +307,11 @@
 {% elif config.contextLengthRanges is defined and config.contextLengthRanges | length > 0 -%}
 - name: LLMDBENCH_POD_LABELS
   value: "{% for r in config.contextLengthRanges %}{% if not loop.first %},{% endif %}llm-d.ai/context-length-range_eq_{{ r }}{% endfor %}"
+{# These labels are load-bearing: the context-length-aware scorer selects pods by
+   them, so a pod that fails to label itself must not come up serving traffic it
+   would answer outside its declared range. #}
+- name: LLMDBENCH_POD_LABELS_REQUIRED
+  value: "true"
 {% if not has_kubeconfig_env -%}
 - name: KUBECONFIG
   value: "/etc/kubeconfig/{{ control.contextSecretName | default('llmdbench-context') }}"

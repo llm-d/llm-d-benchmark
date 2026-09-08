@@ -7,7 +7,8 @@ Logging utilities with emoji formatting, stream separation, per-instance file ou
 ```
 logging/
 ├── __init__.py    -- Empty package marker
-└── logger.py      -- LLMDBenchmarkLogger class and get_logger() factory
+├── logger.py      -- LLMDBenchmarkLogger class and get_logger() factory
+└── quiet.py       -- QuietLogger proxy that demotes INFO to DEBUG
 ```
 
 ## LLMDBenchmarkLogger
@@ -80,3 +81,33 @@ def get_logger(
 Factory function that creates a configured logger. If `log_name` is not provided, generates one from `{username}-{YYYYMMDD-HHMMSS-mmm}`.
 
 Raises `ConfigurationError` if `log_dir` is `None` or if file handler creation fails.
+
+## QuietLogger
+
+`quiet.py` provides a proxy that wraps an `LLMDBenchmarkLogger` and demotes its
+INFO output to DEBUG. The console handler then drops those lines (unless
+`--verbose` puts it at DEBUG), while every file handler still records them --
+so the detail survives in `<workspace>/logs/` for a post-mortem.
+
+```python
+from llmdbenchmark.logging.quiet import plan_logger
+
+render_logger = plan_logger(logger, config.quiet_plan)
+```
+
+| Method | Behavior |
+|--------|----------|
+| `log_info` | Demoted to `log_debug` (emoji preserved) |
+| `log_plain_console` | Demoted to `log_debug` |
+| `log_plain` | Demoted to `log_debug` -- it writes straight to every handler stream, so it would otherwise bypass level filtering |
+| `line_break` | No-op -- blank separators around removed sections are just gaps |
+| `log_warning` / `log_error` / `log_debug` / anything else | Delegated unchanged via `__getattr__` |
+
+Warnings and errors are never suppressed: a display preference must not hide a
+render failure.
+
+Its one caller today is the plan-rendering pipeline, which narrates ~40 lines
+per stack. That is the whole point of `llmdbenchmark plan`, but on `standup` /
+`smoketest` / `teardown` / `run` / `experiment` the render is an implicit
+prelude, so `cli._resolve_quiet_plan` turns quieting on there by default. See
+`--quiet-plan` in the root README.

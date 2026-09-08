@@ -160,6 +160,7 @@ The stack name is the `-name` field from the scenario YAML (e.g., `pd-disaggrega
 smoketests/
 +-- __init__.py            -- get_validator() registry lookup
 +-- base.py                -- BaseSmoketest: health checks, inference test, validate_role_pods
++-- nok8s.py               -- cluster-free HTTP probes used by base.py for container_only stacks
 +-- report.py              -- SmoketestReport / CheckResult tracking
 +-- steps/
 |   +-- __init__.py        -- get_smoketest_steps() registry

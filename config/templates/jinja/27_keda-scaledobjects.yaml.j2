@@ -1,0 +1,77 @@
+{# ============================================================================
+   27_keda-scaledobjects.yaml.j2
+
+   Generic KEDA ScaledObject renderer. One YAML document per entry in
+   keda.scaledObjects, separated by ---. All prometheus triggers share the
+   serverAddress from keda.prometheus. Auth is injected based on authMode:
+     none         -- no authenticationRef, no authModes
+     bearer-secret -- authModes: bearer + authenticationRef: keda-prometheus-auth
+
+   scaleTargetRef fields (all optional, with defaults):
+     apiVersion   -- defaults to apps/v1
+     kind         -- defaults to Deployment
+     name         -- defaults to <model_id_label>-decode
+
+   Only rendered when keda.scaledObjects is defined and non-empty.
+   ============================================================================ #}
+{% if keda is defined and keda.scaledObjects | default([]) %}
+{% set prom = keda.prometheus | default({}) %}
+{% set auth_mode = prom.authMode | default('none') %}
+{% set prom_addr = (prom.baseUrl | default('http://prometheus')) ~ ':' ~ (prom.port | default(9090)) %}
+{% for so in keda.scaledObjects %}
+{% set target_name = so.scaleTargetRef.name if so.scaleTargetRef is defined and so.scaleTargetRef.name else model_id_label ~ '-decode' %}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ so.name }}
+  namespace: {{ namespace.name }}
+  annotations:
+    llm-d.ai/managed: "true"
+    llm-d.ai/model-id: "{{ model.name }}"
+spec:
+  scaleTargetRef:
+    apiVersion: {{ so.scaleTargetRef.apiVersion | default('apps/v1') if so.scaleTargetRef is defined else 'apps/v1' }}
+    kind: {{ so.scaleTargetRef.kind | default('Deployment') if so.scaleTargetRef is defined else 'Deployment' }}
+    name: {{ target_name }}
+  minReplicaCount: {{ so.minReplicas | default(1) }}
+  maxReplicaCount: {{ so.maxReplicas | default(10) }}
+{% if so.pollingInterval is defined %}
+  pollingInterval: {{ so.pollingInterval }}
+{% endif %}
+  triggers:
+{% for trigger in so.triggers | default([]) %}
+  - type: {{ trigger.type }}
+{% if trigger.name is defined %}
+    name: {{ trigger.name }}
+{% endif %}
+    metricType: {{ trigger.metricType | default('AverageValue') }}
+{% if trigger.type == 'prometheus' and auth_mode == 'bearer-secret' %}
+    authenticationRef:
+      name: keda-prometheus-auth
+{% endif %}
+    metadata:
+{% if trigger.type == 'prometheus' %}
+      serverAddress: "{{ prom_addr }}"
+{% if auth_mode == 'bearer-secret' %}
+      authModes: bearer
+{% if prom.unsafeSsl | default(false) %}
+      unsafeSsl: "true"
+{% endif %}
+{% endif %}
+      query: |
+        {{ trigger.query | trim | indent(8) }}
+      threshold: "{{ trigger.threshold | default('1') }}"
+      activationThreshold: "{{ trigger.activationThreshold | default('0') }}"
+{% elif trigger.metadata is defined %}
+{{ trigger.metadata | toyaml | indent(6, first=True) }}
+{% endif %}
+{% endfor %}
+{% if so.behavior is defined %}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+{{ so.behavior | toyaml | indent(8, first=True) }}
+{% endif %}
+{% endfor %}
+{% endif %}

@@ -43,6 +43,15 @@ LENIENT_CONFIG = ConfigDict(
 # ---------------------------------------------------------------------------
 
 
+class DescriptionConfig(BaseModel):
+    """Submitter-provided run label, surfaced as run.description/keywords."""
+
+    model_config = STRICT_CONFIG
+
+    text: str = ""
+    keywords: list[str] = Field(default_factory=list)
+
+
 class ParallelismConfig(BaseModel):
     """Parallelism settings (used by decode, prefill, standalone, and top-level)."""
 
@@ -378,6 +387,8 @@ class HarnessResourcesConfig(BaseModel):
 
     cpu: int | str
     memory: str
+    memoryLimit: str | None = None
+    """Memory limit; falls back to ``memory`` when unset."""
 
 
 class InferencePerfConfig(BaseModel):
@@ -445,6 +456,7 @@ class BenchmarkConfig(BaseModel):
     vllmCommon: VllmCommonConfig
     harness: HarnessConfig
     parallelism: ParallelismConfig | None = None
+    description: DescriptionConfig | None = None
 
     # Scenario-level workspace directory (equivalent to LLMDBENCH_CONTROL_WORK_DIR).
     # Used as workspace fallback when --workspace is not specified on the CLI.

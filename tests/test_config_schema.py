@@ -124,7 +124,14 @@ class TestScenarioValidation:
 
 
 class TestTypoDetection:
-    """Misspelled keys in modeled sections should be caught."""
+    """Misspelled keys in modeled sections should be caught.
+
+    The misspellings below are DELIBERATE -- each test feeds an unknown key
+    to the schema and asserts ``extra="forbid"`` rejects it. Correcting one
+    to its real spelling makes the key legitimate, so validation returns no
+    warnings and the test fails. Do not let a spell-checker "fix" them; the
+    sentinels are allow-listed in ``_typos.toml``.
+    """
 
     def test_decode_typo_caught(self, defaults_copy: dict) -> None:
         defaults_copy["decode"]["replicsa"] = 2

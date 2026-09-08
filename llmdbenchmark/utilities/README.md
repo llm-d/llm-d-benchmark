@@ -14,11 +14,20 @@ utilities/
 ├── cloud_upload.py        -- GCS/S3 upload
 ├── huggingface.py         -- HuggingFace Hub access checks
 ├── profile_renderer.py    -- Workload profile template renderer
+├── podstate/
+│   ├── __init__.py        -- Public API re-exports
+│   ├── state.py           -- PodState / ContainerState / Health model
+│   ├── observer.py        -- The single `get pods -o json` parser
+│   ├── policy.py          -- PodPolicy seam + RestartBudget(Policy)
+│   └── diagnostics.py     -- Evidence capture and restart reporting
 └── os/
     ├── __init__.py        -- Empty package marker
     ├── filesystem.py      -- Filesystem utilities
     └── platform.py        -- Platform detection
 ```
+
+See [podstate/README.md](podstate/README.md) for the pod state model, the
+`Health` grading, and how to add a remediation policy.
 
 ## cluster.py -- Cluster Connectivity and Platform Detection
 
@@ -114,11 +123,16 @@ Shared kubectl patterns for the run phase.
 
 ### Pod Discovery
 
-- `find_data_access_pod(cmd, namespace) -> str | None` -- Find the data-access pod by its well-known label.
+- `find_data_access_pod(cmd, namespace, attempts=5, delay=3.0) -> str | None` -- Find
+  the data-access pod by its well-known label, retrying on failure. This lookup
+  gates result collection, so a single failed API call would otherwise discard a
+  completed run whose output is still on the PVC. Tunable via
+  `--data-access-lookup-attempts` / `--data-access-lookup-delay`.
 
 ### Pod Waiting
 
-- `wait_for_pods_by_label(cmd, label, namespace, timeout, context) -> list[str]` -- Two-phase wait: (1) `condition=Ready=True` (pods running), (2) `condition=ready=False` (pods finished). Checks for crash states. Returns error list (empty on success).
+- `wait_for_pods_by_selector(cmd, selector, namespace, timeout, context) -> list[str]` -- Two-phase wait: (1) `condition=Ready=True` (pods running), (2) `condition=ready=False` (pods finished). Checks for crash states. Returns error list (empty on success). Takes a full selector so concurrent treatments each wait on -- and are judged by -- only their own pods.
+- `wait_for_pods_by_label(cmd, label, namespace, timeout, context) -> list[str]` -- Thin wrapper waiting on `app=<label>`.
 - `wait_for_pod(cmd, pod_name, namespace, timeout, context, poll_interval=15) -> str` -- Per-pod polling until terminal phase. Returns `"Succeeded"`, `"Failed"`, or an error description. Detects crash states.
 
 ### Result Collection

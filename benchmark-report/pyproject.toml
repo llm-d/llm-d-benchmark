@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llmd-benchmark-report"
+# The package version tracks the newest Benchmark Report schema line it
+# implements (see README.md, "Versioning and compatibility"). Packaging-only
+# fixes ship as post-releases (e.g. 0.2.1.post1).
+version = "0.2.1"
+description = "Benchmark Report: a standard data format for LLM inference benchmark runs (schemas, validators, and converters)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "pydantic>=2.0",
+    "PyYAML",
+    "numpy",
+]
+
+[project.urls]
+Homepage = "https://llm-d.ai"
+Repository = "https://github.com/llm-d/llm-d-benchmark"
+
+[project.scripts]
+benchmark-report = "llmd_benchmark_report.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["llmd_benchmark_report", "benchmark_report"]
+
+[tool.setuptools.package-data]
+llmd_benchmark_report = ["*.yaml", "*.json"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

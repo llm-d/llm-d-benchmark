@@ -124,7 +124,7 @@ class KustomizeDeployStep(Step):
                 f"OVERRODE variables: {', '.join(f'{k}={v}' for k, v in overrodevars.items())}"
             )
         if not gaie_version:
-            gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
+            gaie_version = parsed.variables.get("GAIE_VERSION", "v1.6.0")
 
         # Allow the scenario / guide README to override the default. The
         # scenario knob (kustomize.routerChartVersion) takes precedence; the

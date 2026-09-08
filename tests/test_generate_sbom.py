@@ -37,6 +37,13 @@ _INSTALL_SH_FIXTURE = """\
 
 tools="curl git helm helmfile yq crane jq"
 
+optional_tools="skopeo kustomize"
+
+install_kustomize_linux() {
+    local version=v5.8.1
+    curl -sL "https://example/${version}/kustomize" -o /tmp/kustomize
+}
+
 install_yq_linux() {
     local version=v4.52.5
     curl -sL "https://example/${version}/yq" -o /tmp/yq
@@ -203,6 +210,21 @@ def test_parse_install_sh_unpinned_marks_system_provided(
     assert by_name["git"].pin == "system-provided"
     assert by_name["git"].pin_type == "system-provided"
     assert "command -v" in by_name["git"].location
+
+
+def test_parse_install_sh_includes_optional_tools(
+    sbom_module,
+    install_sh: Path,
+) -> None:
+    # install.sh installs optional tools too (pinned static binaries), so
+    # moving a tool from `tools=` to `optional_tools=` must not drop it from
+    # the SBOM.
+    entries = sbom_module.parse_install_sh(install_sh)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["kustomize"].pin == "v5.8.1"
+    assert by_name["kustomize"].pin_type == "version"
+    assert by_name["skopeo"].pin == "system-provided"
 
 
 def test_parse_install_sh_planner_commit(sbom_module, install_sh: Path) -> None:

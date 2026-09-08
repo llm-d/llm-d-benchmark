@@ -1,20 +1,26 @@
 """Step 06 -- Deploy harness pod(s) for benchmark execution.
 
-Executes treatments **sequentially**: for each treatment, deploy all
-parallel pods, wait for completion, collect results, capture logs,
-and clean up before moving to the next treatment.  This matches the
-original bash behavior and ensures treatments do not compete for
-cluster resources.
+Treatments run in groups: for each one, deploy all parallel pods, wait for
+completion, collect results, capture logs, and clean up.
+
+A group of one -- the default -- runs sequentially, matching the original bash
+behavior so treatments do not compete for cluster resources. A larger group runs
+its members concurrently against one stack, each keeping its own pod label,
+experiment ID and result set.
 """
 
 import base64
 import json
 import random
+import re
+import shlex
 import shutil
 import string
 import subprocess
 import tarfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -25,16 +31,63 @@ from llmdbenchmark.executor.command import CommandResult
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
+    DATA_ACCESS_LABEL,
     find_data_access_pod,
-    wait_for_pods_by_label,
+    wait_for_pods_by_selector,
     collect_pod_results,
     sync_analysis_dir,
     delete_pods_by_names,
     capture_pod_logs,
     capture_infrastructure_logs,
 )
+from llmdbenchmark.utilities.archive import (
+    read_member,
+    read_members,
+    remote_compress_script,
+)
 from llmdbenchmark.utilities.cloud_upload import upload_results_dir
 from llmdbenchmark.utilities.endpoint import reset_caches_pods
+
+#: Scopes a wait to one treatment's pods. ``app`` stays as-is: cleanup selects
+#: on it.
+TREATMENT_LABEL = "llmdbench.ai/treatment"
+
+
+@dataclass(frozen=True)
+class _TreatmentSpec:
+    """Everything one treatment needs to run, resolved once per stack.
+
+    Frozen so concurrent treatments share it without defensive copying.
+    """
+
+    treatment: dict | None
+    index: int
+    total: int
+    group: str | None
+    cmd: Any
+    plan_config: dict | None
+    harness_name: str
+    harness_ns: str
+    deploy_namespace: str
+    endpoint_url: str
+    model_label: str
+    model_name: str
+    stack_type: str
+    profile_name: str
+    profile_mounts: list[str]
+    results_dir_prefix: str
+    harness_executable: str
+    template_content: str
+    pod_label: str
+    parallelism: int
+    timeout: int
+
+    siblings: tuple[str, ...] = ()
+
+    @property
+    def label(self) -> str:
+        name = (self.treatment or {}).get("name", "") if self.treatment else ""
+        return name or "default"
 
 
 class DeployHarnessStep(Step):
@@ -182,376 +235,94 @@ class DeployHarnessStep(Step):
         timeout = context.harness_wait_timeout
 
         total_treatments = len(treatments)
-        context.logger.log_info(
-            f"Running {total_treatments} treatment(s) x {parallelism} "
-            f"parallel pod(s) for '{harness_name}' (sequential per treatment)..."
-        )
-
         profile_mounts = self._profile_mounts(context, harness_name)
         total_deployed = 0
 
-        for treatment_idx, treatment in enumerate(treatments, 1):
-            treatment_name = ""
-            if treatment and isinstance(treatment, dict):
-                treatment_name = treatment.get("name", "")
-            treatment_label = treatment_name or "default"
+        specs = [
+            _TreatmentSpec(
+                treatment=treatment,
+                index=idx,
+                total=total_treatments,
+                group=self._treatment_group_name(treatment),
+                cmd=cmd,
+                plan_config=plan_config,
+                harness_name=harness_name,
+                harness_ns=harness_ns,
+                deploy_namespace=deploy_namespace,
+                endpoint_url=endpoint_url,
+                model_label=model_label,
+                model_name=model_name,
+                stack_type=stack_type,
+                profile_name=profile_name,
+                profile_mounts=profile_mounts,
+                results_dir_prefix=results_dir_prefix,
+                harness_executable=harness_executable,
+                template_content=template_content,
+                pod_label=pod_label,
+                parallelism=parallelism,
+                timeout=timeout,
+            )
+            for idx, treatment in enumerate(treatments, 1)
+        ]
+        batches = self._batch_specs(specs, context)
 
-            # Per-treatment retry loop: each attempt gets a fresh experiment_id
-            # so reset_caches (if enabled) re-fires and the treatment starts
-            # cold. max_attempts == 1 means no retry.
-            max_attempts = max(1, context.treatment_max_attempts)
-            treatment_succeeded = False
-            last_attempt_errors: list[str] = []
+        concurrent = sum(1 for b in batches if len(b) > 1)
+        context.logger.log_info(
+            f"Running {total_treatments} treatment(s) x {parallelism} "
+            f"parallel pod(s) for '{harness_name}' "
+            f"({len(batches)} group(s), "
+            + (
+                f"max {context.max_parallel_treatments} concurrent)..."
+                if concurrent
+                else "sequential)..."
+            )
+        )
 
-            for attempt in range(1, max_attempts + 1):
-                treatment_start = time.time()
-                treatment_errors = []
-
-                timestamp = int(time.time())
-                rand_suffix = self._rand_suffix(6)
-                if treatment_name:
-                    experiment_id = (
-                        f"{harness_name}-{treatment_name}-{timestamp}-{rand_suffix}"
-                    )
-                else:
-                    experiment_id = f"{harness_name}-{timestamp}-{rand_suffix}"
-
-                attempt_suffix = (
-                    f" (attempt {attempt}/{max_attempts})" if max_attempts > 1 else ""
+        for batch_idx, batch in enumerate(batches, 1):
+            names = ", ".join(s.label for s in batch)
+            shape = f"{len(batch)} concurrent" if len(batch) > 1 else "sequential"
+            label = f"'{batch[0].group}': " if batch[0].group else ""
+            context.logger.log_info(
+                f"--- Group {batch_idx}/{len(batches)} {label}{names} ({shape}) ---"
+            )
+            if len(batch) > 1:
+                context.logger.log_warning(
+                    f"{names} run concurrently against one endpoint; their "
+                    f"per-treatment latency reflects the mixed load, not each "
+                    f"workload in isolation"
                 )
+
+            # Never between concurrent siblings: it would wipe a cache one is
+            # still warming.
+            self._reset_caches_for_batch(batch, context)
+
+            if len(batch) == 1:
+                results = [self._run_treatment(batch[0], context)]
+            else:
+                results = self._run_batch_parallel(batch, context)
+
+            failed_labels: list[str] = []
+            for spec, (succeeded, treatment_errors, deployed) in zip(batch, results):
+                total_deployed += deployed
+                if not succeeded:
+                    failed_labels.append(spec.label)
+                    errors.extend(treatment_errors)
+
+            if len(batch) > 1:
                 context.logger.log_info(
-                    f"[{treatment_idx}/{total_treatments}] Treatment "
-                    f"'{treatment_label}'{attempt_suffix}: "
-                    f"deploying {parallelism} pod(s)...",
-                    emoji="\U0001f680",
+                    f"--- Group {batch_idx}/{len(batches)} done: "
+                    f"{len(batch) - len(failed_labels)} succeeded, "
+                    f"{len(failed_labels)} failed ---"
                 )
 
-                # Phase 1: deploy this treatment's pods
-                treatment_pod_names: list[str] = []
-                deploy_errors: list[str] = []
-
-                # Resolve the treatment-specific profile once (same for all
-                # parallel pods within a treatment).
-                pod_profile_name = (
-                    self._treatment_profile_name(profile_name, treatment)
-                    if treatment
-                    else profile_name
-                )
-
-                # Reset the vLLM caches so this treatment starts cold. Fires
-                # once per treatment, not per parallel pod: siblings run
-                # concurrently against the same servers, so a reset between them
-                # would wipe a cache another pod is warming. Non-fatal.
-                if (
-                    context.reset_caches
-                    and not context.dry_run
-                    and not context.harness_debug
-                ):
-                    inference_port = (
-                        (plan_config or {})
-                        .get("vllmCommon", {})
-                        .get("inferencePort", 8000)
-                    )
-                    reset_caches_pods(
-                        cmd,
-                        deploy_namespace or harness_ns,
-                        model_label,
-                        inference_port,
-                        plan_config=plan_config,
-                        logger=context.logger,
-                    )
-
-                for parallel_idx in range(1, parallelism + 1):
-                    pod_suffix = self._rand_suffix(8)
-                    pod_name = (
-                        f"llmdbench-harness-debug-{pod_suffix}"
-                        if context.harness_debug
-                        else f"{harness_name}-{pod_suffix}"
-                    )
-
-                    # Per-pod results directory, suffixed with the pod index.
-                    results_dir = f"{results_dir_prefix}/{experiment_id}_{parallel_idx}"
-
-                    # Build harness command per pod (results_dir differs)
-                    if context.harness_debug:
-                        harness_command = "sleep infinity"
-                    else:
-                        harness_cfg = (
-                            plan_config.get("harness", {}) if plan_config else {}
-                        )
-                        entrypoint = harness_cfg.get("entrypoint", "llm-d-benchmark.sh")
-                        harness_command = self._build_harness_command(
-                            harness_executable=harness_executable,
-                            profile_name=pod_profile_name,
-                            harness_name=harness_name,
-                            results_dir=results_dir,
-                            entrypoint=entrypoint,
-                            dataset_url=context.dataset_url,
-                        )
-
-                    # Build template values by merging plan_config with runtime values
-                    template_values = dict(plan_config) if plan_config else {}
-                    # Determine deploy method for benchmark report population
-                    deploy_method = "modelservice"
-                    if context.deployed_methods:
-                        deploy_method = ",".join(context.deployed_methods)
-                    elif plan_config:
-                        if plan_config.get("standalone", {}).get("enabled"):
-                            deploy_method = "standalone"
-                        elif plan_config.get("fma", {}).get("enabled"):
-                            deploy_method = "fma"
-
-                    template_values.update(
-                        {
-                            "pod_name": pod_name,
-                            "harness_command": harness_command,
-                            "endpoint_url": endpoint_url,
-                            "experiment_id": experiment_id,
-                            "results_dir": results_dir,
-                            "stack_type": stack_type,
-                            "deploy_method": deploy_method,
-                            "cluster_type": context.platform_type,
-                            "profile_mounts": profile_mounts,
-                        }
-                    )
-
-                    # Inject base64-encoded kubeconfig so kubectl works inside the pod
-                    # (needed by collect_metrics.sh and llm-d-benchmark.sh vLLM scraping)
-                    kubeconfig_path = context.kubeconfig
-                    if kubeconfig_path and Path(kubeconfig_path).exists():
-                        template_values["base64_context_contents"] = (
-                            self._b64encode_filter(
-                                Path(kubeconfig_path).read_text(encoding="utf-8")
-                            )
-                        )
-
-                    # Ensure required nested keys exist with defaults
-                    template_values.setdefault("harness", {})
-                    template_values["harness"]["name"] = harness_name
-                    template_values["harness"]["namespace"] = harness_ns
-                    template_values.setdefault("namespace", {})
-                    template_values["namespace"]["name"] = harness_ns
-                    template_values.setdefault("model", {})
-                    if model_name:
-                        template_values["model"]["name"] = model_name
-                    template_values.setdefault("images", {}).setdefault("benchmark", {})
-
-                    # Service account precedence: CLI override (-q) > scenario's
-                    # harness.serviceAccount > global serviceAccount.name default.
-                    if context.harness_service_account:
-                        template_values["harness"]["serviceAccount"] = (
-                            context.harness_service_account
-                        )
-                    elif plan_config and plan_config.get("harness", {}).get(
-                        "serviceAccount"
-                    ):
-                        template_values["harness"]["serviceAccount"] = plan_config[
-                            "harness"
-                        ]["serviceAccount"]
-                    elif plan_config and "serviceAccount" in plan_config:
-                        template_values["harness"]["serviceAccount"] = plan_config[
-                            "serviceAccount"
-                        ].get("name", "default")
-
-                    # Extra env vars to propagate into pod (-g)
-                    if context.harness_envvars_to_pod:
-                        import os
-
-                        extra_env = []
-                        for var_name in context.harness_envvars_to_pod.split(","):
-                            var_name = var_name.strip()
-                            if var_name and var_name in os.environ:
-                                extra_env.append(
-                                    {
-                                        "name": var_name,
-                                        "value": os.environ[var_name],
-                                    }
-                                )
-                        if extra_env:
-                            template_values["harness"]["extraEnvVars"] = extra_env
-
-                    if context.dry_run:
-                        context.logger.log_info(
-                            f"[DRY RUN] Would deploy pod '{pod_name}' "
-                            f"(experiment={experiment_id}, parallel={parallel_idx}/{parallelism})"
-                        )
-                        treatment_pod_names.append(pod_name)
-                        continue
-
-                    # Render the template
-                    try:
-                        rendered = self._render_template(
-                            template_content, template_values
-                        )
-                    except Exception as exc:
-                        deploy_errors.append(
-                            f"Failed to render harness pod template: {exc}"
-                        )
-                        continue
-
-                    # Write and apply
-                    pod_yaml_path = context.run_dir() / f"{pod_name}.yaml"
-                    pod_yaml_path.write_text(rendered, encoding="utf-8")
-
-                    result = cmd.kube(
-                        "apply",
-                        "-f",
-                        str(pod_yaml_path),
-                        "--namespace",
-                        harness_ns,
-                        check=False,
-                    )
-                    if not result.success:
-                        deploy_errors.append(
-                            f"Failed to deploy pod '{pod_name}': {result.stderr}"
-                        )
-                    else:
-                        treatment_pod_names.append(pod_name)
-                        context.logger.log_info(
-                            f"Deployed pod '{pod_name}' "
-                            f"(experiment={experiment_id}, "
-                            f"parallel={parallel_idx}/{parallelism})"
-                        )
-
-                # Accumulate into treatment_errors during the attempt; the outer
-                # ``errors`` list is only extended once retries are exhausted, so
-                # an attempt that later succeeds on retry doesn't pollute it.
-                if deploy_errors:
-                    treatment_errors.extend(deploy_errors)
-
-                no_pods = not treatment_pod_names
-                if no_pods:
-                    no_pods_error = (
-                        f"No pods deployed for treatment '{treatment_label}'"
-                    )
-                    treatment_errors.append(no_pods_error)
-                    context.logger.log_error(
-                        f"[{treatment_idx}/{total_treatments}] Treatment "
-                        f"'{treatment_label}' failed: {no_pods_error}"
-                    )
-
-                if not no_pods:
-                    total_deployed += len(treatment_pod_names)
-
-                # Phase 2: wait for this treatment's pods
-                if (
-                    not no_pods
-                    and not context.dry_run
-                    and not context.harness_debug
-                    and timeout != 0
-                ):
-                    wait_errors = wait_for_pods_by_label(
-                        cmd, pod_label, harness_ns, timeout, context
-                    )
-                    if wait_errors:
-                        treatment_errors.extend(wait_errors)
-
-                # Phase 3: collect this treatment's results
-                if not no_pods and not context.dry_run and not context.harness_debug:
-                    collect_errors = self._collect_treatment_results_discovery(
-                        cmd,
-                        experiment_id,
-                        harness_ns,
-                        results_dir_prefix,
-                        context,
-                    )
-                    if collect_errors:
-                        treatment_errors.extend(collect_errors)
-
-                # Phase 4: capture pod logs (when monitoring is enabled)
-                monitoring = (plan_config or {}).get("monitoring", {})
-                metrics_enabled = (
-                    str(monitoring.get("metricsScrapeEnabled", False)).lower() == "true"
-                )
-                if not no_pods and not context.dry_run and metrics_enabled:
-                    infra_ns = deploy_namespace or context.namespace or harness_ns
-                    local_results_dir = context.run_results_dir()
-
-                    # Capture logs into each parallel pod's results directory.
-                    for i in range(1, parallelism + 1):
-                        pod_results_dir = local_results_dir / f"{experiment_id}_{i}"
-                        pod_log_dir = pod_results_dir / "logs"
-                        pod_log_dir.mkdir(parents=True, exist_ok=True)
-
-                        capture_pod_logs(
-                            cmd,
-                            treatment_pod_names,
-                            harness_ns,
-                            pod_log_dir,
-                            context,
-                        )
-                        capture_infrastructure_logs(
-                            cmd,
-                            infra_ns,
-                            pod_log_dir,
-                            model_label,
-                            pod_results_dir,
-                            context,
-                        )
-
-                # Phase 5: clean up this treatment's pods
-                if (
-                    treatment_pod_names
-                    and not context.dry_run
-                    and not context.harness_debug
-                ):
-                    delete_pods_by_names(
-                        cmd,
-                        treatment_pod_names,
-                        harness_ns,
-                        context,
-                    )
-
-                # Result validation gate (opt-in): fail the attempt if the
-                # harness reported failed sessions, even when every phase above
-                # succeeded.
-                if (
-                    not treatment_errors
-                    and context.validate_failures
-                    and not context.dry_run
-                    and not context.harness_debug
-                ):
-                    validation_errors = self._validate_failures(
-                        context, experiment_id, parallelism, profile_name
-                    )
-                    if validation_errors:
-                        treatment_errors.extend(validation_errors)
-
-                elapsed = time.time() - treatment_start
-
-                if not treatment_errors:
-                    # Attempt succeeded: record its ID for upload and stop retrying.
-                    context.experiment_ids.append(experiment_id)
-                    treatment_succeeded = True
-                    context.logger.log_info(
-                        f"[{treatment_idx}/{total_treatments}] Treatment "
-                        f"'{treatment_label}' complete ({int(elapsed)}s)"
-                        f"{attempt_suffix}",
-                        emoji="\u2705",
-                    )
-                    break
-
-                # Attempt failed: remember its errors and, if more attempts
-                # remain, delete the faulty results so the next one starts clean.
-                last_attempt_errors = treatment_errors
+            if failed_labels and context.treatment_stop_on_error:
+                # Killing in-flight siblings would orphan pods and
+                # half-collect results.
                 context.logger.log_error(
-                    f"[{treatment_idx}/{total_treatments}] Treatment "
-                    f"'{treatment_label}' failed ({int(elapsed)}s){attempt_suffix}: "
-                    f"{len(treatment_errors)} error(s)"
+                    f"Treatment(s) {', '.join(failed_labels)} failed "
+                    f"-- aborting run before the next group"
                 )
-                if attempt < max_attempts and not context.dry_run:
-                    self._delete_faulty_results(context, experiment_id, parallelism)
-
-            if not treatment_succeeded:
-                errors.extend(last_attempt_errors)
-                if context.treatment_stop_on_error:
-                    # Abort the loop, leaving remaining treatments un-run;
-                    # ``errors`` is non-empty so the run reports success=False.
-                    context.logger.log_error(
-                        f"Treatment '{treatment_label}' failed after "
-                        f"{max_attempts} attempt(s) -- aborting run"
-                    )
-                    break
+                break
 
         if errors:
             return StepResult(
@@ -574,6 +345,480 @@ class DeployHarnessStep(Step):
             stack_name=stack_name,
         )
 
+    def _run_treatment(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        self, spec: "_TreatmentSpec", context: ExecutionContext
+    ) -> tuple[bool, list[str], int]:
+        """Deploy, wait, collect, log and clean up one treatment (all attempts).
+
+        Returns ``(succeeded, errors, pods_deployed)`` rather than mutating shared
+        state, so concurrent treatments need no lock beyond ``experiment_ids``.
+        """
+        treatment_name = ""
+        if spec.treatment and isinstance(spec.treatment, dict):
+            treatment_name = spec.treatment.get("name", "")
+        treatment_label = treatment_name or "default"
+        errors: list[str] = []
+        total_deployed = 0
+
+        # Per-treatment retry loop: each attempt gets a fresh experiment_id
+        # so reset_caches (if enabled) re-fires and the treatment starts
+        # cold. max_attempts == 1 means no retry.
+        max_attempts = max(1, context.treatment_max_attempts)
+        treatment_succeeded = False
+        last_attempt_errors: list[str] = []
+
+        for attempt in range(1, max_attempts + 1):
+            treatment_start = time.time()
+            treatment_errors = []
+
+            timestamp = int(time.time())
+            rand_suffix = self._rand_suffix(6)
+            if treatment_name:
+                experiment_id = (
+                    f"{spec.harness_name}-{treatment_name}-{timestamp}-{rand_suffix}"
+                )
+            else:
+                experiment_id = f"{spec.harness_name}-{timestamp}-{rand_suffix}"
+
+            treatment_label_value = self._treatment_label_value(
+                treatment_name, rand_suffix
+            )
+
+            attempt_suffix = (
+                f" (attempt {attempt}/{max_attempts})" if max_attempts > 1 else ""
+            )
+            context.logger.log_info(
+                f"[{spec.index}/{spec.total}] Treatment "
+                f"'{treatment_label}'{attempt_suffix}: "
+                f"deploying {spec.parallelism} pod(s)...",
+                emoji="\U0001f680",
+            )
+
+            # Phase 1: deploy this treatment's pods
+            treatment_pod_names: list[str] = []
+            deploy_errors: list[str] = []
+
+            # Resolve the treatment-specific profile once (same for all
+            # parallel pods within a treatment).
+            pod_profile_name = (
+                self._treatment_profile_name(spec.profile_name, spec.treatment)
+                if spec.treatment
+                else spec.profile_name
+            )
+
+            for parallel_idx in range(1, spec.parallelism + 1):
+                pod_suffix = self._rand_suffix(8)
+                pod_name = (
+                    f"llmdbench-harness-debug-{pod_suffix}"
+                    if context.harness_debug
+                    else f"{spec.harness_name}-{pod_suffix}"
+                )
+
+                # Per-pod results directory, suffixed with the pod index.
+                results_dir = (
+                    f"{spec.results_dir_prefix}/{experiment_id}_{parallel_idx}"
+                )
+
+                # Build harness command per pod (results_dir differs)
+                if context.harness_debug:
+                    harness_command = "sleep infinity"
+                else:
+                    harness_cfg = (
+                        spec.plan_config.get("harness", {}) if spec.plan_config else {}
+                    )
+                    entrypoint = harness_cfg.get("entrypoint", "llm-d-benchmark.sh")
+                    harness_command = self._build_harness_command(
+                        harness_executable=spec.harness_executable,
+                        profile_name=pod_profile_name,
+                        harness_name=spec.harness_name,
+                        results_dir=results_dir,
+                        entrypoint=entrypoint,
+                        dataset_url=context.dataset_url,
+                        treatment_name=treatment_name,
+                        treatment_group=spec.group or "",
+                        concurrent_with=",".join(spec.siblings),
+                    )
+
+                # Build template values by merging plan_config with runtime values
+                template_values = dict(spec.plan_config) if spec.plan_config else {}
+                # Determine deploy method for benchmark report population
+                deploy_method = "modelservice"
+                if context.deployed_methods:
+                    deploy_method = ",".join(context.deployed_methods)
+                elif spec.plan_config:
+                    if spec.plan_config.get("standalone", {}).get("enabled"):
+                        deploy_method = "standalone"
+                    elif spec.plan_config.get("fma", {}).get("enabled"):
+                        deploy_method = "fma"
+
+                template_values.update(
+                    {
+                        "pod_name": pod_name,
+                        "harness_command": harness_command,
+                        "endpoint_url": spec.endpoint_url,
+                        "experiment_id": experiment_id,
+                        "results_dir": results_dir,
+                        "stack_type": spec.stack_type,
+                        "deploy_method": deploy_method,
+                        "cluster_type": context.platform_type,
+                        "profile_mounts": spec.profile_mounts,
+                        "treatment_label_value": treatment_label_value,
+                    }
+                )
+
+                # Inject base64-encoded kubeconfig so kubectl works inside the pod
+                # (needed by collect_metrics.sh and llm-d-benchmark.sh vLLM scraping)
+                kubeconfig_path = context.kubeconfig
+                if kubeconfig_path and Path(kubeconfig_path).exists():
+                    template_values["base64_context_contents"] = self._b64encode_filter(
+                        Path(kubeconfig_path).read_text(encoding="utf-8")
+                    )
+
+                # Ensure required nested keys exist with defaults
+                template_values.setdefault("harness", {})
+                template_values["harness"]["name"] = spec.harness_name
+                template_values["harness"]["namespace"] = spec.harness_ns
+                template_values.setdefault("namespace", {})
+                template_values["namespace"]["name"] = spec.harness_ns
+                template_values.setdefault("model", {})
+                if spec.model_name:
+                    template_values["model"]["name"] = spec.model_name
+                template_values.setdefault("images", {}).setdefault("benchmark", {})
+
+                # Service account precedence: CLI override (-q) > scenario's
+                # harness.serviceAccount > global serviceAccount.name default.
+                if context.harness_service_account:
+                    template_values["harness"]["serviceAccount"] = (
+                        context.harness_service_account
+                    )
+                elif spec.plan_config and spec.plan_config.get("harness", {}).get(
+                    "serviceAccount"
+                ):
+                    template_values["harness"]["serviceAccount"] = spec.plan_config[
+                        "harness"
+                    ]["serviceAccount"]
+                elif spec.plan_config and "serviceAccount" in spec.plan_config:
+                    template_values["harness"]["serviceAccount"] = spec.plan_config[
+                        "serviceAccount"
+                    ].get("name", "default")
+
+                # Extra env vars to propagate into pod (-g)
+                if context.harness_envvars_to_pod:
+                    import os
+
+                    extra_env = []
+                    for var_name in context.harness_envvars_to_pod.split(","):
+                        var_name = var_name.strip()
+                        if var_name and var_name in os.environ:
+                            extra_env.append(
+                                {
+                                    "name": var_name,
+                                    "value": os.environ[var_name],
+                                }
+                            )
+                    if extra_env:
+                        template_values["harness"]["extraEnvVars"] = extra_env
+
+                if context.dry_run:
+                    context.logger.log_info(
+                        f"[DRY RUN] Would deploy pod '{pod_name}' "
+                        f"(experiment={experiment_id}, parallel={parallel_idx}/{spec.parallelism})"
+                    )
+                    treatment_pod_names.append(pod_name)
+                    continue
+
+                # Render the template
+                try:
+                    rendered = self._render_template(
+                        spec.template_content, template_values
+                    )
+                except Exception as exc:
+                    deploy_errors.append(
+                        f"Failed to render harness pod template: {exc}"
+                    )
+                    continue
+
+                # Write and apply
+                pod_yaml_path = context.run_dir() / f"{pod_name}.yaml"
+                pod_yaml_path.write_text(rendered, encoding="utf-8")
+
+                result = spec.cmd.kube(
+                    "apply",
+                    "-f",
+                    str(pod_yaml_path),
+                    "--namespace",
+                    spec.harness_ns,
+                    check=False,
+                )
+                if not result.success:
+                    deploy_errors.append(
+                        f"Failed to deploy pod '{pod_name}': {result.stderr}"
+                    )
+                else:
+                    treatment_pod_names.append(pod_name)
+                    context.logger.log_info(
+                        f"Deployed pod '{pod_name}' "
+                        f"(experiment={experiment_id}, "
+                        f"parallel={parallel_idx}/{spec.parallelism})"
+                    )
+
+            # Accumulate into treatment_errors during the attempt; the outer
+            # ``errors`` list is only extended once retries are exhausted, so
+            # an attempt that later succeeds on retry doesn't pollute it.
+            if deploy_errors:
+                treatment_errors.extend(deploy_errors)
+
+            no_pods = not treatment_pod_names
+            if no_pods:
+                no_pods_error = f"No pods deployed for treatment '{treatment_label}'"
+                treatment_errors.append(no_pods_error)
+                context.logger.log_error(
+                    f"[{spec.index}/{spec.total}] Treatment "
+                    f"'{treatment_label}' failed: {no_pods_error}"
+                )
+
+            if not no_pods:
+                total_deployed += len(treatment_pod_names)
+
+            # Phase 2: wait for this treatment's pods
+            if (
+                not no_pods
+                and not context.dry_run
+                and not context.harness_debug
+                and spec.timeout != 0
+            ):
+                wait_errors = wait_for_pods_by_selector(
+                    spec.cmd,
+                    f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value}",
+                    spec.harness_ns,
+                    spec.timeout,
+                    context,
+                )
+                if wait_errors:
+                    treatment_errors.extend(wait_errors)
+
+            # Phase 3: collect this treatment's results
+            if not no_pods and not context.dry_run and not context.harness_debug:
+                collect_errors = self._collect_treatment_results_discovery(
+                    spec.cmd,
+                    experiment_id,
+                    spec.harness_ns,
+                    spec.results_dir_prefix,
+                    context,
+                    harness_settled=not treatment_errors,
+                )
+                if collect_errors:
+                    treatment_errors.extend(collect_errors)
+
+            # Phase 4: capture pod logs (when monitoring is enabled)
+            monitoring = (spec.plan_config or {}).get("monitoring", {})
+            metrics_enabled = (
+                str(monitoring.get("metricsScrapeEnabled", False)).lower() == "true"
+            )
+            if not no_pods and not context.dry_run and metrics_enabled:
+                infra_ns = spec.deploy_namespace or context.namespace or spec.harness_ns
+                local_results_dir = context.run_results_dir()
+
+                # Capture logs into each parallel pod's results directory.
+                for i in range(1, spec.parallelism + 1):
+                    pod_results_dir = local_results_dir / f"{experiment_id}_{i}"
+                    pod_log_dir = pod_results_dir / "logs"
+                    pod_log_dir.mkdir(parents=True, exist_ok=True)
+
+                    capture_pod_logs(
+                        spec.cmd,
+                        treatment_pod_names,
+                        spec.harness_ns,
+                        pod_log_dir,
+                        context,
+                    )
+                    capture_infrastructure_logs(
+                        spec.cmd,
+                        infra_ns,
+                        pod_log_dir,
+                        spec.model_label,
+                        pod_results_dir,
+                        context,
+                    )
+
+            # Phase 5: clean up this treatment's pods
+            if (
+                treatment_pod_names
+                and not context.dry_run
+                and not context.harness_debug
+            ):
+                delete_pods_by_names(
+                    spec.cmd,
+                    treatment_pod_names,
+                    spec.harness_ns,
+                    context,
+                )
+
+            # Result validation gate (opt-in): fail the attempt if the
+            # harness reported failed sessions, even when every phase above
+            # succeeded.
+            if (
+                not treatment_errors
+                and context.validate_failures
+                and not context.dry_run
+                and not context.harness_debug
+            ):
+                validation_errors = self._validate_failures(
+                    context, experiment_id, spec.parallelism, pod_profile_name
+                )
+                if validation_errors:
+                    treatment_errors.extend(validation_errors)
+
+            elapsed = time.time() - treatment_start
+
+            if not treatment_errors:
+                # Attempt succeeded: record its ID for upload and stop retrying.
+                context.record_experiment_id(experiment_id)
+                treatment_succeeded = True
+                context.logger.log_info(
+                    f"[{spec.index}/{spec.total}] Treatment "
+                    f"'{treatment_label}' complete ({int(elapsed)}s)"
+                    f"{attempt_suffix}",
+                    emoji="\u2705",
+                )
+                break
+
+            # Attempt failed: remember its errors and, if more attempts
+            # remain, delete the faulty results so the next one starts clean.
+            last_attempt_errors = treatment_errors
+            context.logger.log_error(
+                f"[{spec.index}/{spec.total}] Treatment "
+                f"'{treatment_label}' failed ({int(elapsed)}s){attempt_suffix}: "
+                f"{len(treatment_errors)} error(s)"
+            )
+            if attempt < max_attempts and not context.dry_run:
+                self._delete_faulty_results(context, experiment_id, spec.parallelism)
+
+        if not treatment_succeeded:
+            errors.extend(last_attempt_errors)
+            context.logger.log_error(
+                f"Treatment '{treatment_label}' failed after {max_attempts} attempt(s)"
+            )
+
+        return treatment_succeeded, errors, total_deployed
+
+    @staticmethod
+    def _treatment_group_name(treatment: dict | None) -> str | None:
+        """Group a treatment belongs to, or None when ungrouped.
+
+        None rather than a fallback name: two ungrouped treatments that happen to
+        share a name must not be batched together.
+        """
+        if not isinstance(treatment, dict):
+            return None
+        return str(treatment.get("group")) if treatment.get("group") else None
+
+    def _batch_specs(
+        self, specs: list["_TreatmentSpec"], context: ExecutionContext
+    ) -> list[list["_TreatmentSpec"]]:
+        """Order treatments into batches; each batch's members run together.
+
+        Without groups every treatment is its own batch: the sequential path.
+        """
+        batches: list[list[_TreatmentSpec]] = []
+        for spec in specs:
+            if (
+                batches
+                and spec.group is not None
+                and batches[-1][0].group == spec.group
+            ):
+                batches[-1].append(spec)
+            else:
+                batches.append([spec])
+
+        batches = [
+            [
+                replace(
+                    spec,
+                    siblings=tuple(o.label for o in batch if o is not spec),
+                )
+                for spec in batch
+            ]
+            for batch in batches
+        ]
+
+        cap = max(1, context.max_parallel_treatments)
+        for batch in batches:
+            if len(batch) > cap:
+                context.logger.log_warning(
+                    f"Group '{batch[0].group}' has {len(batch)} treatments but "
+                    f"max_parallel_treatments is {cap}; only {cap} run at a time, "
+                    f"so its members overlap only partially"
+                )
+        return batches
+
+    def _run_batch_parallel(
+        self, batch: list["_TreatmentSpec"], context: ExecutionContext
+    ) -> list[tuple[bool, list[str], int]]:
+        """Run a group's treatments concurrently, in submission order."""
+        workers = min(max(1, context.max_parallel_treatments), len(batch))
+        results: list[tuple[bool, list[str], int]] = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                pool.submit(self._run_treatment, spec, context) for spec in batch
+            ]
+            for spec, future in zip(batch, futures):
+                try:
+                    results.append(future.result())
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    context.logger.log_error(
+                        f"Treatment '{spec.label}' raised exception: {exc}"
+                    )
+                    results.append(
+                        (False, [f"Treatment '{spec.label}' raised: {exc}"], 0)
+                    )
+        return results
+
+    @staticmethod
+    def _reset_caches_for_batch(
+        batch: list["_TreatmentSpec"], context: ExecutionContext
+    ) -> None:
+        """Reset the vLLM caches once, before a group's members start.
+
+        Per group rather than per pod: members share the servers, so a reset
+        between them would wipe a cache another is warming.
+        """
+        if not context.reset_caches or context.dry_run or context.harness_debug:
+            return
+        spec = batch[0]
+        if len(batch) > 1:
+            context.logger.log_warning(
+                f"reset_caches: clearing caches once before group "
+                f"'{spec.group}'; its {len(batch)} concurrent treatments do not "
+                f"each start cold"
+            )
+        inference_port = (
+            (spec.plan_config or {}).get("vllmCommon", {}).get("inferencePort", 8000)
+        )
+        reset_caches_pods(
+            spec.cmd,
+            spec.deploy_namespace or spec.harness_ns,
+            spec.model_label,
+            inference_port,
+            plan_config=spec.plan_config,
+            logger=context.logger,
+        )
+
+    @staticmethod
+    def _treatment_label_value(treatment_name: str, rand_suffix: str) -> str:
+        """Build the ``llmdbench.ai/treatment`` value for one attempt.
+
+        Sanitized names collide, hence the attempt's random suffix. That also
+        relabels each retry, so a previous attempt's uncollected pods can never
+        be caught by this attempt's wait.
+        """
+        safe = re.sub(r"[^a-z0-9.-]+", "-", (treatment_name or "").lower())
+        safe = safe.strip("-.")
+        # Truncate the name, not the suffix: the suffix is what makes the label
+        # unique per attempt.
+        safe = safe[: 63 - len(rand_suffix) - 1].strip("-.")
+        return f"{safe}-{rand_suffix}" if safe else rand_suffix
+
     # Per-treatment retry helpers
 
     @staticmethod
@@ -584,6 +829,22 @@ class DeployHarnessStep(Step):
             if stem.endswith(suffix):
                 stem = stem[: -len(suffix)]
         return stem
+
+    @staticmethod
+    def _profile_load_type(context: ExecutionContext, profile_name: str | None) -> str:
+        """``load.type`` of the rendered profile, or "" when it cannot be read."""
+        if not profile_name:
+            return ""
+        name = profile_name.rsplit("/", 1)[-1]
+        if name.endswith(".in"):
+            name = name[:-3]
+        try:
+            for path in context.workload_profiles_dir().glob(f"*/{name}"):
+                loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                return str(loaded.get("load", {}).get("type") or "")
+        except (OSError, yaml.YAMLError, AttributeError):
+            return ""
+        return ""
 
     def _validate_failures(
         self,
@@ -600,6 +861,11 @@ class DeployHarnessStep(Step):
             if stem == prefix or stem.startswith(prefix):
                 return validator(self, context, experiment_id, parallelism)
 
+        if self._profile_load_type(context, profile_name) == "trace_session_replay":
+            return self._validate_failures_session_replay(
+                context, experiment_id, parallelism
+            )
+
         context.logger.log_warning(
             f"validate_failures: no result-failure check implemented for workload "
             f"'{profile_name}'; falling back to pod state for treatment success. "
@@ -614,35 +880,105 @@ class DeployHarnessStep(Step):
         parallelism: int,
     ) -> list[str]:
         """otel_traces validator: fail if any per-pod
-        summary_lifecycle_metrics.json is missing, unparseable, or reports
+        summary_lifecycle_metrics.json is missing, unparsable, or reports
         failures.count > 0.
         """
         errs: list[str] = []
         base = context.run_results_dir()
         for i in range(1, parallelism + 1):
             pod_dir = base / f"{experiment_id}_{i}"
-            summary = pod_dir / "summary_lifecycle_metrics.json"
-            if not summary.exists():
-                summary = pod_dir / "analysis" / "summary_lifecycle_metrics.json"
-            if not summary.exists():
-                errs.append(
-                    f"validate_failures: missing summary_lifecycle_metrics.json "
-                    f"under {pod_dir}"
-                )
+            # Runs after collection, so the file may already be archived; without
+            # read_member every treatment reads as "missing" and the retry loop
+            # discards a run that succeeded.
+            name = "summary_lifecycle_metrics.json"
+            payload = read_member(pod_dir, name)
+            if payload is None:
+                payload = read_member(pod_dir, f"analysis/{name}")
+            if payload is None:
+                errs.append(f"validate_failures: missing {name} under {pod_dir}")
                 continue
             try:
-                with open(summary, encoding="utf-8") as f:
-                    count = json.load(f)["failures"]["count"]
-                count = int(count)
-            except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+                count = int(json.loads(payload)["failures"]["count"])
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                 errs.append(
-                    f"validate_failures: cannot parse failures.count from {summary}"
+                    f"validate_failures: cannot parse failures.count from "
+                    f"{name} under {pod_dir}"
                 )
                 continue
             if count > 0:
                 errs.append(
                     f"validate_failures: {count} failed session(s) reported in "
-                    f"{summary}"
+                    f"{name} under {pod_dir}"
+                )
+        return errs
+
+    # An allow-list, so an unrecognised status still fails.
+    _USABLE_STAGE_STATUSES = frozenset({"COMPLETED", "TIMED_OUT"})
+
+    def _validate_failures_session_replay(
+        self,
+        context: ExecutionContext,
+        experiment_id: str,
+        parallelism: int,
+    ) -> list[str]:
+        """trace_session_replay validator: per-stage status plus session counts.
+
+        A stage that hits its timeout is a shorter measurement, not a broken one.
+        """
+        errs: list[str] = []
+        base = context.run_results_dir()
+        for i in range(1, parallelism + 1):
+            pod_dir = base / f"{experiment_id}_{i}"
+            pattern = "stage_*_session_lifecycle_metrics.json"
+            members = read_members(pod_dir, pattern) or read_members(
+                pod_dir, f"analysis/{pattern}"
+            )
+            if not members:
+                errs.append(f"validate_failures: missing {pattern} under {pod_dir}")
+                continue
+            for name, payload in sorted(members.items()):
+                try:
+                    meta = json.loads(payload)["stage_metadata"]
+                except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                    context.logger.log_warning(
+                        f"validate_failures: no stage_metadata in {name} under "
+                        f"{pod_dir}; judging on session counts alone"
+                    )
+                    continue
+                status = str(meta.get("status") or "")
+                if status not in self._USABLE_STAGE_STATUSES:
+                    errs.append(
+                        f"validate_failures: stage {meta.get('stage_id')} reported "
+                        f"status {status!r} in {name} under {pod_dir}"
+                    )
+                elif status == "TIMED_OUT":
+                    context.logger.log_warning(
+                        f"validate_failures: stage {meta.get('stage_id')} timed out "
+                        f"after {meta.get('actual_duration')}s (cap "
+                        f"{meta.get('timeout_configured')}s); in-flight sessions "
+                        f"were cancelled"
+                    )
+
+            name = "summary_session_lifecycle_metrics.json"
+            payload = read_member(pod_dir, name)
+            if payload is None:
+                payload = read_member(pod_dir, f"analysis/{name}")
+            if payload is None:
+                errs.append(f"validate_failures: missing {name} under {pod_dir}")
+                continue
+            try:
+                summary = json.loads(payload)
+                failed = int(summary["num_sessions_failed"])
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                errs.append(
+                    f"validate_failures: cannot parse num_sessions_failed from "
+                    f"{name} under {pod_dir}"
+                )
+                continue
+            if failed > 0:
+                errs.append(
+                    f"validate_failures: {failed} failed session(s) reported in "
+                    f"{name} under {pod_dir}"
                 )
         return errs
 
@@ -681,6 +1017,7 @@ class DeployHarnessStep(Step):
         namespace: str,
         results_dir_prefix: str,
         context: ExecutionContext,
+        harness_settled: bool = True,
     ) -> list[str]:
         """Collect results by discovering directories on the PVC.
 
@@ -691,11 +1028,28 @@ class DeployHarnessStep(Step):
         """
         errors: list[str] = []
 
-        data_pod = find_data_access_pod(cmd, namespace)
+        data_pod = find_data_access_pod(
+            cmd,
+            namespace,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
+            # The results are NOT lost when this fails -- they are on the workload
+            # PVC, written by harness pods that have already completed. Say so, and
+            # say how to get them, because the next thing that happens is cleanup
+            # deleting the pods and the run reporting failure, which reads as
+            # "the work is gone" when it is merely uncollected.
             errors.append(
                 f"Data access pod not found in namespace '{namespace}' -- "
-                f"cannot collect results for {experiment_id}"
+                f"cannot collect results for {experiment_id}. The results are "
+                f"still on the workload PVC; recover them with:\n"
+                f"  pod=$(kubectl get pod -n {namespace} "
+                f"-l {DATA_ACCESS_LABEL} -o name | head -1)\n"
+                f"  kubectl cp -n {namespace} "
+                f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
+                f"# dirs matching {experiment_id}_*"
             )
             return errors
 
@@ -743,12 +1097,30 @@ class DeployHarnessStep(Step):
         # ``oc exec | tar`` stream, which crosses the tunnel far faster.
         FAST_COLLECT = context.harness_fast_collect
 
+        # Only compress a PVC nothing is still writing to: compression deletes the
+        # originals, and a file written after the tar snapshot is in no archive while
+        # its parent directory is removed regardless.
+        compress_on_pvc = DeployHarnessStep._should_compress_on_pvc(
+            cmd, context, data_pod, namespace, harness_settled
+        )
+
         for dir_name in matching_dirs:
             local_path = local_results_dir / dir_name
             local_path.mkdir(parents=True, exist_ok=True)
 
+            # Per dir, not once: a failure here must not make the collector below
+            # expect an archive this dir does not have.
+            dir_compressed = compress_on_pvc and DeployHarnessStep._compress_on_pvc(
+                cmd,
+                data_pod,
+                namespace,
+                f"{results_dir_prefix}/{dir_name}",
+                context,
+            )
+
             if FAST_COLLECT:
                 remote_dir = f"{results_dir_prefix}/{dir_name}"
+                tar_flags = "cf" if dir_compressed else "cz"
                 # Auto-detected binary + kubeconfig/context/namespace flags.
                 kube_argv = [
                     cmd._kube_bin,
@@ -759,7 +1131,7 @@ class DeployHarnessStep(Step):
                     data_pod,
                     "--",
                     "tar",
-                    "cz",
+                    tar_flags,
                     "-C",
                     remote_dir,
                     ".",
@@ -771,7 +1143,9 @@ class DeployHarnessStep(Step):
                 cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
                 for cp_attempt in range(1, max_attempts + 1):
                     cp_result = DeployHarnessStep._fast_collect_stream(
-                        kube_argv, local_path
+                        kube_argv,
+                        local_path,
+                        mode="r|" if dir_compressed else "r|gz",
                     )
                     if cp_result.success:
                         break
@@ -837,11 +1211,24 @@ class DeployHarnessStep(Step):
         """
         errors: list[str] = []
 
-        data_pod = find_data_access_pod(cmd, namespace)
+        data_pod = find_data_access_pod(
+            cmd,
+            namespace,
+            attempts=context.data_access_lookup_attempts,
+            delay=context.data_access_lookup_delay,
+            context=context,
+        )
         if not data_pod:
+            # As above: uncollected is not lost. Point at the PVC copy.
             errors.append(
                 f"Data access pod not found in namespace '{namespace}' \u2014 "
-                f"cannot collect results for {experiment_id}"
+                f"cannot collect results for {experiment_id}. The results are "
+                f"still on the workload PVC; recover them with:\n"
+                f"  pod=$(kubectl get pod -n {namespace} "
+                f"-l {DATA_ACCESS_LABEL} -o name | head -1)\n"
+                f"  kubectl cp -n {namespace} "
+                f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
+                f"# dirs matching {experiment_id}_*"
             )
             return errors
 
@@ -893,28 +1280,141 @@ class DeployHarnessStep(Step):
         return errors
 
     @staticmethod
-    def _fast_collect_stream(kube_argv: list[str], local_path: Path) -> CommandResult:
-        """Stream ``<kube> exec ... -- tar cz`` stdout into local ``tarfile``.
+    def _should_compress_on_pvc(
+        cmd,
+        context: ExecutionContext,
+        data_pod: str,
+        namespace: str,
+        harness_settled: bool,
+    ) -> bool:
+        """True when it is safe to compress this result set in place on the PVC.
+
+        Extracted so the gate on an irreversible delete is testable without a live
+        `kubectl exec`. Every reason to decline warns exactly once; the pod probe is
+        last so a driver that could not read the archive back never pays for it.
+        """
+        if not context.compress_output:
+            return False
+
+        # Only compress a PVC nothing is still writing to: compression deletes the
+        # originals, and a file written after the tar snapshot is in no archive while
+        # its parent directory is removed regardless.
+        if not DeployHarnessStep._pvc_settled(context, harness_settled):
+            context.logger.log_warning(
+                "Harness did not complete -- collecting results uncompressed so "
+                "nothing still being written is deleted"
+            )
+            return False
+
+        # Both ends need zstd: the pod to write the archive, the driver to read it
+        # back. Compressing without it here would leave a result set only the pod
+        # could open.
+        if shutil.which("zstd") is None:
+            context.logger.log_warning(
+                "zstd not found on this machine -- collecting results uncompressed, "
+                "since nothing here could read the archive back"
+            )
+            return False
+
+        if not DeployHarnessStep._pvc_has_zstd(cmd, data_pod, namespace):
+            context.logger.log_warning(
+                "zstd not found in the data-access pod -- collecting results "
+                "uncompressed. Rebuild the benchmark image to enable "
+                "PVC-side compression."
+            )
+            return False
+
+        return True
+
+    @staticmethod
+    def _pvc_settled(context: ExecutionContext, harness_settled: bool) -> bool:
+        """True when nothing can still be writing to the PVC.
+
+        Compression deletes the originals, so both halves matter: on a wait timeout
+        the harness pod is still Running, and wait_timeout 0 skips the wait entirely
+        so nothing ever observed the harness finish.
+        """
+        return harness_settled and context.harness_wait_timeout != 0
+
+    @staticmethod
+    def _pvc_has_zstd(cmd, data_pod: str, namespace: str) -> bool:
+        """True when the data-access pod ships a ``zstd`` binary.
+
+        Probed, not assumed: older images predate zstd being baked in, and a
+        restricted SCC rules out installing it at runtime.
+
+        ``zstd --version`` rather than ``command -v zstd``: the latter needs a
+        shell, and one argv element per word is what ``sh -c`` expects as its
+        script -- ``sh -c command -v zstd`` instead runs the bare ``command``
+        builtin with ``-v`` as ``$0``, which exits 0 with no output whether or not
+        zstd exists.
+        """
+        probe = cmd.kube_exec(
+            data_pod,
+            "zstd",
+            "--version",
+            namespace=namespace,
+            check=False,
+        )
+        return probe.success
+
+    @staticmethod
+    def _compress_on_pvc(
+        cmd,
+        data_pod: str,
+        namespace: str,
+        remote_dir: str,
+        context: ExecutionContext,
+    ) -> bool:
+        """Compress one PVC results dir in place. False leaves it untouched."""
+        # bash, not sh: the benchmark image is debian-slim, where /bin/sh is dash
+        # and `set -o pipefail` is an "Illegal option" that kills the script on its
+        # first statement -- so every run would degrade to uncompressed collection.
+        # The script needs pipefail to keep a broken `zstd -dc` from being read as
+        # an empty member list.
+        result = cmd.kube_exec(
+            data_pod,
+            "bash",
+            "-c",
+            remote_compress_script(remote_dir, level=context.compress_level),
+            namespace=namespace,
+            check=False,
+        )
+        if not result.success:
+            context.logger.log_warning(
+                f"PVC-side compression failed for {remote_dir} "
+                f"(exit={result.exit_code}), collecting uncompressed: "
+                f"{(result.stderr or result.stdout)[:300]}"
+            )
+            return False
+        return True
+
+    @staticmethod
+    def _fast_collect_stream(
+        kube_argv: list[str], local_path: Path, mode: str = "r|gz"
+    ) -> CommandResult:
+        """Stream ``<kube> exec ... -- tar c*`` stdout into local ``tarfile``.
 
         Pure-Python replacement for a ``kube exec ... | tar xz -C`` shell pipe:
         no shell, no local ``tar`` binary, no quoting. Returns a CommandResult
-        so the caller keeps its uniform success/stderr handling.
+        so the caller keeps its uniform success/stderr handling. ``mode`` must
+        match the remote tar's compression (``r|`` for a plain ``tar cf``).
         """
         cmd_str = " ".join(kube_argv)
         try:
             with subprocess.Popen(
                 kube_argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             ) as proc:
-                # ``r|gz`` = streaming read; tarfile consumes bytes as they land
+                # ``r|*`` = streaming read; tarfile consumes bytes as they land
                 # on stdout without seeking, so it works on a live pipe.
                 try:
-                    with tarfile.open(fileobj=proc.stdout, mode="r|gz") as tar:
+                    with tarfile.open(fileobj=proc.stdout, mode=mode) as tar:
                         # ``filter="data"`` rejects absolute paths, ``..`` and
                         # device entries (default in Py 3.14+, safe elsewhere).
                         tar.extractall(path=local_path, filter="data")
                     stderr = proc.stderr.read().decode("utf-8", errors="replace")
                     exit_code = proc.wait()
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception as exc:  # noqa: BLE001 -- must not leak the child
                     proc.kill()
                     stderr = proc.stderr.read().decode("utf-8", errors="replace")
                     proc.wait()
@@ -1027,6 +1527,9 @@ class DeployHarnessStep(Step):
         results_dir: str,
         entrypoint: str = "llm-d-benchmark.sh",
         dataset_url: str | None = None,
+        treatment_name: str = "",
+        treatment_group: str = "",
+        concurrent_with: str = "",
     ) -> str:
         """Build the shell command that runs inside the harness pod.
 
@@ -1076,6 +1579,22 @@ class DeployHarnessStep(Step):
         if dataset_url:
             parts.append(f"export LLMDBENCH_RUN_DATASET_URL={dataset_url}")
 
+        # Quoted: these come from user-authored YAML and are spliced into a
+        # shell command.
+        if treatment_name:
+            parts.append(
+                f"export LLMDBENCH_TREATMENT_NAME={shlex.quote(treatment_name)}"
+            )
+        if treatment_group:
+            parts.append(
+                f"export LLMDBENCH_TREATMENT_GROUP={shlex.quote(treatment_group)}"
+            )
+        if concurrent_with:
+            parts.append(
+                f"export LLMDBENCH_TREATMENT_CONCURRENT_WITH="
+                f"{shlex.quote(concurrent_with)}"
+            )
+
         # Call the entrypoint without --harness flag so NAME_AUTO stays 1
         # and the auto-discovery block is skipped (our exports are used as-is)
         parts.append(entrypoint)
@@ -1090,8 +1609,11 @@ class DeployHarnessStep(Step):
         treatment_name = treatment.get("name", "")
         if not treatment_name:
             return base_name
-        stem = Path(base_name).stem
-        suffix = Path(base_name).suffix
+        source_name = treatment.get("profile") or base_name
+        if source_name.endswith(".in"):
+            source_name = source_name[:-3]
+        stem = Path(source_name).stem
+        suffix = Path(source_name).suffix
         return f"{stem}-{treatment_name}{suffix}"
 
     def _load_plan_config(self, context: ExecutionContext) -> dict | None:

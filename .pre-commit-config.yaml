@@ -125,12 +125,12 @@ repos:
             # BenchmarkReport v0.2 example: the single hit is a
             # synthetic storage path with a unix timestamp and run
             # identifier. Illustrative reference, not a credential.
-            llmdbenchmark/analysis/benchmark_report/br_v0_2_example\.yaml
+            benchmark-report/llmd_benchmark_report/br_v0_2_example\.yaml
             |
             # BenchmarkReport README: three hits are 32-hex
             # example uid / cfg_id values in a Python code block
             # showing how to construct a BenchmarkReport.
-            llmdbenchmark/analysis/benchmark_report/README\.md
+            benchmark-report/README\.md
           )$
 
   # ----------------------------------------------------------------

@@ -6,6 +6,12 @@ pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 yq '.storage["local_storage"]["path"] = '\"${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}\" <"${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}" >${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 
+# inference-perf generates its reports after the final traffic stage drains.
+# Expose that boundary so campaign orchestrators can release accelerators while
+# report generation and result collection continue.
+source /workspace/harnesses/inference-perf-lifecycle.sh
+LLMDBENCH_FINAL_STAGE_ID="$(inference_perf_final_stage_id "./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}")"
+
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
   echo "Starting metrics collection..."
@@ -16,7 +22,17 @@ if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; the
 fi
 
 start=$(date +%s.%N)
-inference-perf $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+inference-perf $LLMDBENCH_HARNESS_ARGS \
+  > >(inference_perf_capture_stream \
+    "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" \
+    stdout.log \
+    "$LLMDBENCH_FINAL_STAGE_ID" \
+    "${LLMDBENCH_RUN_EXPERIMENT_ID:-unknown}") \
+  2> >(inference_perf_capture_stream \
+    "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" \
+    stderr.log \
+    "$LLMDBENCH_FINAL_STAGE_ID" \
+    "${LLMDBENCH_RUN_EXPERIMENT_ID:-unknown}" >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 
@@ -41,6 +57,27 @@ export LLMDBENCH_HARNESS_VERSION=$(cd /workspace/inference-perf 2>/dev/null && g
 # Write run metadata to a file so the analyzer can read it.
 # Environment variables exported here are lost when this subshell exits,
 # so the file serves as the handoff mechanism to the analysis phase.
+# Escape free text for the double-quoted YAML scalars below. Backslash first, or
+# the quote escapes get double-escaped. Control characters are illegal in a
+# double-quoted scalar at all, and an unparsable file loses every key in it, not
+# just this one.
+_yaml_escape() {
+  local text="${1:-}" out="" index character
+  text="${text//\\/\\\\}"
+  text="${text//\"/\\\"}"
+  text="${text//$'\t'/\\t}"
+  text="${text//$'\n'/\\n}"
+  for (( index=0; index<${#text}; index++ )); do
+    character="${text:index:1}"
+    if [[ "$character" == [[:cntrl:]] ]]; then
+      printf -v character '\\x%02x' "'$character"
+    fi
+    out+="$character"
+  done
+  printf '%s' "$out"
+}
+_description_text="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_TEXT:-}")"
+_description_keywords="$(_yaml_escape "${LLMDBENCH_DESCRIPTION_KEYWORDS:-}")"
 cat > "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/run_metadata.yaml" <<METADATA
 harness_start: "${LLMDBENCH_HARNESS_START}"
 harness_stop: "${LLMDBENCH_HARNESS_STOP}"
@@ -50,9 +87,12 @@ harness_version: "${LLMDBENCH_HARNESS_VERSION}"
 harness_name: "${LLMDBENCH_HARNESS_NAME:-inference-perf}"
 harness_workload: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME:-}"
 harness_rc: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC}"
+experiment_id: "${LLMDBENCH_RUN_EXPERIMENT_ID:-}"
 model: "${LLMDBENCH_DEPLOY_CURRENT_MODEL:-}"
 endpoint_url: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL:-}"
 namespace: "${LLMDBENCH_VLLM_COMMON_NAMESPACE:-}"
+description_text: "${_description_text}"
+description_keywords: "${_description_keywords}"
 METADATA
 echo "Run metadata written to $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/run_metadata.yaml"
 

@@ -21,6 +21,15 @@ spec:
     # Keep-alive so the framework can `kubectl cp` results off the PVC (tar-based,
     # not rsync). Slim benchmark images may not ship rsync, so fall back to idling.
     command: ["sh", "-c", "command -v rsync >/dev/null 2>&1 && exec rsync --daemon --no-detach --port={{ dataAccess.rsyncPort }} --log-file=/dev/stdout || exec sleep infinity"]
+{% if dataAccess.resources is defined and dataAccess.resources %}
+    resources:
+      limits:
+        cpu: "{{ dataAccess.resources.limitsCpu }}"
+        memory: {{ dataAccess.resources.limitsMemory }}
+      requests:
+        cpu: "{{ dataAccess.resources.requestsCpu }}"
+        memory: {{ dataAccess.resources.requestsMemory }}
+{% endif %}
     volumeMounts:
     - name: requests
       mountPath: /requests

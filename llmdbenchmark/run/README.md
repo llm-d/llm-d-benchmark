@@ -120,6 +120,8 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination: local path, `gs://bucket`, or `s3://bucket` |
 | `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
 | `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion (default: 3600) |
+| `--data-access-lookup-attempts N` | `LLMDBENCH_DATA_ACCESS_LOOKUP_ATTEMPTS` | Tries to locate the data-access pod before abandoning result collection (default: 5) |
+| `--data-access-lookup-delay S` | `LLMDBENCH_DATA_ACCESS_LOOKUP_DELAY` | Seconds between those attempts (default: 3.0) |
 | `-z` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results from PVC |
 | `-d` | `LLMDBENCH_DEBUG` | Debug mode -- start harness with `sleep infinity` |
 | `--analyze` | | Run local analysis on collected results |
@@ -147,7 +149,19 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 | 10 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3) |
 | 11 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
 
-Note: Step 12 (analyze) runs before step 10 (upload) so analysis artifacts are included in the upload.
+Note: Step 12 (analyze) runs before step 10 (upload) so analysis artifacts are included in the
+upload. Compression happens inside step 07, on the PVC, before the results are collected --
+nothing is compressed on the driver.
+
+Step 12 defers per-result-set analysis to the harness pod: where a harness ships an
+analyzer, the pod builds its reports, summary and plots before the results are collected,
+so collection is a pure transfer. The driver pass remains the fallback for a result set
+the pod did not analyse -- an older image, a harness with no analyzer, or one that failed.
+
+It still runs the work no single pod can: the cross-treatment comparison (which spans
+result directories) and the `eval-containers` run-level roll-up (which spans task
+directories). Both read their inputs out of the archive rather than requiring a plain
+copy.
 
 ## Common Patterns
 
@@ -203,6 +217,11 @@ run:
 
 Each combination becomes a treatment. Step 06 runs them sequentially:
 deploy pod, wait, collect, clean, then next treatment.
+
+A top-level `groups:` block in the experiment file instead runs a group's
+treatments concurrently against the same stack, each with its own workload
+profile. Bounded by `--max-parallel-treatments`. See
+`llmdbenchmark/experiment/README.md`.
 
 ### Run with parallel harness pods
 

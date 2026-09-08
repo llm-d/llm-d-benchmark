@@ -557,16 +557,6 @@ RUN_WORKLOAD
     : | ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
     res=$?
 
-    # Save description metadata to results directory
-    if [[ -n "$_description_text" || -n "$_description_keywords" ]]; then
-      _results_dir=$(results_dir_name "$endpoint_stack_name" "$harness_name" "$_run_experiment_id")
-      $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "cat > ${_results_dir}/description.yaml <<'DESCEOF'
-description:
-  text: \"${_description_text}\"
-  keywords: [${_description_keywords}]
-DESCEOF"
-    fi
-
     # Run post-workload hook
     if [[ -n "${_post_workload}" ]]; then
       announce "🔧 Running post-workload hook..."

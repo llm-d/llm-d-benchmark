@@ -147,7 +147,12 @@ for item in data.get("items", []):
     tmpl_labels = (
         spec.get("template", {}).get("metadata", {}).get("labels", {})
     )
-    if tmpl_labels.get("llm-d.ai/inferenceServing") != "true":
+    # Its a serving replica source if either:
+    #   * its pod template is labelled inferenceServing=true OR
+    #   * it is the FMA requester Deployment (llm-d.ai/role=requester).
+    is_serving = tmpl_labels.get("llm-d.ai/inferenceServing") == "true"
+    is_fma_requester = tmpl_labels.get("llm-d.ai/role") == "requester"
+    if not (is_serving or is_fma_requester):
         continue
 
     # Filter by model if LLMDBENCH_HARNESS_STACK_NAME is set
@@ -208,7 +213,7 @@ collect_pod_startup_times() {
 
     mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
 
-    # Try modelservice labels first, fall back to standalone
+    # Serving pods (modelservice decode / FMA launcher) carry inferenceServing=true.
     local pods_json
     pods_json=$($kubectl_cmd --namespace "$namespace" get pods \
         -l llm-d.ai/inferenceServing=true \
@@ -223,6 +228,31 @@ collect_pod_startup_times() {
             --field-selector=status.phase=Running \
             -o json 2>>"$debug_log") || pods_json='{"items":[]}'
     fi
+
+    # Also capture FMA requester pods (role=requester). Their creation->Ready is
+    # the FMA "Avg pod startup": the requester's readiness gates on the bound
+    # vLLM actually serving, unlike the launcher pool.
+    local requester_json
+    requester_json=$($kubectl_cmd --namespace "$namespace" get pods \
+        -l llm-d.ai/role=requester \
+        --field-selector=status.phase=Running \
+        -o json 2>>"$debug_log") || requester_json='{"items":[]}'
+
+    pods_json=$(_MC_SERVING="$pods_json" _MC_REQUESTER="$requester_json" python3 -c '
+import json, os
+items, seen = [], set()
+for env in ("_MC_SERVING", "_MC_REQUESTER"):
+    try:
+        d = json.loads(os.environ.get(env) or "{}")
+    except json.JSONDecodeError:
+        d = {}
+    for it in d.get("items", []):
+        n = it.get("metadata", {}).get("name", "")
+        if n and n not in seen:
+            seen.add(n)
+            items.append(it)
+print(json.dumps({"items": items}))
+' 2>>"$debug_log") || pods_json='{"items":[]}'
 
     echo "$pods_json" | _ST_OUTPUT="$output_file" python3 -c '
 import json, sys, os

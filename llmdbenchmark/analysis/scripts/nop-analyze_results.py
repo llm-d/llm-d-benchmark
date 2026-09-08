@@ -176,6 +176,7 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
     for metrics_metadata in metadatas:
         name = metrics_metadata["name"]
         pod_start = metrics_metadata["pod_start"]["value"]
+        container_start = metrics_metadata.get("container_start", {}).get("value", 0.0)
         vllm_start = (
             metrics_metadata["vllm_ready_timestamp"]["value"]
             - metrics_metadata["vllm_start_timestamp"]["value"]
@@ -197,6 +198,7 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
 
         file.write(f"\n  Name                              : {name}\n")
         file.write(f"    Pod  Start(secs)                : {pod_start:7.3f}\n")
+        file.write(f"    Container Start(secs)           : {container_start:7.3f}\n")
         file.write(f"    vLLM Start(secs)                : {vllm_start:7.3f}\n")
         file.write("    Model Load\n")
         file.write(f"      Elapsed(secs)                 : {elapsed:7.3f}\n")
@@ -300,6 +302,10 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
     file.write("  T_warm: existing launcher creates new vLLM instance\n")
     file.write("  T_hot: waking sleeping vLLM instance\n\n")
     file.write("T_actuation: Time for the Requester Pod to be ready\n")
+    file.write(
+        "T_actuation_cstart: Same, measured from the Requester container start "
+        "(-- if unavailable)\n"
+    )
     file.write("T_hot: Hot-start timing\n")
     file.write("T_warm: Warm-start timing\n")
     file.write("T_cold_launcher: Cold-start-with-launcher timing\n")
@@ -322,6 +328,17 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
             ct = float(launcher_info["requester_info"]["creation_timestamp"]["value"])
             rt = float(launcher_info["requester_info"]["ready_timestamp"]["value"])
             ttrr = rt - ct if rt > 0.0 else 0.0
+            # Container-start anchor: elapsed from the requester container's
+            # start to Ready, reported alongside the pod-create anchor above.
+            # Guarded so older artifacts that lack container_start_timestamp
+            # still parse; None renders as "--" (no data), distinct from a real
+            # zero, matching the per-path timing columns below.
+            cst = float(
+                launcher_info["requester_info"]
+                .get("container_start_timestamp", {})
+                .get("value", 0.0)
+            )
+            ttrr_cstart = rt - cst if rt > 0.0 and cst > 0.0 else None
             ttft = float(launcher_info["ttft"]["value"])
             actuation_condition = launcher_info["actuation_condition"]
             if actuation_condition == "T_hot":
@@ -377,6 +394,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
                     "GPU UUID": launcher_info["requester_info"].get("gpu_uuids", ""),
                     "Actuation Condition": actuation_condition,
                     "T_actuation(s)": ttrr,
+                    "T_actuation_cstart(s)": ttrr_cstart,
                     "T_hot(s)": t_hot_val,
                     "T_warm(s)": t_warm_val,
                     "T_cold(s)": t_cold_val,
@@ -396,6 +414,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
     # Float formatting
     float_columns = [
         "T_actuation(s)",
+        "T_actuation_cstart(s)",
         "T_hot(s)",
         "T_warm(s)",
         "T_cold(s)",

@@ -74,5 +74,9 @@ def test_wait_reports_current_and_previous_container_failure() -> None:
         "Found pods in error state: inference-perf-abc/harness "
         "(CrashLoopBackOff, last terminated: OOMKilled, exit_code=137)"
     ]
-    get_call = next(call for call in cmd.calls if call[-2:] == ("-o", "json"))
+    get_call = next(
+        call
+        for call in cmd.calls
+        if call[:2] == ("get", "pods") and not call[-1].startswith("jsonpath=")
+    )
     assert get_call[-2:] == ("-o", "json")

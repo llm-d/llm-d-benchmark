@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from llmdbenchmark.executor.protocols import LoggerProtocol
+from llmdbenchmark.utilities.archive import DEFAULT_LEVEL as DEFAULT_COMPRESS_LEVEL
 
 if TYPE_CHECKING:
     from llmdbenchmark.executor.command import CommandExecutor
@@ -25,8 +27,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # Optional CLI filter: if set, per-stack steps only execute for stacks
     # whose name appears here. Useful in multi-stack scenarios to run
     # (or re-run) just one pool - e.g. `--stack pool-a` when benchmarking
-    # a single model in the multi-model-wva scenario. Global steps are
-    # unaffected. Empty / None means "all stacks" (existing behavior).
+    # a single model in the multi-model-optimized-baseline scenario. Global
+    # steps are unaffected. Empty / None means "all stacks" (existing
+    # behavior).
     stack_filter: list[str] | None = None
 
     # Execution flags
@@ -81,6 +84,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     # Experiment IDs generated in this run (step_06 writes, step_08 reads)
     experiment_ids: list[str] = field(default_factory=list)
+    _experiment_ids_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     # Run-phase configuration (set by _execute_run)
     harness_name: str | None = None
@@ -91,6 +97,12 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_output: str = "local"
     harness_parallelism: int = 1
     harness_wait_timeout: int = 3600
+    # Retry budget for locating the data-access pod, which gates result
+    # collection: a single failed API call there discards a completed run whose
+    # output is still on the PVC. Tunable because how flaky the apiserver is is a
+    # property of the cluster, not of the code.
+    data_access_lookup_attempts: int = 5
+    data_access_lookup_delay: float = 3.0
     harness_debug: bool = False
     harness_skip_run: bool = False
     # When True, collect results via a gzip'd ``oc exec | tar`` stream instead
@@ -98,6 +110,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # differs -- but is much faster for large result trees. Relies on the
     # fragile apiserver exec stream (retried). Off by default. See step_07.
     harness_fast_collect: bool = False
+    # Compress each result set on the PVC before collecting, so the archive crosses
+    # the tunnel. Nothing is compressed on the driver; reports, metadata and plots
+    # stay plain so results_store can still index the collected tree.
+    compress_output: bool = True
+    compress_level: int = DEFAULT_COMPRESS_LEVEL
     # When True, reset the vLLM prefix, multimodal, and encoder caches
     # (POST /reset_prefix_cache, /reset_mm_cache, /reset_encoder_cache) on
     # every serving pod before each treatment's run, so every treatment
@@ -116,6 +133,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # pod state. Workload-specific (see _FAILURE_VALIDATORS in step_07); an
     # unrecognized workload warns and falls back to pod state.
     validate_failures: bool = False
+    # Empty = one group per treatment. A runtime concern like dry_run, so it
+    # never reaches config.yaml.
+    treatment_groups: list[Any] = field(default_factory=list)
+    max_parallel_treatments: int = 1
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
     analyze_locally: bool = False
@@ -130,6 +151,19 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # namespace creation).  Override with --full-infra on the CLI.
     kustomize_skip_infra: bool = True
 
+    # Total pod deletions allowed across a phase when a pod lands in a failure
+    # state a restart may clear (CrashLoopBackOff, Error, OOMKilled). Some pods
+    # come up broken and only recover once deleted, so this trades a bounded
+    # amount of churn for a standup that survives it. Deliberately a single
+    # phase-wide total rather than per-pod: the cap is on how much churn the
+    # phase is allowed, not on how stubborn any one pod may be.
+    # 0 (default) disables the mechanism -- a crashing pod fails the wait
+    # immediately, as it always has.
+    pod_restart_budget: int = 0
+    # Seconds added to the wait deadline per restart, covering the replacement
+    # pod's image pull and model load.
+    pod_restart_grace: int = 300
+
     # Standup pod deployment timeouts
     kustomize_deploy_timeout: int = 900
     standalone_deploy_timeout: int = 900
@@ -142,6 +176,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # True, cluster resolution is skipped and steps talk to docker/podman.
     container_only: bool = False
     container_runtime: str = "docker"
+    # Where that runtime runs: "localhost" (default) or ssh://[user@]host[:port]
+    # [/socket] for a remote node. Steps read the per-stack value from the
+    # rendered launch spec; this is the scenario-wide fallback.
+    container_connection: str = "localhost"
 
     pvc_bind_timeout: int = 240
 
@@ -156,6 +194,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     logger: LoggerProtocol | None = field(default=None, repr=False)
 
+    # Built once on first use and shared by every CommandExecutor rebuild, so
+    # the count survives the executor being recreated mid-phase.
+    _restart_budget: Any = field(default=None, repr=False)
+
     # Call rebuild_cmd() after changing kubeconfig or is_openshift.
     cmd: CommandExecutor | None = field(default=None, repr=False)
 
@@ -166,6 +208,20 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     helm_cmd: str = "helm"
     helmfile_cmd: str = "helmfile"
     python_cmd: str = "python3"
+
+    @property
+    def restart_budget(self):
+        """The phase-wide pod restart budget, created on first access."""
+        if self._restart_budget is None:
+            from llmdbenchmark.utilities.podstate import RestartBudget
+
+            self._restart_budget = RestartBudget(self.pod_restart_budget)
+        return self._restart_budget
+
+    def record_experiment_id(self, experiment_id: str) -> None:
+        """Append a successful treatment's experiment ID under the lock."""
+        with self._experiment_ids_lock:
+            self.experiment_ids.append(experiment_id)
 
     def rebuild_cmd(self) -> CommandExecutor:
         """Create or recreate the shared CommandExecutor from current context fields."""
@@ -179,6 +235,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
             kubeconfig=self.kubeconfig,
             kube_context=self.context_name,
             openshift=self.is_openshift,
+            pod_restart_budget=self.restart_budget,
+            pod_restart_grace=float(self.pod_restart_grace),
         )
         return self.cmd
 

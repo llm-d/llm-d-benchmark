@@ -1,0 +1,34 @@
+---
+metadata:
+  labels:
+    name: concurrent-heavy-heterogeneous
+    description: |
+      Heavy heterogeneous scenario with wide token distribution.
+      Requires min_max_model_len >= 40960 on the serving side.
+spec:
+  backend:
+    target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+    model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+    kind: "openai_http"
+    request_format: "/v1/chat/completions"
+  profile:
+    kind: concurrent
+  data:
+  - kind: synthetic_text
+    prompt_tokens: 8000
+    prompt_tokens_stdev: 8500
+    prompt_tokens_min: 50
+    prompt_tokens_max: 30000
+    output_tokens: 800
+    output_tokens_stdev: 1500
+    output_tokens_min: 20
+    output_tokens_max: 8000
+  constraints:
+  - kind: max_duration
+    seconds: 600
+benchmarks:
+- profile.streams: 300
+- profile.streams: 200
+- profile.streams: 100
+- profile.streams: 50
+- profile.streams: 1

@@ -508,6 +508,15 @@ class SmoketestStep(Step):
         errors: list,
     ):
         """Test the OpenShift route endpoint."""
+        # epponly/none deploy no Gateway, so no route exists to fetch --
+        # looking one up there is a guaranteed warning on every run.
+        gateway_class = plan_config.get("gateway", {}).get("className", "")
+        if gateway_class in ("epponly", "none"):
+            _context.logger.log_info(
+                f"gateway.className={gateway_class} -- no OpenShift route to test"
+            )
+            return
+
         release = self._require_config(plan_config, "release")
         route_name = f"{release}-inference-gateway-route"
 

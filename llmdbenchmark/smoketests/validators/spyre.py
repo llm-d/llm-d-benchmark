@@ -127,23 +127,36 @@ class SpyreValidator(BaseSmoketest):
         env_vars = self._get_container_env(serving_pod, container=container_name)
         pod_name = serving_pod.get("metadata", {}).get("name", "unknown")
 
-        # Determine expected FLEX_DEVICE from the active deployment's extraEnvVars.
+        # Expected values come from the active deployment's extraEnvVars.
         # Check decode first (modelservice mode), then standalone.
-        expected_flex_device = "VF"
         active_section = "decode" if decode_pods else "standalone"
         env_list = _nested_get(config, active_section, "extraEnvVars") or []
-        for ev in env_list:
-            if isinstance(ev, dict) and ev.get("name") == "FLEX_DEVICE":
-                expected_flex_device = ev.get("value", "VF")
-                break
+        scenario_env = {
+            ev["name"]: ev.get("value")
+            for ev in env_list
+            if isinstance(ev, dict) and ev.get("name")
+        }
 
         spyre_env_checks = [
             ("FLEX_COMPUTE", "SENTIENT"),
-            ("FLEX_DEVICE", expected_flex_device),
+            ("FLEX_DEVICE", scenario_env.get("FLEX_DEVICE", "VF")),
             ("VLLM_SPYRE_DYNAMO_BACKEND", "sendnn"),
-            ("VLLM_SPYRE_USE_CB", "1"),
-            ("TORCH_SENDNN_CACHE_ENABLE", "1"),
+            # Not hardcoded to "1": the s390x scenario deliberately disables the
+            # compilation cache, and it shares this validator.
+            (
+                "TORCH_SENDNN_CACHE_ENABLE",
+                scenario_env.get("TORCH_SENDNN_CACHE_ENABLE", "1"),
+            ),
         ]
+
+        # Continuous batching is opt-in only on the older vllm-spyre/1.x lineage.
+        # 2.x made it unconditional and dropped the variable, so assert it only
+        # when the scenario actually asks for it -- otherwise every 2.x scenario
+        # would fail this check for setting nothing.
+        if "VLLM_SPYRE_USE_CB" in scenario_env:
+            spyre_env_checks.append(
+                ("VLLM_SPYRE_USE_CB", scenario_env["VLLM_SPYRE_USE_CB"])
+            )
 
         for env_name, expected_val in spyre_env_checks:
             actual = env_vars.get(env_name)

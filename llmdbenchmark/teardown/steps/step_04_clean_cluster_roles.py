@@ -15,6 +15,7 @@ _MODELSERVICE_ROLE_SUFFIXES = [
     "modelservice-editor",
     "modelservice-viewer",
 ]
+_LEGACY_NOP_SERVICE_VIEWER_PREFIX = "inference-perf-service-viewer-"
 
 
 class CleanClusterRolesStep(Step):
@@ -48,6 +49,7 @@ class CleanClusterRolesStep(Step):
 
         self._delete_matching(cmd, context, "ClusterRoleBinding", release, errors)
         self._delete_matching(cmd, context, "ClusterRole", release, errors)
+        self._delete_legacy_nop_service_viewers(cmd, context)
 
         context.logger.log_info("Deleting well-known modelservice ClusterRoles...")
         for suffix in _MODELSERVICE_ROLE_SUFFIXES:
@@ -101,6 +103,26 @@ class CleanClusterRolesStep(Step):
             success=True,
             message="Cluster-scoped resources cleaned",
         )
+
+    @staticmethod
+    def _delete_legacy_nop_service_viewers(cmd, context) -> None:
+        """Remove service-viewer roles emitted by releases before namespace scoping."""
+        namespaces = {
+            getattr(context, attribute, None)
+            for attribute in ("namespace", "harness_namespace", "wva_namespace")
+        }
+        for namespace in filter(None, namespaces):
+            role_name = f"{_LEGACY_NOP_SERVICE_VIEWER_PREFIX}{namespace}"
+            for kind in ("ClusterRoleBinding", "ClusterRole"):
+                context.logger.log_info(
+                    f"Deleting legacy {kind}/{role_name}", emoji="🗑️"
+                )
+                cmd.kube(
+                    "delete",
+                    "--ignore-not-found=true",
+                    kind,
+                    role_name,
+                )
 
     def _delete_matching(
         self,

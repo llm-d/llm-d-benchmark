@@ -36,7 +36,7 @@ class GuideVariableResolver:
         # GAIE-published `inferencepool` / `standalone` charts onto the
         # llm-d-router-{gateway,standalone}-dev charts. Older guide READMEs
         # still rely on GAIE_VERSION for the inference extension CRDs
-        # (which remain at v1.5.0 etc.), so both variables are exposed.
+        # (which remain at v1.6.0 etc.), so both variables are exposed.
         # REPO_ROOT is what the guide README expects from
         # ``$(realpath $(git rev-parse --show-toplevel))`` -- since we know
         # the cloned repo path here, we force-set it so paths like

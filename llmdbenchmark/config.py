@@ -18,6 +18,11 @@ class WorkspaceConfig:
     log_dir: Optional[Path] = None
     verbose: bool = False
     dry_run: bool = False
+    # Suppress the plan-rendering narration on the console (it still
+    # lands in the workspace logs at DEBUG). Resolved per subcommand in
+    # cli.py: on by default everywhere except `plan`, where the render
+    # narration IS the output. See llmdbenchmark/logging/quiet.py.
+    quiet_plan: bool = False
     telemetry_enabled: bool = False
     telemetry_provider: str = "http"
     telemetry_endpoint: Optional[str] = None
