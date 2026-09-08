@@ -881,19 +881,19 @@ jobs:
           #
           if [[ ! -z $LLMDBENCH_CICD_CONNECTOR ]]; then
             echo "### Setting \"CONNECTOR\" to \"$LLMDBENCH_CICD_CONNECTOR\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
-            lkcmd="yq -i \".scenario[0].kustomize.guideVariableOverrides.CONNECTOR = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
+            lkcmd="yq -i '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR = strenv(LLMDBENCH_CICD_CONNECTOR)' \"$LLMDBENCH_CICD_SCENARIO_FILE\""
             echo -n "; $lkcmd" >> "$LLMDBENCH_CICD_CMD_LOG"
-            eval $lkcmd
-            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
+            yq -i '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR = strenv(LLMDBENCH_CICD_CONNECTOR)' "$LLMDBENCH_CICD_SCENARIO_FILE"
+            cat "$LLMDBENCH_CICD_SCENARIO_FILE" | yq '.scenario[0].kustomize.guideVariableOverrides.CONNECTOR'
             # First-class connector: the deploy step splices this between backend and
             # infra provider (amd/vllm -> amd/vllm/moriio) so the connector overlay
             # (and its image override) is actually applied. Without it acceleratorBackend
             # alone resolves to the vanilla base overlay.
             echo "### Setting kustomize.connector to \"$LLMDBENCH_CICD_CONNECTOR\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
-            lkcmd="yq -i \".scenario[0].kustomize.connector = \\\"$LLMDBENCH_CICD_CONNECTOR\\\"\" $LLMDBENCH_CICD_SCENARIO_FILE"
+            lkcmd="yq -i '.scenario[0].kustomize.connector = strenv(LLMDBENCH_CICD_CONNECTOR)' \"$LLMDBENCH_CICD_SCENARIO_FILE\""
             echo -n "; $lkcmd" >> "$LLMDBENCH_CICD_CMD_LOG"
-            eval $lkcmd
-            cat $LLMDBENCH_CICD_SCENARIO_FILE | yq '.scenario[0].kustomize.connector'
+            yq -i '.scenario[0].kustomize.connector = strenv(LLMDBENCH_CICD_CONNECTOR)' "$LLMDBENCH_CICD_SCENARIO_FILE"
+            cat "$LLMDBENCH_CICD_SCENARIO_FILE" | yq '.scenario[0].kustomize.connector'
           fi
           if [[ ! -z $LLMDBENCH_CICD_OFFLOADING_TARGET ]]; then
             echo "### Setting \"VARIANT\" to \"$LLMDBENCH_CICD_OFFLOADING_TARGET\" in \"$LLMDBENCH_CICD_SCENARIO_FILE\""
