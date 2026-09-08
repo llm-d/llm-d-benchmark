@@ -259,6 +259,20 @@ class PodState:
         return bool(self.containers) and all(c.ready for c in self.containers)
 
     @property
+    def has_started(self) -> bool:
+        """True once the pod is doing something on a node, not just queued.
+
+        Distinguishes "waiting on cluster capacity" (still unscheduled) from
+        "waiting on the pod itself" (already scheduled, e.g. an init
+        container still running before ``phase`` flips to ``Running``).
+        """
+        if self.phase == "Running":
+            return True
+        return any(
+            c.ready or c.waiting_reason or c.terminated for c in self.init_containers
+        )
+
+    @property
     def summary(self) -> str:
         """One-token status suitable for progress lines and crash matching."""
         if not self.containers:

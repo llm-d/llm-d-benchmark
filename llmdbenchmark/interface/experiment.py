@@ -122,6 +122,42 @@ def add_subcommands(
         help="Seconds to wait for the harness data-access pod to become Ready.",
     )
     exp_parser.add_argument(
+        "--standalone-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for the vLLM pods to deploy during standup in standalone mode.",
+    )
+    exp_parser.add_argument(
+        "--nok8s-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_NOK8S_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for the vLLM/EPP/Envoy containers to become ready in nok8s mode.",
+    )
+    exp_parser.add_argument(
+        "--gateway-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice.",
+    )
+    exp_parser.add_argument(
+        "--modelservice-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice.",
+    )
+    exp_parser.add_argument(
+        "--pvc-bind-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_PVC_BIND_TIMEOUT"),
+        help="Seconds to wait for each PVC (workload, model, extra) to reach the Bound phase during standup.",
+    )
+    exp_parser.add_argument(
+        "--kustomize-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for kustomize-deployed resources to become ready during standup.",
+    )
+    exp_parser.add_argument(
         "-x",
         "--dataset",
         default=env("LLMDBENCH_DATASET"),
