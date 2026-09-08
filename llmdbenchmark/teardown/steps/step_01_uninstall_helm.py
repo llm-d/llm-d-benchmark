@@ -261,30 +261,38 @@ class UninstallHelmStep(Step):
         def _lns(cfg):
             return (cfg.get("fma", {}) or {}).get("launcherNodeSelection", {}) or {}
 
+        # Only clean up labels standup itself applied. A stack that pins via
+        # `nodeName` targets a node prepared by whoever owns the cluster, so
+        # stripping its label here would break every later run against it.
         node_labels = {
-            (_lns(cfg).get("nodeLabel") or "fma-hotstart")
+            (
+                _lns(cfg).get("nodeLabel") or "fma-hotstart",
+                str(_lns(cfg).get("nodeLabelValue") or "true"),
+            )
             for cfg in map(self._load_stack_config, context.rendered_stacks or [])
-            if _lns(cfg).get("enabled", False)
+            if _lns(cfg).get("enabled", False) and not (_lns(cfg).get("nodeName") or "")
         }
-        for node_label in node_labels:
-            # `<key>-` removes the label; `-l <key>=true` restricts to nodes
+        for node_label, node_label_value in node_labels:
+            # `<key>-` removes the label; `-l <key>=<value>` restricts to nodes
             # that carry it, so this is a no-op (not an error) when none do.
             result = cmd.kube(
                 "label",
                 "nodes",
                 "-l",
-                f"{node_label}=true",
+                f"{node_label}={node_label_value}",
                 f"{node_label}-",
                 check=False,
             )
             if result.success:
                 context.logger.log_info(
-                    f"  Removed FMA launcher node label {node_label}=true",
+                    f"  Removed FMA launcher node label "
+                    f"{node_label}={node_label_value}",
                     emoji="🗑️",
                 )
             else:
                 context.logger.log_warning(
-                    f"  Could not remove node label {node_label}=true: {result.stderr}"
+                    f"  Could not remove node label "
+                    f"{node_label}={node_label_value}: {result.stderr}"
                 )
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:

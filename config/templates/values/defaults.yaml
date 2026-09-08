@@ -1525,6 +1525,43 @@ kustomize:
 
 # ============================================================================
 # FMA DEPLOYMENT CONFIGURATION
+# ============================================================================
+# Single-node pinning (benchmark isolation)
+#
+# ONE place to name the reserved node and its taint. Set these three values
+# and every workload that reads them lands on that node -- no per-scenario
+# edits. Consumed by:
+#   - FMA launchers + requester (24_fma-deployment.yaml.j2)
+#   - EPP                       (12_router-values.yaml.j2)
+#
+# `enabled: false` leaves every consumer untouched, so this is inert until
+# you fill it in. A scenario can still override any consumer individually
+# (fma.tolerations, router.epp.affinity) -- an explicit per-scenario value
+# always wins over these defaults.
+#
+# The harness and data-access pods are deliberately NOT pinned: with a taint
+# on the node they cannot land there, which is what keeps load generation off
+# the measurement node.
+# ============================================================================
+nodePinning:
+  enabled: false
+  # Node to pin to. Also used as fma.launcherNodeSelection.nodeName, which
+  # skips FMA's free-GPU/CPU auto-scan (that scan ignores taints and could
+  # otherwise pick a node whose pods never schedule).
+  nodeName: ""
+  # Label the node already carries, used for pod placement. EPP has no
+  # nodeSelector in the router chart, so this becomes a nodeAffinity term
+  # there and a nodeSelector for the FMA requester/launchers.
+  nodeLabel: ""
+  nodeLabelValue: ""
+  # Taints to tolerate. A label places a pod; only a matching toleration lets
+  # it schedule on a tainted node. Standard corev1.Toleration entries, e.g.
+  #   - key: reserved
+  #     operator: Equal
+  #     value: my-workload
+  #     effect: NoSchedule
+  tolerations: []
+
 # For Fast Model Actuation
 # ============================================================================
 fma:
@@ -1538,7 +1575,19 @@ fma:
   # (used by cicd/ocp-wva-fma-hotstart).
   launcherNodeSelection:
     enabled: false
-    nodeLabel: fma-hotstart
+    # Empty so an inherited nodePinning value is not masked by a default; the
+    # effective fallback when neither is set is still fma-hotstart=true.
+    nodeLabel: ""
+    nodeLabelValue: ""
+    # Pin to this node instead of auto-selecting one. Required when the target
+    # node is tainted: the auto-scan reads allocatable/committed resources and
+    # does not consider taints, so it can pick a node whose pods never schedule.
+    nodeName: ""
+
+  # Tolerations applied to the FMA launcher pods and the requester Deployment.
+  # Needed when the target node carries a taint -- a nodeSelector alone places
+  # a pod, but only a matching toleration lets it schedule there.
+  tolerations: []
 
   # Deployment naming
   deployment:

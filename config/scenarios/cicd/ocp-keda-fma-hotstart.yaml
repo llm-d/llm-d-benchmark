@@ -108,9 +108,12 @@ scenario:
       # type and all free, labels it, and pins the LauncherPopulationPolicy +
       # requester Deployment to it; launcherCount/replicas are sized to that
       # node's GPU count. Standup fails if no fully-free single-type GPU node.
+      # Node/label/taint come from the shared top-level `nodePinning` block
+      # (config/templates/values/defaults.yaml) so they are set in ONE place.
+      # Uncomment nodeLabel/nodeLabelValue/nodeName here only to override it
+      # for this scenario alone.
       launcherNodeSelection:
         enabled: true
-        nodeLabel: fma-hotstart
 
       # HOT-START CHANGE #1: Deploy all replicas at standup for parallel model loading
       # Initially set to maxReplicas so all launcher pods load models simultaneously

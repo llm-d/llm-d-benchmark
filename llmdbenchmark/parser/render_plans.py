@@ -1656,7 +1656,51 @@ class RenderPlans:
                 existing = provider_block.get(gw_class) or {}
                 provider_block[gw_class] = self.deep_merge(provider_config, existing)
 
+        self._apply_epp_node_pinning(values, epp)
+
         return values
+
+    def _apply_epp_node_pinning(self, values: dict, epp: dict) -> None:
+        """Pin EPP to the shared ``nodePinning`` node, if one is configured.
+
+        Lets a single `nodePinning` block place EPP alongside the FMA
+        workloads instead of every scenario repeating the affinity by hand.
+        The router chart has no ``nodeSelector`` for EPP -- only ``affinity``
+        and ``tolerations`` -- so node selection becomes a nodeAffinity term.
+        A scenario that sets either key explicitly wins.
+        """
+        pinning = values.get("nodePinning") or {}
+        if not pinning.get("enabled", False):
+            return
+
+        label = str(pinning.get("nodeLabel") or "")
+        label_value = str(pinning.get("nodeLabelValue") or "")
+        tolerations = pinning.get("tolerations") or []
+
+        if label and not epp.get("affinity"):
+            epp["affinity"] = {
+                "nodeAffinity": {
+                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                        "nodeSelectorTerms": [
+                            {
+                                "matchExpressions": [
+                                    {
+                                        "key": label,
+                                        "operator": "In",
+                                        "values": [label_value],
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+            self.logger.log_info(
+                f"Pinned EPP to nodes with {label}={label_value} (nodePinning)"
+            )
+
+        if tolerations and not epp.get("tolerations"):
+            epp["tolerations"] = deepcopy(tolerations)
 
     def _resolve_inference_pool_host(self, values: dict) -> dict:
         """Auto-populate destinationRule.host from model_id_label when not set.
