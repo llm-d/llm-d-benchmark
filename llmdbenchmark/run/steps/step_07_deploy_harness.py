@@ -690,12 +690,26 @@ class DeployHarnessStep(Step):
                 and not context.dry_run
                 and not context.harness_debug
             ):
-                delete_pods_by_names(
-                    spec.cmd,
-                    treatment_pod_names,
-                    spec.harness_ns,
-                    context,
-                )
+                if context.no_cleanup:
+                    # Safe across retries: each attempt's pods carry a unique
+                    # treatment label value, so leftovers never match the next
+                    # attempt's wait selector. Next run's step 01 removes them.
+                    kube_bin = "oc" if context.is_openshift else "kubectl"
+                    context.logger.log_info(
+                        f"--no-cleanup: leaving {len(treatment_pod_names)} "
+                        f"pod(s) in namespace '{spec.harness_ns}': "
+                        f"{', '.join(treatment_pod_names)}. Delete with: "
+                        f"{kube_bin} delete pod -n {spec.harness_ns} "
+                        f"-l app={spec.pod_label} (the next run also cleans "
+                        f"them up automatically)."
+                    )
+                else:
+                    delete_pods_by_names(
+                        spec.cmd,
+                        treatment_pod_names,
+                        spec.harness_ns,
+                        context,
+                    )
 
             # Result validation gate (opt-in): fail the attempt if the
             # harness reported failed sessions, even when every phase above

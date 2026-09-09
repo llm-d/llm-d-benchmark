@@ -129,6 +129,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
 | `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 | `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
+| `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
 ## Step Details
 

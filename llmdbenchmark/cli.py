@@ -1164,6 +1164,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         ),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
         no_pvc=getattr(args, "no_pvc", False),
+        no_cleanup=getattr(args, "no_cleanup", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -1399,6 +1400,11 @@ def _execute_run(args, logger, render_plan_errors):
                     )
     logger.log_info(f"  Local results:  {results_dir}")
     logger.log_info(f"  Local analysis: {context.run_analysis_dir()}")
+    if context.no_cleanup and not context.container_only:
+        logger.log_info(
+            "  Pods:           kept (--no-cleanup); inspect with kubectl, "
+            "the next run cleans them up"
+        )
     # The PVC/data-access-pod hint is Kubernetes-only; nok8s writes results
     # straight to the local dir shown above.
     # --no-pvc: there is no PVC or data-access pod to point at.
@@ -1899,6 +1905,7 @@ def _log_env_overrides(logger, args):
         ),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
         "LLMDBENCH_NO_PVC": ("no_pvc", "--no-pvc"),
+        "LLMDBENCH_NO_CLEANUP": ("no_cleanup", "--no-cleanup"),
         "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": (
             "fma_teardown_timeout",
             "--fma-teardown-timeout",

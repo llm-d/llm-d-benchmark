@@ -23,8 +23,14 @@ class RunCleanupPostStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip cleanup in debug mode, or for nok8s (no cluster resources)."""
+        """Skip cleanup in debug mode, for nok8s, or under --no-cleanup.
+
+        --no-cleanup keeps the ConfigMaps too: the kept pods still project
+        them, and the next run recreates/replaces them anyway.
+        """
         if "nok8s" in (context.deployed_methods or []):
+            return True
+        if context.no_cleanup:
             return True
         return context.harness_debug
 
