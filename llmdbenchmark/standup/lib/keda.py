@@ -13,6 +13,7 @@ import yaml
 
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.standup.keda_prometheus_auth import create_prometheus_auth_secret
 
 
 def stacks_enabling_keda(
@@ -40,12 +41,14 @@ def install_keda_for_namespace(
     stack_path: Path,
     namespace: str,
     errors: list,
+    prom_ca_cert: str | None = None,
 ) -> None:
     """Apply TriggerAuthentication (bearer-secret only) then the ScaledObjects template.
 
     For authMode=none, only the ScaledObjects template is applied.
-    For authMode=bearer-secret, the TriggerAuthentication (template 32) is applied
-    first so KEDA can resolve auth before the ScaledObject triggers fire.
+    For authMode=bearer-secret, the bearer token Secret is minted (when
+    prom_ca_cert is available) and the TriggerAuthentication (template 27a) is
+    applied first so KEDA can resolve auth before the ScaledObject triggers fire.
     """
     cfg_file = stack_path / "config.yaml"
     try:
@@ -54,9 +57,32 @@ def install_keda_for_namespace(
     except (OSError, yaml.YAMLError):
         return
 
-    auth_mode = cfg.get("keda", {}).get("prometheus", {}).get("authMode", "none")
+    prometheus_cfg = cfg.get("keda", {}).get("prometheus", {})
+    auth_mode = prometheus_cfg.get("authMode", "none")
 
     if auth_mode == "bearer-secret":
+        secret_name = prometheus_cfg.get("secretName", "prometheus-auth")
+        sa_name = prometheus_cfg.get("saName", "wva-prometheus-auth")
+
+        if prom_ca_cert:
+            create_prometheus_auth_secret(
+                cmd=cmd,
+                context=context,
+                stack_path=stack_path,
+                target_namespace=namespace,
+                prom_ca_cert=prom_ca_cert,
+                sa_name=sa_name,
+                secret_name=secret_name,
+                apply_trigger_auth=False,
+                errors=errors,
+            )
+        else:
+            context.logger.log_warning(
+                f"No Prometheus CA cert available; cannot auto-create "
+                f"secret/{secret_name} in ns/{namespace}. Create it manually or "
+                "KEDA bearer-secret auth will fail."
+            )
+
         ta_yaml = _find_yaml(stack_path, "27a_keda-triggerauthentication")
         if ta_yaml and _has_yaml_content(ta_yaml):
             result = cmd.kube("apply", "-f", str(ta_yaml), "-n", namespace, check=False)

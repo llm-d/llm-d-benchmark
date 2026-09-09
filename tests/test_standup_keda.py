@@ -12,6 +12,7 @@ from llmdbenchmark.standup.lib.keda import (
     install_keda_for_namespace,
     stacks_enabling_keda,
 )
+from llmdbenchmark.standup.steps import step_03_workload_monitoring
 from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
     WorkloadMonitoringStep,
 )
@@ -58,6 +59,25 @@ class _StubCmd:
 class _StubContext:
     logger: _StubLogger = field(default_factory=_StubLogger)
     dry_run: bool = False
+
+
+@dataclass
+class _TokenMintingStubCmd:
+    """Stub that returns a usable token/secret payload for the mint-secret path.
+
+    Plain _StubCmd returns empty stdout, which create_prometheus_auth_secret
+    treats as a mint failure -- these tests need a token/secret manifest.
+    """
+
+    kube_calls: list[tuple] = field(default_factory=list)
+
+    def kube(self, *args: str, **_: Any) -> _StubResult:
+        self.kube_calls.append(args)
+        if args[:2] == ("create", "token"):
+            return _StubResult(success=True, stdout="fake-bearer-token\n")
+        if args[:3] == ("create", "secret", "generic"):
+            return _StubResult(success=True, stdout="apiVersion: v1\nkind: Secret\n")
+        return _StubResult(success=True)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +246,85 @@ class TestInstallKedaForNamespace:
         )
         assert ta_idx < so_idx
 
+    def test_bearer_secret_with_ca_cert_mints_secret_before_ta(
+        self, tmp_path: Path
+    ) -> None:
+        """authMode=bearer-secret + prom_ca_cert: mints token/Secret before applying TA."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {
+                    "prometheus": {
+                        "authMode": "bearer-secret",
+                        "secretName": "my-secret",
+                    },
+                    "scaledObjects": [{"name": "x"}],
+                },
+            },
+        )
+        _write_ta_template(stack, "test-ns", "my-secret")
+        _write_so_template(stack)
+        cmd = _TokenMintingStubCmd()
+        ctx = _StubContext()
+        errors: list = []
+
+        install_keda_for_namespace(
+            cmd, ctx, stack, "test-ns", errors, prom_ca_cert="FAKE-CA-CERT"
+        )
+
+        assert errors == []
+        token_calls = [a for a in cmd.kube_calls if a[:2] == ("create", "token")]
+        assert token_calls and token_calls[0][2] == "wva-prometheus-auth"
+
+        secret_calls = [
+            a for a in cmd.kube_calls if a[:3] == ("create", "secret", "generic")
+        ]
+        assert secret_calls and secret_calls[0][3] == "my-secret"
+
+        applied = [a for a in cmd.kube_calls if a[0] == "apply"]
+        assert len(applied) == 3  # minted Secret, TA, ScaledObjects
+        paths_applied = [a[2] for a in applied]
+        secret_idx = next(
+            i for i, p in enumerate(paths_applied) if "my-secret-secret" in p
+        )
+        ta_idx = next(i for i, p in enumerate(paths_applied) if "27a_keda" in p)
+        so_idx = next(
+            i for i, p in enumerate(paths_applied) if "27_keda-scaledobjects" in p
+        )
+        assert secret_idx < ta_idx < so_idx
+
+    def test_bearer_secret_without_ca_cert_warns_and_skips_mint(
+        self, tmp_path: Path
+    ) -> None:
+        """authMode=bearer-secret with no prom_ca_cert: warns, still applies TA + SO."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {
+                    "prometheus": {
+                        "authMode": "bearer-secret",
+                        "secretName": "my-secret",
+                    },
+                    "scaledObjects": [{"name": "x"}],
+                },
+            },
+        )
+        _write_ta_template(stack, "test-ns", "my-secret")
+        _write_so_template(stack)
+        cmd = _StubCmd()
+        ctx = _StubContext()
+        errors: list = []
+
+        install_keda_for_namespace(cmd, ctx, stack, "test-ns", errors)
+
+        assert errors == []
+        assert not any(a[:2] == ("create", "token") for a in cmd.kube_calls)
+        assert any("WARN" in m and "my-secret" in m for m in ctx.logger.messages)
+        applied = [a for a in cmd.kube_calls if a[0] == "apply"]
+        assert len(applied) == 2  # TA + ScaledObjects only
+
     def test_bearer_secret_missing_ta_template_warns(self, tmp_path: Path) -> None:
         """Missing TA template logs a warning but does not append an error."""
         stack = _write_stack(
@@ -384,6 +483,71 @@ class TestInstallKedaIfEnabled:
         assert len(crd_checks) == 1, (
             f"Expected KEDA CRD check; kube_calls={cmd.kube_calls}"
         )
+
+    def test_none_auth_stack_does_not_extract_ca_cert(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """authMode=none stacks never trigger the CA-cert lookup."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {
+                    "prometheus": {"authMode": "none"},
+                    "scaledObjects": [{"name": "x"}],
+                },
+                "namespace": {"name": "ns1"},
+            },
+        )
+        _write_so_template(stack)
+        calls: list = []
+        monkeypatch.setattr(
+            step_03_workload_monitoring.keda_sat_mod,
+            "extract_prometheus_ca_cert",
+            lambda *a, **k: calls.append((a, k)) or "SHOULD-NOT-BE-CALLED",
+        )
+        step = WorkloadMonitoringStep()
+        ctx = _FullStubContext(rendered_stacks=[stack])
+        cmd = _StubCmd()
+
+        step._install_keda_if_enabled(cmd, ctx, [])
+
+        assert calls == []
+
+    def test_bearer_secret_stack_extracts_and_threads_ca_cert(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """authMode=bearer-secret: CA cert is extracted and reaches the mint call."""
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {
+                    "prometheus": {
+                        "authMode": "bearer-secret",
+                        "secretName": "my-secret",
+                    },
+                    "scaledObjects": [{"name": "x"}],
+                },
+                "namespace": {"name": "ns1"},
+            },
+        )
+        _write_ta_template(stack, "ns1", "my-secret")
+        _write_so_template(stack)
+        monkeypatch.setattr(
+            step_03_workload_monitoring.keda_sat_mod,
+            "extract_prometheus_ca_cert",
+            lambda *a, **k: "FAKE-CA-CERT",
+        )
+        step = WorkloadMonitoringStep()
+        ctx = _FullStubContext(rendered_stacks=[stack])
+        cmd = _TokenMintingStubCmd()
+        errors: list = []
+
+        step._install_keda_if_enabled(cmd, ctx, errors)
+
+        assert errors == []
+        assert any(a[:2] == ("create", "token") for a in cmd.kube_calls)
 
     def test_keda_crd_missing_logs_warning(self, tmp_path: Path) -> None:
         """A missing KEDA CRD logs a warning but does not abort or append an error."""

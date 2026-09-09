@@ -113,7 +113,9 @@ def create_prometheus_auth_secret(
     target_namespace: str,
     prom_ca_cert: str | None,
     sa_name: str = "wva-prometheus-auth",
+    secret_name: str = "prometheus-auth",
     ta_template_stem: str = "21_keda-triggerauthentication",
+    apply_trigger_auth: bool = True,
     errors: list | None = None,
     token_duration: str = "24h",
 ) -> None:
@@ -131,8 +133,13 @@ def create_prometheus_auth_secret(
         prom_ca_cert: PEM-encoded CA certificate for Prometheus (optional).
         sa_name: ServiceAccount name to mint the token from
             (default: "wva-prometheus-auth").
+        secret_name: Name of the Secret to create (default: "prometheus-auth").
         ta_template_stem: Template filename stem to locate the TA YAML
             (default: "21_keda-triggerauthentication").
+        apply_trigger_auth: Whether to also locate and apply the TA YAML found
+            via ta_template_stem (default: True). Callers that apply their own
+            TriggerAuthentication CR (e.g. the generic KEDA bearer-secret path)
+            should pass False to avoid a duplicate/conflicting apply.
         errors: List to append error messages to (optional).
         token_duration: Requested lifetime of the issued token
             (default: "24h"). Use Kubernetes duration format (e.g., "1h", "24h", "168h").
@@ -176,7 +183,7 @@ def create_prometheus_auth_secret(
         "create",
         "secret",
         "generic",
-        "prometheus-auth",
+        secret_name,
         f"--from-file=ca.crt={cert_path}",
         f"--from-literal=bearerToken={bearer_token}",
         "--dry-run=client",
@@ -187,7 +194,7 @@ def create_prometheus_auth_secret(
         check=False,
     )
     if secret_result.success and secret_result.stdout.strip():
-        secret_yaml_path = tmp_dir / "prometheus-auth-secret.yaml"
+        secret_yaml_path = tmp_dir / f"{secret_name}-secret.yaml"
         secret_yaml_path.write_text(secret_result.stdout, encoding="utf-8")
         apply_result = cmd.kube(
             "apply",
@@ -199,14 +206,17 @@ def create_prometheus_auth_secret(
         )
         if not apply_result.success:
             errors.append(
-                f"Failed to apply prometheus-auth Secret in ns/{target_namespace}: "
+                f"Failed to apply {secret_name} Secret in ns/{target_namespace}: "
                 f"{apply_result.stderr}"
             )
     else:
         errors.append(
-            f"Failed to generate prometheus-auth Secret for ns/{target_namespace}: "
+            f"Failed to generate {secret_name} Secret for ns/{target_namespace}: "
             f"{secret_result.stderr}"
         )
+        return
+
+    if not apply_trigger_auth:
         return
 
     ta_yaml = _find_yaml(stack_path, ta_template_stem)
