@@ -1167,6 +1167,17 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
+    # Announce PVC-less mode up front so nobody hunts for a missing
+    # workload PVC / data-access pod that was deliberately never created.
+    if context.no_pvc:
+        logger.log_info(
+            "Running in PVC-less mode (--no-pvc): no workload PVC or "
+            "data-access pod will be created. Harness pods write results "
+            "to an ephemeral emptyDir, and results are copied directly "
+            "from the pods into the workspace before pod deletion.",
+            emoji="📦",
+        )
+
     # --list-endpoints: detect endpoints (step 03 only), print a copy-paste
     # table with per-stack routing URLs, and exit without deploying any
     # harness pods. Useful for discovering what's live in a multi-stack
@@ -1336,6 +1347,8 @@ def _execute_run(args, logger, render_plan_errors):
     run_config_file = getattr(args, "run_config", None)
     is_run_only = bool(endpoint_url or run_config_file)
     mode = "run-only" if is_run_only else "full"
+    if context.no_pvc:
+        mode += " (pvc-less)"
     if context.generate_config_only:
         mode = "generate-config"
     harness = context.harness_name or "inference-perf"
