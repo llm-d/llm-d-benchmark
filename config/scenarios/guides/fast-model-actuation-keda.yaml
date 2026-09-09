@@ -1,9 +1,10 @@
 # FAST MODEL ACTUATION + KEDA WELL LIT PATH (kustomize-only)
 #
 # Deploys the upstream llm-d `fast-model-actuation-keda` guide directly via the
-# kustomize deploy method. This is the FMA-only guide plus saturation-based KEDA
+# kustomize deploy method. This is the FMA-only guide plus scale-from-zero KEDA
 # autoscaling of the GPU-reserving requester Deployment (scaled on EPP
-# flow-control metrics; hot start wakes a sleeping vLLM, warm start creates a new
+# flow-control metrics -- down to zero when idle, back up on the first
+# queued request; a hot start wakes a sleeping vLLM, a warm start creates a new
 # instance on an existing launcher).
 #
 # NOTE: FMA-specific handling in standup/smoketest/teardown keys off
@@ -13,7 +14,7 @@
 #
 # monitoring MUST be true: the guide's KEDA step copies the prometheus-token
 # secret and waits for the ScaledObject to go Ready, which requires KEDA to reach
-# Prometheus and scrape the EPP pool-saturation metric.
+# Prometheus and scrape the EPP flow-control queue-depth metric.
 #
 # Run with:
 #   llmdbenchmark --spec guides/fast-model-actuation-keda standup   -t kustomize -p "$NS"
@@ -29,17 +30,17 @@ scenario:
       # guide's manifests, so these values do NOT drive the deployment. They
       # MUST, however, match the model the guide actually serves -- the
       # post-standup smoketest validates the /v1/models endpoint against
-      # model.name (the guide serves Qwen/Qwen3-32B via its InferenceServerConfig).
+      # model.name (the guide serves Qwen/Qwen3-0.6B via its InferenceServerConfig).
       # -----------------------------------------------------------------------
       model:
-        name: Qwen/Qwen3-32B
-        shortName: qwen-qwen3-32b
-        path: models/Qwen/Qwen3-32B
-        huggingfaceId: Qwen/Qwen3-32B
-        size: 100Gi
+        name: Qwen/Qwen3-0.6B
+        shortName: qwen-qwen3-0-6b
+        path: models/Qwen/Qwen3-0.6B
+        huggingfaceId: Qwen/Qwen3-0.6B
+        size: 10Gi
         maxModelLen: 16000
         blockSize: 64
-        gpuMemoryUtilization: 0.95
+        gpuMemoryUtilization: 0.9
 
     # =======================================================================
     # KUSTOMIZE DEPLOY METHOD -- pre-enabled. This block defines the ENTIRE
@@ -53,7 +54,7 @@ scenario:
       repoRef: "main"
       gaieVersion: ""
       acceleratorBackend: "gpu/vllm"
-      monitoring: true            # REQUIRED: KEDA reads the EPP saturation metric from Prometheus
+      monitoring: true            # REQUIRED: KEDA reads the EPP flow-control queue-depth metric from Prometheus
       overlayPath: ""
       extraHelmValues: []
       extraHelmSets: {}
