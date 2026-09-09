@@ -1042,6 +1042,69 @@ class DeployHarnessStep(Step):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _copy_dir_from_pod(
+        cmd,
+        source_pod: str,
+        namespace: str,
+        remote_dir: str,
+        local_path: Path,
+        context: ExecutionContext,
+        fast_collect: bool,
+        dir_compressed: bool,
+    ) -> CommandResult:
+        """Copy one remote results directory from ``source_pod`` to ``local_path``.
+
+        ``fast_collect`` swaps ``kubectl cp`` for a gzip'd ``exec | tar``
+        stream -- same files, much faster for large trees. The stream is
+        retried because dropped apiserver exec streams (``tar: Unexpected
+        EOF``) are transient, and extractall overwrites so a partial
+        extraction from a failed attempt is harmless.
+        """
+        if not fast_collect:
+            return cmd.kube(
+                "cp",
+                "--retries=5",
+                f"{source_pod}:{remote_dir}",
+                str(local_path),
+                namespace=namespace,
+                check=False,
+            )
+        tar_flags = "cf" if dir_compressed else "cz"
+        # Auto-detected binary + kubeconfig/context/namespace flags.
+        kube_argv = [
+            cmd._kube_bin,
+            *cmd._kubeconfig_args(),
+            "--namespace",
+            namespace,
+            "exec",
+            source_pod,
+            "--",
+            "tar",
+            tar_flags,
+            "-C",
+            remote_dir,
+            ".",
+        ]
+        max_attempts = 5
+        cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
+        for cp_attempt in range(1, max_attempts + 1):
+            cp_result = DeployHarnessStep._fast_collect_stream(
+                kube_argv,
+                local_path,
+                mode="r|" if dir_compressed else "r|gz",
+            )
+            if cp_result.success:
+                break
+            context.logger.log_warning(
+                f"FAST_COLLECT pipeline attempt {cp_attempt}/{max_attempts} "
+                f"failed for {remote_dir} (exit={cp_result.exit_code}): "
+                f"{(cp_result.stderr or cp_result.stdout)[:300]}"
+            )
+            if cp_attempt < max_attempts:
+                time.sleep(min(5 * cp_attempt, 30))
+        return cp_result
+
+    @staticmethod
     def _collect_treatment_results_discovery(
         cmd,
         experiment_id: str,
@@ -1149,64 +1212,25 @@ class DeployHarnessStep(Step):
                 context,
             )
 
-            if FAST_COLLECT:
-                remote_dir = f"{results_dir_prefix}/{dir_name}"
-                tar_flags = "cf" if dir_compressed else "cz"
-                # Auto-detected binary + kubeconfig/context/namespace flags.
-                kube_argv = [
-                    cmd._kube_bin,
-                    *cmd._kubeconfig_args(),
-                    "--namespace",
-                    namespace,
-                    "exec",
-                    data_pod,
-                    "--",
-                    "tar",
-                    tar_flags,
-                    "-C",
-                    remote_dir,
-                    ".",
-                ]
-                # Retry the whole stream: dropped apiserver exec streams
-                # (``tar: Unexpected EOF``) are transient; extractall overwrites
-                # so a partial extraction from a failed attempt is harmless.
-                max_attempts = 5
-                cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
-                for cp_attempt in range(1, max_attempts + 1):
-                    cp_result = DeployHarnessStep._fast_collect_stream(
-                        kube_argv,
-                        local_path,
-                        mode="r|" if dir_compressed else "r|gz",
-                    )
-                    if cp_result.success:
-                        break
-                    context.logger.log_warning(
-                        f"FAST_COLLECT pipeline attempt {cp_attempt}/{max_attempts} "
-                        f"failed for {dir_name} (exit={cp_result.exit_code}): "
-                        f"{(cp_result.stderr or cp_result.stdout)[:300]}"
-                    )
-                    if cp_attempt < max_attempts:
-                        time.sleep(min(5 * cp_attempt, 30))
-                if not cp_result.success:
-                    context.logger.log_error(
-                        f"FAST_COLLECT pipeline failed for {dir_name} after "
-                        f"{max_attempts} attempt(s) "
-                        f"(exit={cp_result.exit_code}): "
-                        f"{(cp_result.stderr or cp_result.stdout)[:500]}"
-                    )
-                else:
-                    context.logger.log_info(
-                        f"FAST Collected {remote_dir} to {local_path}"
-                    )
-            else:
-                remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
-                cp_result = cmd.kube(
-                    "cp",
-                    "--retries=5",
-                    remote_path,
-                    str(local_path),
-                    namespace=namespace,
-                    check=False,
+            cp_result = DeployHarnessStep._copy_dir_from_pod(
+                cmd,
+                data_pod,
+                namespace,
+                f"{results_dir_prefix}/{dir_name}",
+                local_path,
+                context,
+                fast_collect=FAST_COLLECT,
+                dir_compressed=dir_compressed,
+            )
+            if FAST_COLLECT and not cp_result.success:
+                context.logger.log_error(
+                    f"FAST_COLLECT pipeline failed for {dir_name} after "
+                    f"5 attempt(s) (exit={cp_result.exit_code}): "
+                    f"{(cp_result.stderr or cp_result.stdout)[:500]}"
+                )
+            elif FAST_COLLECT:
+                context.logger.log_info(
+                    f"FAST Collected {results_dir_prefix}/{dir_name} to {local_path}"
                 )
 
             if cp_result.success:

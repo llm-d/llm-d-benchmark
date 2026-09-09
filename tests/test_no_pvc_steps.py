@@ -138,3 +138,26 @@ def test_sentinel_wait_times_out(tmp_path, monkeypatch) -> None:
     )
     assert len(errors) == 1
     assert "did not write" in errors[0]
+
+
+def test_copy_dir_from_pod_uses_kubectl_cp_with_retries(tmp_path) -> None:
+    cmd = _FakeCmd([_Result(success=True)])
+    result = DeployHarnessStep._copy_dir_from_pod(
+        cmd,
+        "harness-pod-1",
+        "ns",
+        "/requests/exp-1_1",
+        tmp_path / "exp-1_1",
+        _wait_context(tmp_path),
+        fast_collect=False,
+        dir_compressed=False,
+    )
+    assert result.success
+    args, kwargs = cmd.calls[0]
+    assert args == (
+        "cp",
+        "--retries=5",
+        "harness-pod-1:/requests/exp-1_1",
+        str(tmp_path / "exp-1_1"),
+    )
+    assert kwargs == {"namespace": "ns", "check": False}
