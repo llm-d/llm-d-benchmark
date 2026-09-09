@@ -463,6 +463,7 @@ class DeployHarnessStep(Step):
                         "cluster_type": context.platform_type,
                         "profile_mounts": spec.profile_mounts,
                         "treatment_label_value": treatment_label_value,
+                        "no_pvc": context.no_pvc,
                     }
                 )
 

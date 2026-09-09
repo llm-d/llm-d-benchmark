@@ -186,8 +186,12 @@ spec:
       mountPath: /workspace/harnesses
   volumes:
   - name: results
+{% if no_pvc | default(false) %}
+    emptyDir: {}
+{% else %}
     persistentVolumeClaim:
       claimName: {{ storage.workloadPvc.name }}
+{% endif %}
 {% for profile_harness in profile_mounts %}
   - name: {{ profile_harness }}-profiles
     configMap:
