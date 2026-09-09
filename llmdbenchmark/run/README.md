@@ -128,6 +128,8 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
 | `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
+| `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
+| `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
 ## Step Details
 
@@ -267,6 +269,25 @@ logs/
   pod_status.txt          -- Pod status snapshot
 epp_metrics/              -- EPP analysis output (if available)
 ```
+
+### Running without a PVC (`--no-pvc`)
+
+On clusters where users cannot provision PersistentVolumeClaims, pass
+`--no-pvc` (env: `LLMDBENCH_NO_PVC=1`). It works in both full `run` and
+run-only (`--endpoint-url` / `--config`) modes:
+
+- The workload PVC and data-access pod are never created (step 02 is
+  skipped).
+- Harness pods mount an `emptyDir` at `/requests` instead of the PVC.
+- Each pod stays alive after the benchmark (it writes its exit code to
+  `/requests/.llmdbench_harness_done` and sleeps) so results can be copied
+  out of the `emptyDir` with `kubectl cp` (or the `--fast-collect` tar
+  stream) into `workspace/results` before the pod is deleted.
+
+Trade-offs: results are ephemeral until collected -- if collection fails,
+they are lost when the pod is deleted (there is no PVC to recover from);
+on-PVC zstd pre-compression does not apply; `emptyDir` usage counts
+against the node's ephemeral storage instead of a provisioned volume.
 
 ### Upload results to cloud storage
 

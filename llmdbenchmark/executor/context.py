@@ -184,6 +184,18 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     pvc_bind_timeout: int = 240
 
+    # --no-pvc: run the harness without the workload PVC / data-access pod
+    # (for clusters where users cannot provision PVCs). Results live in each
+    # harness pod's emptyDir and are copied from the pod itself -- kept alive
+    # by a post-run sentinel + sleep -- before the pod is deleted.
+    no_pvc: bool = False
+
+    # --no-cleanup: leave harness pods and their ConfigMaps in place after
+    # the run (skip step 06's phase-5 pod deletion and step 11), so users
+    # can inspect logs, exec in, or re-copy results. The next run's step 01
+    # removes leftovers by label.
+    no_cleanup: bool = False
+
     # Teardown timeouts
     fma_teardown_timeout: int = 120
 

@@ -32,8 +32,10 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
     DATA_ACCESS_LABEL,
+    HARNESS_DONE_SENTINEL,
     find_data_access_pod,
     wait_for_pods_by_selector,
+    wait_for_harness_sentinels,
     collect_pod_results,
     sync_analysis_dir,
     delete_pods_by_names,
@@ -438,6 +440,10 @@ class DeployHarnessStep(Step):
                         treatment_group=spec.group or "",
                         concurrent_with=",".join(spec.siblings),
                     )
+                    if context.no_pvc:
+                        harness_command = self._no_pvc_keepalive_command(
+                            harness_command, spec.results_dir_prefix
+                        )
 
                 # Build template values by merging plan_config with runtime values
                 template_values = dict(spec.plan_config) if spec.plan_config else {}
@@ -463,6 +469,7 @@ class DeployHarnessStep(Step):
                         "cluster_type": context.platform_type,
                         "profile_mounts": spec.profile_mounts,
                         "treatment_label_value": treatment_label_value,
+                        "no_pvc": context.no_pvc,
                     }
                 )
 
@@ -587,26 +594,62 @@ class DeployHarnessStep(Step):
                 and not context.harness_debug
                 and spec.timeout != 0
             ):
-                wait_errors = wait_for_pods_by_selector(
-                    spec.cmd,
-                    f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value}",
-                    spec.harness_ns,
-                    spec.timeout,
-                    context,
-                )
+                if context.no_pvc:
+                    # emptyDir pods sleep after finishing, so pod phase can't
+                    # signal completion -- poll for the sentinel instead.
+                    wait_errors = wait_for_harness_sentinels(
+                        spec.cmd,
+                        treatment_pod_names,
+                        spec.harness_ns,
+                        f"{spec.results_dir_prefix}/{HARNESS_DONE_SENTINEL}",
+                        spec.timeout,
+                        context,
+                    )
+                else:
+                    wait_errors = wait_for_pods_by_selector(
+                        spec.cmd,
+                        f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value}",
+                        spec.harness_ns,
+                        spec.timeout,
+                        context,
+                    )
                 if wait_errors:
                     treatment_errors.extend(wait_errors)
+            elif (
+                not no_pods
+                and context.no_pvc
+                and spec.timeout == 0
+                and not context.dry_run
+                and not context.harness_debug
+            ):
+                context.logger.log_warning(
+                    "--no-pvc with wait timeout 0: not waiting for the harness. "
+                    "Results live only in the pod's emptyDir and are deleted "
+                    "with the pod, so collection will likely find nothing."
+                )
 
             # Phase 3: collect this treatment's results
             if not no_pods and not context.dry_run and not context.harness_debug:
-                collect_errors = self._collect_treatment_results_discovery(
-                    spec.cmd,
-                    experiment_id,
-                    spec.harness_ns,
-                    spec.results_dir_prefix,
-                    context,
-                    harness_settled=not treatment_errors,
-                )
+                if context.no_pvc:
+                    # No data-access pod exists; copy from the (still
+                    # sleeping) harness pods before phase 5 deletes them.
+                    collect_errors = self._collect_treatment_results_from_pods(
+                        spec.cmd,
+                        experiment_id,
+                        spec.harness_ns,
+                        spec.results_dir_prefix,
+                        treatment_pod_names,
+                        context,
+                    )
+                else:
+                    collect_errors = self._collect_treatment_results_discovery(
+                        spec.cmd,
+                        experiment_id,
+                        spec.harness_ns,
+                        spec.results_dir_prefix,
+                        context,
+                        harness_settled=not treatment_errors,
+                    )
                 if collect_errors:
                     treatment_errors.extend(collect_errors)
 
@@ -647,12 +690,26 @@ class DeployHarnessStep(Step):
                 and not context.dry_run
                 and not context.harness_debug
             ):
-                delete_pods_by_names(
-                    spec.cmd,
-                    treatment_pod_names,
-                    spec.harness_ns,
-                    context,
-                )
+                if context.no_cleanup:
+                    # Safe across retries: each attempt's pods carry a unique
+                    # treatment label value, so leftovers never match the next
+                    # attempt's wait selector. Next run's step 01 removes them.
+                    kube_bin = "oc" if context.is_openshift else "kubectl"
+                    context.logger.log_info(
+                        f"--no-cleanup: leaving {len(treatment_pod_names)} "
+                        f"pod(s) in namespace '{spec.harness_ns}': "
+                        f"{', '.join(treatment_pod_names)}. Delete with: "
+                        f"{kube_bin} delete pod -n {spec.harness_ns} "
+                        f"-l app={spec.pod_label} (the next run also cleans "
+                        f"them up automatically)."
+                    )
+                else:
+                    delete_pods_by_names(
+                        spec.cmd,
+                        treatment_pod_names,
+                        spec.harness_ns,
+                        context,
+                    )
 
             # Result validation gate (opt-in): fail the attempt if the
             # harness reported failed sessions, even when every phase above
@@ -1011,6 +1068,69 @@ class DeployHarnessStep(Step):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _copy_dir_from_pod(
+        cmd,
+        source_pod: str,
+        namespace: str,
+        remote_dir: str,
+        local_path: Path,
+        context: ExecutionContext,
+        fast_collect: bool,
+        dir_compressed: bool,
+    ) -> CommandResult:
+        """Copy one remote results directory from ``source_pod`` to ``local_path``.
+
+        ``fast_collect`` swaps ``kubectl cp`` for a gzip'd ``exec | tar``
+        stream -- same files, much faster for large trees. The stream is
+        retried because dropped apiserver exec streams (``tar: Unexpected
+        EOF``) are transient, and extractall overwrites so a partial
+        extraction from a failed attempt is harmless.
+        """
+        if not fast_collect:
+            return cmd.kube(
+                "cp",
+                "--retries=5",
+                f"{source_pod}:{remote_dir}",
+                str(local_path),
+                namespace=namespace,
+                check=False,
+            )
+        tar_flags = "cf" if dir_compressed else "cz"
+        # Auto-detected binary + kubeconfig/context/namespace flags.
+        kube_argv = [
+            cmd._kube_bin,
+            *cmd._kubeconfig_args(),
+            "--namespace",
+            namespace,
+            "exec",
+            source_pod,
+            "--",
+            "tar",
+            tar_flags,
+            "-C",
+            remote_dir,
+            ".",
+        ]
+        max_attempts = 5
+        cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
+        for cp_attempt in range(1, max_attempts + 1):
+            cp_result = DeployHarnessStep._fast_collect_stream(
+                kube_argv,
+                local_path,
+                mode="r|" if dir_compressed else "r|gz",
+            )
+            if cp_result.success:
+                break
+            context.logger.log_warning(
+                f"FAST_COLLECT pipeline attempt {cp_attempt}/{max_attempts} "
+                f"failed for {remote_dir} (exit={cp_result.exit_code}): "
+                f"{(cp_result.stderr or cp_result.stdout)[:300]}"
+            )
+            if cp_attempt < max_attempts:
+                time.sleep(min(5 * cp_attempt, 30))
+        return cp_result
+
+    @staticmethod
     def _collect_treatment_results_discovery(
         cmd,
         experiment_id: str,
@@ -1118,64 +1238,25 @@ class DeployHarnessStep(Step):
                 context,
             )
 
-            if FAST_COLLECT:
-                remote_dir = f"{results_dir_prefix}/{dir_name}"
-                tar_flags = "cf" if dir_compressed else "cz"
-                # Auto-detected binary + kubeconfig/context/namespace flags.
-                kube_argv = [
-                    cmd._kube_bin,
-                    *cmd._kubeconfig_args(),
-                    "--namespace",
-                    namespace,
-                    "exec",
-                    data_pod,
-                    "--",
-                    "tar",
-                    tar_flags,
-                    "-C",
-                    remote_dir,
-                    ".",
-                ]
-                # Retry the whole stream: dropped apiserver exec streams
-                # (``tar: Unexpected EOF``) are transient; extractall overwrites
-                # so a partial extraction from a failed attempt is harmless.
-                max_attempts = 5
-                cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
-                for cp_attempt in range(1, max_attempts + 1):
-                    cp_result = DeployHarnessStep._fast_collect_stream(
-                        kube_argv,
-                        local_path,
-                        mode="r|" if dir_compressed else "r|gz",
-                    )
-                    if cp_result.success:
-                        break
-                    context.logger.log_warning(
-                        f"FAST_COLLECT pipeline attempt {cp_attempt}/{max_attempts} "
-                        f"failed for {dir_name} (exit={cp_result.exit_code}): "
-                        f"{(cp_result.stderr or cp_result.stdout)[:300]}"
-                    )
-                    if cp_attempt < max_attempts:
-                        time.sleep(min(5 * cp_attempt, 30))
-                if not cp_result.success:
-                    context.logger.log_error(
-                        f"FAST_COLLECT pipeline failed for {dir_name} after "
-                        f"{max_attempts} attempt(s) "
-                        f"(exit={cp_result.exit_code}): "
-                        f"{(cp_result.stderr or cp_result.stdout)[:500]}"
-                    )
-                else:
-                    context.logger.log_info(
-                        f"FAST Collected {remote_dir} to {local_path}"
-                    )
-            else:
-                remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
-                cp_result = cmd.kube(
-                    "cp",
-                    "--retries=5",
-                    remote_path,
-                    str(local_path),
-                    namespace=namespace,
-                    check=False,
+            cp_result = DeployHarnessStep._copy_dir_from_pod(
+                cmd,
+                data_pod,
+                namespace,
+                f"{results_dir_prefix}/{dir_name}",
+                local_path,
+                context,
+                fast_collect=FAST_COLLECT,
+                dir_compressed=dir_compressed,
+            )
+            if FAST_COLLECT and not cp_result.success:
+                context.logger.log_error(
+                    f"FAST_COLLECT pipeline failed for {dir_name} after "
+                    f"5 attempt(s) (exit={cp_result.exit_code}): "
+                    f"{(cp_result.stderr or cp_result.stdout)[:500]}"
+                )
+            elif FAST_COLLECT:
+                context.logger.log_info(
+                    f"FAST Collected {results_dir_prefix}/{dir_name} to {local_path}"
                 )
 
             if cp_result.success:
@@ -1193,6 +1274,103 @@ class DeployHarnessStep(Step):
             else:
                 errors.append(f"Failed to copy {dir_name}: {cp_result.stderr[:200]}")
 
+        return errors
+
+    @staticmethod
+    def _collect_treatment_results_from_pods(
+        cmd,
+        experiment_id: str,
+        namespace: str,
+        results_dir_prefix: str,
+        pod_names: list[str],
+        context: ExecutionContext,
+    ) -> list[str]:
+        """Collect results directly from each harness pod (--no-pvc mode).
+
+        There is no workload PVC and no data-access pod: each harness pod's
+        results live in its own emptyDir, reachable only while the pod is
+        alive (it sleeps after writing its completion sentinel). List the
+        result directories inside every pod and copy the ones matching this
+        experiment before phase 5 deletes the pods -- deletion destroys the
+        emptyDir, so a failure here is unrecoverable and must be loud.
+        """
+        errors: list[str] = []
+        local_results_dir = context.run_results_dir()
+        local_analysis_dir = context.run_analysis_dir()
+
+        copy_method = (
+            "a gzip'd 'exec | tar' stream (--fast-collect)"
+            if context.harness_fast_collect
+            else "'kubectl cp --retries=5'"
+        )
+        context.logger.log_info(
+            f"--no-pvc: collecting results for {experiment_id} from "
+            f"{len(pod_names)} harness pod(s) -- copying each pod's emptyDir "
+            f"({results_dir_prefix}) to {local_results_dir} via {copy_method} "
+            f"before the pods are deleted..."
+        )
+
+        for pod_name in pod_names:
+            ls_result = cmd.kube(
+                "exec",
+                pod_name,
+                "--",
+                "ls",
+                "-1",
+                results_dir_prefix,
+                namespace=namespace,
+                check=False,
+            )
+            if not ls_result.success:
+                errors.append(
+                    f"Could not list results in pod '{pod_name}' -- its "
+                    f"emptyDir results cannot be recovered after pod "
+                    f"deletion: {ls_result.stderr[:200]}"
+                )
+                continue
+
+            all_dirs = [
+                d.strip() for d in ls_result.stdout.strip().split("\n") if d.strip()
+            ]
+            matching_dirs = [d for d in all_dirs if experiment_id in d]
+            if not matching_dirs:
+                context.logger.log_warning(
+                    f"No result directories found for experiment "
+                    f"{experiment_id} in pod '{pod_name}' (found: {all_dirs[:5]})"
+                )
+                continue
+
+            for dir_name in matching_dirs:
+                local_path = local_results_dir / dir_name
+                local_path.mkdir(parents=True, exist_ok=True)
+
+                context.logger.log_info(
+                    f"Copying {results_dir_prefix}/{dir_name} from pod "
+                    f"'{pod_name}' via {copy_method}..."
+                )
+                cp_result = DeployHarnessStep._copy_dir_from_pod(
+                    cmd,
+                    pod_name,
+                    namespace,
+                    f"{results_dir_prefix}/{dir_name}",
+                    local_path,
+                    context,
+                    fast_collect=context.harness_fast_collect,
+                    dir_compressed=False,
+                )
+                if cp_result.success:
+                    file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
+                    context.logger.log_info(
+                        f"Collected {file_count} file(s) for {dir_name} "
+                        f"from pod '{pod_name}'"
+                    )
+                    if not context.harness_debug and context.harness_wait_timeout != 0:
+                        sync_analysis_dir(local_path, local_analysis_dir, dir_name)
+                else:
+                    errors.append(
+                        f"Failed to copy {dir_name} from pod '{pod_name}': "
+                        f"{cp_result.stderr[:200]}"
+                    )
         return errors
 
     @staticmethod
@@ -1518,6 +1696,18 @@ class DeployHarnessStep(Step):
         if not value or not isinstance(value, str):
             return value
         return base64.b64encode(value.encode("utf-8")).decode("utf-8")
+
+    @staticmethod
+    def _no_pvc_keepalive_command(harness_command: str, results_dir_prefix: str) -> str:
+        """Wrap the harness command so the pod outlives the benchmark.
+
+        With --no-pvc the results live in the pod's emptyDir, which is only
+        reachable while the pod runs. Record the harness exit code in a
+        sentinel file (polled by wait_for_harness_sentinels) and sleep so
+        phase 3 can copy the results out before phase 5 deletes the pod.
+        """
+        sentinel = f"{results_dir_prefix}/{HARNESS_DONE_SENTINEL}"
+        return f"({harness_command}); echo $? > {sentinel}; sleep infinity"
 
     @staticmethod
     def _build_harness_command(

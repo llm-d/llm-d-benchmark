@@ -232,6 +232,29 @@ def add_subcommands(
         "240. A PVC that never binds fails fast rather than masquerading "
         "as a downstream pod/job timeout.",
     )
+    run_parser.add_argument(
+        "--no-pvc",
+        action="store_true",
+        default=env_bool("LLMDBENCH_NO_PVC"),
+        help="Run without the workload PVC and data-access pod, for "
+        "clusters where users cannot provision PVCs. Harness pods write "
+        "results to an ephemeral emptyDir volume, stay alive after the "
+        "benchmark finishes, and results are copied directly from each "
+        "pod into the local workspace before the pod is deleted. Applies "
+        "to both full run and run-only (existing-stack) modes "
+        "(env: LLMDBENCH_NO_PVC). Default: off.",
+    )
+    run_parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        default=env_bool("LLMDBENCH_NO_CLEANUP"),
+        help="Leave harness pods and their ConfigMaps in place after the "
+        "run instead of deleting them, so you can inspect logs, exec into "
+        "the pods, or re-copy results. Especially useful with --no-pvc, "
+        "where kept pods stay asleep with results still in their emptyDir. "
+        "Leftovers are removed automatically by the next run's cleanup "
+        "step (env: LLMDBENCH_NO_CLEANUP). Default: off.",
+    )
 
     # Monitoring
     run_parser.add_argument(

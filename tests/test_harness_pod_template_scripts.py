@@ -208,3 +208,24 @@ def test_harness_pod_tolerates_a_missing_description_block() -> None:
 
     assert env["LLMDBENCH_DESCRIPTION_TEXT"] == ""
     assert env["LLMDBENCH_DESCRIPTION_KEYWORDS"] == ""
+
+
+def test_harness_pod_mounts_pvc_by_default() -> None:
+    pod = _render_pod(_template_values())
+    results_vol = next(v for v in pod["spec"]["volumes"] if v["name"] == "results")
+    assert results_vol["persistentVolumeClaim"]["claimName"] == "workload-pvc"
+    assert "emptyDir" not in results_vol
+
+
+def test_harness_pod_uses_emptydir_with_no_pvc() -> None:
+    """--no-pvc swaps the results volume for an emptyDir; the mount at
+    /requests is unchanged so nothing inside the pod notices."""
+    values = _template_values()
+    values["no_pvc"] = True
+    pod = _render_pod(values)
+    results_vol = next(v for v in pod["spec"]["volumes"] if v["name"] == "results")
+    assert results_vol["emptyDir"] == {}
+    assert "persistentVolumeClaim" not in results_vol
+    container = pod["spec"]["containers"][0]
+    mounts = {m["name"]: m["mountPath"] for m in container["volumeMounts"]}
+    assert mounts["results"] == "/requests"

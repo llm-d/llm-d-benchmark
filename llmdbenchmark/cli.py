@@ -1163,8 +1163,21 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             getattr(args, "data_access_timeout", 120) or 120
         ),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
+        no_pvc=getattr(args, "no_pvc", False),
+        no_cleanup=getattr(args, "no_cleanup", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
+
+    # Announce PVC-less mode up front so nobody hunts for a missing
+    # workload PVC / data-access pod that was deliberately never created.
+    if context.no_pvc:
+        logger.log_info(
+            "Running in PVC-less mode (--no-pvc): no workload PVC or "
+            "data-access pod will be created. Harness pods write results "
+            "to an ephemeral emptyDir, and results are copied directly "
+            "from the pods into the workspace before pod deletion.",
+            emoji="📦",
+        )
 
     # --list-endpoints: detect endpoints (step 03 only), print a copy-paste
     # table with per-stack routing URLs, and exit without deploying any
@@ -1335,6 +1348,8 @@ def _execute_run(args, logger, render_plan_errors):
     run_config_file = getattr(args, "run_config", None)
     is_run_only = bool(endpoint_url or run_config_file)
     mode = "run-only" if is_run_only else "full"
+    if context.no_pvc:
+        mode += " (pvc-less)"
     if context.generate_config_only:
         mode = "generate-config"
     harness = context.harness_name or "inference-perf"
@@ -1383,10 +1398,17 @@ def _execute_run(args, logger, render_plan_errors):
                     logger.log_info(
                         f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)"
                     )
-    logger.log_info(f"  Local results: {results_dir}")
+    logger.log_info(f"  Local results:  {results_dir}")
+    logger.log_info(f"  Local analysis: {context.run_analysis_dir()}")
+    if context.no_cleanup and not context.container_only:
+        logger.log_info(
+            "  Pods:           kept (--no-cleanup); inspect with kubectl, "
+            "the next run cleans them up"
+        )
     # The PVC/data-access-pod hint is Kubernetes-only; nok8s writes results
     # straight to the local dir shown above.
-    if not context.container_only:
+    # --no-pvc: there is no PVC or data-access pod to point at.
+    if not context.container_only and not context.no_pvc:
         kube_bin = "oc" if context.is_openshift else "kubectl"
         logger.log_info(
             f"  PVC results:   {kube_bin} exec -n {namespace} "
@@ -1882,6 +1904,8 @@ def _log_env_overrides(logger, args):
             "--modelservice-deploy-timeout",
         ),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
+        "LLMDBENCH_NO_PVC": ("no_pvc", "--no-pvc"),
+        "LLMDBENCH_NO_CLEANUP": ("no_cleanup", "--no-cleanup"),
         "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": (
             "fma_teardown_timeout",
             "--fma-teardown-timeout",

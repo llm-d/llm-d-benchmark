@@ -127,6 +127,8 @@ Executes benchmark experiments against deployed infrastructure.
 | `-c` / `--config` | -- | Run config YAML file (run-only mode) |
 | `--generate-config` | -- | Generate run config and exit |
 | `--data-access-timeout` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready. |
+| `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
+| `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
 ### teardown (`teardown.py`)
 
