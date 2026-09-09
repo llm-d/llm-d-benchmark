@@ -1387,7 +1387,8 @@ def _execute_run(args, logger, render_plan_errors):
     logger.log_info(f"  Local results: {results_dir}")
     # The PVC/data-access-pod hint is Kubernetes-only; nok8s writes results
     # straight to the local dir shown above.
-    if not context.container_only:
+    # --no-pvc: there is no PVC or data-access pod to point at.
+    if not context.container_only and not context.no_pvc:
         kube_bin = "oc" if context.is_openshift else "kubectl"
         logger.log_info(
             f"  PVC results:   {kube_bin} exec -n {namespace} "
