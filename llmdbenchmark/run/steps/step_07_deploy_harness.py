@@ -1284,6 +1284,18 @@ class DeployHarnessStep(Step):
         local_results_dir = context.run_results_dir()
         local_analysis_dir = context.run_analysis_dir()
 
+        copy_method = (
+            "a gzip'd 'exec | tar' stream (--fast-collect)"
+            if context.harness_fast_collect
+            else "'kubectl cp --retries=5'"
+        )
+        context.logger.log_info(
+            f"--no-pvc: collecting results for {experiment_id} from "
+            f"{len(pod_names)} harness pod(s) -- copying each pod's emptyDir "
+            f"({results_dir_prefix}) to {local_results_dir} via {copy_method} "
+            f"before the pods are deleted..."
+        )
+
         for pod_name in pod_names:
             ls_result = cmd.kube(
                 "exec",
@@ -1318,6 +1330,10 @@ class DeployHarnessStep(Step):
                 local_path = local_results_dir / dir_name
                 local_path.mkdir(parents=True, exist_ok=True)
 
+                context.logger.log_info(
+                    f"Copying {results_dir_prefix}/{dir_name} from pod "
+                    f"'{pod_name}' via {copy_method}..."
+                )
                 cp_result = DeployHarnessStep._copy_dir_from_pod(
                     cmd,
                     pod_name,
@@ -1329,17 +1345,12 @@ class DeployHarnessStep(Step):
                     dir_compressed=False,
                 )
                 if cp_result.success:
-                    file_count = sum(
-                        1 for f in local_path.rglob("*") if f.is_file()
-                    )
+                    file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
                     context.logger.log_info(
                         f"Collected {file_count} file(s) for {dir_name} "
                         f"from pod '{pod_name}'"
                     )
-                    if (
-                        not context.harness_debug
-                        and context.harness_wait_timeout != 0
-                    ):
+                    if not context.harness_debug and context.harness_wait_timeout != 0:
                         sync_analysis_dir(local_path, local_analysis_dir, dir_name)
                 else:
                     errors.append(
@@ -1673,9 +1684,7 @@ class DeployHarnessStep(Step):
         return base64.b64encode(value.encode("utf-8")).decode("utf-8")
 
     @staticmethod
-    def _no_pvc_keepalive_command(
-        harness_command: str, results_dir_prefix: str
-    ) -> str:
+    def _no_pvc_keepalive_command(harness_command: str, results_dir_prefix: str) -> str:
         """Wrap the harness command so the pod outlives the benchmark.
 
         With --no-pvc the results live in the pod's emptyDir, which is only

@@ -1397,7 +1397,8 @@ def _execute_run(args, logger, render_plan_errors):
                     logger.log_info(
                         f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)"
                     )
-    logger.log_info(f"  Local results: {results_dir}")
+    logger.log_info(f"  Local results:  {results_dir}")
+    logger.log_info(f"  Local analysis: {context.run_analysis_dir()}")
     # The PVC/data-access-pod hint is Kubernetes-only; nok8s writes results
     # straight to the local dir shown above.
     # --no-pvc: there is no PVC or data-access pod to point at.
