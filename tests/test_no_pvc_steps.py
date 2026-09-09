@@ -161,3 +161,64 @@ def test_copy_dir_from_pod_uses_kubectl_cp_with_retries(tmp_path) -> None:
         str(tmp_path / "exp-1_1"),
     )
     assert kwargs == {"namespace": "ns", "check": False}
+
+
+def test_collect_from_pods_copies_matching_dirs(tmp_path) -> None:
+    context = ExecutionContext(
+        plan_dir=tmp_path,
+        workspace=tmp_path,
+        logger=_FakeLogger(),
+        # 0 skips the analysis sync (same condition the PVC path uses), so
+        # this test only exercises discovery + copy.
+        harness_wait_timeout=0,
+    )
+    cmd = _FakeCmd(
+        [
+            # ls in pod: one matching dir, one unrelated dir
+            _Result(success=True, stdout="exp-1_1\nother-exp_1\n"),
+            # cp of the matching dir
+            _Result(success=True),
+        ]
+    )
+    errors = DeployHarnessStep._collect_treatment_results_from_pods(
+        cmd, "exp-1", "ns", "/requests", ["harness-pod-1"], context
+    )
+    assert errors == []
+    ls_args, ls_kwargs = cmd.calls[0]
+    assert ls_args == ("exec", "harness-pod-1", "--", "ls", "-1", "/requests")
+    assert ls_kwargs == {"namespace": "ns", "check": False}
+    cp_args, _ = cmd.calls[1]
+    assert cp_args[2] == "harness-pod-1:/requests/exp-1_1"
+    # Unrelated dir was not copied.
+    assert len(cmd.calls) == 2
+
+
+def test_collect_from_pods_reports_ls_failure(tmp_path) -> None:
+    context = ExecutionContext(
+        plan_dir=tmp_path, workspace=tmp_path, logger=_FakeLogger(),
+        harness_wait_timeout=0,
+    )
+    cmd = _FakeCmd([_Result(success=False, stderr="pod gone")])
+    errors = DeployHarnessStep._collect_treatment_results_from_pods(
+        cmd, "exp-1", "ns", "/requests", ["harness-pod-1"], context
+    )
+    assert len(errors) == 1
+    assert "harness-pod-1" in errors[0]
+
+
+def test_collect_from_pods_reports_cp_failure(tmp_path) -> None:
+    context = ExecutionContext(
+        plan_dir=tmp_path, workspace=tmp_path, logger=_FakeLogger(),
+        harness_wait_timeout=0,
+    )
+    cmd = _FakeCmd(
+        [
+            _Result(success=True, stdout="exp-1_1\n"),
+            _Result(success=False, stderr="connection reset"),
+        ]
+    )
+    errors = DeployHarnessStep._collect_treatment_results_from_pods(
+        cmd, "exp-1", "ns", "/requests", ["harness-pod-1"], context
+    )
+    assert len(errors) == 1
+    assert "exp-1_1" in errors[0]

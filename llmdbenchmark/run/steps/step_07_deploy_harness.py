@@ -630,14 +630,26 @@ class DeployHarnessStep(Step):
 
             # Phase 3: collect this treatment's results
             if not no_pods and not context.dry_run and not context.harness_debug:
-                collect_errors = self._collect_treatment_results_discovery(
-                    spec.cmd,
-                    experiment_id,
-                    spec.harness_ns,
-                    spec.results_dir_prefix,
-                    context,
-                    harness_settled=not treatment_errors,
-                )
+                if context.no_pvc:
+                    # No data-access pod exists; copy from the (still
+                    # sleeping) harness pods before phase 5 deletes them.
+                    collect_errors = self._collect_treatment_results_from_pods(
+                        spec.cmd,
+                        experiment_id,
+                        spec.harness_ns,
+                        spec.results_dir_prefix,
+                        treatment_pod_names,
+                        context,
+                    )
+                else:
+                    collect_errors = self._collect_treatment_results_discovery(
+                        spec.cmd,
+                        experiment_id,
+                        spec.harness_ns,
+                        spec.results_dir_prefix,
+                        context,
+                        harness_settled=not treatment_errors,
+                    )
                 if collect_errors:
                     treatment_errors.extend(collect_errors)
 
@@ -1248,6 +1260,92 @@ class DeployHarnessStep(Step):
             else:
                 errors.append(f"Failed to copy {dir_name}: {cp_result.stderr[:200]}")
 
+        return errors
+
+    @staticmethod
+    def _collect_treatment_results_from_pods(
+        cmd,
+        experiment_id: str,
+        namespace: str,
+        results_dir_prefix: str,
+        pod_names: list[str],
+        context: ExecutionContext,
+    ) -> list[str]:
+        """Collect results directly from each harness pod (--no-pvc mode).
+
+        There is no workload PVC and no data-access pod: each harness pod's
+        results live in its own emptyDir, reachable only while the pod is
+        alive (it sleeps after writing its completion sentinel). List the
+        result directories inside every pod and copy the ones matching this
+        experiment before phase 5 deletes the pods -- deletion destroys the
+        emptyDir, so a failure here is unrecoverable and must be loud.
+        """
+        errors: list[str] = []
+        local_results_dir = context.run_results_dir()
+        local_analysis_dir = context.run_analysis_dir()
+
+        for pod_name in pod_names:
+            ls_result = cmd.kube(
+                "exec",
+                pod_name,
+                "--",
+                "ls",
+                "-1",
+                results_dir_prefix,
+                namespace=namespace,
+                check=False,
+            )
+            if not ls_result.success:
+                errors.append(
+                    f"Could not list results in pod '{pod_name}' -- its "
+                    f"emptyDir results cannot be recovered after pod "
+                    f"deletion: {ls_result.stderr[:200]}"
+                )
+                continue
+
+            all_dirs = [
+                d.strip() for d in ls_result.stdout.strip().split("\n") if d.strip()
+            ]
+            matching_dirs = [d for d in all_dirs if experiment_id in d]
+            if not matching_dirs:
+                context.logger.log_warning(
+                    f"No result directories found for experiment "
+                    f"{experiment_id} in pod '{pod_name}' (found: {all_dirs[:5]})"
+                )
+                continue
+
+            for dir_name in matching_dirs:
+                local_path = local_results_dir / dir_name
+                local_path.mkdir(parents=True, exist_ok=True)
+
+                cp_result = DeployHarnessStep._copy_dir_from_pod(
+                    cmd,
+                    pod_name,
+                    namespace,
+                    f"{results_dir_prefix}/{dir_name}",
+                    local_path,
+                    context,
+                    fast_collect=context.harness_fast_collect,
+                    dir_compressed=False,
+                )
+                if cp_result.success:
+                    file_count = sum(
+                        1 for f in local_path.rglob("*") if f.is_file()
+                    )
+                    context.logger.log_info(
+                        f"Collected {file_count} file(s) for {dir_name} "
+                        f"from pod '{pod_name}'"
+                    )
+                    if (
+                        not context.harness_debug
+                        and context.harness_wait_timeout != 0
+                    ):
+                        sync_analysis_dir(local_path, local_analysis_dir, dir_name)
+                else:
+                    errors.append(
+                        f"Failed to copy {dir_name} from pod '{pod_name}': "
+                        f"{cp_result.stderr[:200]}"
+                    )
         return errors
 
     @staticmethod
