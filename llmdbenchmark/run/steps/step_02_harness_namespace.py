@@ -34,7 +34,13 @@ class HarnessNamespaceStep(_HarnessNamespaceStep):
 
         Also skipped for nok8s: the harness runs as a local container writing
         to a host bind-mount, so no k8s namespace/PVC/data-access pod exists.
+
+        Also skipped for --no-pvc: the whole point of that mode is that the
+        user cannot provision PVCs -- harness pods use an emptyDir and step
+        06's collection copies results straight from the pods.
         """
+        if context.no_pvc:
+            return True
         if "nok8s" in (context.deployed_methods or []):
             return True
         return context.harness_skip_run

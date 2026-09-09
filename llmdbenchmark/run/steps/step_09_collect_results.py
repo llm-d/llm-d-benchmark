@@ -20,8 +20,12 @@ class CollectResultsStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip if results are already local (nok8s bind-mount, or step 06)."""
+        """Skip if results are already local (nok8s bind-mount, --no-pvc, or step 06)."""
         if "nok8s" in (context.deployed_methods or []):
+            return True
+        # --no-pvc: results were copied from the harness pods in step 06 and
+        # there is no data-access pod to fall back on.
+        if context.no_pvc:
             return True
         results_dir = context.run_results_dir()
         if results_dir.exists() and any(results_dir.iterdir()):
