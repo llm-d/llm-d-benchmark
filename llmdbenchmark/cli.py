@@ -1163,6 +1163,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             getattr(args, "data_access_timeout", 120) or 120
         ),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
+        no_pvc=getattr(args, "no_pvc", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -1882,6 +1883,7 @@ def _log_env_overrides(logger, args):
             "--modelservice-deploy-timeout",
         ),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
+        "LLMDBENCH_NO_PVC": ("no_pvc", "--no-pvc"),
         "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": (
             "fma_teardown_timeout",
             "--fma-teardown-timeout",
