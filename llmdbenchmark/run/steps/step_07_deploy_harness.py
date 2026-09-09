@@ -32,8 +32,10 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
     DATA_ACCESS_LABEL,
+    HARNESS_DONE_SENTINEL,
     find_data_access_pod,
     wait_for_pods_by_selector,
+    wait_for_harness_sentinels,
     collect_pod_results,
     sync_analysis_dir,
     delete_pods_by_names,
@@ -438,6 +440,10 @@ class DeployHarnessStep(Step):
                         treatment_group=spec.group or "",
                         concurrent_with=",".join(spec.siblings),
                     )
+                    if context.no_pvc:
+                        harness_command = self._no_pvc_keepalive_command(
+                            harness_command, spec.results_dir_prefix
+                        )
 
                 # Build template values by merging plan_config with runtime values
                 template_values = dict(spec.plan_config) if spec.plan_config else {}
@@ -588,15 +594,39 @@ class DeployHarnessStep(Step):
                 and not context.harness_debug
                 and spec.timeout != 0
             ):
-                wait_errors = wait_for_pods_by_selector(
-                    spec.cmd,
-                    f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value}",
-                    spec.harness_ns,
-                    spec.timeout,
-                    context,
-                )
+                if context.no_pvc:
+                    # emptyDir pods sleep after finishing, so pod phase can't
+                    # signal completion -- poll for the sentinel instead.
+                    wait_errors = wait_for_harness_sentinels(
+                        spec.cmd,
+                        treatment_pod_names,
+                        spec.harness_ns,
+                        f"{spec.results_dir_prefix}/{HARNESS_DONE_SENTINEL}",
+                        spec.timeout,
+                        context,
+                    )
+                else:
+                    wait_errors = wait_for_pods_by_selector(
+                        spec.cmd,
+                        f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value}",
+                        spec.harness_ns,
+                        spec.timeout,
+                        context,
+                    )
                 if wait_errors:
                     treatment_errors.extend(wait_errors)
+            elif (
+                not no_pods
+                and context.no_pvc
+                and spec.timeout == 0
+                and not context.dry_run
+                and not context.harness_debug
+            ):
+                context.logger.log_warning(
+                    "--no-pvc with wait timeout 0: not waiting for the harness. "
+                    "Results live only in the pod's emptyDir and are deleted "
+                    "with the pod, so collection will likely find nothing."
+                )
 
             # Phase 3: collect this treatment's results
             if not no_pods and not context.dry_run and not context.harness_debug:
@@ -1519,6 +1549,20 @@ class DeployHarnessStep(Step):
         if not value or not isinstance(value, str):
             return value
         return base64.b64encode(value.encode("utf-8")).decode("utf-8")
+
+    @staticmethod
+    def _no_pvc_keepalive_command(
+        harness_command: str, results_dir_prefix: str
+    ) -> str:
+        """Wrap the harness command so the pod outlives the benchmark.
+
+        With --no-pvc the results live in the pod's emptyDir, which is only
+        reachable while the pod runs. Record the harness exit code in a
+        sentinel file (polled by wait_for_harness_sentinels) and sleep so
+        phase 3 can copy the results out before phase 5 deletes the pod.
+        """
+        sentinel = f"{results_dir_prefix}/{HARNESS_DONE_SENTINEL}"
+        return f"({harness_command}); echo $? > {sentinel}; sleep infinity"
 
     @staticmethod
     def _build_harness_command(

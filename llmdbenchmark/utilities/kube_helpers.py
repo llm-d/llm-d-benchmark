@@ -26,6 +26,11 @@ CRASH_STATES = _CRASH_STATES
 
 DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 
+#: Written by --no-pvc harness pods (as ``echo $? > <prefix>/<sentinel>``)
+#: once the benchmark finishes, while the pod itself keeps sleeping so its
+#: emptyDir stays reachable for collection.
+HARNESS_DONE_SENTINEL = ".llmdbench_harness_done"
+
 # Retry budget for locating the data-access pod. Deliberately generous relative
 # to what it guards: ~14s of polling against a wave of results that cost hours of
 # GPU time and cannot be regenerated once the harness pods are deleted.
@@ -314,6 +319,89 @@ def wait_for_pods_by_selector(
     if not errors:
         context.logger.log_info("All pods completed successfully")
 
+    return errors
+
+
+def wait_for_harness_sentinels(
+    cmd,
+    pod_names: list[str],
+    namespace: str,
+    sentinel_path: str,
+    timeout: int,
+    context: ExecutionContext,
+) -> list[str]:
+    """Wait for --no-pvc harness pods to write their completion sentinel.
+
+    Under ``--no-pvc`` the harness command ends with
+    ``echo $? > <sentinel>; sleep infinity`` so the pod stays Running and
+    its emptyDir remains reachable for collection. Pod phase therefore
+    cannot signal completion; the sentinel file does. A pod that reaches a
+    terminal phase before writing the sentinel crashed -- its emptyDir is
+    already gone, so fail it fast instead of burning the whole timeout.
+
+    Returns a list of error strings (empty when every pod's harness
+    finished with exit code 0).
+    """
+    import time as _time
+
+    errors: list[str] = []
+    poll = 5
+    waited = 0
+    # pod -> None (pending) | "<exit code>" | "terminal:<phase>"
+    status: dict[str, str | None] = {name: None for name in pod_names}
+
+    context.logger.log_info(
+        f"Waiting for {len(pod_names)} pod(s) to write {sentinel_path} "
+        f"(timeout={timeout}s)..."
+    )
+    while any(v is None for v in status.values()):
+        for pod in [p for p, v in status.items() if v is None]:
+            result = cmd.kube(
+                "exec",
+                pod,
+                "--",
+                "cat",
+                sentinel_path,
+                namespace=namespace,
+                check=False,
+            )
+            if result.success and result.stdout.strip():
+                status[pod] = result.stdout.strip().splitlines()[0]
+                continue
+            phase_result = cmd.kube(
+                "get",
+                "pod",
+                pod,
+                "--namespace",
+                namespace,
+                "-o",
+                "jsonpath={.status.phase}",
+                check=False,
+            )
+            phase = phase_result.stdout.strip() if phase_result.success else ""
+            if phase in ("Succeeded", "Failed"):
+                status[pod] = f"terminal:{phase}"
+        if all(v is not None for v in status.values()) or waited >= timeout:
+            break
+        _time.sleep(poll)
+        waited += poll
+
+    for pod, state in status.items():
+        if state is None:
+            errors.append(
+                f"Pod '{pod}' did not write {sentinel_path} within {timeout}s"
+            )
+        elif state.startswith("terminal:"):
+            errors.append(
+                f"Pod '{pod}' reached phase {state.split(':', 1)[1]} before "
+                f"writing {sentinel_path} -- the harness container exited "
+                f"unexpectedly and its emptyDir results are lost"
+            )
+        elif state != "0":
+            errors.append(f"Pod '{pod}' harness exited with code {state}")
+
+    if not errors:
+        context.logger.log_info("All pods wrote their completion sentinel")
     return errors
 
 
