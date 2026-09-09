@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import time
+
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.run.steps.step_02_harness_namespace import (
     HarnessNamespaceStep,
 )
+from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
 from llmdbenchmark.run.steps.step_09_collect_results import CollectResultsStep
+from llmdbenchmark.utilities.kube_helpers import (
+    HARNESS_DONE_SENTINEL,
+    wait_for_harness_sentinels,
+)
 
 
 def _context(tmp_path, **kwargs) -> ExecutionContext:
@@ -28,15 +35,6 @@ def test_collect_results_step_skips_with_no_pvc(tmp_path) -> None:
 def test_collect_results_step_runs_by_default(tmp_path) -> None:
     # Empty results dir + k8s mode: the fallback collector should run.
     assert not CollectResultsStep().should_skip(_context(tmp_path))
-
-
-import time
-
-from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
-from llmdbenchmark.utilities.kube_helpers import (
-    HARNESS_DONE_SENTINEL,
-    wait_for_harness_sentinels,
-)
 
 
 class _Result:
@@ -76,9 +74,7 @@ class _FakeCmd:
 
 
 def _wait_context(tmp_path):
-    return ExecutionContext(
-        plan_dir=tmp_path, workspace=tmp_path, logger=_FakeLogger()
-    )
+    return ExecutionContext(plan_dir=tmp_path, workspace=tmp_path, logger=_FakeLogger())
 
 
 def test_keepalive_command_wraps_and_sleeps() -> None:
@@ -94,7 +90,11 @@ def test_keepalive_command_wraps_and_sleeps() -> None:
 def test_sentinel_wait_success(tmp_path) -> None:
     cmd = _FakeCmd([_Result(success=True, stdout="0\n")])
     errors = wait_for_harness_sentinels(
-        cmd, ["pod-a"], "ns", f"/requests/{HARNESS_DONE_SENTINEL}", 60,
+        cmd,
+        ["pod-a"],
+        "ns",
+        f"/requests/{HARNESS_DONE_SENTINEL}",
+        60,
         _wait_context(tmp_path),
     )
     assert errors == []
@@ -103,7 +103,11 @@ def test_sentinel_wait_success(tmp_path) -> None:
 def test_sentinel_wait_nonzero_exit_is_an_error(tmp_path) -> None:
     cmd = _FakeCmd([_Result(success=True, stdout="2\n")])
     errors = wait_for_harness_sentinels(
-        cmd, ["pod-a"], "ns", f"/requests/{HARNESS_DONE_SENTINEL}", 60,
+        cmd,
+        ["pod-a"],
+        "ns",
+        f"/requests/{HARNESS_DONE_SENTINEL}",
+        60,
         _wait_context(tmp_path),
     )
     assert len(errors) == 1
@@ -119,7 +123,11 @@ def test_sentinel_wait_terminal_pod_fails_fast(tmp_path) -> None:
         ]
     )
     errors = wait_for_harness_sentinels(
-        cmd, ["pod-a"], "ns", f"/requests/{HARNESS_DONE_SENTINEL}", 600,
+        cmd,
+        ["pod-a"],
+        "ns",
+        f"/requests/{HARNESS_DONE_SENTINEL}",
+        600,
         _wait_context(tmp_path),
     )
     assert len(errors) == 1
@@ -133,7 +141,11 @@ def test_sentinel_wait_times_out(tmp_path, monkeypatch) -> None:
         [_Result(success=False), _Result(success=True, stdout="Running")] * 50
     )
     errors = wait_for_harness_sentinels(
-        cmd, ["pod-a"], "ns", f"/requests/{HARNESS_DONE_SENTINEL}", 10,
+        cmd,
+        ["pod-a"],
+        "ns",
+        f"/requests/{HARNESS_DONE_SENTINEL}",
+        10,
         _wait_context(tmp_path),
     )
     assert len(errors) == 1
@@ -195,7 +207,9 @@ def test_collect_from_pods_copies_matching_dirs(tmp_path) -> None:
 
 def test_collect_from_pods_reports_ls_failure(tmp_path) -> None:
     context = ExecutionContext(
-        plan_dir=tmp_path, workspace=tmp_path, logger=_FakeLogger(),
+        plan_dir=tmp_path,
+        workspace=tmp_path,
+        logger=_FakeLogger(),
         harness_wait_timeout=0,
     )
     cmd = _FakeCmd([_Result(success=False, stderr="pod gone")])
@@ -208,7 +222,9 @@ def test_collect_from_pods_reports_ls_failure(tmp_path) -> None:
 
 def test_collect_from_pods_reports_cp_failure(tmp_path) -> None:
     context = ExecutionContext(
-        plan_dir=tmp_path, workspace=tmp_path, logger=_FakeLogger(),
+        plan_dir=tmp_path,
+        workspace=tmp_path,
+        logger=_FakeLogger(),
         harness_wait_timeout=0,
     )
     cmd = _FakeCmd(
