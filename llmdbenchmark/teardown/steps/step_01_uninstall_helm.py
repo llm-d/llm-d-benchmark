@@ -708,7 +708,7 @@ class UninstallHelmStep(Step):
 
             # Delete per-namespace resources (ServiceAccount, Secret, TriggerAuthentication).
             for kind, name in (
-                ("serviceaccount", "wva-prometheus-auth"),
+                ("serviceaccount", "keda-prometheus-auth"),
                 ("secret", "prometheus-auth"),
                 ("triggerauthentication", "prometheus-auth"),
             ):

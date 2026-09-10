@@ -4,6 +4,7 @@ from pathlib import Path
 from collections.abc import Mapping
 import json
 import re
+import tempfile
 
 import yaml
 
@@ -272,6 +273,7 @@ class AdminPrerequisitesStep(Step):
 
         self._apply_namespace_yaml(cmd, context, errors)
         self._apply_openshift_sccs(cmd, context, plan_config)
+        self._ensure_keda_prometheus_service_accounts(cmd, context, errors)
 
         if errors:
             for err in errors:
@@ -801,6 +803,73 @@ class AdminPrerequisitesStep(Step):
             result = cmd.kube("apply", "-f", str(ns_yaml))
             if not result.success:
                 errors.append(f"Failed to create namespace resources: {result.stderr}")
+
+    def _ensure_keda_prometheus_service_accounts(
+        self, cmd: CommandExecutor, context: ExecutionContext, errors: list
+    ):
+        """Pre-create the ServiceAccount for the generic bearer-secret KEDA path.
+
+        Stacks with ``keda.prometheus.authMode: bearer-secret`` mint a bearer
+        token from this ServiceAccount in step_03 (workload_monitoring), but
+        cluster-config overlays declare the ServiceAccount itself via
+        ``extraObjects`` on the ModelService Helm chart, which only installs
+        in step_09 -- six steps later. Creating it here, idempotently, closes
+        that gap. The ClusterRoleBinding granting it Thanos Querier access is
+        left to the chart's extraObjects -- nothing consumes it before
+        step_09.
+        """
+        if context.dry_run:
+            return
+
+        seen: set[tuple[str, str]] = set()
+        for stack_path in context.rendered_stacks or []:
+            cfg = self._load_stack_config(stack_path)
+            keda_cfg = cfg.get("keda", {}) or {}
+            if not keda_cfg.get("scaledObjects"):
+                continue
+            prometheus_cfg = keda_cfg.get("prometheus", {}) or {}
+            if prometheus_cfg.get("authMode") != "bearer-secret":
+                continue
+            namespace = cfg.get("namespace", {}).get("name", "")
+            sa_name = prometheus_cfg.get("saName", "keda-prometheus-auth")
+            if not namespace or (namespace, sa_name) in seen:
+                continue
+            seen.add((namespace, sa_name))
+
+            render = cmd.kube(
+                "create",
+                "serviceaccount",
+                sa_name,
+                "--dry-run=client",
+                "-o",
+                "yaml",
+                "-n",
+                namespace,
+                check=False,
+            )
+            if not render.success or not render.stdout.strip():
+                errors.append(
+                    f"Failed to render ServiceAccount/{sa_name} for "
+                    f"ns/{namespace}: {render.stderr}"
+                )
+                continue
+
+            tmp_dir = Path(tempfile.mkdtemp())
+            sa_yaml = tmp_dir / f"{sa_name}-serviceaccount.yaml"
+            sa_yaml.write_text(render.stdout, encoding="utf-8")
+            apply_result = cmd.kube(
+                "apply", "-f", str(sa_yaml), "-n", namespace, check=False
+            )
+            if not apply_result.success:
+                errors.append(
+                    f"Failed to apply ServiceAccount/{sa_name} in "
+                    f"ns/{namespace}: {apply_result.stderr}"
+                )
+            else:
+                cmd.logger.log_info(
+                    f"✅ ServiceAccount/{sa_name} ready in ns/{namespace} "
+                    "(KEDA bearer-secret auth)"
+                )
 
     def _apply_openshift_sccs(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
