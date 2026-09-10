@@ -79,6 +79,26 @@
 {"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@$(POD_IP):$(VLLM_INFERENCE_PORT)@{{ model.name }}"}
 {%- endmacro %}
 
+{# What this stack's default command serves -- the single source of truth
+   for the vLLM serve target, also exported to pods as $MODEL_SERVE_REF so
+   custom commands stay dual-mode (PVC vs hf) without hardcoding paths.
+   - standalone: always the model ID. The ID resolves through the HF hub
+     cache (HF_HOME), NOT the staged PVC copy at <modelMountPath>/<path>;
+     see #1822 for the cost of that split. Kept as-is here to preserve
+     existing behavior -- switching mounted standalone to the staged path
+     is a separate, deliberate change.
+   - modelservice + uriProtocol=hf: the HF id (runtime fetch by the chart).
+   - modelservice otherwise: the staged PVC copy at <cacheBase>/<path>. #}
+{% macro model_serve_ref(stack='modelservice') -%}
+{%- if stack == 'standalone' -%}
+{{ model.name }}
+{%- elif modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf' -%}
+{{ model.huggingfaceId | default(model.name) }}
+{%- else -%}
+{{ model.cacheBase }}/{{ model.path }}
+{%- endif -%}
+{%- endmacro %}
+
 {# Macro to build vLLM serve command with templated arguments #}
 {% macro build_vllm_command(mode='decode') -%}
 {% if mode == 'decode' -%}
@@ -135,9 +155,7 @@
 {% set proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
 {% set use_inference_port = proxy_disabled or mode == 'prefill' -%}
 {% set port_var = '$VLLM_INFERENCE_PORT' if use_inference_port else '$VLLM_METRICS_PORT' -%}
-{% set use_hf_id = (modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf') -%}
-{% set model_ref = model.huggingfaceId | default(model.name) if use_hf_id else model.cacheBase ~ '/' ~ model.path -%}
-{{ preprocess_script }} {{ preprocess_sep }} vllm serve {{ model_ref }} \
+{{ preprocess_script }} {{ preprocess_sep }} vllm serve {{ model_serve_ref() }} \
   --host {{ vllmCommon.host }} \
   --served-model-name {{ model.name }} \
   --port {{ port_var }} \
@@ -212,6 +230,11 @@
 {# arbitrary -- any non-empty value works.                              #}
 - name: USER
   value: "llm-d"
+{# The mode-correct vLLM serve target (see model_serve_ref) -- custom
+   commands use $MODEL_SERVE_REF instead of hardcoding /model-cache paths
+   so they work in both PVC and hf modes. #}
+- name: MODEL_SERVE_REF
+  value: "{{ model_serve_ref() }}"
 {# Only emit HF_HOME when the modelservice chart will NOT. With
    modelservice.uriProtocol == 'hf' (mirrors 13_ms-values.yaml.j2) the
    chart mounts an hf:// cache and injects its own HF_HOME=/model-cache;
@@ -377,7 +400,7 @@
 {% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
 {% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
 {% set has_enable_prefix_caching = vllmCommon.flags.enablePrefixCaching | default(false) -%}
-{{ preprocess_script }}; vllm serve {{ model.name }} \
+{{ preprocess_script }}; vllm serve {{ model_serve_ref('standalone') }} \
   --host {{ vllmCommon.host | default('0.0.0.0') }} \
   --served-model-name {{ model.name }} \
   --port $VLLM_INFERENCE_PORT \
