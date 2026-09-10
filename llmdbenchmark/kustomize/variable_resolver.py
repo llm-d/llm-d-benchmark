@@ -32,11 +32,24 @@ class GuideVariableResolver:
         ``acceleratorBackend`` alone is ``{accelerator}/{backend}`` (e.g.
         ``amd/vllm``). To route the deploy at a connector-specific overlay such
         as ``amd/vllm/moriio/<infra>`` (and thus its image override) instead of
-        the vanilla base, ``kustomize.connector`` is spliced between backend and
-        infra provider here.
+        the vanilla base, the connector is spliced between backend and infra
+        provider here.
+
+        The connector is read from ``kustomize.guideVariableOverrides.CONNECTOR``
+        -- the same value the CI workflow writes for the guide README's
+        ``${CONNECTOR}`` substitution -- falling back to the legacy first-class
+        ``kustomize.connector`` key, which that workflow (and older scenarios)
+        still set. Either knob is authoritative; both carry the same value.
         """
         backend = kust_config.get("acceleratorBackend", DEFAULT_ACCEL_BACKEND)
-        connector = str(kust_config.get("connector", "") or "").strip().strip("/")
+        # guideVariableOverrides may be absent or an explicit YAML null, so
+        # coalesce to an empty mapping before indexing into it.
+        overrides = kust_config.get("guideVariableOverrides") or {}
+        connector = (
+            str(overrides.get("CONNECTOR") or kust_config.get("connector") or "")
+            .strip()
+            .strip("/")
+        )
         return f"{backend}/{connector}" if connector else backend
 
     def __init__(
