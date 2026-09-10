@@ -66,6 +66,9 @@ class HarnessNamespaceStep(Step):
         self._create_preprocesses_configmap(cmd, context, configmap_namespaces, errors)
 
         if context.no_pvc:
+            context.logger.log_info(
+                "\u2139\ufe0f  Skipped workload PVC + data-access pod (--no-pvc)"
+            )
             if errors:
                 for err in errors:
                     context.logger.log_error(f"    {err}")
