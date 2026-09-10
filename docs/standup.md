@@ -295,6 +295,8 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE    |                                                                         |                                                                                                                                          |
 | LLMDBENCH_VLLM_COMMON_POD_SCHEDULER          |                                                                         |                                                                                                                                          |
 
+On clusters where users cannot provision PersistentVolumeClaims, pass `standup --no-pvc` to avoid creating the model and workload PVCs altogether. See [Standing up without PVCs](../llmdbenchmark/standup/README.md#standing-up-without-pvcs---no-pvc) for details.
+
 - "Standalone"-specific VLLM parameters
 
 | Variable                                                | Meaning                                    | Note                                           |

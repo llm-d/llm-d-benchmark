@@ -289,6 +289,8 @@ they are lost when the pod is deleted (there is no PVC to recover from);
 on-PVC zstd pre-compression does not apply; `emptyDir` usage counts
 against the node's ephemeral storage instead of a provisioned volume.
 
+For a fully PVC-less flow, stand the stack up with `standup --no-pvc` as well.
+
 ### Upload results to cloud storage
 
 ```bash

@@ -21,6 +21,24 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 
 Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and inference test) were moved to the `llmdbenchmark.smoketests` module and now run as a separate phase after standup.
 
+## Standing up without PVCs (`--no-pvc`)
+
+On clusters where users cannot provision PersistentVolumeClaims, pass
+`--no-pvc` (env: `LLMDBENCH_NO_PVC=1`):
+
+- Model weights are fetched at runtime: `modelservice.uriProtocol` is
+  forced to `hf` and standalone's model-PVC mount is disabled, with a
+  warning (an explicit `--set` of the same key wins). Serving pods pull
+  from HuggingFace at startup — slower cold starts, and results are
+  comparable only to other hf-loading runs.
+- The workload PVC and data-access pod are not created; pair the standup
+  with `run --no-pvc` (a plain `run` would create the workload PVC on
+  demand).
+- Scenarios with `storage.hostPath.enabled: true` fail fast — hostPath
+  creates PV/PVC objects and contradicts the flag.
+- Guide/kustomize deployments that declare their own PVCs inside guide
+  manifests are out of scope for this flag.
+
 ## Deployment Methods
 
 Steps 06-09 handle two mutually exclusive deployment methods:
