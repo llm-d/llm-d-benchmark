@@ -1346,7 +1346,7 @@ class RenderPlans:
         return self.deep_merge(result, common)
 
     # Sections a scenario may nest under `modelservice:` for clarity. They
-    # are consumed only on the modelservice path (see step_08_deploy_router
+    # are consumed only on the modelservice path (see step_07_deploy_router
     # and the modelservice-guarded templates), but every template, resolver
     # and standup step reads them as TOP-LEVEL keys -- so we hoist them back
     # to the top level before any resolver runs. Nesting is purely a

@@ -1,4 +1,4 @@
-"""Step 06 -- Deploy an llm-d guide via kustomize (well-lit-path)."""
+"""Step 05 -- Deploy an llm-d guide via kustomize (well-lit-path)."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ class KustomizeDeployStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=6,
+            number=5,
             name="kustomize_deploy",
             description="Deploy llm-d guide via kustomize (well-lit-path)",
             phase=Phase.STANDUP,

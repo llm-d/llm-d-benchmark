@@ -16,7 +16,7 @@ from llmdbenchmark.standup.steps import step_03_workload_monitoring
 from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
     WorkloadMonitoringStep,
 )
-from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
+from llmdbenchmark.standup.steps.step_08_deploy_modelservice import (
     DeployModelserviceStep,
 )
 

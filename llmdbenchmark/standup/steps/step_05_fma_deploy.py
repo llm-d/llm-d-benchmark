@@ -1,4 +1,4 @@
-"""Step 06 -- Deploy Fast Model Actuation Controllers."""
+"""Step 05 -- Deploy Fast Model Actuation Controllers."""
 
 import json
 import shlex
@@ -18,7 +18,7 @@ class FMADeployStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=6,
+            number=5,
             name="fma_deploy",
             description="Deploy Fast Model Actuation Controllers.",
             phase=Phase.STANDUP,

@@ -1,4 +1,4 @@
-"""Step 09 -- Deploy the model via the llm-d modelservice Helm chart."""
+"""Step 08 -- Deploy the model via the llm-d modelservice Helm chart."""
 
 import hashlib
 import time
@@ -16,7 +16,7 @@ class DeployModelserviceStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=9,
+            number=8,
             name="deploy_modelservice",
             description="Deploy model via modelservice Helm chart",
             phase=Phase.STANDUP,

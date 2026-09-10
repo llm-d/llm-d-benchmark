@@ -1,4 +1,4 @@
-"""Step 08 -- Deploy the llm-d router (EPP + provider-specific resources)."""
+"""Step 07 -- Deploy the llm-d router (EPP + provider-specific resources)."""
 
 import json
 from pathlib import Path
@@ -14,7 +14,7 @@ class DeployRouterStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=8,
+            number=7,
             name="deploy_router",
             description="Deploy llm-d router (EPP + provider resources)",
             phase=Phase.STANDUP,

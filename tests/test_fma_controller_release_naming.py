@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import shlex
 
-from llmdbenchmark.standup.steps.step_06_fma_deploy import FMADeployStep
+from llmdbenchmark.standup.steps.step_05_fma_deploy import FMADeployStep
 
 
 def _plan_config(model_id_label: str) -> dict:

@@ -90,7 +90,7 @@ def test_nok8s_scenario_renders_templates_and_flags(tmp_path: Path) -> None:
 
 
 def test_should_skip_selects_by_method() -> None:
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
     from llmdbenchmark.run.steps.step_07_deploy_harness_local import (
         DeployHarnessLocalStep,
     )
@@ -431,7 +431,7 @@ def test_nok8s_preflight_quoted_replicas_still_spans_replica_ports(
 
 
 def test_device_args_per_accelerator() -> None:
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     dev = NoK8sDeployStep._device_args
     assert dev("docker", {"accelerator": "nvidia", "gpus": "all"}) == "--gpus all"
@@ -456,7 +456,7 @@ def test_device_args_per_accelerator() -> None:
 
 
 def test_pin_env_per_replica() -> None:
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     pin = NoK8sDeployStep._pin_env
     # Single replica -> no pinning (back-compat, uses --gpus all).
@@ -549,7 +549,7 @@ def _nok8s_stack(tmp_path: Path) -> Path:
 
 def test_nok8s_launch_failure_stops_and_rolls_back(tmp_path: Path) -> None:
     """A container that fails to start aborts the launch and removes the rest."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _nok8s_stack(tmp_path)
     # vllm-0 is launched first and fails.
@@ -567,7 +567,7 @@ def test_nok8s_launch_failure_stops_and_rolls_back(tmp_path: Path) -> None:
 
 def test_nok8s_rollback_dumps_logs_before_removing(tmp_path: Path) -> None:
     """Already-launched containers are removed, with logs captured first."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _nok8s_stack(tmp_path)
     # vllm-0 and epp come up; envoy (launched last) fails.
@@ -802,7 +802,7 @@ def test_base_id_resolver_skips_a_disabled_nok8s() -> None:
 
 def test_envoy_is_launched_with_its_base_id(tmp_path: Path) -> None:
     """The resolved ID reaches the docker command as --base-id."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _nok8s_stack(tmp_path)
     spec = yaml.safe_load(
@@ -822,7 +822,7 @@ def test_envoy_is_launched_with_its_base_id(tmp_path: Path) -> None:
 
 def test_a_plan_without_a_base_id_launches_envoy_unchanged(tmp_path: Path) -> None:
     """Back-compat: a plan rendered before baseId existed gets no flag."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     cmd = _RecordingCmd(fail_substrings=("--name envoy",))
     NoK8sDeployStep().execute(_nok8s_ctx(tmp_path, cmd), _nok8s_stack(tmp_path))
@@ -978,7 +978,7 @@ def test_nok8s_deploy_never_removes_a_sibling_stacks_containers(
     tmp_path: Path,
 ) -> None:
     """Stack B's idempotency sweep must not delete the containers stack A launched."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     result = _render_scenario(tmp_path, _two_stack_scenario(tmp_path, True))
     first, second = (Path(p) for p in result.rendered_paths)
@@ -1166,7 +1166,7 @@ def test_remote_deploy_runs_the_runtime_on_the_node(tmp_path: Path) -> None:
     invoked on the node over ssh rather than through a local client that would
     only relay -- and would have to match the node's daemon family to do it.
     """
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1187,7 +1187,7 @@ def test_native_transport_puts_the_connection_flag_before_the_subcommand(
     tmp_path: Path,
 ) -> None:
     """`docker run -H ssh://...` is not valid; the flag has to precede `run`."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path, transport="native")
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1212,7 +1212,7 @@ def test_the_hf_token_reaches_the_node_without_being_logged(tmp_path: Path) -> N
     is written to the workspace command log, so a `VAR=value` prefix would leave
     the token there in cleartext.
     """
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1245,7 +1245,7 @@ def test_remote_deploy_stages_configs_on_the_node_before_launching(
     docker turns a missing source into an empty directory, so without the push
     the EPP would start with no endpoints file and route nothing.
     """
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1262,7 +1262,7 @@ def test_remote_deploy_stages_configs_on_the_node_before_launching(
 
 def test_remote_deploy_expands_tilde_against_the_nodes_home(tmp_path: Path) -> None:
     """`~` in workspaceHostDir belongs to the remote user, not the caller."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1277,7 +1277,7 @@ def test_remote_deploy_expands_tilde_against_the_nodes_home(tmp_path: Path) -> N
 
 def test_remote_deploy_probes_readiness_on_the_node(tmp_path: Path) -> None:
     """A curl for `localhost` from the client would probe the client."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1294,7 +1294,7 @@ def test_remote_deploy_probes_readiness_on_the_node(tmp_path: Path) -> None:
 
 def test_remote_deploy_records_the_in_host_endpoint(tmp_path: Path) -> None:
     """The harness runs on the node, so it benchmarks localhost there."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(stdout_for={"printenv HOME": "/home/bench\n"})
@@ -1308,7 +1308,7 @@ def test_remote_staging_failure_stops_before_any_container_starts(
     tmp_path: Path,
 ) -> None:
     """Fatal, not best-effort: an empty mount is a much worse failure to read."""
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd(
@@ -1487,7 +1487,7 @@ def test_remote_dry_run_never_touches_the_node(tmp_path: Path) -> None:
     would make a dry-run wait on an SSH timeout for a host that may not be up
     yet.
     """
-    from llmdbenchmark.standup.steps.step_06_nok8s_deploy import NoK8sDeployStep
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
 
     stack = _remote_stack(tmp_path)
     cmd = _RecordingCmd()

@@ -435,7 +435,7 @@ def _nok8s_endpoint_url(all_stacks_info, stack_filter=None):
 
     For a remote stack the URL names the node, not localhost: this value is
     what a *client-side* caller would dial, and it is only a fallback -- the
-    harness itself runs on the node and uses the in-host endpoint that step 06
+    harness itself runs on the node and uses the in-host endpoint that step 05
     recorded in ``deployed_endpoints``.
     """
     stacks = [s for s in all_stacks_info if s.get("nok8s_enabled")]

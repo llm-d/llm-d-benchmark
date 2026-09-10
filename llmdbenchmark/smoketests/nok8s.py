@@ -3,7 +3,7 @@
 The stack is plain containers on the host, so there is no Service IP, no pod
 to exec into and no route to look up.  These two probes talk straight to the
 Envoy front door over HTTP, using the same rendered
-``34_nok8s-containers.yaml`` launch spec ``step_06_nok8s_deploy`` deployed
+``34_nok8s-containers.yaml`` launch spec ``step_05_nok8s_deploy`` deployed
 from, so the endpoint probed and the model asserted provably match what was
 launched.
 """

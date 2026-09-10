@@ -1,7 +1,7 @@
 """Step 06 -- Teardown the nok8s container stack (no Kubernetes).
 
 Removes the vLLM/EPP/Envoy containers launched by
-step_06_nok8s_deploy.py, driven by the rendered ``34_nok8s-containers.yaml``
+step_05_nok8s_deploy.py, driven by the rendered ``34_nok8s-containers.yaml``
 launch spec, on whichever host ``nok8s.connection`` names.
 """
 

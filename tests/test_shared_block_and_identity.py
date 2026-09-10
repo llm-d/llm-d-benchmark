@@ -202,11 +202,11 @@ class TestSharedInfraStackIndex:
 
 
 class TestHelmfileDeclaresRelease:
-    """step_07_deploy_setup._helmfile_declares_release - YAML walk not substring."""
+    """step_06_deploy_setup._helmfile_declares_release - YAML walk not substring."""
 
     @pytest.fixture
     def check(self):
-        from llmdbenchmark.standup.steps.step_07_deploy_setup import DeploySetupStep
+        from llmdbenchmark.standup.steps.step_06_deploy_setup import DeploySetupStep
 
         return DeploySetupStep._helmfile_declares_release
 

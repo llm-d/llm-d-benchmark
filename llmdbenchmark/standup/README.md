@@ -154,10 +154,9 @@ standup/
     +-- step_02_admin_prerequisites.py
     +-- step_03_workload_monitoring.py
     +-- step_04_model_namespace.py
-    +-- step_05_harness_namespace.py
-    +-- step_06_fma_deploy.py
-    +-- step_06_standalone_deploy.py
-    +-- step_07_deploy_setup.py
-    +-- step_08_deploy_router.py
-    +-- step_09_deploy_modelservice.py
+    +-- step_05_fma_deploy.py
+    +-- step_05_standalone_deploy.py
+    +-- step_06_deploy_setup.py
+    +-- step_07_deploy_router.py
+    +-- step_08_deploy_modelservice.py
 ```

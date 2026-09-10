@@ -1,4 +1,4 @@
-"""Step 06 -- Deploy the llm-d stack as containers (no Kubernetes).
+"""Step 05 -- Deploy the llm-d stack as containers (no Kubernetes).
 
 Launches vLLM worker(s) + EPP (router) + Envoy as docker/podman containers,
 driven by the rendered ``34_nok8s-containers.yaml`` launch spec and the
@@ -47,7 +47,7 @@ class NoK8sDeployStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=6,
+            number=5,
             name="nok8s_deploy",
             description="Deploy vLLM + EPP + Envoy as local containers (no k8s)",
             phase=Phase.STANDUP,
