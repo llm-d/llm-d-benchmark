@@ -678,6 +678,24 @@ class WorkloadMonitoringStep(Step):
 
         keda_sat_mod.verify_keda_installed(cmd, context)
 
+        # Only mint a Prometheus CA cert (needed for the auto-created bearer
+        # token Secret) when at least one stack actually uses bearer-secret
+        # auth -- authMode=none stacks don't need it.
+        needs_bearer_secret = any(
+            cfg.get("keda", {}).get("prometheus", {}).get("authMode") == "bearer-secret"
+            for _, cfg in pairs
+        )
+        prom_ca_cert = None
+        if needs_bearer_secret:
+            prom_ca_cert = keda_sat_mod.extract_prometheus_ca_cert(cmd, context.logger)
+            if not prom_ca_cert:
+                context.logger.log_warning(
+                    "Could not extract a Prometheus CA cert for generic KEDA "
+                    "bearer-secret auth. The prometheus-auth Secret will not be "
+                    "auto-created -- create it manually or KEDA metric queries "
+                    "will fail."
+                )
+
         seen_namespaces: set[str] = set()
         for stack_path, cfg in pairs:
             ns = cfg.get("namespace", {}).get("name", "")
@@ -693,4 +711,5 @@ class WorkloadMonitoringStep(Step):
                 stack_path=stack_path,
                 namespace=ns,
                 errors=errors,
+                prom_ca_cert=prom_ca_cert,
             )
