@@ -36,6 +36,10 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
   demand).
 - Scenarios with `storage.hostPath.enabled: true` fail fast — hostPath
   creates PV/PVC objects and contradicts the flag.
+- Scenario `customCommand`s should serve `$MODEL_SERVE_REF` (exported to
+  every serving pod) instead of hardcoding `/model-cache/...` paths -- it
+  resolves to the staged PVC path in PVC mode and the HF model ID in hf
+  mode, so the same scenario works under both.
 - Guide/kustomize deployments that declare their own PVCs inside guide
   manifests are out of scope for this flag.
 - Note: the `plan` subcommand previews the un-switched scenario (`--no-pvc`
