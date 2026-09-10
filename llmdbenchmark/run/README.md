@@ -139,7 +139,7 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 |------|------|-------------|
 | 00 | `RunPreflightStep` | Validate cluster connectivity, harness namespace, output destination |
 | 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
-| 02 | `HarnessNamespaceStep` | Prepare harness namespace (PVC, data access pod) |
+| 02 | `HarnessNamespaceStep` | Prepare harness namespace (PVC + data-access pod in PVC mode) |
 | 03 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
 | 04 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |
 | 05 | `RenderProfilesStep` | Render workload profile templates with runtime values; handle experiment treatments |
@@ -288,6 +288,8 @@ Trade-offs: results are ephemeral until collected -- if collection fails,
 they are lost when the pod is deleted (there is no PVC to recover from);
 on-PVC zstd pre-compression does not apply; `emptyDir` usage counts
 against the node's ephemeral storage instead of a provisioned volume.
+
+For a fully PVC-less flow, stand the stack up with `standup --no-pvc` as well.
 
 ### Upload results to cloud storage
 

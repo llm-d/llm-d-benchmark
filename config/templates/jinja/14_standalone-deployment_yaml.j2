@@ -295,6 +295,8 @@ spec:
           value: "{{ model.name }}"
         - name: MODEL_PATH
           value: "{{ model.path }}"
+        - name: MODEL_SERVE_REF
+          value: "{{ model_serve_ref('standalone') }}"
         - name: VLLM_WORKER_MULTIPROC_METHOD
           value: "{{ standalone.vllm.workerMultiprocMethod }}"
         - name: VLLM_LOGGING_LEVEL

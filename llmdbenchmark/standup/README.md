@@ -12,7 +12,7 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 02 | `AdminPrerequisitesStep` | global | Install cluster-level admin prerequisites (CRDs, gateways, LeaderWorkerSet, SCCs) |
 | 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors). Installs WVA controller once per `wva.namespace` across all rendered stacks. |
 | 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ~ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. |
-| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (scenario-wide workload PVC, data access pod, secrets) |
+| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (namespace, secrets, preprocess ConfigMap; workload PVC + data-access pod only in PVC mode) |
 | 06 | `FMADeployStep` | global | Deploy FMA controllers |
 | 06 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
 | 08 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
@@ -20,6 +20,31 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 10 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
 
 Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and inference test) were moved to the `llmdbenchmark.smoketests` module and now run as a separate phase after standup.
+
+## Standing up without PVCs (`--no-pvc`)
+
+On clusters where users cannot provision PersistentVolumeClaims, pass
+`--no-pvc` (env: `LLMDBENCH_NO_PVC=1`):
+
+- Model weights are fetched at runtime: `modelservice.uriProtocol` is
+  forced to `hf` and standalone's model-PVC mount is disabled, with a
+  warning (an explicit `--set` of the same key wins). Serving pods pull
+  from HuggingFace at startup — slower cold starts, and results are
+  comparable only to other hf-loading runs.
+- The workload PVC and data-access pod are not created; pair the standup
+  with `run --no-pvc` (a plain `run` would create the workload PVC on
+  demand).
+- Scenarios with `storage.hostPath.enabled: true` fail fast — hostPath
+  creates PV/PVC objects and contradicts the flag.
+- Scenario `customCommand`s should serve `$MODEL_SERVE_REF` (exported to
+  every serving pod) instead of hardcoding `/model-cache/...` paths -- it
+  resolves to the staged PVC path in PVC mode and the HF model ID in hf
+  mode, so the same scenario works under both.
+- Guide/kustomize deployments that declare their own PVCs inside guide
+  manifests are out of scope for this flag.
+- Note: the `plan` subcommand previews the un-switched scenario (`--no-pvc`
+  overrides apply at standup render time only), so a plan preview may show
+  `uriProtocol: pvc` even when the standup will force `hf`.
 
 ## Deployment Methods
 

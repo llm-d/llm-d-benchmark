@@ -2,7 +2,7 @@
 
 import argparse
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.interface.env import env, env_int
+from llmdbenchmark.interface.env import env, env_bool, env_int
 
 
 def add_subcommands(
@@ -156,6 +156,18 @@ def add_subcommands(
         "default StorageClass on the cluster) fails fast instead of "
         "masquerading as a downstream pod/job timeout. Default: 240 "
         "(some dynamic provisioners take 1-3 minutes per volume).",
+    )
+    standup_parser.add_argument(
+        "--no-pvc",
+        action="store_true",
+        default=env_bool("LLMDBENCH_NO_PVC"),
+        help="Stand up without creating any PVCs, for clusters where users "
+        "cannot provision them. Model weights are fetched at runtime "
+        "(modelservice.uriProtocol is forced to 'hf'; standalone model-PVC "
+        "mount disabled) with a warning, and the workload PVC / "
+        "data-access pod are not created -- pair with 'run --no-pvc'. "
+        "Scenarios with storage.hostPath.enabled fail fast (explicit "
+        "conflict) (env: LLMDBENCH_NO_PVC). Default: off.",
     )
     standup_parser.add_argument(
         "--pod-restart-budget",

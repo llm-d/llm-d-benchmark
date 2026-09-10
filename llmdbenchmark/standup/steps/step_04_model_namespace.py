@@ -44,7 +44,20 @@ class ModelNamespaceStep(Step):
         if context.is_openshift and context.namespace:
             self._extract_openshift_uid_range(cmd, context)
 
-        if not context.dry_run:
+        conflict = self._check_no_pvc_hostpath_conflict(context)
+        if conflict:
+            errors.append(conflict)
+            context.logger.log_error(f"    {conflict}")
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="--no-pvc / hostPath conflict",
+                errors=errors,
+            )
+
+        # --no-pvc: no standup PVCs exist to validate a StorageClass for.
+        if not context.dry_run and not context.no_pvc:
             sc_error = self._validate_storage_class(cmd, context)
             if sc_error:
                 errors.append(sc_error)
@@ -160,6 +173,30 @@ class ModelNamespaceStep(Step):
             message=f"Model namespace prepared (ns={context.namespace})",
         )
 
+    def _check_no_pvc_hostpath_conflict(self, context) -> str | None:
+        """--no-pvc contradicts explicit hostPath storage: hostPath still
+        creates PV/PVC objects, and it is a deliberate scenario choice --
+        neither silently overriding it nor silently creating PVC objects
+        would honor the user's intent. Fail fast with the fix spelled out."""
+        if not context.no_pvc:
+            return None
+        for stack_path in context.rendered_stacks or []:
+            stack_cfg = self._load_stack_config(stack_path)
+            enabled = (
+                (stack_cfg or {})
+                .get("storage", {})
+                .get("hostPath", {})
+                .get("enabled", False)
+            )
+            if enabled:
+                return (
+                    f"--no-pvc conflicts with storage.hostPath.enabled=true "
+                    f"(stack '{stack_path.name}'): hostPath creates PV/PVC "
+                    f"objects. Disable hostPath in the scenario or drop "
+                    f"--no-pvc."
+                )
+        return None
+
     @staticmethod
     def _parse_size_to_gib(raw: str | None) -> float:
         """Parse a k8s resource-size string to GiB as a float.
@@ -248,8 +285,11 @@ class ModelNamespaceStep(Step):
 
         uri_protocol = self._require_config(plan_config, "modelservice", "uriProtocol")
         standalone_enabled = plan_config.get("standalone", {}).get("enabled", False)
+        standalone_mounts = plan_config.get("standalone", {}).get(
+            "mountModelVolume", True
+        )
 
-        return uri_protocol == "pvc" or standalone_enabled
+        return uri_protocol == "pvc" or (standalone_enabled and standalone_mounts)
 
     @staticmethod
     def _is_hostpath_enabled(plan_config: dict | None) -> bool:
