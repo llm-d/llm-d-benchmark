@@ -1,6 +1,9 @@
 ## Concept
 Use a specific harness to generate workloads against a stack serving a large language model, according to a specific workload profile. To this end, a new `pod`, `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher`, is created on the target cluster, with an associated `pvc` (by default `workload-pvc`) to store experimental data. Once the "launcher" `pod` completes its run - which will include data collection **and data analysis** - the experimental data is then extracted from the "workload-pvc" back to the experimenter's workstation.
 
+> [!NOTE]
+> The first `run` against a namespace prepares the harness infrastructure: the harness namespace, an HF token secret, and a preprocess ConfigMap, plus (unless `--no-pvc` is set) the workload PVC and data-access pod. On a fresh namespace this first run pays the PVC bind wait (`--pvc-bind-timeout`, default 240s) before the harness pod can start; later runs against the same namespace reuse the existing infrastructure.
+
 ## Metrics
 For a discussion of candidate relevant metrics, please consult this [document](https://docs.google.com/document/d/1SpSp1E6moa4HSrJnS4x3NpLuj88sMXr2tbofKlzTZpk/edit?resourcekey=0-ob5dR-AJxLQ5SvPlA4rdsg&tab=t.0#heading=h.qmzyorj64um1)
 

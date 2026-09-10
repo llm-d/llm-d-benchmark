@@ -139,7 +139,7 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 |------|------|-------------|
 | 00 | `RunPreflightStep` | Validate cluster connectivity, harness namespace, output destination |
 | 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
-| 02 | `HarnessNamespaceStep` | Prepare harness namespace (PVC + data-access pod in PVC mode) |
+| 02 | `HarnessNamespaceStep` | Prepare harness namespace: namespace, HF token secret, preprocess ConfigMap; plus workload PVC + data-access pod in PVC mode. Runs in every k8s run (including --no-pvc, which skips only the PVC/data-access portion). |
 | 03 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
 | 04 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |
 | 05 | `RenderProfilesStep` | Render workload profile templates with runtime values; handle experiment treatments |
@@ -276,8 +276,8 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
 `--no-pvc` (env: `LLMDBENCH_NO_PVC=1`). It works in both full `run` and
 run-only (`--endpoint-url` / `--config`) modes:
 
-- The workload PVC and data-access pod are never created (step 02 is
-  skipped).
+- The workload PVC and data-access pod are never created (step 02 still
+  prepares the namespace, HF secret, and ConfigMap).
 - Harness pods mount an `emptyDir` at `/requests` instead of the PVC.
 - Each pod stays alive after the benchmark (it writes its exit code to
   `/requests/.llmdbench_harness_done` and sleeps) so results can be copied

@@ -12,14 +12,15 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 02 | `AdminPrerequisitesStep` | global | Install cluster-level admin prerequisites (CRDs, gateways, LeaderWorkerSet, SCCs) |
 | 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors). Installs WVA controller once per `wva.namespace` across all rendered stacks. |
 | 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ~ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. |
-| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (namespace, secrets, preprocess ConfigMap; workload PVC + data-access pod only in PVC mode) |
-| 06 | `FMADeployStep` | global | Deploy FMA controllers |
-| 06 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
-| 08 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
-| 08 | `DeployRouterStep` | global | Deploy the llm-d router (EPP + provider resources) |
-| 10 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
+| 05 | `FMADeployStep` | global | Deploy FMA controllers |
+| 05 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
+| 06 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
+| 07 | `DeployRouterStep` | global | Deploy the llm-d router (EPP + provider resources) |
+| 08 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
 
 Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and inference test) were moved to the `llmdbenchmark.smoketests` module and now run as a separate phase after standup.
+
+Harness preparation (namespace, HF secret copy, preprocess ConfigMap, workload PVC, data-access pod) moved to the run phase (run step 02) — standup ends with the model endpoint serving and no benchmark-side resources. **Breaking:** step numbers 6–9 shifted down to 5–8; update any `-s` step selections.
 
 ## Standing up without PVCs (`--no-pvc`)
 
@@ -31,9 +32,10 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
   warning (an explicit `--set` of the same key wins). Serving pods pull
   from HuggingFace at startup — slower cold starts, and results are
   comparable only to other hf-loading runs.
-- The workload PVC and data-access pod are not created; pair the standup
-  with `run --no-pvc` (a plain `run` would create the workload PVC on
-  demand).
+- The workload PVC and data-access pod are a run-phase concern now: `run`
+  creates them on demand and `run --no-pvc` skips them. Standup's
+  `--no-pvc` only covers the model PVC (above); pair the two flags for a
+  fully PVC-less flow.
 - Scenarios with `storage.hostPath.enabled: true` fail fast — hostPath
   creates PV/PVC objects and contradicts the flag.
 - Scenario `customCommand`s should serve `$MODEL_SERVE_REF` (exported to
@@ -48,11 +50,11 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
 
 ## Deployment Methods
 
-Steps 06-09 handle two mutually exclusive deployment methods:
+Steps 05-08 handle two mutually exclusive deployment methods:
 
-- **FMA** (step 06) -- Deploys Fast Model Actuation controllers. For more information on FMA: https://github.com/llm-d-incubation/llm-d-fast-model-actuation
-- **Standalone** (step 06) -- Deploys vLLM directly as Kubernetes Deployments and Services. OpenShift routes use the naming pattern `sa-{model_id_label}-route` to stay within the 63-character DNS label limit. Step 06 is skipped when modelservice is the active method.
-- **Modelservice** (steps 08-10) -- Deploys via the llm-d modelservice Helm chart with gateway infrastructure and GAIE. Steps 07-09 are skipped when standalone is the active method.
+- **FMA** (step 05) -- Deploys Fast Model Actuation controllers. For more information on FMA: https://github.com/llm-d-incubation/llm-d-fast-model-actuation
+- **Standalone** (step 05) -- Deploys vLLM directly as Kubernetes Deployments and Services. OpenShift routes use the naming pattern `sa-{model_id_label}-route` to stay within the 63-character DNS label limit. Step 05 is skipped when modelservice is the active method.
+- **Modelservice** (steps 06-08) -- Deploys via the llm-d modelservice Helm chart with gateway infrastructure and GAIE. Steps 06-08 are skipped when standalone is the active method.
 
 The `should_skip()` method on each step checks `context.deployed_methods` to determine which path to take.
 
@@ -115,10 +117,9 @@ debugged after the fact. At the end of standup, every consumed restart is
 reported, so a standup that only converged after deleting pods does not read
 the same as one that came up clean.
 
-Applies to every readiness wait in standup: the data-access pod, standalone /
-kustomize / FMA deploys, the gateway, and decode / prefill / inference-pool
-pods. Default is `0` -- disabled, with behavior identical to before the flag
-existed.
+Applies to every readiness wait in standup: standalone / kustomize / FMA
+deploys, the gateway, and decode / prefill / inference-pool pods. Default is
+`0` -- disabled, with behavior identical to before the flag existed.
 
 Implemented by `llmdbenchmark.utilities.podstate`; see
 [its README](../utilities/podstate/README.md) to add other reactions to pod

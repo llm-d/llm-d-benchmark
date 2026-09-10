@@ -312,7 +312,7 @@ verifying so a failure points at the broken link rather than a vague
 | `wva_platform_gate` | Cluster is OpenShift (or stack is correctly skipped on other platforms) | informational only |
 | `wva_controller_deployment` | Polls `Deployment/workload-variant-autoscaler-controller-manager` until `Available` with all replicas Ready (<=180s). **Fails fast** if the manager container's `restartCount` grows mid-wait | controller pod is crash-looping; check `oc logs -n <ns> deploy/workload-variant-autoscaler-controller-manager --previous` |
 | `wva_prometheus_adapter` | `Deployment/prometheus-adapter` in the user-workload monitoring ns is `Available` | adapter wasn't installed, or another tenant's broken install is squatting the cluster role |
-| `wva_variantautoscaling` | The per-stack `VariantAutoscaling/{model_id_label}-decode` exists | step_09 didn't apply the rendered VA |
+| `wva_variantautoscaling` | The per-stack `VariantAutoscaling/{model_id_label}-decode` exists | step_08 didn't apply the rendered VA |
 | `wva_va_controller_instance_label` | The VA carries `wva.llmd.ai/controller-instance=<value>` matching the controller's `CONTROLLER_INSTANCE` | the controller's predicate filters out the VA -> "No active VariantAutoscalings found" loop, no metric ever emitted. **The most subtle WVA gate.** |
 | `wva_hpa_target` | The HPA's `scaleTargetRef.name` equals `{model_id_label}-decode` | template drift between VA and HPA |
 | `wva_hpa_selector_alignment` | The HPA's `metric.selector.matchLabels` has all three of `variant_name`, `exported_namespace`, `controller_instance` matching what the controller emits | HPA selector misalignment - controller's metric is in Prometheus but the HPA's selector matches zero rows |
@@ -477,7 +477,7 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 | `allow-thanos-querier-api-access` ClusterRole | [`config/templates/jinja/22_prometheus-rbac.yaml.j2`](../config/templates/jinja/22_prometheus-rbac.yaml.j2) |
 | Cluster-wide WVA defaults (chart version, image, monitoring URL) | [`config/templates/values/defaults.yaml`](../config/templates/values/defaults.yaml) (`wva:` and `chartVersions.wva` blocks) |
 | Standup admin install (controller + adapter) | [`llmdbenchmark/standup/steps/step_03_workload_monitoring.py`](../llmdbenchmark/standup/steps/step_03_workload_monitoring.py) |
-| Standup per-stack VA/HPA apply | [`llmdbenchmark/standup/steps/step_09_deploy_modelservice.py`](../llmdbenchmark/standup/steps/step_09_deploy_modelservice.py) |
+| Standup per-stack VA/HPA apply | [`llmdbenchmark/standup/steps/step_08_deploy_modelservice.py`](../llmdbenchmark/standup/steps/step_08_deploy_modelservice.py) |
 | Shared install/teardown helpers | [`llmdbenchmark/standup/wva.py`](../llmdbenchmark/standup/wva.py) |
 | Teardown logic | [`llmdbenchmark/teardown/steps/step_01_uninstall_helm.py`](../llmdbenchmark/teardown/steps/step_01_uninstall_helm.py) |
 | Smoketest WVA mixin | [`llmdbenchmark/smoketests/validators/wva.py`](../llmdbenchmark/smoketests/validators/wva.py) |
