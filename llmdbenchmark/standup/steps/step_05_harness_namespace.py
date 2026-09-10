@@ -1,4 +1,4 @@
-"""Step 05 -- Prepare the harness namespace (PVC, data access pod, secrets)."""
+"""Step 05 -- Prepare the harness namespace (secrets/ConfigMap; PVC + data-access pod in PVC mode)."""
 
 from pathlib import Path
 
@@ -16,7 +16,9 @@ class HarnessNamespaceStep(Step):
         super().__init__(
             number=5,
             name="harness_namespace",
-            description="Prepare harness namespace (PVC, data access pod)",
+            description=(
+                "Prepare harness namespace (PVC + data-access pod in PVC mode)"
+            ),
             phase=Phase.STANDUP,
             per_stack=False,
         )
