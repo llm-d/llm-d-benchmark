@@ -11,7 +11,7 @@ import yaml
 from llmdbenchmark.executor.command import CommandExecutor, CommandResult
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.interface import standup
-from llmdbenchmark.standup.steps.step_05_harness_namespace import HarnessNamespaceStep
+from llmdbenchmark.run.steps.step_02_harness_namespace import HarnessNamespaceStep
 
 
 class _Logger:
