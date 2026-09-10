@@ -86,3 +86,55 @@ def test_step04_rejects_hostpath_with_no_pvc(tmp_path) -> None:
     result = ModelNamespaceStep()._check_no_pvc_hostpath_conflict(context)
     assert result is not None
     assert "hostPath" in result and "--no-pvc" in result
+
+
+def test_step05_no_pvc_skips_pvc_and_data_access(tmp_path) -> None:
+    from llmdbenchmark.executor.command import CommandResult
+    from llmdbenchmark.executor.context import ExecutionContext
+    from llmdbenchmark.standup.steps.step_05_harness_namespace import (
+        HarnessNamespaceStep,
+    )
+
+    class _Logger:
+        def log_info(self, *a, **k): ...
+        def log_warning(self, *a, **k): ...
+        def log_error(self, *a, **k): ...
+
+    class _Cmd:
+        def __init__(self):
+            self.kube_calls: list[tuple] = []
+            self.pvc_waits = 0
+            self.pod_waits = 0
+
+        def kube(self, *args, **kwargs) -> CommandResult:
+            self.kube_calls.append(args)
+            if args[:2] == ("get", "namespace"):
+                return CommandResult(command="get ns", exit_code=1)
+            return CommandResult(command=" ".join(str(a) for a in args), exit_code=0)
+
+        def wait_for_pvc(self, **k) -> CommandResult:
+            self.pvc_waits += 1
+            return CommandResult(command="wait pvc", exit_code=0)
+
+        def wait_for_pods(self, **k) -> CommandResult:
+            self.pod_waits += 1
+            return CommandResult(command="wait pods", exit_code=0)
+
+    context = ExecutionContext(
+        plan_dir=tmp_path,
+        workspace=tmp_path,
+        logger=_Logger(),
+        namespace="bench",
+        harness_namespace="bench",
+        no_pvc=True,
+    )
+    cmd = _Cmd()
+    context.cmd = cmd
+
+    result = HarnessNamespaceStep().execute(context)
+    assert result.success
+    assert "--no-pvc" in result.message or "PVC" in result.message
+    # Namespace apply happened; no PVC bind wait, no data-access pod wait.
+    assert any(c[0] == "apply" for c in cmd.kube_calls)
+    assert cmd.pvc_waits == 0
+    assert cmd.pod_waits == 0

@@ -57,6 +57,33 @@ class HarnessNamespaceStep(Step):
                 "HF token not configured -- skipping secret creation"
             )
 
+        model_ns = context.require_namespace()
+        configmap_namespaces = [harness_ns]
+        if model_ns != harness_ns:
+            configmap_namespaces.append(model_ns)
+        self._create_preprocesses_configmap(cmd, context, configmap_namespaces, errors)
+
+        if context.no_pvc:
+            if errors:
+                for err in errors:
+                    context.logger.log_error(f"    {err}")
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message="Harness namespace preparation had errors",
+                    errors=errors,
+                )
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=True,
+                message=(
+                    f"Harness namespace prepared (ns={harness_ns}; --no-pvc: "
+                    f"workload PVC and data-access pod skipped)"
+                ),
+            )
+
         bind_deferred = False
         pvc_yaml = self._find_rendered_yaml(context, "01_pvc_workload-pvc")
         if pvc_yaml:
@@ -153,12 +180,6 @@ class HarnessNamespaceStep(Step):
             result = cmd.kube("apply", "-f", str(svc_yaml))
             if not result.success:
                 errors.append(f"Failed to create data access service: {result.stderr}")
-
-        model_ns = context.require_namespace()
-        configmap_namespaces = [harness_ns]
-        if model_ns != harness_ns:
-            configmap_namespaces.append(model_ns)
-        self._create_preprocesses_configmap(cmd, context, configmap_namespaces, errors)
 
         timeout = context.harness_data_access_timeout
         if bind_deferred:
