@@ -38,6 +38,9 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
   creates PV/PVC objects and contradicts the flag.
 - Guide/kustomize deployments that declare their own PVCs inside guide
   manifests are out of scope for this flag.
+- Note: the `plan` subcommand previews the un-switched scenario (`--no-pvc`
+  overrides apply at standup render time only), so a plan preview may show
+  `uriProtocol: pvc` even when the standup will force `hf`.
 
 ## Deployment Methods
 

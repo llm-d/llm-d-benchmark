@@ -2549,6 +2549,10 @@ def _no_pvc_standup_overrides(args) -> dict:
         return {}
     if not getattr(args, "no_pvc", False):
         return {}
+    # hf is currently the only PVC-free modelservice protocol in practice
+    # (13_ms-values.yaml.j2 renders anything != 'hf' as pvc://), so forcing
+    # it unconditionally is safe. If s3/oci rendering lands later, make
+    # this conditional on the resolved protocol instead of clobbering it.
     return {
         "modelservice": {"uriProtocol": "hf"},
         "standalone": {"mountModelVolume": False},

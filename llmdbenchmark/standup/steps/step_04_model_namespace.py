@@ -44,18 +44,6 @@ class ModelNamespaceStep(Step):
         if context.is_openshift and context.namespace:
             self._extract_openshift_uid_range(cmd, context)
 
-        if not context.dry_run:
-            sc_error = self._validate_storage_class(cmd, context)
-            if sc_error:
-                errors.append(sc_error)
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message="Storage class validation failed",
-                    errors=errors,
-                )
-
         conflict = self._check_no_pvc_hostpath_conflict(context)
         if conflict:
             errors.append(conflict)
@@ -67,6 +55,19 @@ class ModelNamespaceStep(Step):
                 message="--no-pvc / hostPath conflict",
                 errors=errors,
             )
+
+        # --no-pvc: no standup PVCs exist to validate a StorageClass for.
+        if not context.dry_run and not context.no_pvc:
+            sc_error = self._validate_storage_class(cmd, context)
+            if sc_error:
+                errors.append(sc_error)
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message="Storage class validation failed",
+                    errors=errors,
+                )
 
         # PVC and download are per-stack: only needed for "pvc" protocol or
         # standalone mode - S3/OCI/hf protocols fetch at runtime and skip
@@ -284,8 +285,11 @@ class ModelNamespaceStep(Step):
 
         uri_protocol = self._require_config(plan_config, "modelservice", "uriProtocol")
         standalone_enabled = plan_config.get("standalone", {}).get("enabled", False)
+        standalone_mounts = plan_config.get("standalone", {}).get(
+            "mountModelVolume", True
+        )
 
-        return uri_protocol == "pvc" or standalone_enabled
+        return uri_protocol == "pvc" or (standalone_enabled and standalone_mounts)
 
     @staticmethod
     def _is_hostpath_enabled(plan_config: dict | None) -> bool:
