@@ -60,11 +60,10 @@ class HarnessNamespaceStep(Step):
                 "HF token not configured -- skipping secret creation"
             )
 
-        model_ns = context.require_namespace()
-        configmap_namespaces = [harness_ns]
-        if model_ns != harness_ns:
-            configmap_namespaces.append(model_ns)
-        create_preprocess_configmap(cmd, context, configmap_namespaces)
+        # Model-ns copy is owned by standup step 04; only the harness copy
+        # is this step's concern. When the namespaces are equal the step 04
+        # write already covered it, but apply is idempotent.
+        create_preprocess_configmap(cmd, context, [harness_ns])
 
         if context.no_pvc:
             context.logger.log_info(

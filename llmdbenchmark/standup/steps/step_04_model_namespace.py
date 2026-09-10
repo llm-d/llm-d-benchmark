@@ -10,6 +10,7 @@ import yaml
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.utilities.preprocess_configmap import create_preprocess_configmap
 
 
 class ModelNamespaceStep(Step):
@@ -165,6 +166,8 @@ class ModelNamespaceStep(Step):
                 message="Model namespace preparation had errors",
                 errors=errors,
             )
+
+        self._create_model_preprocess_configmap(cmd, context)
 
         return StepResult(
             step_number=self.number,
@@ -836,3 +839,18 @@ class ModelNamespaceStep(Step):
             )
         except (ValueError, IndexError):
             context.logger.log_warning(f"⚠️  Could not parse uid-range '{uid_range}'")
+
+    def _create_model_preprocess_configmap(self, cmd, context) -> None:
+        """Model-ns copy of the preprocess ConfigMap.
+
+        Owned here (not by the run phase) because serving pods' preprocess
+        containers mount it during standup deploys. The harness-ns copy is
+        the run phase's job (run step 02).
+        """
+        model_ns = context.namespace
+        if not model_ns:
+            context.logger.log_warning(
+                "No model namespace resolved -- skipping preprocess ConfigMap"
+            )
+            return
+        create_preprocess_configmap(cmd, context, [model_ns])

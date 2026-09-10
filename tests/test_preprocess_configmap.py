@@ -45,3 +45,38 @@ def test_creates_configmap_in_each_namespace(tmp_path) -> None:
     # The rendered manifest lands under workspace/setup/yamls, one per ns.
     yamls = list((tmp_path / "setup" / "yamls").glob("preprocesses-configmap*"))
     assert len(yamls) == 2
+
+
+def test_standup_step_04_creates_model_ns_configmap(tmp_path, monkeypatch) -> None:
+    """Step 04 owns the model-ns copy so serving pods have it even though
+    harness prep no longer runs in standup."""
+    from llmdbenchmark.standup.steps import step_04_model_namespace as s4
+
+    captured: list[list[str]] = []
+
+    def _fake_create(cmd, context, namespaces):
+        captured.append(list(namespaces))
+
+    monkeypatch.setattr(s4, "create_preprocess_configmap", _fake_create)
+    context = ExecutionContext(
+        plan_dir=tmp_path,
+        workspace=tmp_path,
+        logger=_Logger(),
+        namespace="model-ns",
+    )
+    s4.ModelNamespaceStep()._create_model_preprocess_configmap(_FakeCmd(), context)
+    assert captured == [["model-ns"]]
+
+
+def test_step_04_configmap_tolerates_missing_namespace(tmp_path, monkeypatch) -> None:
+    from llmdbenchmark.standup.steps import step_04_model_namespace as s4
+
+    captured: list[list[str]] = []
+    monkeypatch.setattr(
+        s4,
+        "create_preprocess_configmap",
+        lambda cmd, context, namespaces: captured.append(list(namespaces)),
+    )
+    context = ExecutionContext(plan_dir=tmp_path, workspace=tmp_path, logger=_Logger())
+    s4.ModelNamespaceStep()._create_model_preprocess_configmap(_FakeCmd(), context)
+    assert captured == []  # warned and returned, no write
