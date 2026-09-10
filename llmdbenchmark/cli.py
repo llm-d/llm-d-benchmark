@@ -623,7 +623,19 @@ def _do_standup(args, logger, render_plan_errors):
         llmd_repo_path=getattr(args, "llmd_repo_path", None),
         kustomize_skip_infra=not getattr(args, "full_infra", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
+        no_pvc=getattr(args, "no_pvc", False),
     )
+
+    # Announce PVC-less standup up front, mirroring the run phase.
+    if context.no_pvc:
+        logger.log_info(
+            "Running standup in PVC-less mode (--no-pvc): no model PVC, "
+            "workload PVC, or data-access pod will be created. Model "
+            "weights are fetched at runtime by the serving pods. Pair "
+            "with 'run --no-pvc' -- a plain 'run' would create the "
+            "workload PVC on demand.",
+            emoji="\U0001f4e6",
+        )
 
     _check_model_access(context, all_stacks_info, logger)
 
