@@ -124,7 +124,7 @@ def test_treatment_with_wait_errors_is_reported_failed(
     monkeypatch.setattr(
         DeployHarnessStep,
         "_collect_treatment_results_discovery",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: (None, {}, []),
     )
     monkeypatch.setattr(
         deploy_harness,
@@ -170,7 +170,7 @@ def _patch_run_helpers(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         DeployHarnessStep,
         "_collect_treatment_results_discovery",
-        lambda *_a, **_k: [],
+        lambda *_a, **_k: (None, {}, []),
     )
     monkeypatch.setattr(
         deploy_harness,
@@ -265,7 +265,9 @@ def test_treatment_retries_then_succeeds(tmp_path: Path, monkeypatch: Any) -> No
 
     monkeypatch.setattr(deploy_harness, "wait_for_pods_by_selector", _wait)
     monkeypatch.setattr(
-        DeployHarnessStep, "_collect_treatment_results_discovery", lambda *_a, **_k: []
+        DeployHarnessStep,
+        "_collect_treatment_results_discovery",
+        lambda *_a, **_k: (None, {}, []),
     )
     monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
 
@@ -296,7 +298,9 @@ def test_treatment_exhausts_attempts_records_failure(
         deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: ["wait failed"]
     )
     monkeypatch.setattr(
-        DeployHarnessStep, "_collect_treatment_results_discovery", lambda *_a, **_k: []
+        DeployHarnessStep,
+        "_collect_treatment_results_discovery",
+        lambda *_a, **_k: (None, {}, []),
     )
     monkeypatch.setattr(deploy_harness, "delete_pods_by_names", lambda *_a, **_k: None)
     monkeypatch.setattr(
@@ -326,7 +330,7 @@ def test_stop_on_error_aborts_remaining_treatments(
 
     def _collect(_cmd, experiment_id, *_a, **_k):
         seen.append(experiment_id)
-        return []
+        return None, {}, []
 
     # Fail the first treatment's wait; it has no retries (default 1), so
     # stop_on_error should abort before the second treatment runs.
@@ -366,7 +370,7 @@ def test_validate_failures_fails_clean_run(tmp_path: Path, monkeypatch: Any) -> 
         (d / "summary_lifecycle_metrics.json").write_text(
             _json.dumps({"failures": {"count": 2}}), encoding="utf-8"
         )
-        return []
+        return None, {}, []
 
     monkeypatch.setattr(
         deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: []
@@ -402,7 +406,7 @@ def test_validate_failures_falls_back_for_non_otel_workload(
         (d / "summary_lifecycle_metrics.json").write_text(
             _json.dumps({"failures": {"count": 7}}), encoding="utf-8"
         )
-        return []
+        return None, {}, []
 
     monkeypatch.setattr(
         deploy_harness, "wait_for_pods_by_selector", lambda *_a, **_k: []

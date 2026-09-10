@@ -128,6 +128,7 @@ Executes benchmark experiments against deployed infrastructure.
 | `-c` / `--config` | -- | Run config YAML file (run-only mode) |
 | `--generate-config` | -- | Generate run config and exit |
 | `--data-access-timeout` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready. |
+| `--data-collect MODE` | `LLMDBENCH_DATA_COLLECT` | How much result data reaches this machine: `default` (`oc cp`), `fast` (a gzip'd `oc exec \| tar` stream -- same files, far quicker for large trees), `results` (only the benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots) or `skip` (nothing; everything stays on the PVC). Under `results` and `skip`, `--validate-failures` reads the PVC over `exec`. `skip` refuses `--analyze`, `--no-pvc` and `-z`, and warns that `-r` uploads nothing. Replaces the deprecated `--fast-collect` |
 | `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
 | `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 

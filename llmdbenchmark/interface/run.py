@@ -298,12 +298,22 @@ def add_subcommands(
         help="Run local analysis on collected results (env: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1).",
     )
     run_parser.add_argument(
+        "--data-collect",
+        choices=("default", "fast", "results", "skip"),
+        default=None,
+        help="How much result data to copy to this machine: 'default' via "
+        "'oc cp'; 'fast' via a gzip'd 'oc exec | tar' stream (same files, much "
+        "faster for large trees); 'results' only the small reports, metadata "
+        "and plots; 'skip' nothing at all, leaving everything on the PVC. "
+        "Under 'results' and 'skip', --validate-failures reads the PVC "
+        "directly (env: LLMDBENCH_DATA_COLLECT). Default: default.",
+    )
+    run_parser.add_argument(
         "--fast-collect",
+        dest="fast_collect_deprecated",
         action="store_true",
         default=env_bool("LLMDBENCH_FAST_COLLECT"),
-        help="Collect results via a gzip'd 'oc exec | tar' stream instead of "
-        "'oc cp'. Copies the same files, just much faster for large result "
-        "trees (env: LLMDBENCH_FAST_COLLECT). Default: off.",
+        help=argparse.SUPPRESS,
     )
 
     # Run-only / existing-stack mode
