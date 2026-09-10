@@ -25,8 +25,8 @@ class UploadResultsStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip upload if output is local."""
-        return context.harness_output == "local"
+        """Skip when output is local, or when nothing was copied down to upload."""
+        return context.harness_output == "local" or context.collect_skip
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None

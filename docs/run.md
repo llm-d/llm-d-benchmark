@@ -134,6 +134,7 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_CPU_MEM                      | How many CPUs should be requested for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`32Gi` |
 | LLMDBENCH_HARNESS_PVC_NAME                     | The `pvc` where experimental results will be stored | Default=`workload-pvc`. Can be overriden with CLI parameter `-k/--pvc`      |
 | LLMDBENCH_HARNESS_PVC_SIZE                     | The size of the `pvc` where experimental results will be stored | Default=`20Gi` |
+| LLMDBENCH_DATA_COLLECT                         | How much result data is copied to this machine: `default` (`oc cp`), `fast` (gzip'd `oc exec \| tar`), `results` (reports/metadata/plots only) or `skip` (nothing; results stay on the PVC) | Default=`default`. Can be overriden with CLI parameter `--data-collect` |
 | LLMDBENCH_NO_PVC                               | Run without the workload PVC/data-access pod (`--no-pvc`); harness pods use an emptyDir and results are copied from the pods into the workspace | Default=(empty). Can be overriden with CLI parameter `--no-pvc` |
 | LLMDBENCH_HARNESS_SKIP_RUN                     | Skip the execution of the experiment, and only collect data already on the `pvc` | Default=(empty) |
 | LLMDBENCH_HARNESS_LOAD_PARALLELISM             | Controls the number harness pods which will be created to generate load (all pods execute the same workload profile) | Default=`1`, can be overriden with ` -j/--parallelism` |

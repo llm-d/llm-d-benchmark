@@ -43,8 +43,13 @@ from llmdbenchmark.utilities.kube_helpers import (
     capture_infrastructure_logs,
 )
 from llmdbenchmark.utilities.archive import (
+    KEEP_PLAIN,
+    RemoteReadError,
+    RemoteReader,
     read_member,
+    read_member_remote,
     read_members,
+    read_members_remote,
     remote_compress_script,
 )
 from llmdbenchmark.utilities.cloud_upload import upload_results_dir
@@ -90,6 +95,54 @@ class _TreatmentSpec:
     def label(self) -> str:
         name = (self.treatment or {}).get("name", "") if self.treatment else ""
         return name or "default"
+
+
+class _LocalResultReader:
+    def __init__(self, base: Path, subdirs: list[str]):
+        self.base = base
+        self.subdirs = subdirs
+
+    def member(self, subdir: str, name: str) -> bytes | None:
+        return read_member(self.base / subdir, name)
+
+    def members(self, subdir: str, pattern: str) -> dict[str, bytes]:
+        return read_members(self.base / subdir, pattern)
+
+    def describe(self, subdir: str) -> str:
+        return str(self.base / subdir)
+
+
+class _RemoteResultReader:
+    def __init__(self, reader: RemoteReader, prefix: str, subdirs: list[str]):
+        self.reader = reader
+        self.prefix = prefix
+        self.subdirs = subdirs
+
+    def _path(self, subdir: str) -> str:
+        return f"{self.prefix}/{subdir}"
+
+    def member(self, subdir: str, name: str) -> bytes | None:
+        return read_member_remote(self.reader, self._path(subdir), name)
+
+    def members(self, subdir: str, pattern: str) -> dict[str, bytes]:
+        return read_members_remote(self.reader, self._path(subdir), pattern)
+
+    def describe(self, subdir: str) -> str:
+        return f"{self.reader.pod}:{self._path(subdir)}"
+
+
+def _remote_select_script(
+    remote_dir: str, members: tuple[str, ...], tar_flags: str
+) -> str:
+    # find selects and tar packs what it is handed: patterns passed to `tar c` are
+    # operands to stat, not filters. No match yields a valid empty archive.
+    tests = " -o ".join(f"-name {shlex.quote(pattern)}" for pattern in members)
+    quoted_dir = shlex.quote(remote_dir)
+    return (
+        f"cd {quoted_dir} && "
+        f"find . -type f \\( {tests} \\) -print "
+        f"| tar {tar_flags}f - --no-recursion -T -"
+    )
 
 
 class DeployHarnessStep(Step):
@@ -629,10 +682,12 @@ class DeployHarnessStep(Step):
                 )
 
             # Phase 3: collect this treatment's results
+            pvc_results: tuple[str, str, str, list[str]] | None = None
             if not no_pods and not context.dry_run and not context.harness_debug:
                 if context.no_pvc:
                     # No data-access pod exists; copy from the (still
-                    # sleeping) harness pods before phase 5 deletes them.
+                    # sleeping) harness pods before phase 5 deletes them. Reached
+                    # even under skip, where there is no PVC to leave results on.
                     collect_errors = self._collect_treatment_results_from_pods(
                         spec.cmd,
                         experiment_id,
@@ -642,7 +697,12 @@ class DeployHarnessStep(Step):
                         context,
                     )
                 else:
-                    collect_errors = self._collect_treatment_results_discovery(
+                    collector = (
+                        self._prepare_treatment_results_on_pvc
+                        if context.collect_skip
+                        else self._collect_treatment_results_discovery
+                    )
+                    data_pod, discovered, collect_errors = collector(
                         spec.cmd,
                         experiment_id,
                         spec.harness_ns,
@@ -650,6 +710,15 @@ class DeployHarnessStep(Step):
                         context,
                         harness_settled=not treatment_errors,
                     )
+                    if data_pod and discovered:
+                        # The names the PVC actually holds: the entrypoint may not
+                        # have used the ones step_06 predicted.
+                        pvc_results = (
+                            data_pod,
+                            spec.harness_ns,
+                            spec.results_dir_prefix,
+                            list(discovered),
+                        )
                 if collect_errors:
                     treatment_errors.extend(collect_errors)
 
@@ -720,9 +789,20 @@ class DeployHarnessStep(Step):
                 and not context.dry_run
                 and not context.harness_debug
             ):
-                validation_errors = self._validate_failures(
-                    context, experiment_id, spec.parallelism, pod_profile_name
-                )
+                try:
+                    validation_errors = self._validate_failures(
+                        context,
+                        experiment_id,
+                        spec.parallelism,
+                        pod_profile_name,
+                        pvc=pvc_results,
+                    )
+                except RemoteReadError as exc:
+                    # Not folded in as a missing file: the results may be fine and
+                    # merely unreachable.
+                    validation_errors = [
+                        f"validate_failures: cannot read results on the PVC: {exc}"
+                    ]
                 if validation_errors:
                     treatment_errors.extend(validation_errors)
 
@@ -909,19 +989,23 @@ class DeployHarnessStep(Step):
         experiment_id: str,
         parallelism: int,
         profile_name: str | None = None,
+        pvc: tuple[str, str, str, list[str]] | None = None,
     ) -> list[str]:
         """Dispatch to a per-workload validator (result formats differ by
         workload); a workload with no validator warns and falls back to pod state.
+
+        ``pvc`` is ``(data_pod, namespace, results_dir_prefix, dir_names)``, which
+        switches the read to ``kubectl exec``.
         """
         stem = self._profile_stem(profile_name)
+        reader = self._result_reader(context, experiment_id, parallelism, pvc)
+
         for prefix, validator in self._FAILURE_VALIDATORS.items():
             if stem == prefix or stem.startswith(prefix):
-                return validator(self, context, experiment_id, parallelism)
+                return validator(self, reader, context)
 
         if self._profile_load_type(context, profile_name) == "trace_session_replay":
-            return self._validate_failures_session_replay(
-                context, experiment_id, parallelism
-            )
+            return self._validate_failures_session_replay(reader, context)
 
         context.logger.log_warning(
             f"validate_failures: no result-failure check implemented for workload "
@@ -930,42 +1014,57 @@ class DeployHarnessStep(Step):
         )
         return []
 
-    def _validate_failures_otel(
-        self,
+    @staticmethod
+    def _result_reader(
         context: ExecutionContext,
         experiment_id: str,
         parallelism: int,
-    ) -> list[str]:
+        pvc: tuple[str, str, str, list[str]] | None,
+    ):
+        # Keyed on whether the full tree reached this machine, not on whether a
+        # local dir exists: --data-collect results leaves one holding only KEEP_PLAIN.
+        if pvc and not context.collect_raw_tree:
+            data_pod, namespace, prefix, dir_names = pvc
+            return _RemoteResultReader(
+                RemoteReader(context.require_cmd(), data_pod, namespace),
+                prefix,
+                sorted(dir_names),
+            )
+        return _LocalResultReader(
+            context.run_results_dir(),
+            [f"{experiment_id}_{i}" for i in range(1, parallelism + 1)],
+        )
+
+    def _validate_failures_otel(self, reader, context: ExecutionContext) -> list[str]:
         """otel_traces validator: fail if any per-pod
         summary_lifecycle_metrics.json is missing, unparsable, or reports
         failures.count > 0.
         """
         errs: list[str] = []
-        base = context.run_results_dir()
-        for i in range(1, parallelism + 1):
-            pod_dir = base / f"{experiment_id}_{i}"
+        for subdir in reader.subdirs:
+            where = reader.describe(subdir)
             # Runs after collection, so the file may already be archived; without
             # read_member every treatment reads as "missing" and the retry loop
             # discards a run that succeeded.
             name = "summary_lifecycle_metrics.json"
-            payload = read_member(pod_dir, name)
+            payload = reader.member(subdir, name)
             if payload is None:
-                payload = read_member(pod_dir, f"analysis/{name}")
+                payload = reader.member(subdir, f"analysis/{name}")
             if payload is None:
-                errs.append(f"validate_failures: missing {name} under {pod_dir}")
+                errs.append(f"validate_failures: missing {name} under {where}")
                 continue
             try:
                 count = int(json.loads(payload)["failures"]["count"])
             except (ValueError, TypeError, KeyError, json.JSONDecodeError):
                 errs.append(
                     f"validate_failures: cannot parse failures.count from "
-                    f"{name} under {pod_dir}"
+                    f"{name} under {where}"
                 )
                 continue
             if count > 0:
                 errs.append(
                     f"validate_failures: {count} failed session(s) reported in "
-                    f"{name} under {pod_dir}"
+                    f"{name} under {where}"
                 )
         return errs
 
@@ -973,22 +1072,18 @@ class DeployHarnessStep(Step):
     _USABLE_STAGE_STATUSES = frozenset({"COMPLETED", "TIMED_OUT"})
 
     def _validate_failures_session_replay(
-        self,
-        context: ExecutionContext,
-        experiment_id: str,
-        parallelism: int,
+        self, reader, context: ExecutionContext
     ) -> list[str]:
         """trace_session_replay validator: per-stage status plus session counts.
 
         A stage that hits its timeout is a shorter measurement, not a broken one.
         """
         errs: list[str] = []
-        base = context.run_results_dir()
-        for i in range(1, parallelism + 1):
-            pod_dir = base / f"{experiment_id}_{i}"
+        for subdir in reader.subdirs:
+            pod_dir = reader.describe(subdir)
             pattern = "stage_*_session_lifecycle_metrics.json"
-            members = read_members(pod_dir, pattern) or read_members(
-                pod_dir, f"analysis/{pattern}"
+            members = reader.members(subdir, pattern) or reader.members(
+                subdir, f"analysis/{pattern}"
             )
             if not members:
                 errs.append(f"validate_failures: missing {pattern} under {pod_dir}")
@@ -1017,9 +1112,9 @@ class DeployHarnessStep(Step):
                     )
 
             name = "summary_session_lifecycle_metrics.json"
-            payload = read_member(pod_dir, name)
+            payload = reader.member(subdir, name)
             if payload is None:
-                payload = read_member(pod_dir, f"analysis/{name}")
+                payload = reader.member(subdir, f"analysis/{name}")
             if payload is None:
                 errs.append(f"validate_failures: missing {name} under {pod_dir}")
                 continue
@@ -1053,7 +1148,13 @@ class DeployHarnessStep(Step):
     ) -> None:
         """Delete a failed attempt's per-pod result dirs (and any dir matching
         the experiment_id) so the next attempt starts clean.
+
+        Local copies only, and no PVC counterpart is needed: every attempt mints a
+        fresh experiment_id, so a failed attempt's dir cannot match the next
+        attempt's discovery filter and stays put as evidence.
         """
+        if context.collect_skip:
+            return
         base = context.run_results_dir()
         for i in range(1, parallelism + 1):
             pod_dir = base / f"{experiment_id}_{i}"
@@ -1077,6 +1178,7 @@ class DeployHarnessStep(Step):
         context: ExecutionContext,
         fast_collect: bool,
         dir_compressed: bool,
+        members: tuple[str, ...] | None = None,
     ) -> CommandResult:
         """Copy one remote results directory from ``source_pod`` to ``local_path``.
 
@@ -1085,8 +1187,11 @@ class DeployHarnessStep(Step):
         retried because dropped apiserver exec streams (``tar: Unexpected
         EOF``) are transient, and extractall overwrites so a partial
         extraction from a failed attempt is harmless.
+
+        ``members`` forces the stream path: ``kubectl cp`` copies a whole directory
+        or nothing.
         """
-        if not fast_collect:
+        if not fast_collect and not members:
             return cmd.kube(
                 "cp",
                 "--retries=5",
@@ -1095,7 +1200,9 @@ class DeployHarnessStep(Step):
                 namespace=namespace,
                 check=False,
             )
-        tar_flags = "cf" if dir_compressed else "cz"
+        # A selected set is KEEP_PLAIN, never already-compressed bytes, so it gzips.
+        streaming_archive = dir_compressed and not members
+        tar_flags = "cf" if streaming_archive else "cz"
         # Auto-detected binary + kubeconfig/context/namespace flags.
         kube_argv = [
             cmd._kube_bin,
@@ -1105,19 +1212,26 @@ class DeployHarnessStep(Step):
             "exec",
             source_pod,
             "--",
-            "tar",
-            tar_flags,
-            "-C",
-            remote_dir,
-            ".",
         ]
+        if members:
+            # `sh -c` is safe despite kube()'s hazard: this argv goes straight to
+            # Popen, so no local shell ever re-parses it.
+            kube_argv.extend(
+                [
+                    "sh",
+                    "-c",
+                    _remote_select_script(remote_dir, members, tar_flags),
+                ]
+            )
+        else:
+            kube_argv.extend(["tar", tar_flags, "-C", remote_dir, "."])
         max_attempts = 5
         cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
         for cp_attempt in range(1, max_attempts + 1):
             cp_result = DeployHarnessStep._fast_collect_stream(
                 kube_argv,
                 local_path,
-                mode="r|" if dir_compressed else "r|gz",
+                mode="r|" if streaming_archive else "r|gz",
             )
             if cp_result.success:
                 break
@@ -1131,20 +1245,20 @@ class DeployHarnessStep(Step):
         return cp_result
 
     @staticmethod
-    def _collect_treatment_results_discovery(
+    def _discover_pvc_results(
         cmd,
         experiment_id: str,
         namespace: str,
         results_dir_prefix: str,
         context: ExecutionContext,
         harness_settled: bool = True,
-    ) -> list[str]:
-        """Collect results by discovering directories on the PVC.
+    ) -> tuple[str | None, dict[str, bool], list[str]]:
+        """Find this treatment's result dirs on the PVC and compress them in place.
 
-        The entrypoint may construct a results path that differs from
-        what step_06 predicted (e.g. old images use a different naming
-        convention).  This method lists all directories on the PVC that
-        contain the experiment_id and copies them.
+        Returns ``(data_pod, {dir_name: dir_compressed}, errors)``. Discovered rather
+        than reconstructed because the entrypoint may build a path step_06 did not
+        predict, which a caller reading over ``exec`` cannot paper over the way a
+        copying caller does.
         """
         errors: list[str] = []
 
@@ -1171,12 +1285,8 @@ class DeployHarnessStep(Step):
                 f'"${{pod#pod/}}:/requests/<dir>" ./<dir>   '
                 f"# dirs matching {experiment_id}_*"
             )
-            return errors
+            return None, {}, errors
 
-        local_results_dir = context.run_results_dir()
-        local_analysis_dir = context.run_analysis_dir()
-
-        # List directories on the PVC under the results prefix
         ls_result = cmd.kube(
             "exec",
             data_pod,
@@ -1189,33 +1299,25 @@ class DeployHarnessStep(Step):
         )
         if not ls_result.success or not ls_result.stdout.strip():
             errors.append(f"Could not list results on PVC: {ls_result.stderr[:200]}")
-            return errors
+            return data_pod, {}, errors
 
-        # Find directories matching this experiment
         all_dirs = [
             d.strip() for d in ls_result.stdout.strip().split("\n") if d.strip()
         ]
         matching_dirs = [d for d in all_dirs if experiment_id in d]
 
         if not matching_dirs:
-            context.logger.log_warning(
+            message = (
                 f"No result directories found for experiment {experiment_id} "
                 f"on PVC (found: {all_dirs[:5]})"
             )
-            return errors
-
-        context.logger.log_info(
-            f"Collecting results for {len(matching_dirs)} dir(s): "
-            f"{', '.join(matching_dirs)}"
-        )
-
-        # Opt-in via --fast-collect / LLMDBENCH_FAST_COLLECT. When off (the
-        # default) results are collected with the original ``oc cp`` path
-        # (slow: ~95 min/dir because the ~1.5 GB per_request_lifecycle_metrics.json
-        # tunnels through the apiserver exec stream at ~0.3 MB/s). The fast path
-        # copies the exact same files -- it only swaps ``oc cp`` for a gzip'd
-        # ``oc exec | tar`` stream, which crosses the tunnel far faster.
-        FAST_COLLECT = context.harness_fast_collect
+            # An error only where nothing local can stand in, or the validators
+            # would report the file missing from a path that never had it.
+            if context.collect_raw_tree:
+                context.logger.log_warning(message)
+            else:
+                errors.append(message)
+            return data_pod, {}, errors
 
         # Only compress a PVC nothing is still writing to: compression deletes the
         # originals, and a file written after the tar snapshot is in no archive while
@@ -1224,19 +1326,76 @@ class DeployHarnessStep(Step):
             cmd, context, data_pod, namespace, harness_settled
         )
 
+        discovered: dict[str, bool] = {}
         for dir_name in matching_dirs:
+            # Per dir, not once: a failure here must not make the reader below
+            # expect an archive this dir does not have.
+            discovered[dir_name] = (
+                compress_on_pvc
+                and DeployHarnessStep._compress_on_pvc(
+                    cmd,
+                    data_pod,
+                    namespace,
+                    f"{results_dir_prefix}/{dir_name}",
+                    context,
+                )
+            )
+        return data_pod, discovered, errors
+
+    @staticmethod
+    def _prepare_treatment_results_on_pvc(
+        cmd,
+        experiment_id: str,
+        namespace: str,
+        results_dir_prefix: str,
+        context: ExecutionContext,
+        harness_settled: bool = True,
+    ) -> tuple[str | None, dict[str, bool], list[str]]:
+        # Still compresses, and the validators need real dir names to read.
+        data_pod, discovered, errors = DeployHarnessStep._discover_pvc_results(
+            cmd, experiment_id, namespace, results_dir_prefix, context, harness_settled
+        )
+        if discovered:
+            kube_bin = "oc" if context.is_openshift else "kubectl"
+            context.logger.log_info(
+                f"--data-collect skip: leaving {len(discovered)} result dir(s) on "
+                f"the PVC under {results_dir_prefix} "
+                f"({', '.join(sorted(discovered))}). Copy them later with: "
+                f"{kube_bin} cp -n {namespace} {data_pod}:{results_dir_prefix}/"
+                f"<dir> ./<dir>"
+            )
+        return data_pod, discovered, errors
+
+    @staticmethod
+    def _collect_treatment_results_discovery(
+        cmd,
+        experiment_id: str,
+        namespace: str,
+        results_dir_prefix: str,
+        context: ExecutionContext,
+        harness_settled: bool = True,
+    ) -> tuple[str | None, dict[str, bool], list[str]]:
+        # ``fast`` exists because ``oc cp`` costs ~95 min/dir: the ~1.5 GB
+        # per_request_lifecycle_metrics.json crosses the exec stream at ~0.3 MB/s.
+        data_pod, discovered, errors = DeployHarnessStep._discover_pvc_results(
+            cmd, experiment_id, namespace, results_dir_prefix, context, harness_settled
+        )
+        if not data_pod or not discovered:
+            return data_pod, discovered, errors
+
+        local_results_dir = context.run_results_dir()
+        local_analysis_dir = context.run_analysis_dir()
+        fast_collect = context.collect_fast
+        members = KEEP_PLAIN if context.collect_results_only else None
+
+        context.logger.log_info(
+            f"Collecting results for {len(discovered)} dir(s): "
+            f"{', '.join(sorted(discovered))}"
+        )
+
+        for dir_name, dir_compressed in discovered.items():
             local_path = local_results_dir / dir_name
             local_path.mkdir(parents=True, exist_ok=True)
-
-            # Per dir, not once: a failure here must not make the collector below
-            # expect an archive this dir does not have.
-            dir_compressed = compress_on_pvc and DeployHarnessStep._compress_on_pvc(
-                cmd,
-                data_pod,
-                namespace,
-                f"{results_dir_prefix}/{dir_name}",
-                context,
-            )
 
             cp_result = DeployHarnessStep._copy_dir_from_pod(
                 cmd,
@@ -1245,36 +1404,24 @@ class DeployHarnessStep(Step):
                 f"{results_dir_prefix}/{dir_name}",
                 local_path,
                 context,
-                fast_collect=FAST_COLLECT,
+                fast_collect=fast_collect,
                 dir_compressed=dir_compressed,
+                members=members,
             )
-            if FAST_COLLECT and not cp_result.success:
-                context.logger.log_error(
-                    f"FAST_COLLECT pipeline failed for {dir_name} after "
-                    f"5 attempt(s) (exit={cp_result.exit_code}): "
-                    f"{(cp_result.stderr or cp_result.stdout)[:500]}"
-                )
-            elif FAST_COLLECT:
-                context.logger.log_info(
-                    f"FAST Collected {results_dir_prefix}/{dir_name} to {local_path}"
-                )
-
-            if cp_result.success:
-                file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
-                context.logger.log_info(
-                    f"Collected {file_count} file(s) for {dir_name}"
-                )
-                # Sync analysis sub-directory
-                if not context.harness_debug and context.harness_wait_timeout != 0:
-                    sync_analysis_dir(
-                        local_path,
-                        local_analysis_dir,
-                        dir_name,
-                    )
-            else:
+            if not cp_result.success:
                 errors.append(f"Failed to copy {dir_name}: {cp_result.stderr[:200]}")
+                continue
 
-        return errors
+            file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
+            context.logger.log_info(f"Collected {file_count} file(s) for {dir_name}")
+            if not context.harness_debug and context.harness_wait_timeout != 0:
+                sync_analysis_dir(
+                    local_path,
+                    local_analysis_dir,
+                    dir_name,
+                )
+
+        return data_pod, discovered, errors
 
     @staticmethod
     def _collect_treatment_results_from_pods(
@@ -1299,8 +1446,8 @@ class DeployHarnessStep(Step):
         local_analysis_dir = context.run_analysis_dir()
 
         copy_method = (
-            "a gzip'd 'exec | tar' stream (--fast-collect)"
-            if context.harness_fast_collect
+            "a gzip'd 'exec | tar' stream (--data-collect fast)"
+            if context.collect_fast
             else "'kubectl cp --retries=5'"
         )
         context.logger.log_info(
@@ -1355,8 +1502,9 @@ class DeployHarnessStep(Step):
                     f"{results_dir_prefix}/{dir_name}",
                     local_path,
                     context,
-                    fast_collect=context.harness_fast_collect,
+                    fast_collect=context.collect_fast,
                     dir_compressed=False,
+                    members=KEEP_PLAIN if context.collect_results_only else None,
                 )
                 if cp_result.success:
                     file_count = sum(1 for f in local_path.rglob("*") if f.is_file())

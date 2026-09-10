@@ -109,8 +109,80 @@ def setup_workspace(
     config.quiet_plan = quiet_plan
 
 
+_DATA_COLLECT_MODES = ("default", "fast", "results", "skip")
+
+
+def _resolve_data_collect(args: argparse.Namespace, logger) -> str:
+    # Once per process: under `experiment`, `_do_run` runs per setup treatment off
+    # one shared Namespace, so resolving there would re-warn each time.
+    mode = getattr(args, "data_collect", None)
+    if mode is None and getattr(args, "fast_collect_deprecated", False):
+        logger.log_warning(
+            "--fast-collect / LLMDBENCH_FAST_COLLECT is deprecated; use "
+            "--data-collect fast (LLMDBENCH_DATA_COLLECT=fast)."
+        )
+        mode = "fast"
+    if mode is None:
+        mode = env("LLMDBENCH_DATA_COLLECT") or "default"
+    if mode not in _DATA_COLLECT_MODES:
+        logger.log_error(
+            f"Invalid data collection mode '{mode}'. "
+            f"Choose one of: {', '.join(_DATA_COLLECT_MODES)}."
+        )
+        sys.exit(1)
+
+    args.data_collect = mode
+    return mode
+
+
+def _validate_data_collect(args: argparse.Namespace, logger) -> None:
+    # Here rather than in run preflight, whose `should_skip` returns True under
+    # `-z` -- one of the combinations that has to be caught.
+    if getattr(args, "data_collect", "default") != "skip":
+        return
+
+    if getattr(args, "analyze", False):
+        logger.log_error(
+            "--data-collect skip leaves results on the PVC, so there is nothing "
+            "local to analyze. Unset --analyze / "
+            "LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY, or use --data-collect "
+            "default/fast/results."
+        )
+        sys.exit(1)
+
+    if getattr(args, "no_pvc", False):
+        logger.log_error(
+            "--data-collect skip cannot be combined with --no-pvc: without a PVC "
+            "the results exist only in each harness pod's emptyDir and are "
+            "destroyed with the pod, so skipping collection loses them. Use "
+            "--data-collect default/fast, or unset --no-pvc / LLMDBENCH_NO_PVC."
+        )
+        sys.exit(1)
+
+    if getattr(args, "skip", False):
+        logger.log_error(
+            "-z/--skip collects results already on the PVC, while --data-collect "
+            "skip copies nothing -- together they do nothing at all. Drop one."
+        )
+        sys.exit(1)
+
+    # Not a rejection: LLMDBENCH_OUTPUT makes this reachable without an explicit -r.
+    output = getattr(args, "output", None)
+    if output and output != "local":
+        logger.log_warning(
+            f"--data-collect skip leaves results on the PVC, so nothing will be "
+            f"uploaded to {output}."
+        )
+
+
 def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     """Render plans and dispatch to the appropriate phase executor."""
+
+    # Only where --data-collect is declared: other subcommands have their own
+    # --no-pvc, which the guards below would read as a conflict.
+    if args.command in (Command.RUN.value, Command.EXPERIMENT.value):
+        _resolve_data_collect(args, logger)
+        _validate_data_collect(args, logger)
 
     # Experiment command manages its own rendering per setup treatment
     if args.command == Command.EXPERIMENT.value:
@@ -1154,7 +1226,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         ),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
-        harness_fast_collect=getattr(args, "fast_collect", False),
+        harness_data_collect=getattr(args, "data_collect", None) or "default",
         reset_caches=reset_caches,
         treatment_max_attempts=treatment_max_attempts,
         treatment_stop_on_error=treatment_stop_on_error,
@@ -1189,6 +1261,21 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             "to an ephemeral emptyDir, and results are copied directly "
             "from the pods into the workspace before pod deletion.",
             emoji="📦",
+        )
+
+    if context.collect_skip:
+        logger.log_info(
+            "Running with --data-collect skip: results are left on the PVC and "
+            "nothing is copied to this machine. --validate-failures reads them "
+            "there over 'exec'.",
+            emoji="\U0001f4e6",
+        )
+    elif context.collect_results_only:
+        logger.log_info(
+            "Running with --data-collect results: only benchmark reports, run "
+            "metadata and plots are copied down; the raw harness output stays on "
+            "the PVC.",
+            emoji="\U0001f4e6",
         )
 
     # --list-endpoints: detect endpoints (step 03 only), print a copy-paste
@@ -1362,6 +1449,10 @@ def _execute_run(args, logger, render_plan_errors):
     mode = "run-only" if is_run_only else "full"
     if context.no_pvc:
         mode += " (pvc-less)"
+    if context.collect_skip:
+        mode += " (pvc-resident)"
+    elif context.collect_results_only:
+        mode += " (reports only)"
     if context.generate_config_only:
         mode = "generate-config"
     harness = context.harness_name or "inference-perf"
@@ -1402,6 +1493,10 @@ def _execute_run(args, logger, render_plan_errors):
         logger.log_info(f"  Treatments:    {len(experiment_ids)}")
         for eid in experiment_ids:
             logger.log_info(f"    - {eid}")
+            if context.collect_skip:
+                # A zero-file line per treatment would read as "no pods ran".
+                logger.log_info(f"      left on the PVC as {eid}_*")
+                continue
             # Show per-parallelism result dirs
             for i in range(1, parallelism + 1):
                 local_path = results_dir / f"{eid}_{i}"
@@ -1891,7 +1986,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_ENDPOINT_URL": ("endpoint_url", "--endpoint-url"),
         "LLMDBENCH_SKIP": ("skip", "--skip"),
         "LLMDBENCH_DEBUG": ("debug", "--debug"),
-        "LLMDBENCH_FAST_COLLECT": ("fast_collect", "--fast-collect"),
+        "LLMDBENCH_DATA_COLLECT": ("data_collect", "--data-collect"),
+        "LLMDBENCH_FAST_COLLECT": ("fast_collect_deprecated", "--fast-collect"),
         "LLMDBENCH_COMPRESS": ("compress", "--compress"),
         "LLMDBENCH_COMPRESS_LEVEL": ("compress_level", "--compress-level"),
         "LLMDBENCH_AFFINITY": ("affinity", "--affinity"),
@@ -2008,6 +2104,7 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--endpoint-url": ["--endpoint-url", "-U"],
         "--skip": ["--skip", "-z"],
         "--debug": ["--debug", "-d"],
+        "--data-collect": ["--data-collect"],
         "--fast-collect": ["--fast-collect"],
         "--compress": ["--compress", "--no-compress"],
         "--compress-level": ["--compress-level"],
