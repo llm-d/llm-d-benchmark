@@ -2532,6 +2532,29 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
     return result
 
 
+def _no_pvc_standup_overrides(args) -> dict:
+    """Synthetic global overrides for ``standup --no-pvc``.
+
+    Redirects model-weight storage away from PVCs pre-render, so step 04
+    and every template do the right thing with no special-casing: the
+    modelservice chart fetches weights at runtime (hf://) and the
+    standalone deployment omits its model-cache PVC volume (the template
+    already gates that volume on standalone.mountModelVolume).
+
+    Standup-only: run --no-pvc deploys no serving pods, so redirecting
+    model storage there would be pure noise. An explicit user --set of
+    the same path wins (merge-order contract at the call site).
+    """
+    if getattr(args, "command", "") != Command.STANDUP.value:
+        return {}
+    if not getattr(args, "no_pvc", False):
+        return {}
+    return {
+        "modelservice": {"uriProtocol": "hf"},
+        "standalone": {"mountModelVolume": False},
+    }
+
+
 def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
     """Combine ``--cluster-config`` and ``--set`` into selector buckets.
 
@@ -2565,6 +2588,22 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
     if description_overrides:
         by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
             {"description": description_overrides},
+            by_selector.get(GLOBAL_SELECTOR, {}),
+        )
+
+    # standup --no-pvc: model storage must not use a PVC. Synthetic global
+    # override, same precedence contract as above (explicit --set wins).
+    no_pvc_overrides = _no_pvc_standup_overrides(args)
+    if no_pvc_overrides:
+        logger.log_warning(
+            "--no-pvc: forcing modelservice.uriProtocol=hf and "
+            "standalone.mountModelVolume=false -- serving pods fetch model "
+            "weights from HuggingFace at startup (slower cold starts; "
+            "results are comparable only to other hf-loading runs). An "
+            "explicit --set of the same key overrides this."
+        )
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            no_pvc_overrides,
             by_selector.get(GLOBAL_SELECTOR, {}),
         )
 
