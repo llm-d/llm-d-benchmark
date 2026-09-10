@@ -56,6 +56,18 @@ class ModelNamespaceStep(Step):
                     errors=errors,
                 )
 
+        conflict = self._check_no_pvc_hostpath_conflict(context)
+        if conflict:
+            errors.append(conflict)
+            context.logger.log_error(f"    {conflict}")
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="--no-pvc / hostPath conflict",
+                errors=errors,
+            )
+
         # PVC and download are per-stack: only needed for "pvc" protocol or
         # standalone mode - S3/OCI/hf protocols fetch at runtime and skip
         # PVC creation entirely, deferring to the modelservice chart (hf
@@ -159,6 +171,30 @@ class ModelNamespaceStep(Step):
             success=True,
             message=f"Model namespace prepared (ns={context.namespace})",
         )
+
+    def _check_no_pvc_hostpath_conflict(self, context) -> str | None:
+        """--no-pvc contradicts explicit hostPath storage: hostPath still
+        creates PV/PVC objects, and it is a deliberate scenario choice --
+        neither silently overriding it nor silently creating PVC objects
+        would honor the user's intent. Fail fast with the fix spelled out."""
+        if not context.no_pvc:
+            return None
+        for stack_path in context.rendered_stacks or []:
+            stack_cfg = self._load_stack_config(stack_path)
+            enabled = (
+                (stack_cfg or {})
+                .get("storage", {})
+                .get("hostPath", {})
+                .get("enabled", False)
+            )
+            if enabled:
+                return (
+                    f"--no-pvc conflicts with storage.hostPath.enabled=true "
+                    f"(stack '{stack_path.name}'): hostPath creates PV/PVC "
+                    f"objects. Disable hostPath in the scenario or drop "
+                    f"--no-pvc."
+                )
+        return None
 
     @staticmethod
     def _parse_size_to_gib(raw: str | None) -> float:

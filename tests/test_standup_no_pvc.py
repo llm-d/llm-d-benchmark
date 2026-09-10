@@ -53,3 +53,36 @@ def test_no_pvc_overrides_empty_for_run() -> None:
     assert (
         _no_pvc_standup_overrides(argparse.Namespace(command="run", no_pvc=True)) == {}
     )
+
+
+def test_step04_rejects_hostpath_with_no_pvc(tmp_path) -> None:
+    import yaml as _yaml
+
+    from llmdbenchmark.standup.steps.step_04_model_namespace import (
+        ModelNamespaceStep,
+    )
+    from llmdbenchmark.executor.context import ExecutionContext
+
+    class _Logger:
+        def log_info(self, *a, **k): ...
+        def log_warning(self, *a, **k): ...
+        def log_error(self, *a, **k): ...
+
+    stack = tmp_path / "plan" / "stack01"
+    stack.mkdir(parents=True)
+    (stack / "config.yaml").write_text(
+        _yaml.dump({"storage": {"hostPath": {"enabled": True}}}),
+        encoding="utf-8",
+    )
+    context = ExecutionContext(
+        plan_dir=tmp_path / "plan",
+        workspace=tmp_path,
+        logger=_Logger(),
+        namespace="model-ns",
+        no_pvc=True,
+        rendered_stacks=[stack],
+        dry_run=True,
+    )
+    result = ModelNamespaceStep()._check_no_pvc_hostpath_conflict(context)
+    assert result is not None
+    assert "hostPath" in result and "--no-pvc" in result
