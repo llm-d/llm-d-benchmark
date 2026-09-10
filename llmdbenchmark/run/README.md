@@ -40,8 +40,8 @@ llmdbenchmark run -p <NS> \
   -l inference-perf -w chatbot_synthetic.yaml -m Qwen/Qwen3-32B
 ```
 
-When `-U` is provided, the run skips endpoint auto-detection (step 02) and
-model verification (step 03), and goes straight to profile rendering and
+When `-U` is provided, the run skips endpoint auto-detection (step 03) and
+model verification (step 04), and goes straight to profile rendering and
 harness deployment.
 
 ### Finding the service URL from an existing deployment
@@ -128,6 +128,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
 | `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
+| `--pvc-bind-timeout N` | `LLMDBENCH_PVC_BIND_TIMEOUT` | Seconds to wait for the workload PVC to reach the Bound phase during run step 02 (default: 240). |
 | `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
 | `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
@@ -137,7 +138,7 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 
 | Step | Name | Description |
 |------|------|-------------|
-| 00 | `RunPreflightStep` | Validate cluster connectivity, harness namespace, output destination |
+| 00 | `RunPreflightStep` | Validate cluster connectivity and output destination; note (not fail) if the harness namespace doesn't exist yet -- step 02 creates it |
 | 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
 | 02 | `HarnessNamespaceStep` | Prepare harness namespace: namespace, HF token secret, preprocess ConfigMap; plus workload PVC + data-access pod in PVC mode. Runs in every k8s run (including --no-pvc, which skips only the PVC/data-access portion). |
 | 03 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |

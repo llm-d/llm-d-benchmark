@@ -1,7 +1,9 @@
 """Step 00 -- Run-phase preflight checks.
 
-Validates cluster connectivity, harness namespace existence, and output
-destination reachability before executing any benchmark work.
+Validates cluster connectivity and output destination reachability before
+executing any benchmark work. Also checks harness namespace existence, but
+only informationally -- a missing harness namespace is not fatal since
+step 02 (harness prep) creates it later in this same run.
 """
 
 from pathlib import Path
@@ -60,9 +62,12 @@ class RunPreflightStep(Step):
                     check=False,
                 )
                 if not result.success:
-                    errors.append(
-                        f"Harness namespace '{harness_ns}' does not exist. "
-                        f"Run the standup phase first."
+                    # Step 02 (harness prep) creates this namespace later in
+                    # this same run -- it no longer has to pre-exist from a
+                    # prior standup, so this is informational, not fatal.
+                    context.logger.log_info(
+                        f"Harness namespace '{harness_ns}' not found -- it "
+                        f"will be created by step 02 (harness prep)"
                     )
                 else:
                     context.logger.log_info(f"Harness namespace '{harness_ns}' exists")
