@@ -275,7 +275,7 @@ class TestInstallKedaForNamespace:
 
         assert errors == []
         token_calls = [a for a in cmd.kube_calls if a[:2] == ("create", "token")]
-        assert token_calls and token_calls[0][2] == "wva-prometheus-auth"
+        assert token_calls and token_calls[0][2] == "keda-prometheus-auth"
 
         secret_calls = [
             a for a in cmd.kube_calls if a[:3] == ("create", "secret", "generic")

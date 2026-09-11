@@ -97,7 +97,7 @@ def install_epp_keda_saturation_for_namespace(
         stack_path,
         epp_keda_namespace,
         prom_ca_cert,
-        sa_name="wva-prometheus-auth",
+        sa_name="keda-prometheus-auth",
         ta_template_stem="21_keda-triggerauthentication",
         errors=errors,
     )

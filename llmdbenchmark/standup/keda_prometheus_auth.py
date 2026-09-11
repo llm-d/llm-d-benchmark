@@ -112,7 +112,7 @@ def create_prometheus_auth_secret(
     stack_path: Path,
     target_namespace: str,
     prom_ca_cert: str | None,
-    sa_name: str = "wva-prometheus-auth",
+    sa_name: str = "keda-prometheus-auth",
     secret_name: str = "prometheus-auth",
     ta_template_stem: str = "21_keda-triggerauthentication",
     apply_trigger_auth: bool = True,
@@ -132,7 +132,7 @@ def create_prometheus_auth_secret(
         target_namespace: Kubernetes namespace for the Secret and TA.
         prom_ca_cert: PEM-encoded CA certificate for Prometheus (optional).
         sa_name: ServiceAccount name to mint the token from
-            (default: "wva-prometheus-auth").
+            (default: "keda-prometheus-auth").
         secret_name: Name of the Secret to create (default: "prometheus-auth").
         ta_template_stem: Template filename stem to locate the TA YAML
             (default: "21_keda-triggerauthentication").

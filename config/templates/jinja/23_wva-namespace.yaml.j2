@@ -20,6 +20,7 @@
 {% set epp_keda_enabled = eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
 {% if wva_enabled or epp_keda_enabled %}
 {% set target_ns = wva.namespace | default(eppKedaSaturation.namespace, true) | default(namespace.name, true) %}
+{% set sa_name = "wva-prometheus-auth" if wva_enabled else "keda-prometheus-auth" %}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -30,7 +31,7 @@ metadata:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: wva-prometheus-auth
+  name: {{ sa_name }}
   namespace: {{ target_ns }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -43,6 +44,6 @@ roleRef:
   name: allow-thanos-querier-api-access
 subjects:
 - kind: ServiceAccount
-  name: wva-prometheus-auth
+  name: {{ sa_name }}
   namespace: {{ target_ns }}
 {% endif %}

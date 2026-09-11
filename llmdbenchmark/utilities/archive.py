@@ -177,16 +177,32 @@ def remote_compress_script(remote_dir: str, level: int = DEFAULT_LEVEL) -> str:
     )
 
 
-def _read_archive(archive: Path, consume, partial: bool = False) -> None:
-    """Open ``archive`` for reading and hand the tar to ``consume``.
+_PRESENT = "__LLMDBENCH_PRESENT__"
+_ABSENT = "__LLMDBENCH_ABSENT__"
 
-    Set ``partial`` when ``consume`` may return before the last member.
-    """
-    proc = subprocess.Popen(
+
+class RemoteReadError(Exception):
+    """Not a ``RuntimeError``, or ``_UNREADABLE`` would catch it and degrade a
+    dropped tunnel to the "file absent" this exists to prevent."""
+
+
+def _local_zstd_source(archive: Path) -> subprocess.Popen:
+    return subprocess.Popen(
         ["zstd", "-dc", str(archive)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+
+
+def _read_archive(archive, consume, partial: bool = False, source=None) -> None:
+    """Open ``archive`` for reading and hand the tar to ``consume``.
+
+    Set ``partial`` when ``consume`` may return before the last member. ``source``
+    overrides where the bytes come from, so a remote archive reuses the tar/link
+    handling below rather than reimplementing it.
+    """
+    proc = (source or _local_zstd_source)(archive)
+    upstream = getattr(proc, "upstream", None)
     try:
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
             consume(tar)
@@ -196,6 +212,15 @@ def _read_archive(archive: Path, consume, partial: bool = False) -> None:
         proc.stdout.close()
         stderr = proc.stderr.read().decode("utf-8", errors="replace")
         code = proc.wait()
+        # Before zstd's verdict: it reports the truncation, not the cause.
+        if upstream is not None:
+            up_stderr = upstream.stderr.read().decode("utf-8", errors="replace")
+            upstream.stderr.close()
+            up_code = upstream.wait()
+            if up_code != 0 and not (partial and up_code == -signal.SIGPIPE):
+                raise RemoteReadError(
+                    f"reading {archive} failed (exit={up_code}): {up_stderr[:300]}"
+                )
         # Only SIGPIPE is forgiven -- and it cannot be told apart from a truncation
         # the consumer stopped before reaching. Deletion is gated on `zstd -t`, so a
         # bad archive reaching here is already rare.
@@ -238,32 +263,42 @@ def read_members(root: Path, pattern: str) -> dict[str, bytes]:
         return plain
 
     for archive, prefix in _archives_covering(root):
-        found: dict[str, bytes] = {}
-
-        def _consume(tar: tarfile.TarFile, found=found, prefix=prefix) -> None:
-            for member in tar:
-                if not member.isfile():
-                    continue
-                name = _strip_dot_slash(member.name)
-                if not name.startswith(prefix):
-                    continue
-                relative = name[len(prefix) :]
-                if not _glob_match(relative, pattern):
-                    continue
-                handle = tar.extractfile(member)
-                if handle is not None:
-                    found[relative] = handle.read()
-
-        try:
-            # Not partial: every member has to be examined, so the reader is
-            # drained rather than stopped at the first hit.
-            _read_archive(archive, _consume)
-        except _UNREADABLE as exc:
-            _warn_unreadable(archive, exc)
+        found = _read_matching(archive, prefix, pattern)
+        if found is None:
             continue
         if found:
             return found
     return {}
+
+
+def _read_matching(
+    archive, prefix: str, pattern: str, source=None
+) -> dict[str, bytes] | None:
+    """``None`` when the archive could not be read -- not the same as no match."""
+    found: dict[str, bytes] = {}
+
+    def _consume(tar: tarfile.TarFile) -> None:
+        for member in tar:
+            if not member.isfile():
+                continue
+            name = _strip_dot_slash(member.name)
+            if not name.startswith(prefix):
+                continue
+            relative = name[len(prefix) :]
+            if not _glob_match(relative, pattern):
+                continue
+            handle = tar.extractfile(member)
+            if handle is not None:
+                found[relative] = handle.read()
+
+    try:
+        # Not partial: every member has to be examined, so the reader is
+        # drained rather than stopped at the first hit.
+        _read_archive(archive, _consume, source=source)
+    except _UNREADABLE as exc:
+        _warn_unreadable(archive, exc)
+        return None
+    return found
 
 
 def _glob_match(relative: str, pattern: str) -> bool:
@@ -313,7 +348,7 @@ def _warn_unreadable(archive: Path, exc: BaseException) -> None:
     )
 
 
-def _read_one(archive: Path, wanted: str, _depth: int = 0) -> bytes | None:
+def _read_one(archive, wanted: str, _depth: int = 0, source=None) -> bytes | None:
     """First member of ``archive`` named exactly ``wanted``, or None.
 
     A link member carries no data (tar stores the payload once), so it is resolved
@@ -340,7 +375,7 @@ def _read_one(archive: Path, wanted: str, _depth: int = 0) -> bytes | None:
             return
 
     try:
-        _read_archive(archive, _consume, partial=True)
+        _read_archive(archive, _consume, partial=True, source=source)
     except _UNREADABLE as exc:
         _warn_unreadable(archive, exc)
         return None
@@ -349,5 +384,146 @@ def _read_one(archive: Path, wanted: str, _depth: int = 0) -> bytes | None:
     # Depth cap, not a visited set: a tar can hold a link cycle, and one hop is
     # all a real archive needs.
     if link_to and _depth < 4:
-        return _read_one(archive, link_to[0], _depth + 1)
+        return _read_one(archive, link_to[0], _depth + 1, source=source)
     return None
+
+
+# Reading a result set left on the PVC (--data-collect results/skip)
+
+
+class RemoteReader:
+    # Absence goes through `test -f` rather than a failed `cat`: kubectl's exit code
+    # is not always the remote command's, so a missing file and a broken tunnel both
+    # surface as 1.
+
+    def __init__(self, cmd, pod: str, namespace: str, source=None):
+        self.cmd = cmd
+        self.pod = pod
+        self.namespace = namespace
+        # Injectable so the reader is testable without a cluster.
+        self._source = source or self._exec_source
+
+    def _exec_argv(self, *remote_argv: str) -> list[str]:
+        return [
+            self.cmd._kube_bin,
+            *self.cmd._kubeconfig_args(),
+            "--namespace",
+            self.namespace,
+            "exec",
+            self.pod,
+            "--",
+            *remote_argv,
+        ]
+
+    def exists(self, path: str) -> bool:
+        # Sentinel on stdout, not an exit code: kubectl returns 1 for a missing pod,
+        # an unreachable apiserver and a forbidden exec too.
+        result = self.cmd.kube_exec(
+            self.pod,
+            "sh",
+            "-c",
+            f"test -f {shlex.quote(path)} && echo {_PRESENT} || echo {_ABSENT}",
+            namespace=self.namespace,
+            check=False,
+        )
+        verdict = (result.stdout or "").strip().splitlines()
+        if verdict:
+            if verdict[-1] == _PRESENT:
+                return True
+            if verdict[-1] == _ABSENT:
+                return False
+        raise RemoteReadError(
+            f"cannot test {self.pod}:{path} (exit={result.exit_code}): "
+            f"{(result.stderr or result.stdout)[:300]}"
+        )
+
+    def cat(self, path: str) -> bytes:
+        # Raw Popen, not kube_exec: that runs text=True and would decode archive
+        # bytes as UTF-8.
+        argv = self._exec_argv("cat", path)
+        try:
+            proc = subprocess.run(argv, capture_output=True, check=False)
+        except OSError as exc:
+            raise RemoteReadError(f"cannot read {self.pod}:{path}: {exc}") from exc
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode("utf-8", errors="replace")
+            raise RemoteReadError(
+                f"cannot read {self.pod}:{path} (exit={proc.returncode}): "
+                f"{stderr[:300]}"
+            )
+        return proc.stdout
+
+    def _exec_source(self, path) -> subprocess.Popen:
+        cat = subprocess.Popen(
+            self._exec_argv("cat", str(path)),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        zstd = subprocess.Popen(
+            ["zstd", "-dc"],
+            stdin=cat.stdout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        # Ours is closed so zstd owns the only read end and cat sees EOF/SIGPIPE.
+        cat.stdout.close()
+        # Checked by _read_archive; unwatched it would read as a short archive.
+        zstd.upstream = cat
+        return zstd
+
+    def archive_source(self):
+        return self._source
+
+
+def read_member_remote(reader: RemoteReader, root: str, name: str) -> bytes | None:
+    plain = posixpath.join(root, name)
+    if reader.exists(plain):
+        return reader.cat(plain)
+
+    archive = posixpath.join(root, REMOTE_ARCHIVE_NAME)
+    if not reader.exists(archive):
+        return None
+    return _read_one(archive, name, source=reader.archive_source())
+
+
+def read_members_remote(
+    reader: RemoteReader, root: str, pattern: str
+) -> dict[str, bytes]:
+    # find lists rather than Path.glob, which cannot walk a pod; _glob_match still
+    # decides, so one glob dialect spans both transports.
+    plain = {
+        relative: reader.cat(posixpath.join(root, relative))
+        for relative in _remote_relative_files(reader, root)
+        if _glob_match(relative, pattern)
+    }
+    if plain:
+        return plain
+
+    archive = posixpath.join(root, REMOTE_ARCHIVE_NAME)
+    if not reader.exists(archive):
+        return {}
+    found = _read_matching(archive, "", pattern, source=reader.archive_source())
+    return found or {}
+
+
+def _remote_relative_files(reader: RemoteReader, root: str) -> list[str]:
+    result = reader.cmd.kube_exec(
+        reader.pod,
+        "find",
+        root,
+        "-type",
+        "f",
+        namespace=reader.namespace,
+        check=False,
+    )
+    if not result.success:
+        raise RemoteReadError(
+            f"cannot list {reader.pod}:{root} (exit={result.exit_code}): "
+            f"{(result.stderr or result.stdout)[:300]}"
+        )
+    prefix = root.rstrip("/") + "/"
+    return [
+        line[len(prefix) :]
+        for line in (raw.strip() for raw in result.stdout.splitlines())
+        if line.startswith(prefix)
+    ]

@@ -62,7 +62,7 @@ def install_keda_for_namespace(
 
     if auth_mode == "bearer-secret":
         secret_name = prometheus_cfg.get("secretName", "prometheus-auth")
-        sa_name = prometheus_cfg.get("saName", "wva-prometheus-auth")
+        sa_name = prometheus_cfg.get("saName", "keda-prometheus-auth")
 
         if prom_ca_cert:
             create_prometheus_auth_secret(

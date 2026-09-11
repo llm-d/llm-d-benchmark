@@ -27,10 +27,33 @@ class CollectResultsStep(Step):
         # there is no data-access pod to fall back on.
         if context.no_pvc:
             return True
+        # An explicit predicate, not the emptiness check below: run_results_dir()
+        # creates the dir on access and preflight already calls it.
+        if context.collect_skip:
+            return True
         results_dir = context.run_results_dir()
         if results_dir.exists() and any(results_dir.iterdir()):
             return True
         return False
+
+    @staticmethod
+    def _copy(cmd, data_pod, namespace, prefix, dir_name, local_path, context):
+        # Shares step_07's primitive so -z honours --data-collect rather than always
+        # copying the whole tree.
+        from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
+        from llmdbenchmark.utilities.archive import KEEP_PLAIN
+
+        return DeployHarnessStep._copy_dir_from_pod(
+            cmd,
+            data_pod,
+            namespace,
+            f"{prefix}/{dir_name}",
+            local_path,
+            context,
+            fast_collect=context.collect_fast,
+            dir_compressed=False,
+            members=KEEP_PLAIN if context.collect_results_only else None,
+        )
 
     def execute(  # pylint: disable=too-many-locals,too-many-branches
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -111,18 +134,19 @@ class CollectResultsStep(Step):
         if experiment_ids:
             # Collect results for each known experiment ID
             for exp_id in experiment_ids:
-                remote_path = f"{data_pod}:{results_dir_prefix}/{exp_id}"
                 local_path = local_results_dir / exp_id
                 local_path.mkdir(parents=True, exist_ok=True)
 
                 context.logger.log_info(f"Collecting results: {exp_id}...")
 
-                result = cmd.kube(
-                    "cp",
-                    remote_path,
-                    str(local_path),
-                    namespace=harness_ns,
-                    check=False,
+                result = self._copy(
+                    cmd,
+                    data_pod,
+                    harness_ns,
+                    results_dir_prefix,
+                    exp_id,
+                    local_path,
+                    context,
                 )
                 if result.success:
                     # Verify non-empty
@@ -161,16 +185,17 @@ class CollectResultsStep(Step):
                     dir_name = dir_name.strip()
                     if not dir_name:
                         continue
-                    remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
                     local_path = local_results_dir / dir_name
                     local_path.mkdir(parents=True, exist_ok=True)
 
-                    result = cmd.kube(
-                        "cp",
-                        remote_path,
-                        str(local_path),
-                        namespace=harness_ns,
-                        check=False,
+                    result = self._copy(
+                        cmd,
+                        data_pod,
+                        harness_ns,
+                        results_dir_prefix,
+                        dir_name,
+                        local_path,
+                        context,
                     )
                     if result.success:
                         file_count = sum(

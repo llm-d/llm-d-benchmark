@@ -105,11 +105,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     data_access_lookup_delay: float = 3.0
     harness_debug: bool = False
     harness_skip_run: bool = False
-    # When True, collect results via a gzip'd ``oc exec | tar`` stream instead
-    # of ``oc cp``. Copies the same files -- only the transfer mechanism
-    # differs -- but is much faster for large result trees. Relies on the
-    # fragile apiserver exec stream (retried). Off by default. See step_07.
-    harness_fast_collect: bool = False
+    # How much result data crosses the exec tunnel: "default" (``oc cp``), "fast"
+    # (a gzip'd ``oc exec | tar`` stream -- same files, quicker, retried), "results"
+    # (KEEP_PLAIN only) or "skip" (nothing; it stays on the PVC). See step_07.
+    harness_data_collect: str = "default"
     # Compress each result set on the PVC before collecting, so the archive crosses
     # the tunnel. Nothing is compressed on the driver; reports, metadata and plots
     # stay plain so results_store can still index the collected tree.
@@ -360,6 +359,24 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     def is_run_only_mode(self) -> bool:
         """True when running against an existing stack (run-only mode)."""
         return bool(self.endpoint_url or self.run_config_file)
+
+    @property
+    def collect_fast(self) -> bool:
+        return self.harness_data_collect == "fast"
+
+    @property
+    def collect_results_only(self) -> bool:
+        return self.harness_data_collect == "results"
+
+    @property
+    def collect_skip(self) -> bool:
+        return self.harness_data_collect == "skip"
+
+    @property
+    def collect_raw_tree(self) -> bool:
+        # What the failure validators key off: under "results" a local tree exists
+        # but holds only KEEP_PLAIN, which is not where their JSON lives.
+        return self.harness_data_collect in ("default", "fast")
 
     def preprocess_dir(self) -> Path | None:
         """Locate the preprocess scripts directory (package-relative, then base_dir fallback)."""

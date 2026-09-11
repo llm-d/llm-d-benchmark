@@ -129,6 +129,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
 | `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 | `--pvc-bind-timeout N` | `LLMDBENCH_PVC_BIND_TIMEOUT` | Seconds to wait for the workload PVC to reach the Bound phase during run step 02 (default: 240). |
+| `--data-collect MODE` | `LLMDBENCH_DATA_COLLECT` | How much result data reaches this machine: `default` (`oc cp`), `fast` (a gzip'd `oc exec \| tar` stream -- same files, far quicker for large trees), `results` (only the benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots) or `skip` (nothing; everything stays on the PVC). Under `results` and `skip`, `--validate-failures` reads the PVC over `exec`. `skip` refuses `--analyze`, `--no-pvc` and `-z`, and warns that `-r` uploads nothing. Replaces the deprecated `--fast-collect` |
 | `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
 | `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
@@ -147,9 +148,9 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 | 06 | `CreateProfileConfigmapStep` | Create ConfigMaps for workload profiles and harness scripts |
 | 07 | `DeployHarnessStep` | Deploy harness pod(s), wait for completion, collect results, capture logs |
 | 08 | `WaitCompletionStep` | Wait for harness pods (used when step 07 does not inline waiting) |
-| 09 | `CollectResultsStep` | Collect results from PVC to local workspace |
+| 09 | `CollectResultsStep` | Collect results from PVC to local workspace (skipped under `--data-collect skip`) |
 | 12 | `AnalyzeResultsStep` | Run local analysis on results (before upload so artifacts are included) |
-| 10 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3) |
+| 10 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3); skipped under `--data-collect skip`, which leaves nothing local to upload |
 | 11 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
 
 Note: Step 12 (analyze) runs before step 10 (upload) so analysis artifacts are included in the
@@ -271,6 +272,37 @@ logs/
 epp_metrics/              -- EPP analysis output (if available)
 ```
 
+### How much data comes back (`--data-collect`)
+
+A result set is dominated by native harness JSON -- `per_request_lifecycle_metrics.json`
+alone reaches ~1.5 GB -- and it all crosses the apiserver exec tunnel. Pick how much
+of it the driver actually takes (env: `LLMDBENCH_DATA_COLLECT`):
+
+| Mode | What crosses the tunnel |
+|------|-------------------------|
+| `default` | Everything, via `oc cp`. |
+| `fast` | Everything, via a gzip'd `oc exec \| tar` stream. The same files; far quicker on large trees, on the flakier exec stream (retried 5x). |
+| `results` | Only the benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots -- the `KEEP_PLAIN` set that on-PVC compression already leaves as real files, so `results_store` can still index the workspace. |
+| `skip` | Nothing. Results stay on the PVC. |
+
+On-PVC zstd compression is unchanged in every mode, `skip` included: the set is still
+archived in place, so what stays behind is the same `workspace.tar.zst` a collecting
+run would have copied.
+
+Under `results` and `skip` the JSON `--validate-failures` reads is not on this
+machine, so it is read off the PVC over `exec` instead -- from the directory names
+the PVC actually holds, not the ones step 06 predicted. A read that fails for any
+reason other than "the file is not there" fails the treatment as a transport error,
+rather than being mistaken for a missing file.
+
+`skip` refuses combinations it cannot honour: `--analyze` (nothing local to analyze),
+`--no-pvc` (results would live only in a pod's `emptyDir` and die with it), and `-z`
+(which exists to collect from the PVC). With `-r gs://…` it warns that nothing will
+be uploaded and proceeds. Steps 09 (collect) and 10 (upload) skip; step 12 (analyze)
+is unreachable by the rule above.
+
+`--fast-collect` still works as a deprecated alias for `--data-collect fast`.
+
 ### Running without a PVC (`--no-pvc`)
 
 On clusters where users cannot provision PersistentVolumeClaims, pass
@@ -282,7 +314,7 @@ run-only (`--endpoint-url` / `--config`) modes:
 - Harness pods mount an `emptyDir` at `/requests` instead of the PVC.
 - Each pod stays alive after the benchmark (it writes its exit code to
   `/requests/.llmdbench_harness_done` and sleeps) so results can be copied
-  out of the `emptyDir` with `kubectl cp` (or the `--fast-collect` tar
+  out of the `emptyDir` with `kubectl cp` (or the `--data-collect fast` tar
   stream) into `workspace/results` before the pod is deleted.
 
 Trade-offs: results are ephemeral until collected -- if collection fails,

@@ -616,7 +616,9 @@ and the pipeline is **generate, compress, copy**:
   stage-clipped metrics) *before* anything is compressed;
 * each result set is then compressed in place **on the PVC**, so the archive rather than the
   raw tree crosses the apiserver exec tunnel. This is a transfer speedup as much as a storage
-  one, and it composes with `--fast-collect`;
+  one, and it composes with `--data-collect fast`. It also still runs under
+  `--data-collect skip`, which copies nothing down: the archive is what a later
+  `kubectl cp` -- or `--validate-failures` reading the PVC over `exec` -- picks up;
 * the archive is copied down as-is. Nothing is compressed, expanded, or re-analysed on the
   driver.
 
