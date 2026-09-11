@@ -12,7 +12,7 @@ import yaml
 from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolver
 from llmdbenchmark.parser.render_plans import RenderPlans
 from llmdbenchmark.smoketests.base import BaseSmoketest
-from llmdbenchmark.standup.steps.step_08_deploy_router import DeployRouterStep
+from llmdbenchmark.standup.steps.step_07_deploy_router import DeployRouterStep
 from llmdbenchmark.utilities.endpoint import (
     find_direct_modelservice_endpoint,
     resolve_direct_service_namespace,

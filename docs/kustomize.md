@@ -3,7 +3,7 @@
 `-t kustomize` deploys an upstream **llm-d guide** by running the commands
 parsed from that guide's `README.md`, instead of rendering the
 `modelservice`/`standalone` templates. It is implemented in
-`llmdbenchmark/standup/steps/step_06_kustomize_deploy.py` and
+`llmdbenchmark/standup/steps/step_05_kustomize_deploy.py` and
 `llmdbenchmark/kustomize/`.
 
 ## Key principle
@@ -87,7 +87,7 @@ kustomize:
   # patches → modelserver. Strategic-merge, matched by
   # apiVersion + kind + metadata.name against the guide's base.
   # NB: HF_TOKEN env injection is NOT needed here -- the upstream
-  # guides ship it (since llm-d/llm-d#1684) and step 06 creates the
+  # guides ship it (since llm-d/llm-d#1684) and step 05 creates the
   # Secret automatically. See `## HF_TOKEN handling` below.
   patches:
     - patch: |                       # override the guide's replica count
@@ -124,8 +124,8 @@ to be available** — if the Pod can't resolve the `secretKeyRef` it
 hangs in `CreateContainerConfigError` until the deploy timeout
 elapses.
 
-`step_06_kustomize_deploy` enforces this in
-[`_ensure_hf_token_secret`](../llmdbenchmark/standup/steps/step_06_kustomize_deploy.py).
+`step_05_kustomize_deploy` enforces this in
+[`_ensure_hf_token_secret`](../llmdbenchmark/standup/steps/step_05_kustomize_deploy.py).
 Three branches:
 
 | Condition | Behaviour |

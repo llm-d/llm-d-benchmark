@@ -14,20 +14,20 @@ import pytest
 # The `llmdbenchmark.standup.steps` package pulls in `step_03_workload_monitoring`
 # which requires the top-level `planner` package (installed by install.sh but not
 # a declared pyproject dependency). Bypass the package __init__ and load
-# `step_06_kustomize_deploy` directly — this is a unit test for its logging
+# `step_05_kustomize_deploy` directly — this is a unit test for its logging
 # helpers, we don't need the whole standup pipeline.
 _STEP_PATH = (
     Path(__file__).resolve().parent.parent
     / "llmdbenchmark"
     / "standup"
     / "steps"
-    / "step_06_kustomize_deploy.py"
+    / "step_05_kustomize_deploy.py"
 )
 _spec = importlib.util.spec_from_file_location(
-    "step_06_kustomize_deploy_isolated", _STEP_PATH
+    "step_05_kustomize_deploy_isolated", _STEP_PATH
 )
 _module = importlib.util.module_from_spec(_spec)
-sys.modules["step_06_kustomize_deploy_isolated"] = _module
+sys.modules["step_05_kustomize_deploy_isolated"] = _module
 _spec.loader.exec_module(_module)
 KustomizeDeployStep = _module.KustomizeDeployStep
 

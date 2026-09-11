@@ -74,8 +74,8 @@ llmdbenchmark standup
 To re-execute only individual steps (by number):
 
 ```
-llmdbenchmark standup -s 10
-llmdbenchmark standup -s 7
+llmdbenchmark standup -s 8
+llmdbenchmark standup -s 6
 llmdbenchmark standup -s 3-5
 llmdbenchmark standup -s 5,7
 ```

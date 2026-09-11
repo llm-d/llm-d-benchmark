@@ -88,10 +88,10 @@ def test_step04_rejects_hostpath_with_no_pvc(tmp_path) -> None:
     assert "hostPath" in result and "--no-pvc" in result
 
 
-def test_step05_no_pvc_skips_pvc_and_data_access(tmp_path) -> None:
+def test_run_step02_no_pvc_skips_pvc_and_data_access(tmp_path) -> None:
     from llmdbenchmark.executor.command import CommandResult
     from llmdbenchmark.executor.context import ExecutionContext
-    from llmdbenchmark.standup.steps.step_05_harness_namespace import (
+    from llmdbenchmark.run.steps.step_02_harness_namespace import (
         HarnessNamespaceStep,
     )
 
