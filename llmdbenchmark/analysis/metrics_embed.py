@@ -86,7 +86,7 @@ def embed_metrics(
         _say("No metrics summary -- skipping report metrics embedding")
         return 0
 
-    reports = sorted(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
+    reports = sorted(results_dir.glob("benchmark_report_v0.2*,_*.yaml"))
     if not reports:
         return 0
 
