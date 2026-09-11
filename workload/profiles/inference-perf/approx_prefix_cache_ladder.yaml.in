@@ -1,0 +1,70 @@
+# approx_prefix_cache_ladder — constant-rate SLO-capacity ladder for
+# prefix-cache-aware routing (EPP) vs baseline routing comparisons.
+#
+# Workload: 512 groups × 8 prompts sharing a 2048-token system prompt with a
+# 256-token unique question — i.e. ~89% of each prompt is reusable prefix,
+# the regime prefix-cache-aware routing exists for. shared_prefix
+# materializes all prompts up front and cycles them group-major (a group's 8
+# prompts go back-to-back), so affinity routers see immediate reuse while
+# baseline routers scatter it.
+#
+# Schema notes (learned the hard way; keep when adapting):
+# - num_workers MUST be pinned: inference-perf's default is host cpu_count
+#   (cgroup-unaware) — wrong inside a pod.
+# - worker_max_concurrency 512×12 keeps overload stages genuinely open-loop
+#   (default 100/worker caps in-flight below the worst-case backlog at the
+#   top stage × request_timeout).
+# - request_timeout 60 turns an overloaded stage into measurable failures
+#   instead of an unbounded queue.
+# - per_request_fields trimmed: the defaults embed prompt + response + every
+#   SSE chunk and produce multi-GB reports on a full ladder.
+# - fixed seed => identical prompt set run-to-run. For A/B fairness either
+#   keep it identical on both arms or use a fresh seed per run and rely on
+#   the workload's statistics; both are valid, just record which you did.
+load:
+  type: constant
+  request_timeout: 60
+  num_workers: 12
+  worker_max_concurrency: 512
+  stages:
+  - {rate: 4, duration: 60}
+  - {rate: 8, duration: 60}
+  - {rate: 16, duration: 60}
+  - {rate: 24, duration: 60}
+  - {rate: 32, duration: 60}
+  - {rate: 48, duration: 60}
+  - {rate: 64, duration: 60}
+  - {rate: 96, duration: 60}
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: shared_prefix
+  shared_prefix:
+    seed: 20260910
+    num_groups: 512               # distinct shared prefixes
+    num_prompts_per_group: 8      # unique questions per prefix
+    system_prompt_len: 2048       # shared prefix length (tokens)
+    question_len: 256             # unique suffix length (tokens)
+    output_len: 128               # short decode keeps the ladder prefill-bound
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+    per_request_fields:
+      request: false
+      response: false
+      response_chunks: false
+      info: true
+      computed_metrics: true
+storage:
+  local_storage:
+    path: /workspace
