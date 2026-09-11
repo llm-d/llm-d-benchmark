@@ -180,7 +180,7 @@ def find_results_dir(results_prefix, harness, stack, run_id):
     for suffix_dir in sorted(glob.glob(f"{base}_*")):
         if os.path.isdir(suffix_dir):
             return suffix_dir
-    # Try without stack name (run_only.sh may not include it)
+    # Try without stack name (legacy run-only results may not include it)
     base_no_stack = os.path.join(results_prefix, run_id)
     if os.path.isdir(base_no_stack):
         return base_no_stack
