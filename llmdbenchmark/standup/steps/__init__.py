@@ -6,7 +6,6 @@ after standup (auto-chained by default, skippable with --skip-smoketest).
 """
 
 from llmdbenchmark.executor.step import Step
-
 from llmdbenchmark.standup.steps.step_00_ensure_infra import EnsureInfraStep
 from llmdbenchmark.standup.steps.step_02_admin_prerequisites import (
     AdminPrerequisitesStep,
@@ -24,6 +23,7 @@ from llmdbenchmark.standup.steps.step_07_deploy_router import DeployRouterStep
 from llmdbenchmark.standup.steps.step_08_deploy_modelservice import (
     DeployModelserviceStep,
 )
+from llmdbenchmark.standup.steps.step_10_deploy_prism import DeployPrismStep
 
 
 def get_standup_steps() -> list[Step]:
@@ -40,4 +40,5 @@ def get_standup_steps() -> list[Step]:
         DeploySetupStep(),
         DeployRouterStep(),
         DeployModelserviceStep(),
+        DeployPrismStep(),
     ]
