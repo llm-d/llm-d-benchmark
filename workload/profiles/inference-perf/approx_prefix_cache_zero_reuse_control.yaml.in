@@ -1,0 +1,67 @@
+# approx_prefix_cache_zero_reuse_control — companion control for
+# approx_prefix_cache_ladder: unique random-token prompts defeat prefix
+# caching BY CONSTRUCTION, so any remaining EPP-vs-baseline delta isolates
+# load-aware scheduling (in-flight token accounting) plus per-hop overhead
+# from the cache-affinity effect.
+#
+# Prompt shape mirrors the ladder's totals (~2300 in / 128 out) so the two
+# profiles are comparable stage-for-stage; rates are lower because every
+# request pays full prefill. Scale rates with your pool as for the ladder.
+#
+# Schema notes:
+# - For data.type: random the generator is seeded via load.base_seed —
+#   data-level seeds are IGNORED for this type.
+# - input_distribution.max defaults to 1024, which would silently clip a
+#   2300-token mean; always set it explicitly.
+# - num_workers pinned / worker_max_concurrency raised / request_timeout and
+#   trimmed per_request_fields: same rationale as the ladder profile.
+load:
+  type: constant
+  request_timeout: 60
+  num_workers: 12
+  worker_max_concurrency: 512
+  base_seed: 20260910
+  stages:
+  - {rate: 2, duration: 60}
+  - {rate: 4, duration: 60}
+  - {rate: 8, duration: 60}
+  - {rate: 12, duration: 60}
+  - {rate: 16, duration: 60}
+  - {rate: 24, duration: 60}
+  - {rate: 32, duration: 60}
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: random
+  input_distribution:
+    min: 1500
+    max: 4096
+    mean: 2300
+    std_dev: 200
+  output_distribution:
+    min: 128
+    max: 128
+    mean: 128
+    std_dev: 0
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+    per_request_fields:
+      request: false
+      response: false
+      response_chunks: false
+      info: true
+      computed_metrics: true
+storage:
+  local_storage:
+    path: /workspace

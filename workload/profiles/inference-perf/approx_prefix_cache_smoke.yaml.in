@@ -1,0 +1,42 @@
+# approx_prefix_cache_smoke — ~20-second end-to-end pipeline validation for
+# the approx_prefix_cache_* profiles...
+load:
+  type: constant
+  request_timeout: 60
+  num_workers: 2
+  worker_max_concurrency: 64
+  stages:
+  - {rate: 2, duration: 20}
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: shared_prefix
+  shared_prefix:
+    seed: 20260910
+    num_groups: 8
+    num_prompts_per_group: 4
+    system_prompt_len: 2048
+    question_len: 256
+    output_len: 32
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+    per_request_fields:
+      request: false
+      response: false
+      response_chunks: false
+      info: true
+      computed_metrics: true
+storage:
+  local_storage:
+    path: /workspace
