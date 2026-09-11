@@ -1,4 +1,4 @@
-"""Step 07 -- Set up Helm repos and deploy gateway infrastructure for modelservice."""
+"""Step 06 -- Set up Helm repos and deploy gateway infrastructure for modelservice."""
 
 import shutil
 from pathlib import Path
@@ -22,7 +22,7 @@ class DeploySetupStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=7,
+            number=6,
             name="deploy_setup",
             description="Set up Helm repos and gateway infrastructure",
             phase=Phase.STANDUP,

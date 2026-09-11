@@ -85,11 +85,11 @@ llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dr
 |------|---------------|
 | `pytest tests/ -q -n2` | **Works** (1389 passed, 32 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
 | `plan` | **Works** -- renders all 36 artifacts, including `31/32/33/34_nok8s-*` |
-| `--dry-run standup --methods nok8s` | **Works** (12/12 steps) -- step 06 logs each `docker run` it *would* execute, and records `http://localhost:8081` |
+| `--dry-run standup --methods nok8s` | **Works** (11/11 steps) -- step 05 logs each `docker run` it *would* execute, and records `http://localhost:8081` |
 | `--dry-run run` | **Works** -- endpoint resolves locally with no cluster query, profiles render, the harness `docker run` is logged |
 | `--dry-run teardown --methods nok8s` | **Works** -- logs one `docker rm -f` per container |
 | `teardown --methods nok8s` (live) | **Works** -- `docker rm -f` is idempotent, so it is safe with nothing running |
-| `standup` (live) | **Fails at step 06.** It emits `docker run -d --name vllm-0 --gpus all ...`, which a GPU-less docker rejects: `could not select device driver "" with capabilities: [[gpu]]` |
+| `standup` (live) | **Fails at step 05.** It emits `docker run -d --name vllm-0 --gpus all ...`, which a GPU-less docker rejects: `could not select device driver "" with capabilities: [[gpu]]` |
 | `run` / `smoketest` (live) | **Fails** -- nothing is serving the model |
 
 Two caveats before you read a green dry-run as "my host is fine":
@@ -741,8 +741,8 @@ and filing the results under every stack's name.
 | Phase | nok8s behaviour |
 |-------|-----------------|
 | standup step 00 | Preflight: runtime / GPU / ports / token (replaces helm/kubectl checks). For a remote `connection`, `<runtime> info` doubles as the connection test, and the GPU/port/tool probes run on the node |
-| standup steps 02–05 | Skipped (no namespace, PVC, model-download Job) |
-| standup step 06 | `step_06_nok8s_deploy` launches the containers, waits for `/v1/models`, records `http://localhost:<listenPort>`. Remote: pushes the staged configs first, expands `~` against the node's `$HOME`, probes readiness on the node |
+| standup steps 02–04 | Skipped (no namespace, PVC, model-download Job) |
+| standup step 05 | `step_05_nok8s_deploy` launches the containers, waits for `/v1/models`, records `http://localhost:<listenPort>`. Remote: pushes the staged configs first, expands `~` against the node's `$HOME`, probes readiness on the node |
 | smoketest steps 00–01 | Cluster-free probes: `GET /v1/models` and `POST /v1/completions` against the Envoy front door, read from the rendered `34_nok8s-containers.yaml` (no pods, Service or route). Dials `clientEndpoint`, since it runs on the client |
 | run step 03 | Endpoint resolves to the Envoy URL without a cluster query: `localhost` for a local stack, the node for a remote one |
 | run step 07 | `step_07_deploy_harness_local` runs the harness image with `--network host`; results land in `workspace/results/` via a bind-mount. Remote: the container runs **on the node** (so the measured latency is the stack's), using the in-host `endpoint`, with inputs pushed and results pulled back |

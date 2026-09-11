@@ -233,12 +233,13 @@ def add_subcommands(
         action="store_true",
         default=False,
         help=(
-            "Run the full infrastructure setup (steps 2-5: admin prerequisites, "
-            "monitoring validation, model namespace, harness namespace) even when "
+            "Run the full infrastructure setup (steps 2-4: admin prerequisites, "
+            "monitoring validation, model namespace) even when "
             "using the kustomize deployment method. By default, kustomize mode "
             "skips these steps because the guide README handles its own "
             "prerequisites (CRDs, namespace). Use this flag when you need the "
-            "benchmark harness infrastructure (PVCs, download jobs, data-access "
-            "pods) alongside the kustomize-deployed model."
+            "model namespace infrastructure (model PVC, download job, secrets) "
+            "alongside the kustomize-deployed model. Benchmark harness "
+            "infrastructure is created by the run phase."
         ),
     )

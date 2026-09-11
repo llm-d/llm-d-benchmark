@@ -1,4 +1,4 @@
-"""Step 06 -- Deploy vLLM as standalone Kubernetes Deployments and Services."""
+"""Step 05 -- Deploy vLLM as standalone Kubernetes Deployments and Services."""
 
 from pathlib import Path
 
@@ -14,7 +14,7 @@ class StandaloneDeployStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=6,
+            number=5,
             name="standalone_deploy",
             description="Deploy vLLM standalone models (Deployment + Service)",
             phase=Phase.STANDUP,

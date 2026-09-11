@@ -1,4 +1,4 @@
-"""Tests for the HF-token fail-fast logic in step_06_kustomize_deploy.
+"""Tests for the HF-token fail-fast logic in step_05_kustomize_deploy.
 
 Three behaviours are covered:
 
@@ -26,7 +26,7 @@ import yaml
 # (``step_03_workload_monitoring``) that transitively depends on a
 # ``planner`` package not installed in this test environment.  Stub it
 # permissively (any attribute resolves to a no-op callable) so the
-# import chain reaches ``step_06_kustomize_deploy``.
+# import chain reaches ``step_05_kustomize_deploy``.
 if "planner.capacity_planner" not in sys.modules:
 
     class _PermissiveModule(types.ModuleType):
@@ -38,7 +38,7 @@ if "planner.capacity_planner" not in sys.modules:
         "planner.capacity_planner"
     )
 
-from llmdbenchmark.standup.steps.step_06_kustomize_deploy import (  # noqa: E402
+from llmdbenchmark.standup.steps.step_05_kustomize_deploy import (  # noqa: E402
     KustomizeDeployStep,
 )
 

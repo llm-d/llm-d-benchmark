@@ -689,7 +689,7 @@ interface: `log_info`, `log_warning`, `log_error`, `set_indent`.
 ### How Steps Share State
 
 Steps communicate through `ExecutionContext` fields. For example:
-- Standup step 06 (deploy) writes to `context.deployed_methods` and
+- Standup step 05 (deploy) writes to `context.deployed_methods` and
   `context.deployed_endpoints`
 - Smoketest phase reads `context.deployed_methods` to determine the pod
   selector
