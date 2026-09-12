@@ -47,6 +47,15 @@ class RenderPlans:
     # Prefix for partial/macro files (not rendered directly)
     PARTIAL_PREFIX = "_"
 
+    # Substring marking a template as nok8s-specific (e.g. 34_nok8s-containers.yaml.j2).
+    # On a nok8s stack, only these are ever read back (see step_05_nok8s_deploy.py
+    # and step_06_nok8s_teardown.py): everything else is a Kubernetes manifest --
+    # PVCs, RBAC, the harness pod, helmfiles, HTTPRoute, PodMonitor -- that nok8s
+    # never applies. Rendering them anyway produced 30+ dead files per stack and
+    # version-resolver warnings for tools (helm, skopeo) the nok8s path itself
+    # tells users are unnecessary (docs/nok8s.md) (#1704).
+    NOK8S_TEMPLATE_INFIX = "nok8s"
+
     # Default namespace when "auto" is specified (matches original bash: llmdbench)
     DEFAULT_NAMESPACE = "llmdbench"
 
@@ -2305,6 +2314,15 @@ class RenderPlans:
 
         for template_info in templates:
             filename = template_info["filename"]
+
+            # nok8s applies no Kubernetes manifests, so only its own
+            # templates (31-34_nok8s-*) are relevant -- see NOK8S_TEMPLATE_INFIX.
+            if is_nok8s and self.NOK8S_TEMPLATE_INFIX not in filename:
+                self.logger.log_info(
+                    f"Skipped (not applicable to nok8s): {filename}", emoji="⏭️"
+                )
+                continue
+
             content = template_info["content"]
 
             try:
