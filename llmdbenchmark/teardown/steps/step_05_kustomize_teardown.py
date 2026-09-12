@@ -74,7 +74,7 @@ class KustomizeTeardownStep(Step):
             parsed = parse_guide_readme(readme_path, guide_name)
 
             if not gaie_version:
-                gaie_version = parsed.variables.get("GAIE_VERSION", "v1.6.0")
+                gaie_version = parsed.variables.get("GAIE_VERSION", "v1.6.1")
 
             effective_router_chart_version = (
                 router_chart_version
