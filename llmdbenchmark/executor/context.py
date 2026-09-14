@@ -122,6 +122,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # ``reset_caches`` key in the --experiments YAML. Requires the server to run with
     # VLLM_SERVER_DEV_MODE=1 (the repo default); resets are non-fatal.
     reset_caches: bool = False
+    # When True, any reset_caches warning (no pods, 404 with dev mode off,
+    # success=false after the retries) aborts the run before that treatment
+    # group starts instead of running it warm. Needs ``reset_caches``; cannot
+    # see through LMCache. Top-level ``reset_caches_required`` key in the YAML.
+    reset_caches_required: bool = False
     # Retry a failed treatment up to this many times, each attempt deleting
     # its pods and faulty results and re-running with a fresh experiment_id
     # (so reset_caches re-fires). 1 = no retry.

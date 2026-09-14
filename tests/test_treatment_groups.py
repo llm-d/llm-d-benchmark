@@ -420,6 +420,33 @@ class TestCacheReset:
 
         reset.assert_not_called()
 
+    def test_returns_the_reset_warnings(self, monkeypatch) -> None:
+        reset = MagicMock(return_value=["reset_caches: could not confirm"])
+        monkeypatch.setattr(
+            "llmdbenchmark.run.steps.step_07_deploy_harness.reset_caches_pods", reset
+        )
+        context = make_context(reset_caches=True)
+
+        warnings = DeployHarnessStep()._reset_caches_for_batch(
+            [make_spec("a", "solo")], context
+        )
+
+        assert warnings == ["reset_caches: could not confirm"]
+
+    def test_skipped_returns_no_warnings(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "llmdbenchmark.run.steps.step_07_deploy_harness.reset_caches_pods",
+            MagicMock(),
+        )
+        context = make_context(reset_caches=False, reset_caches_required=True)
+
+        assert (
+            DeployHarnessStep()._reset_caches_for_batch(
+                [make_spec("a", "solo")], context
+            )
+            == []
+        )
+
 
 class TestReportMetadata:
     @pytest.mark.parametrize(
