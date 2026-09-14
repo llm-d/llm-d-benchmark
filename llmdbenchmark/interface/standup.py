@@ -1,6 +1,7 @@
 """CLI definition for the ``standup`` subcommand."""
 
 import argparse
+
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_bool, env_int
 
@@ -94,6 +95,15 @@ def add_subcommands(
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Enable or disable monitoring. --monitoring creates PodMonitors and enables metrics scraping. --no-monitoring disables PodMonitor and GAIE ServiceMonitor creation (use when cluster lacks Prometheus CRDs). Omit to use scenario defaults.",
+    )
+    standup_parser.add_argument(
+        "--prism",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Deploy (--prism) or skip (--no-prism) the persistent in-cluster "
+        "llm-d-prism dashboard in the model namespace. Omit to use "
+        "scenario/defaults (deployed by default). Survives normal and "
+        "--stack teardown; removed only with -d/--deep.",
     )
     standup_parser.add_argument(
         "--parallel",

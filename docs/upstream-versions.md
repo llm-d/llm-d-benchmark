@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-09-02 13:27:37` (UTC)
-- Generated against git ref: `4dbe2c0c049d51ea1eb3c504229426a12bbdf24c`
+- Generated at: `2026-09-14 10:48:43` (UTC)
+- Generated against git ref: `2abdb608c4e64fccbabfe171298a88471e2cadc4`
 
 ## System Tool Dependencies
 
@@ -42,14 +42,14 @@ OCI registry at generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **agentgateway** | `v1.5.0` | tag | `config/templates/values/defaults.yaml` line 495 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
-| **inferencePool** | `v1.6.0` | tag | `config/templates/values/defaults.yaml` line 494 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
-| **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 483 (`chartVersions.istioBase`) | (unknown) |
-| **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 484 (`chartVersions.istiod`) | (unknown) |
-| **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 485 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
-| **llmDModelservice** | `v0.4.15` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 486 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
-| **llmDRouter** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 490 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
-| **lws** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 496 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
+| **agentgateway** | `v1.5.0` | tag | `config/templates/values/defaults.yaml` line 502 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
+| **inferencePool** | `v1.6.0` | tag | `config/templates/values/defaults.yaml` line 501 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
+| **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 490 (`chartVersions.istioBase`) | (unknown) |
+| **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 491 (`chartVersions.istiod`) | (unknown) |
+| **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 492 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
+| **llmDModelservice** | `v0.4.15` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 493 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
+| **llmDRouter** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 497 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
+| **lws** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 503 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 
 
 ## Container Image Dependencies
@@ -60,13 +60,14 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `nightly` | tag | `config/templates/values/defaults.yaml` line 380 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
-| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 428 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routerEndpointPicker** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 405 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
-| **routingSidecar** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 411 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
-| **udsTokenizer** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 417 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllm** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 386 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllmOpenai** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 397 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **benchmark** | `nightly` | tag | `config/templates/values/defaults.yaml` line 381 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **prism** | `latest` | tag | `config/templates/values/defaults.yaml` line 404 (`images.prism`) | [llm-d/llm-d-prism](https://github.com/llm-d/llm-d-prism) (`ghcr.io/llm-d/llm-d-prism`) |
+| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 435 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
+| **routerEndpointPicker** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 412 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
+| **routingSidecar** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 418 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
+| **udsTokenizer** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 424 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllm** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 387 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 398 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)

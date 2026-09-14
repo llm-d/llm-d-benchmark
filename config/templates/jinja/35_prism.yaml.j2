@@ -1,0 +1,101 @@
+{% if prism is defined and prism.enabled | default(true) %}
+{# In-cluster llm-d-prism dashboard. Persist label keeps it through normal
+   teardown; the OpenShift Route is created by the deploy step, not here. #}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ prism.name | default('llm-d-prism') }}
+  namespace: {{ namespace.name }}
+  labels:
+    app.kubernetes.io/name: llm-d-prism
+    app.kubernetes.io/managed-by: llm-d-benchmark
+    llm-d-benchmark.ai/persist: "true"
+{% if annotations is defined and annotations.common is defined and annotations.common %}
+  annotations:
+{% for key, value in annotations.common.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+spec:
+  replicas: {{ prism.replicas | default(1) }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-d-prism
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-d-prism
+        llm-d-benchmark.ai/persist: "true"
+    spec:
+      containers:
+        - name: prism
+          image: {{ prism.image.repository }}:{{ prism.image.tag }}
+          imagePullPolicy: {{ prism.image.pullPolicy | default('IfNotPresent') }}
+          ports:
+            - name: http
+              containerPort: {{ prism.port | default(8080) }}
+          env:
+            - name: PORT
+              value: "{{ prism.port | default(8080) }}"
+{% if prism.env is defined and prism.env %}
+{% for key, value in prism.env.items() %}
+            - name: {{ key }}
+              value: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if prism.resources is defined and prism.resources %}
+          resources:
+{{ prism.resources | toyaml | indent(12) }}
+{% endif %}
+{% if storage is defined and storage.workloadPvc is defined %}
+          volumeMounts:
+            - name: requests
+              mountPath: /requests
+              readOnly: true
+      volumes:
+        - name: requests
+          persistentVolumeClaim:
+            claimName: {{ storage.workloadPvc.name }}
+{% endif %}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ prism.serviceName | default('llm-d-prism') }}
+  namespace: {{ namespace.name }}
+  labels:
+    app.kubernetes.io/name: llm-d-prism
+    app.kubernetes.io/managed-by: llm-d-benchmark
+    llm-d-benchmark.ai/persist: "true"
+spec:
+  selector:
+    app.kubernetes.io/name: llm-d-prism
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ prism.port | default(8080) }}
+{% if prism.ingress is defined and prism.ingress.enabled | default(false) %}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ prism.name | default('llm-d-prism') }}
+  namespace: {{ namespace.name }}
+  labels:
+    app.kubernetes.io/name: llm-d-prism
+    app.kubernetes.io/managed-by: llm-d-benchmark
+    llm-d-benchmark.ai/persist: "true"
+spec:
+  rules:
+    - host: {{ prism.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ prism.serviceName | default('llm-d-prism') }}
+                port:
+                  number: 80
+{% endif %}
+{% endif %}

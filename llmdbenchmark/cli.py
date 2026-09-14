@@ -246,6 +246,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_model=getattr(args, "models", None) or getattr(args, "model", None),
             cli_methods=getattr(args, "methods", None),
             cli_monitoring=getattr(args, "monitoring", None),
+            cli_prism=getattr(args, "prism", None),
             cli_wva=getattr(args, "wva", False),
             cli_gateway_class=getattr(args, "gateway_class", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
@@ -1679,6 +1680,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_model=getattr(args, "models", None) or getattr(args, "model", None),
         cli_methods=getattr(args, "methods", None),
         cli_monitoring=getattr(args, "monitoring", None),
+        cli_prism=getattr(args, "prism", None),
         cli_wva=getattr(args, "wva", False),
         cli_epp_keda_saturation=getattr(args, "epp_keda_saturation", False),
         cli_gateway_class=getattr(args, "gateway_class", None),
@@ -1959,6 +1961,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_KUBECONFIG": ("kubeconfig", "--kubeconfig"),
         "LLMDBENCH_PARALLEL": ("parallel", "--parallel"),
         "LLMDBENCH_MONITORING": ("monitoring", "--monitoring"),
+        "LLMDBENCH_PRISM": ("prism", "--prism"),
         "LLMDBENCH_SCENARIO": ("scenario", "--scenario"),
         "LLMDBENCH_DEEP_CLEAN": ("deep", "--deep"),
         "LLMDBENCH_MODEL": ("model", "--model"),
@@ -2085,7 +2088,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--release": ["--release", "-r"],
         "--kubeconfig": ["--kubeconfig", "-k"],
         "--parallel": ["--parallel"],
-        "--monitoring": ["--monitoring"],
+        "--monitoring": ["--monitoring", "--no-monitoring"],
+        "--prism": ["--prism", "--no-prism"],
         "--scenario": ["--scenario", "-c"],
         "--deep": ["--deep", "-d"],
         "--model": ["--model", "-m"],
@@ -2456,6 +2460,8 @@ def cli() -> None:
         args.non_admin = env_bool("LLMDBENCH_NON_ADMIN")
     if hasattr(args, "monitoring") and args.monitoring is None:
         args.monitoring = env_bool("LLMDBENCH_MONITORING") or None
+    if hasattr(args, "prism") and args.prism is None:
+        args.prism = env_bool("LLMDBENCH_PRISM") or None
     if getattr(args, "compress", None) is None:
         args.compress = env_bool("LLMDBENCH_COMPRESS", default=True)
     if not getattr(args, "compress_level", None):

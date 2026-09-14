@@ -121,6 +121,7 @@ _anchors:
   llm-d-cuda_version:                &llm-d-cuda_version                v0.9.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.10.2
   llm-d-benchmark_version:           &llm-d-benchmark_version           nightly
+  llm-d-prism_version:               &llm-d-prism_version               latest
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -399,6 +400,12 @@ images:
     tag: *vllm-openai_version
     pullPolicy: *pull_always
     sourceRepo: https://github.com/vllm-project/vllm
+
+  prism:
+    repository: ghcr.io/llm-d/llm-d-prism
+    tag: *llm-d-prism_version
+    pullPolicy: *pull_always
+    sourceRepo: https://github.com/llm-d/llm-d-prism
 
   # EPP (Endpoint Picker / Router) image -- llm-d-owned, sourced from the
   # llm-d-router chart family.
@@ -1825,6 +1832,31 @@ eppKedaSaturation:
           - type: Pods
             value: 1
             periodSeconds: 300
+
+# ============================================================================
+# PRISM DASHBOARD
+#
+# Persistent in-cluster dashboard. Survives teardown; removed only by `-d`.
+# ============================================================================
+prism:
+  enabled: true
+  name: llm-d-prism
+  serviceName: llm-d-prism
+  image:
+    repository: ghcr.io/llm-d/llm-d-prism
+    tag: *llm-d-prism_version
+    pullPolicy: *pull_always
+  replicas: 1
+  port: 8080
+  route:
+    enabled: true               # OpenShift route
+  ingress:
+    enabled: false              # set enabled + host to expose on vanilla K8s
+    host: ""
+  env:
+    PRISM_LOCAL_DIR: /requests  # plots benchmark reports from workload-pvc
+    DEFAULT_BUCKETS: ","         # show local dir only: no GCS/GIQ cloud sources
+  resources: {}
 
 # ============================================================================
 # GATEWAY PROVIDERS
