@@ -170,15 +170,22 @@ def test_prefix_reset_failure_is_retried_then_warned(no_sleep):
     second = _result(stdout=_prefix_reply("10.0.0.1", ok=False))
     third = _result(stdout=_prefix_reply("10.0.0.1", ok=False))
     cmd = _cmd([list_result, first, second, third])
+    logger = MagicMock()
 
     warns = reset_caches_pods(
-        cmd, "bench", "my-model", 8000, max_retries=3, retry_interval=0
+        cmd, "bench", "my-model", 8000, logger=logger, max_retries=3, retry_interval=0
     )
 
     assert cmd.kube.call_count == 4  # list + three curl-pod attempts
     assert len(warns) == 1
     assert "10.0.0.1" in warns[0]
     assert "reset_prefix_cache" in warns[0]
+    # Each wait is announced, so a run log explains the pause.
+    retry_logs = [
+        c.args[0] for c in logger.log_info.call_args_list if "retrying in" in c.args[0]
+    ]
+    assert len(retry_logs) == 2
+    assert "attempt 2/3" in retry_logs[0] and "attempt 3/3" in retry_logs[1]
 
 
 def test_prefix_reset_failure_recovers_on_retry(no_sleep):

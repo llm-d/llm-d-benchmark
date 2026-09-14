@@ -1084,6 +1084,12 @@ def reset_caches_pods(
     attempts = 1
     while failed_ips and attempts < max_retries:
         attempts += 1
+        if logger:
+            logger.log_info(
+                f"reset_caches: {len(failed_ips)} vLLM pod(s) "
+                f"({', '.join(failed_ips)}) have not confirmed the prefix-cache reset, "
+                f"retrying in {retry_interval}s (attempt {attempts}/{max_retries})"
+            )
         time.sleep(retry_interval)
         retry = _run_curl_pod(failed_ips, (_PREFIX_CACHE_RESET_ENDPOINT,))
         if retry.dry_run:
