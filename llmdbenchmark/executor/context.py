@@ -115,10 +115,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     compress_output: bool = True
     compress_level: int = DEFAULT_COMPRESS_LEVEL
     # When True, reset the vLLM prefix, multimodal, and encoder caches
-    # (POST /reset_prefix_cache, /reset_mm_cache, /reset_encoder_cache) on
-    # every serving pod before each treatment's run, so every treatment
-    # starts against cold caches. Set via the top-level ``reset_caches`` key
-    # in the --experiments YAML. Requires the server to run with
+    # (POST /reset_prefix_cache?reset_external=true, /reset_mm_cache,
+    # /reset_encoder_cache) on every serving pod before each treatment's run,
+    # so every treatment starts against cold caches; reset_external asks vLLM
+    # to clear connector-managed tiers too. Set via the top-level
+    # ``reset_caches`` key in the --experiments YAML. Requires the server to run with
     # VLLM_SERVER_DEV_MODE=1 (the repo default); resets are non-fatal.
     reset_caches: bool = False
     # Retry a failed treatment up to this many times, each attempt deleting
