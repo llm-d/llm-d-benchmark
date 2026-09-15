@@ -265,16 +265,6 @@ def _score_report(
             diagnostics,
         )
 
-    if getattr(report, "version", None) == "0.2.1":
-        diagnostics.append(
-            Diagnostic(
-                severity="info",
-                code="version_superset",
-                message=f"{report_str}: scored as a v0.2.1 additive superset of v0.2",
-                subject=report_str,
-            )
-        )
-
     standardized = None
     if report.scenario and report.scenario.load:
         standardized = report.scenario.load.standardized

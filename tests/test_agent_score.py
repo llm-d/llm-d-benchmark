@@ -8,7 +8,8 @@ Validates that:
 - p99 reads p99, not p95
 - unit normalization (ms <-> s, ms/token <-> s/token) is direction-correct,
   and an unrecognized unit yields unknown_units rather than a guess
-- version handling distinguishes missing / unsupported / 0.2.1-superset
+- version handling distinguishes missing / unsupported, and scores 0.2 and
+  0.2.1 alike
 - a 100%-failure report fails a max_failure_ratio gate
 - discover_agent_analysis_input ignores the v0.1 sibling
 - multiple reports label by stage and aggregate goodput throughput as a max
@@ -169,16 +170,19 @@ def test_full_failure_report_fails_max_failure_ratio_gate(tmp_path):
     assert result.reports[0].verdict == "fail"
 
 
-def test_version_missing_vs_unsupported_vs_superset(tmp_path):
+# The shipped example with no version, with version "0.2", and with version
+# "0.3", scored against a 0.1s TTFT gate: missing and 0.3 each get their own
+# error diagnostic, while "0.2" passes exactly like "0.2.1" with no diagnostic.
+def test_version_missing_vs_unsupported_vs_legacy(tmp_path):
     example = yaml.safe_load(EXAMPLE_REPORT.read_text())
 
     no_version = dict(example)
     del no_version["version"]
     missing_path = _write_report(tmp_path, "no_version.yaml", no_version)
 
-    superset = dict(example)
-    superset["version"] = "0.2.1"
-    superset_path = _write_report(tmp_path, "superset.yaml", superset)
+    legacy = dict(example)
+    legacy["version"] = "0.2"
+    legacy_path = _write_report(tmp_path, "legacy.yaml", legacy)
 
     unsupported = dict(example)
     unsupported["version"] = "0.3"
@@ -192,11 +196,13 @@ def test_version_missing_vs_unsupported_vs_superset(tmp_path):
         for d in missing_result.slo_scoring_diagnostics
     )
 
-    superset_result = score_slo_goodput([superset_path], [gate])
-    assert any(
-        d.code == "version_superset" for d in superset_result.slo_scoring_diagnostics
-    )
-    assert superset_result.reports[0].verdict == "pass"
+    current_result = score_slo_goodput([EXAMPLE_REPORT], [gate])
+    legacy_result = score_slo_goodput([legacy_path], [gate])
+    assert current_result.reports[0].verdict == "pass"
+    assert legacy_result.reports[0].verdict == "pass"
+    assert [d.code for d in legacy_result.slo_scoring_diagnostics] == [
+        d.code for d in current_result.slo_scoring_diagnostics
+    ]
 
     unsupported_result = score_slo_goodput([unsupported_path], [gate])
     assert any(
