@@ -1,0 +1,113 @@
+results:
+  session_performance:
+    sessions:
+      events_cancelled_per_session:
+        max: 3.0
+        mean: 0.125
+        min: 0.0
+        p0p1: 0.0
+        p1: 0.0
+        p10: 0.0
+        p25: 0.0
+        p5: 0.0
+        p50: 0.0
+        p75: 0.0
+        p90: 0.0
+        p95: 0.0
+        p99: 2.31
+        p99p9: 2.931
+        units: count
+      events_per_session:
+        max: 12.0
+        mean: 8.0833
+        min: 4.0
+        p0p1: 4.023
+        p1: 4.23
+        p10: 5.3
+        p25: 7.0
+        p5: 5.0
+        p50: 8.0
+        p75: 9.0
+        p90: 10.7
+        p95: 11.0
+        p99: 11.77
+        p99p9: 11.977
+        units: count
+      failed: 1
+      input_tokens_per_session:
+        max: 84300.0
+        mean: 42627.0833
+        min: 12900.0
+        p0p1: 13028.8
+        p1: 14188.0
+        p10: 18500.0
+        p25: 30675.0
+        p5: 18500.0
+        p50: 41000.0
+        p75: 50400.0
+        p90: 68660.0
+        p95: 72050.0
+        p99: 81482.5
+        p99p9: 84018.25
+        units: count
+      output_tokens_per_session:
+        max: 3768.0
+        mean: 1992.0417
+        min: 820.0
+        p0p1: 824.14
+        p1: 861.4
+        p10: 1152.5
+        p25: 1481.75
+        p5: 1021.75
+        p50: 1920.0
+        p75: 2413.5
+        p90: 2627.1
+        p95: 3318.15
+        p99: 3690.72
+        p99p9: 3760.272
+        units: count
+      session_duration:
+        max: 81.6549
+        mean: 53.5926
+        min: 26.4338
+        p0p1: 26.5108
+        p1: 27.2046
+        p10: 32.1245
+        p25: 43.3587
+        p5: 29.8173
+        p50: 53.1885
+        p75: 63.8425
+        p90: 75.7588
+        p95: 78.7362
+        p99: 81.0327
+        p99p9: 81.5927
+        units: s
+      session_rate:
+        mean: 0.122521
+        units: queries/s
+      succeeded: 23
+      total: 24
+      total_events: 194
+      total_events_cancelled: 3
+      total_events_completed: 191
+run:
+  uid: 00000000-0000-0000-0000-000000000000
+scenario:
+  load:
+    metadata:
+      cfg_id: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+      schema_version: 0.0.1
+    native:
+      config: {}
+    standardized:
+      input_seq_len:
+        distribution: other
+        value: 42627.0833
+      multi_turn:
+        enabled: true
+      parallelism: 1
+      source: unknown
+      stage: 0
+      tool: inference-perf
+      tool_version: ''
+version: '0.2'

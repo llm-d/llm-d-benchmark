@@ -1,0 +1,135 @@
+results:
+  request_performance:
+    aggregate:
+      latency:
+        inter_token_latency:
+          max: 0.0145869
+          mean: 0.0117452
+          min: 0.0094798
+          p1: 0.0096571
+          p10: 0.0106124
+          p25: 0.0111052
+          p5: 0.010210200000000001
+          p50: 0.011745799999999999
+          p75: 0.012345
+          p90: 0.012941300000000001
+          p95: 0.013243000000000001
+          p99: 0.013762700000000001
+          units: s/token
+        request_latency:
+          max: 3.0068901
+          mean: 2.4582684
+          min: 1.9778898999999999
+          p1: 2.0462616000000002
+          p10: 2.2278667
+          p25: 2.3274112000000002
+          p5: 2.1685266000000003
+          p50: 2.4598133
+          p75: 2.5843353000000002
+          p90: 2.7048271
+          p95: 2.7631964
+          p99: 2.9360886
+          units: s
+        time_to_first_token:
+          max: 0.2671831
+          mean: 0.1209825
+          min: 0.049552
+          p1: 0.06441240000000001
+          p10: 0.0787056
+          p25: 0.0927094
+          p5: 0.07439830000000001
+          p50: 0.11544159999999999
+          p75: 0.1429544
+          p90: 0.16908240000000002
+          p95: 0.1857087
+          p99: 0.22459520000000002
+          units: s
+      requests:
+        failures: 0
+        input_length:
+          max: 1012.0
+          mean: 1009.944
+          min: 1008.0
+          p1: 1008.0
+          p10: 1008.0
+          p25: 1009.0
+          p5: 1008.0
+          p50: 1010.0
+          p75: 1011.0
+          p90: 1012.0
+          p95: 1012.0
+          p99: 1012.0
+          units: count
+        output_length:
+          max: 200.0
+          mean: 200.0
+          min: 200.0
+          p1: 200.0
+          p10: 200.0
+          p25: 200.0
+          p5: 200.0
+          p50: 200.0
+          p75: 200.0
+          p90: 200.0
+          p95: 200.0
+          p99: 200.0
+          units: count
+        total: 500
+      throughput:
+        output_token_rate:
+          mean: 1276.2052
+          units: tokens/s
+        request_rate:
+          mean: 6.381
+          units: queries/s
+        total_token_rate:
+          mean: 7720.6841
+          units: tokens/s
+run:
+  uid: 00000000-0000-0000-0000-000000000000
+scenario:
+  load:
+    metadata:
+      cfg_id: 49415c99b6cc80728657cb7f7088bbfe79781faef23a2715aa8f5df740bbdba5
+      schema_version: 0.0.1
+    native:
+      config:
+        endpoint:
+          model_names:
+          - Qwen/Qwen3-8B
+          streaming: true
+          type: chat
+          url: http://infra-llmdbench-inference-gateway.llmdbench.svc.cluster.local:80
+          use_server_token_count: true
+        input:
+          extra:
+          - - ignore_eos
+            - true
+          prompt:
+            input_tokens:
+              mean: 1000
+            output_tokens:
+              mean: 200
+        loadgen:
+          concurrency: 16
+          request_count: 500
+        tokenizer:
+          trust_remote_code: true
+    standardized:
+      concurrency: 16
+      input_seq_len:
+        distribution: fixed
+        max: 1012
+        min: 1008
+        value: 1009.944
+      output_seq_len:
+        distribution: fixed
+        max: 200
+        min: 200
+        value: 200.0
+      parallelism: 1
+      source: random
+      stage: 0
+      tool: aiperf
+      tool_version: ''
+version: '0.2'

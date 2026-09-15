@@ -1,0 +1,50 @@
+results:
+  observability:
+    eval_containers_input_tokens: 26478
+    eval_containers_llm_calls: 5
+    eval_containers_output_tokens: 2246
+    eval_containers_passed: true
+    eval_containers_reward: 1.0
+  request_performance:
+    aggregate:
+      latency:
+        request_latency:
+          max: 9906.8
+          mean: 6527.58
+          min: 3390.2
+          p50: 6120.4
+          p90: 9281.119999999999
+          p99: 9844.232
+          stddev: 2342.8110605851252
+          units: ms
+      throughput:
+        request_rate:
+          mean: 0.06465135463983376
+          units: queries/s
+        total_token_rate:
+          mean: 371.409102134917
+          units: tokens/s
+run:
+  uid: 00000000-0000-0000-0000-000000000000
+scenario:
+  load:
+    metadata:
+      schema_version: 0.0.1
+    native:
+      args:
+        agent: codex
+        benchmark: aider-polyglot
+        harness: eval-containers
+        model: Qwen/Qwen3-32B
+        task_id: '170'
+        workload_type: agentic-multi-turn
+    standardized:
+      input_seq_len:
+        distribution: other
+        value: 0
+      parallelism: 1
+      source: sampled
+      stage: 0
+      tool: eval-containers
+      tool_version: ''
+version: '0.2'
