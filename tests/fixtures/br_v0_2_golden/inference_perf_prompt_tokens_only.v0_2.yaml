@@ -1,0 +1,50 @@
+results:
+  request_performance:
+    aggregate:
+      latency:
+        normalized_time_per_output_token:
+          mean: 0.059859130628542895
+          units: s/token
+        request_latency:
+          mean: 17.102809336084512
+          units: s
+      requests:
+        input_length:
+          mean: 68304.9400544959
+          units: count
+        total: 368
+      throughput:
+        input_token_rate:
+          mean: 41838.31197488548
+          units: tokens/s
+        output_token_rate:
+          mean: 221.39600373164328
+          units: tokens/s
+        request_rate:
+          mean: 0.6125224901962509
+          units: queries/s
+        total_token_rate:
+          mean: 42059.70797861712
+          units: tokens/s
+run:
+  uid: 00000000-0000-0000-0000-000000000000
+scenario:
+  load:
+    metadata:
+      cfg_id: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+      schema_version: 0.0.1
+    native:
+      config: {}
+    standardized:
+      input_seq_len:
+        distribution: gaussian
+        value: 68304.9400544959
+      output_seq_len:
+        distribution: gaussian
+        value: 0
+      parallelism: 1
+      source: unknown
+      stage: 0
+      tool: inference-perf
+      tool_version: ''
+version: '0.2'

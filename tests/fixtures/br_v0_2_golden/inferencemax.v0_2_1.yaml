@@ -1,0 +1,98 @@
+results:
+  request_performance:
+    aggregate:
+      latency:
+        inter_token_latency:
+          mean: 24.4622
+          p0p1: 17.1758
+          p1: 18.6225
+          p10: 21.0387
+          p5: 20.1684
+          p90: 28.0453
+          p95: 29.1888
+          p99: 31.5236
+          p99p9: 33.999
+          stddev: 2.7515
+          units: ms/token
+        request_latency:
+          mean: 22689.0214
+          p0p1: 18812.0915
+          p1: 18959.6753
+          p10: 20290.123
+          p5: 19786.2197
+          p90: 25072.9058
+          p95: 25743.9528
+          p99: 26124.8532
+          p99p9: 26265.7366
+          stddev: 1906.1043
+          units: ms
+        time_per_output_token:
+          mean: 24.3235
+          p0p1: 21.6063
+          p1: 21.7743
+          p10: 22.4594
+          p5: 22.2195
+          p50: 24.3859
+          p75: 25.2375
+          p90: 25.5548
+          p95: 26.0397
+          p99: 26.493
+          p99p9: 26.5089
+          stddev: 1.2051
+          units: ms/token
+        time_to_first_token:
+          mean: 835.0397
+          p0p1: 711.5743
+          p1: 715.5803
+          p10: 761.3981
+          p5: 735.5619
+          p50: 836.9362
+          p75: 889.3386
+          p90: 910.0846
+          p95: 911.7571
+          p99: 914.7835
+          p99p9: 915.4356
+          stddev: 57.9521
+          units: ms
+      requests:
+        failures: 0
+        input_length:
+          mean: 9073.65625
+          units: count
+        output_length:
+          mean: 899.09375
+          units: count
+        total: 32
+      throughput:
+        output_token_rate:
+          mean: 153.4732
+          units: tokens/s
+        request_rate:
+          mean: 0.1707
+          units: queries/s
+        total_token_rate:
+          mean: 1702.325
+          units: tokens/s
+run:
+  time:
+    duration: PT187.466S
+    end: '2026-09-12T19:12:04Z'
+  uid: 00000000-0000-0000-0000-000000000000
+scenario:
+  load:
+    metadata:
+      cfg_id: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+      schema_version: 0.0.1
+    native: {}
+    standardized:
+      concurrency: 4
+      input_seq_len:
+        distribution: other
+        value: 9073.65625
+      parallelism: 1
+      rate_qps: .inf
+      source: sampled
+      stage: 0
+      tool: inferencemax
+      tool_version: ''
+version: '0.2'
