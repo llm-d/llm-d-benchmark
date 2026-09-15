@@ -11,8 +11,8 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # Time-series embedding allow-list.
 # Keys must be existing TimeSeriesResourceMetrics fields, and units must satisfy
-# that field's validator. Hardware fields are v0.2; the engine and router fields
-# below it are v0.2.1, so a report carrying them must declare that version.
+# that field's validator. Hardware fields date from 0.2; the engine and router
+# fields below them were added in 0.2.1 (see _V0_2_TIME_SERIES_FIELDS).
 # Spec is either {"metric": <prometheus name>} or {"ratio": (num, den)}.
 # ---------------------------------------------------------------------------
 _EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
@@ -138,9 +138,10 @@ _EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
 
 _DEFAULT_TS_MAX_POINTS = 256
 
-# Fields above are v0.2 TimeSeriesResourceMetrics; the rest were introduced in
-# v0.2.1. A report that embeds any of them must declare the later version, since
-# v0.2 forbids extra keys on that model.
+# Fields above date from 0.2; the rest were added in 0.2.1. The converters
+# declare 0.2.1, but a report converted before that revision declares 0.2 and
+# is bumped when it embeds any of the later fields, so the version it declares
+# stays accurate for readers that predate 0.2.1.
 _V0_2_TIME_SERIES_FIELDS = frozenset(
     (
         "kv_cache_usage",

@@ -13,7 +13,6 @@ import numpy as np
 from .base import BenchmarkReport
 from .schema_v0_1 import BenchmarkReportV01
 from .schema_v0_2 import BenchmarkReportV02
-from .schema_v0_2_1 import BenchmarkReportV021
 
 
 def check_file(file_path: str) -> None:
@@ -144,10 +143,11 @@ def load_benchmark_report(data: dict[str, Any]) -> BenchmarkReport:
 
     if version == "0.1":
         return BenchmarkReportV01(**data)
-    if version == "0.2":
+    # One model implements the 0.2 line. A report declaring an earlier 0.2
+    # revision validates against the current one unchanged and keeps its
+    # declared version.
+    if version in ("0.2", "0.2.1"):
         return BenchmarkReportV02(**data)
-    if version == "0.2.1":
-        return BenchmarkReportV021(**data)
     raise ValueError(f"Unsupported schema version: {version}")
 
 
@@ -188,8 +188,6 @@ def make_json_schema(version: str = "0.2") -> str:
     """
     if version == "0.1":
         return json.dumps(BenchmarkReportV01.model_json_schema(), indent=2)
-    if version == "0.2":
+    if version in ("0.2", "0.2.1"):
         return json.dumps(BenchmarkReportV02.model_json_schema(), indent=2)
-    if version == "0.2.1":
-        return json.dumps(BenchmarkReportV021.model_json_schema(), indent=2)
     raise ValueError(f"Unsupported schema version: {version}")

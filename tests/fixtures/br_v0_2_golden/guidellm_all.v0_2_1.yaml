@@ -328,7 +328,7 @@
         stage: 0
         tool: guidellm
         tool_version: ''
-  version: '0.2'
+  version: 0.2.1
 - results:
     request_performance:
       aggregate:
@@ -659,4 +659,4 @@
         stage: 1
         tool: guidellm
         tool_version: ''
-  version: '0.2'
+  version: 0.2.1
