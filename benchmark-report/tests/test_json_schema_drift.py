@@ -18,10 +18,11 @@ from llmd_benchmark_report import make_json_schema
 
 PKG_DIR = Path(__file__).resolve().parent.parent / "llmd_benchmark_report"
 
+# 0.2 and 0.2.1 share one file: a single model implements the 0.2 line.
 SCHEMA_FILES = {
     "0.1": "br_v0_1_json_schema.json",
     "0.2": "br_v0_2_json_schema.json",
-    "0.2.1": "br_v0_2_1_json_schema.json",
+    "0.2.1": "br_v0_2_json_schema.json",
 }
 
 

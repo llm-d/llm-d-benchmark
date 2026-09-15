@@ -95,4 +95,4 @@ scenario:
       stage: 0
       tool: inferencemax
       tool_version: ''
-version: '0.2'
+version: 0.2.1

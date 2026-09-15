@@ -32,7 +32,12 @@ scenario:
   load:
     metadata:
       cfg_id: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+      concurrent_with:
+      - second
+      - third
       schema_version: 0.0.1
+      treatment: first
+      treatment_group: combined
     native:
       config: {}
     standardized:
@@ -47,4 +52,4 @@ scenario:
       stage: 0
       tool: inference-perf
       tool_version: ''
-version: '0.2'
+version: 0.2.1

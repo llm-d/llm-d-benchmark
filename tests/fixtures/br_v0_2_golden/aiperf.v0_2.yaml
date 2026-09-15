@@ -132,4 +132,4 @@ scenario:
       stage: 0
       tool: aiperf
       tool_version: ''
-version: '0.2'
+version: 0.2.1
