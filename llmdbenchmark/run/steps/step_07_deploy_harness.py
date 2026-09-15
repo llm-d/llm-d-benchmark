@@ -334,9 +334,21 @@ class DeployHarnessStep(Step):
         )
 
         if context.reset_caches_required and not context.reset_caches:
-            context.logger.log_warning(
+            # A "required" reset that never runs would let every treatment
+            # measure an unknown cache state, so reject the configuration.
+            msg = (
                 "reset_caches_required is set but reset_caches is not -- no reset "
-                "runs, so nothing can be confirmed; the flag has no effect"
+                "would run, so a cold cache cannot be confirmed; set "
+                "reset_caches: true or drop reset_caches_required"
+            )
+            context.logger.log_error(msg)
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="reset_caches_required without reset_caches",
+                errors=[msg],
+                stack_name=stack_name,
             )
 
         for batch_idx, batch in enumerate(batches, 1):

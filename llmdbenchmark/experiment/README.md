@@ -103,8 +103,8 @@ Notes and limits:
   warning (no serving pods, a 404 with dev mode off, `success: false` after
   the retries) aborts the run before the group starts, since nothing is
   running yet. Off by default: a plain `reset_caches` run warns and continues.
-  Needs `reset_caches`; cannot see through LMCache, which reports success
-  without clearing.
+  Setting it without `reset_caches` fails the run immediately. It cannot see
+  through LMCache, which reports success without clearing.
 - **`treatment_stop_on_error` stops at a group boundary.** The current group
   finishes first, since killing in-flight siblings would orphan pods and
   half-collect results.

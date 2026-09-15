@@ -124,7 +124,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     reset_caches: bool = False
     # When True, any reset_caches warning (no pods, 404 with dev mode off,
     # success=false after the retries) aborts the run before that treatment
-    # group starts instead of running it warm. Needs ``reset_caches``; cannot
+    # group starts instead of running it warm. Rejected without ``reset_caches``; cannot
     # see through LMCache. Top-level ``reset_caches_required`` key in the YAML.
     reset_caches_required: bool = False
     # Retry a failed treatment up to this many times, each attempt deleting

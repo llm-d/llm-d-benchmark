@@ -505,7 +505,12 @@ class _Recorder:
 
 
 def _reset_required_run(
-    tmp_path: Path, monkeypatch: Any, *, required: bool, reset_warnings: list[str]
+    tmp_path: Path,
+    monkeypatch: Any,
+    *,
+    required: bool,
+    reset_warnings: list[str],
+    reset_caches: bool = True,
 ) -> tuple[Any, _Logger, Any]:
     """Drive execute() with the cache reset faked to return *reset_warnings*."""
     stack_path = tmp_path / "plan" / "stack"
@@ -522,7 +527,7 @@ def _reset_required_run(
         harness_namespace="bench",
         logger=logger,
         cmd=_Command(),
-        reset_caches=True,
+        reset_caches=reset_caches,
         reset_caches_required=required,
     )
     context.deployed_endpoints["stack"] = "http://endpoint"
@@ -576,3 +581,19 @@ def test_reset_required_with_confirmed_reset_runs(
 
     assert result.success
     assert run_treatment.calls == 1
+
+
+def test_reset_required_without_reset_caches_fails_fast(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    result, logger, run_treatment = _reset_required_run(
+        tmp_path, monkeypatch, required=True, reset_warnings=[], reset_caches=False
+    )
+
+    assert not result.success
+    assert run_treatment.calls == 0
+    assert any(
+        "reset_caches_required is set but reset_caches is not" in e
+        for e in result.errors
+    )
+    assert logger.errors
