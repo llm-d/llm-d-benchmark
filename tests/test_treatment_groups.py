@@ -25,7 +25,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import ValidationError
 
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.experiment.parser import (
@@ -494,12 +493,12 @@ class TestReportMetadata:
 
         assert probe.stdout.split("\n") == [name, group, siblings]
 
-    def test_grouping_belongs_to_v0_2_1_only(self) -> None:
-        """v0.2 forbids these fields, so a populator on the shared v0.2 path
-        makes every report fail validation -- which is how it reached a cluster
-        the first time."""
-        from llmd_benchmark_report.schema_v0_2 import LoadMetadata as LoadMetadataV02
-        from llmd_benchmark_report.schema_v0_2_1 import LoadMetadata
+    # LoadMetadata with treatment "first", group "combined" and concurrent_with
+    # ["second"] keeps all three; with none of them, the shape of a report
+    # written before 0.2.1, it still validates and leaves all three None.
+    def test_grouping_is_optional_load_metadata(self) -> None:
+        """Reports converted before 0.2.1 carry no grouping and must still load."""
+        from llmd_benchmark_report.schema_v0_2 import LoadMetadata
 
         grouping = {
             "treatment": "first",
@@ -511,18 +510,10 @@ class TestReportMetadata:
         assert accepted.treatment == "first"
         assert accepted.concurrent_with == ["second"]
 
-        with pytest.raises(ValidationError):
-            LoadMetadataV02(**grouping)
-
-    def test_v0_2_converter_never_emits_the_grouping(self, monkeypatch) -> None:
-        """The v0.2 populator must stay clean of the v0.2.1-only fields."""
-        import inspect
-
-        from llmd_benchmark_report import native_to_br0_2
-
-        source = inspect.getsource(native_to_br0_2._populate_load)
-
-        assert "LLMDBENCH_TREATMENT" not in source
+        legacy = LoadMetadata()
+        assert legacy.treatment is None
+        assert legacy.treatment_group is None
+        assert legacy.concurrent_with is None
 
     @pytest.mark.parametrize(
         "environment, expected",
@@ -542,7 +533,7 @@ class TestReportMetadata:
             ({}, {}),
         ],
     )
-    def test_v0_2_1_converter_reads_the_environment(
+    def test_converter_reads_the_environment(
         self, monkeypatch, environment, expected
     ) -> None:
         for var in (
@@ -554,30 +545,25 @@ class TestReportMetadata:
         for var, value in environment.items():
             monkeypatch.setenv(var, value)
 
-        from llmd_benchmark_report import native_to_br0_2_1
+        from llmd_benchmark_report import native_to_br0_2
 
-        assert native_to_br0_2_1._treatment_metadata() == expected
+        assert native_to_br0_2._treatment_metadata() == expected
 
-    def test_session_reports_are_v0_2_1_and_carry_the_grouping(
+    # An empty session lifecycle file converted with treatment "first", group
+    # "combined" and concurrent_with "second" gives a 0.2.1 report whose
+    # scenario.load.metadata carries exactly those three values.
+    def test_session_reports_carry_the_grouping(
         self, monkeypatch, tmp_path: Path
     ) -> None:
-        """Trace-replay workloads produce only a session report.
-
-        The v0.2.1 module re-exported the v0.2 session converter, so ``-b 0.2.1``
-        silently produced a v0.2 report that cannot hold the grouping at all.
-        """
+        """Trace-replay workloads produce only a session report, so the session
+        converter has to carry the grouping itself."""
         monkeypatch.setenv("LLMDBENCH_TREATMENT_NAME", "first")
         monkeypatch.setenv("LLMDBENCH_TREATMENT_GROUP", "combined")
         monkeypatch.setenv("LLMDBENCH_TREATMENT_CONCURRENT_WITH", "second")
 
-        from llmd_benchmark_report import native_to_br0_2, native_to_br0_2_1
+        from llmd_benchmark_report import native_to_br0_2
 
-        assert (
-            native_to_br0_2_1.import_inference_perf_session
-            is not native_to_br0_2.import_inference_perf_session
-        )
-
-        report = native_to_br0_2_1.import_inference_perf_session(
+        report = native_to_br0_2.import_inference_perf_session(
             str(session_results(tmp_path))
         )
         metadata = report.scenario.load.metadata
@@ -586,20 +572,6 @@ class TestReportMetadata:
         assert metadata.treatment == "first"
         assert metadata.treatment_group == "combined"
         assert metadata.concurrent_with == ["second"]
-
-    def test_v0_2_session_reports_omit_the_grouping(
-        self, monkeypatch, tmp_path: Path
-    ) -> None:
-        monkeypatch.setenv("LLMDBENCH_TREATMENT_NAME", "first")
-
-        from llmd_benchmark_report import native_to_br0_2
-
-        report = native_to_br0_2.import_inference_perf_session(
-            str(session_results(tmp_path))
-        )
-
-        assert report.version == "0.2"
-        assert report.scenario.load.metadata.model_dump().get("treatment") is None
 
 
 class TestHarnessMemory:

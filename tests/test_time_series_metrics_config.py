@@ -239,7 +239,7 @@ def test_embedded_time_series_validates_under_v0_2(tmp_path: Path) -> None:
 
 def test_embedded_time_series_covers_serving_metrics(tmp_path: Path) -> None:
     """Scheduling, prefix-cache and pool fields embed and validate under v0.2.1."""
-    from llmdbenchmark.analysis.benchmark_report.schema_v0_2_1 import Observability
+    from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import Observability
 
     metrics_dir = tmp_path / "metrics"
     raw_dir = metrics_dir / "raw"

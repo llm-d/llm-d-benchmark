@@ -15,7 +15,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from llmdbenchmark.analysis.benchmark_report import native_to_br0_2_1
 from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
     _get_harness_meta,
     import_inference_perf,
@@ -333,17 +332,6 @@ def test_label_ignores_the_model_from_every_source(tmp_path, monkeypatch) -> Non
     run = import_inference_perf(results_file).run
 
     assert run.description == EXPERIMENT_ID
-
-
-def test_v0_2_1_carries_the_same_identity(tmp_path, monkeypatch) -> None:
-    """v0.2.1 inherits the v0.2 identity fix rather than re-implementing it."""
-    results_file = _setup_run(tmp_path, monkeypatch, experiment_id=EXPERIMENT_ID)
-
-    report = native_to_br0_2_1.import_inference_perf(results_file)
-
-    assert report.version == "0.2.1"
-    assert report.run.description == EXPERIMENT_ID
-    assert report.run.eid == str(uuid.uuid5(uuid.NAMESPACE_URL, EXPERIMENT_ID))
 
 
 def test_driver_side_analysis_populates_identity(tmp_path, monkeypatch) -> None:
