@@ -910,6 +910,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [No-Kubernetes (nok8s) deploy method](docs/nok8s.md)
 - [Reproducibility](docs/reproducibility.md)
 - [Observability](docs/observability.md)
+- [BenchFlow convergence proposal](docs/proposals/benchflow-convergence.md)
 - [Quickstart](docs/quickstart.md)
 - [Resource Requirements](docs/resource_requirements.md)
 - [Autoscaling: WVA & EPP+KEDA Saturation](docs/workload-variant-autoscaler.md)
