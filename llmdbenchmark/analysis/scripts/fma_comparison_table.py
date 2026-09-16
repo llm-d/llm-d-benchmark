@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Render the FMA autoscaling comparison table (baseline vs FMA warm/hot start).
 
-Shared by the EPP+KEDA (``ci-benchmark-ocp-fma-keda``) and WVA
-(``ci-benchmark-ocp-fma-wva``) nightly workflows
+Used by the EPP+KEDA (``ci-benchmark-ocp-fma-keda``) nightly workflow.
+
+The four latency rows report p95, and their labels follow whatever
+``--percentile`` selects. p95 is the default because the p99 tail is dominated by
+ramp-queued requests and rare stalls common to every arm, which makes it weakly
+discriminating between actuation paths; pass ``--percentile p99`` for
+worst-case/SLO questions.
 
 Per-pass artifacts consumed:
   * ``summary_lifecycle_metrics.json``              -- harness latency/throughput
@@ -299,9 +304,9 @@ ROWS = [
         "",
     ),
     ("Latency mean (ms)", "successes", "latency", "request_latency", "mean", 1000, ""),
-    ("Latency p99 (ms)", "successes", "latency", "request_latency", "p99", 1000, ""),
+    ("Latency p95 (ms)", "successes", "latency", "request_latency", "p95", 1000, ""),
     ("TTFT mean (ms)", "successes", "latency", "time_to_first_token", "mean", 1000, ""),
-    ("TTFT p99 (ms)", "successes", "latency", "time_to_first_token", "p99", 1000, ""),
+    ("TTFT p95 (ms)", "successes", "latency", "time_to_first_token", "p95", 1000, ""),
     (
         "TPOT mean (ms)",
         "successes",
@@ -311,9 +316,9 @@ ROWS = [
         1000,
         "",
     ),
-    ("TPOT p99 (ms)", "successes", "latency", "time_per_output_token", "p99", 1000, ""),
+    ("TPOT p95 (ms)", "successes", "latency", "time_per_output_token", "p95", 1000, ""),
     ("ITL mean (ms)", "successes", "latency", "inter_token_latency", "mean", 1000, ""),
-    ("ITL p99 (ms)", "successes", "latency", "inter_token_latency", "p99", 1000, ""),
+    ("ITL p95 (ms)", "successes", "latency", "inter_token_latency", "p95", 1000, ""),
 ]
 
 # Rows that are additive across inference-perf workers (each worker's summary
@@ -389,9 +394,32 @@ def main():
         type=float,
         default=1.0,
         help="Cost row multiplier: cost = avg replicas × this (default 1.0, so "
-        "Cost == avg replicas, matching the WVA benchmark doc).",
+        "Cost == avg replicas, matching the benchmark doc).",
+    )
+    ap.add_argument(
+        "--percentile",
+        choices=("p95", "p99"),
+        default="p95",
+        help="Tail reported by the four latency percentile rows, and used in "
+        "their labels (default p95).",
     )
     args = ap.parse_args()
+
+    # Labels derive from the same value that selects the data, so a table cannot
+    # claim one percentile while reporting another.
+    rows = [
+        (
+            (
+                row[0].replace("p95", args.percentile),
+                *row[1:4],
+                args.percentile,
+                *row[5:],
+            )
+            if row[4] == "p95"
+            else row
+        )
+        for row in ROWS
+    ]
 
     dirs = (args.baseline_dir, args.warmstart_dir, args.hotstart_dir)
     rdirs = [newest_run_dir(d) for d in dirs]
@@ -408,7 +436,7 @@ def main():
         f"| Metric | {args.col_baseline} | {args.col_warmstart} | {args.col_hotstart} |"
     )
     out.append("|---|---:|---:|---:|")
-    for row in ROWS:
+    for row in rows:
         label = row[0]
         keys = [k for k in row[1:-2] if k is not None]
         scale = row[-2] or 1.0

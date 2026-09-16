@@ -47,7 +47,25 @@ spec:
    feeds the derived Helm release name elsewhere, and a path mangles that
    into an invalid (leading-dash) release name. #}
 {% set _fma_model_arg = (fma.modelMountPath + '/' + model.path) if (fma.launcher.loadModelFromLocalDir | default(false)) else model.name %}
-    options: "--model {{ _fma_model_arg }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size {{ fma.launcher.tensorParallelSize | default(1) }}{% if fma.launcher.enforceEager | default(false) %} --enforce-eager{% endif %}"
+{# Pin the advertised ID to the repo ID when --model is a local path, or vLLM
+   registers the model as that path and verify_model fails. #}
+{% set _fma_served_model_name = model.name if (fma.launcher.loadModelFromLocalDir | default(false)) else none %}
+{# Prefix caching, block size and logging all inherit from the keys the baseline
+   (non-FMA) chart reads, so an FMA arm cannot silently desync from the arm it is
+   compared against. Override only to diverge on purpose. #}
+{% set _fma_block_size = fma.launcher.blockSize | default(model.blockSize, true) %}
+{# `is not boolean`, not `is none`: an absent key is Undefined, which would fall
+   through and drop the flag. Keeps an explicit `false` working as an override.
+   vllmCommon may be absent entirely (standalone stacks, minimal render contexts),
+   so reach through a defaulted dict rather than dereferencing it directly. #}
+{% set _vllm_flags = (vllmCommon | default({}, true)).flags | default({}, true) %}
+{% set _fma_disable_log_requests = _vllm_flags.disableLogRequests | default(false) if fma.launcher.disableLogRequests is not boolean else fma.launcher.disableLogRequests %}
+{% set _fma_disable_uvicorn = _vllm_flags.disableUvicornAccessLog | default(false) if fma.launcher.disableUvicornAccessLog is not boolean else fma.launcher.disableUvicornAccessLog %}
+{# Inherits vllmCommon.flags.noPrefixCaching, the key _macros.j2 emits
+   --no-enable-prefix-caching from, so a scenario that turns caching off on the
+   baseline turns it off here too. #}
+{% set _fma_no_prefix_caching = _vllm_flags.noPrefixCaching | default(false) if fma.launcher.disablePrefixCaching is not boolean else fma.launcher.disablePrefixCaching %}
+    options: "--model {{ _fma_model_arg }}{% if _fma_served_model_name %} --served-model-name {{ _fma_served_model_name }}{% endif %} --enable-sleep-mode{% if _fma_no_prefix_caching %} --no-enable-prefix-caching{% endif %} --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if _fma_block_size %} --block-size {{ _fma_block_size }}{% endif %}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size {{ fma.launcher.tensorParallelSize | default(1) }}{% if fma.launcher.enforceEager | default(false) %} --enforce-eager{% endif %}{% if _fma_disable_log_requests %} --no-enable-log-requests{% endif %}{% if _fma_disable_uvicorn %} --disable-uvicorn-access-log{% endif %}"
     port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1

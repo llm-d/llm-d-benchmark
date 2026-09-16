@@ -1541,8 +1541,7 @@ fma:
   # Pin FMA launchers + requester to a single GPU node. When enabled, standup
   # (step_06) picks a GPU node with free GPUs and CPU (preferring a dedicated
   # one), labels it <nodeLabel>=true, and sizes launchers/requesters to its free
-  # GPUs. Standup fails if no node qualifies. Off by default; opt in per-scenario
-  # (used by cicd/ocp-wva-fma-hotstart).
+  # GPUs. Standup fails if no node qualifies. Off by default; opt in per-scenario.
   launcherNodeSelection:
     enabled: false
     nodeLabel: fma-hotstart
@@ -1588,6 +1587,15 @@ fma:
     # -- it feeds the derived Helm release name, and a path mangles that
     # into an invalid (leading-dash) release name.
     loadModelFromLocalDir: false
+    # Launcher vLLM flags. Leave null/false to inherit the keys the baseline
+    # (non-FMA) chart reads (vllmCommon.flags.*, model.blockSize) so an FMA arm
+    # tracks the arm it is compared against; set them only to diverge on purpose.
+    disableLogRequests: null
+    disableUvicornAccessLog: null
+    blockSize: null
+    # null inherits vllmCommon.flags.noPrefixCaching (the baseline's key), so
+    # caching is ON unless the baseline turns it off. true/false forces either way.
+    disablePrefixCaching: null
     # Tensor parallelism for models that do not fit on a single GPU (e.g.
     # Qwen3-32B on an 80GB H100). > 1 feeds --tensor-parallel-size and, since
     # TP workers exchange over a shared-memory message queue, provisions a

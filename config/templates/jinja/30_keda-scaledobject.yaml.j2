@@ -61,6 +61,8 @@ spec:
   advanced:
     horizontalPodAutoscalerConfig:
       behavior:
-{{ eppKedaSaturation.scaledObject.behavior | toyaml | indent(6, first=True) }}
+{# indent(8), not 6: `behavior:` sits at column 6, so a 6-space body makes YAML
+   read `behavior` as null and drop the whole policy silently. #}
+{{ eppKedaSaturation.scaledObject.behavior | toyaml | indent(8, first=True) }}
 {% endif %}
 {% endif %}
