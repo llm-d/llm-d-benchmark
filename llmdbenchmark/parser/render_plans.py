@@ -2200,14 +2200,21 @@ class RenderPlans:
             merged_values = self.deep_merge(merged_values, stack_overrides)
 
         # Raises RuntimeError if "auto" values are present but cluster is
-        # unreachable. Skipped for the no-Kubernetes (nok8s) method: there is no
-        # cluster to scan, and the accelerator auto-detection fields belong to
-        # the (disabled) k8s methods.
+        # unreachable. Skipped for the no-Kubernetes (nok8s) method and
+        # kustomize method: kustomize deployments use upstream guide manifests
+        # and ignore Helm accelerator auto-detection fields (which fail on
+        # clusters where GPU node pools scale to zero prior to deployment).
         cli_nok8s = bool(self.cli_methods) and "nok8s" in [
             m.strip() for m in self.cli_methods.split(",")
         ]
         is_nok8s = cli_nok8s or merged_values.get("nok8s", {}).get("enabled", False)
-        if self.cluster_resource_resolver and not is_nok8s:
+        cli_kustomize = bool(self.cli_methods) and "kustomize" in [
+            m.strip() for m in self.cli_methods.split(",")
+        ]
+        is_kustomize = cli_kustomize or merged_values.get("kustomize", {}).get(
+            "enabled", False
+        )
+        if self.cluster_resource_resolver and not is_nok8s and not is_kustomize:
             merged_values = self.cluster_resource_resolver.resolve_all(merged_values)
 
         merged_values = self._apply_accelerator_profile(merged_values)

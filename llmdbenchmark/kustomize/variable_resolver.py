@@ -154,7 +154,11 @@ class GuideVariableResolver:
         """Swap the default ``gpu/vllm`` backend for the configured one."""
         if self._accelerator_backend == DEFAULT_ACCEL_BACKEND:
             return text
-        return text.replace(
-            f"modelserver/{DEFAULT_ACCEL_BACKEND}",
+        default_pattern = (
+            rf"modelserver/{re.escape(DEFAULT_ACCEL_BACKEND)}(?=/|\s|$|\"|\')"
+        )
+        return re.sub(
+            default_pattern,
             f"modelserver/{self._accelerator_backend}",
+            text,
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import shlex
 import tempfile
 from pathlib import Path
@@ -663,10 +664,19 @@ class KustomizeDeployStep(Step):
 
     @staticmethod
     def _select_modelserver_command(commands, accel_backend, resolver):
+        pattern = rf"modelserver/{re.escape(accel_backend)}(?=/|\s|$|\"|\')"
+        infra_provider = resolver._variables.get("INFRA_PROVIDER", "")
+        matches = []
         for gc in commands:
             resolved = resolver.resolve(gc.raw)
-            if f"modelserver/{accel_backend}" in resolved:
-                return gc
+            if re.search(pattern, resolved):
+                matches.append((gc, resolved))
+        if matches:
+            if infra_provider:
+                for gc, resolved in matches:
+                    if f"/{infra_provider}" in resolved:
+                        return gc
+            return matches[0][0]
         if commands:
             return commands[0]
         return None

@@ -22,12 +22,15 @@ echo ""
 echo "=== Disk usage on node ==="
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
 echo ""
-echo "=== Failed pod descriptions ==="
-for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+echo "=== Failed or restarting pod descriptions ==="
+failed_pods=$(kubectl get pods -n "$NS" -o json 2>/dev/null | jq -r '.items[] | select(.status.phase != "Succeeded" and (.status.phase != "Running" or any(.status.containerStatuses[]?; .ready == false or .restartCount > 0))) | "pod/" + .metadata.name')
+for pod in $failed_pods; do
   echo "--- $pod ---"
-  kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
-  echo "--- logs ---"
-  kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
+  kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -30
+  echo "--- current logs ---"
+  kubectl logs -n "$NS" "$pod" --tail=50 --all-containers 2>/dev/null || true
+  echo "--- previous logs ---"
+  kubectl logs -n "$NS" "$pod" --previous --tail=50 --all-containers 2>/dev/null || true
 done
 echo ""
 echo "=== Events ==="

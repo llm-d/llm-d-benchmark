@@ -48,9 +48,15 @@ class WorkloadMonitoringStep(Step):
             self._load_resource_config(context, plan_config)
 
         is_local = context.is_kind or context.is_minikube
-        if is_local:
+        is_kustomize_only = (context.deployed_methods or []) == ["kustomize"]
+        if is_local or is_kustomize_only:
+            reason = (
+                "Kustomize deployment"
+                if is_kustomize_only
+                else f"Local cluster ({context.platform_type})"
+            )
             context.logger.log_info(
-                f"Local cluster ({context.platform_type}) detected -- "
+                f"{reason} detected -- "
                 "skipping resource validation and capacity planning"
             )
         else:

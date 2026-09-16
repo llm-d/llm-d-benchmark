@@ -470,7 +470,7 @@ class BaseSmoketest:
             gateway_port,
             model_name,
             plan_config,
-            max_retries=1,
+            max_retries=3,
             url_path_prefix=url_path_prefix,
         )
         if test_result:

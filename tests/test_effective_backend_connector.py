@@ -67,3 +67,23 @@ def test_connector_surrounding_slashes_are_trimmed():
         "guideVariableOverrides": {"CONNECTOR": "/moriio/"},
     }
     assert GuideVariableResolver.effective_backend(kust) == "amd/vllm/moriio"
+
+
+def test_resolve_does_not_corrupt_suffixed_backend_paths(tmp_path):
+    resolver = GuideVariableResolver(
+        guide_name="wide-ep-lws",
+        namespace="test-ns",
+        gaie_version="v1.6.0",
+        repo_path=str(tmp_path),
+        accelerator_backend="xpu/vllm",
+        variable_overrides={"INFRA_PROVIDER": "gke"},
+    )
+    gpu_suffixed = resolver.resolve(
+        "kubectl apply -k modelserver/gpu/vllm-deepseek-r1-0528/${INFRA_PROVIDER}"
+    )
+    assert gpu_suffixed == "kubectl apply -k modelserver/gpu/vllm-deepseek-r1-0528/gke"
+
+    standard = resolver.resolve(
+        "kubectl apply -k modelserver/gpu/vllm/${INFRA_PROVIDER}"
+    )
+    assert standard == "kubectl apply -k modelserver/xpu/vllm/gke"
