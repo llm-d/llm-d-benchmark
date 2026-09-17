@@ -642,7 +642,12 @@ class KustomizeDeployStep(Step):
         """Collapse consecutive duplicate segments in a POSIX path.
 
         e.g. "modelserver/gpu/vllm/native/native/cpu" -> "modelserver/gpu/vllm/native/cpu"
+
+        Only applied if `path` does not already exist on disk, since a real
+        directory may legitimately contain a repeated segment.
         """
+        if Path(path).exists():
+            return path
         parts = path.split("/")
         deduped: list[str] = []
         for part in parts:
