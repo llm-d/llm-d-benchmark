@@ -236,7 +236,7 @@ class KustomizeDeployStep(Step):
             ms_path = str(
                 Path(repo_path) / "guides" / guide_name / "modelserver" / accel_backend
             )
-
+        ms_path = self._dedupe_path_segments(ms_path)
         needs_wrapper = patches or (overlay_path and Path(overlay_path).is_dir())
 
         if needs_wrapper:
@@ -636,6 +636,20 @@ class KustomizeDeployStep(Step):
             if tok.startswith("-k") and len(tok) > 2:
                 return tok[2:]
         return None
+
+    @staticmethod
+    def _dedupe_path_segments(path: str) -> str:
+        """Collapse consecutive duplicate segments in a POSIX path.
+
+        e.g. "modelserver/gpu/vllm/native/native/cpu" -> "modelserver/gpu/vllm/native/cpu"
+        """
+        parts = path.split("/")
+        deduped: list[str] = []
+        for part in parts:
+            if part and deduped and deduped[-1] == part:
+                continue
+            deduped.append(part)
+        return "/".join(deduped)
 
     @staticmethod
     def _select_modelserver_command(commands, accel_backend, resolver):
