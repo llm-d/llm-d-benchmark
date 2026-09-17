@@ -86,6 +86,28 @@ _EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
         ),
         "units": "percent",
     },
+    # KV offload transfer counters. One metric per direction, distinguished only
+    # by transfer_type, so each needs a label selector
+    "kv_offload_store_bytes": {
+        "metric": "vllm:kv_offload_total_bytes_total",
+        "labels": {"transfer_type": "GPU_to_CPU"},
+        "units": "bytes",
+    },
+    "kv_offload_load_bytes": {
+        "metric": "vllm:kv_offload_total_bytes_total",
+        "labels": {"transfer_type": "CPU_to_GPU"},
+        "units": "bytes",
+    },
+    "kv_offload_store_time": {
+        "metric": "vllm:kv_offload_total_time_total",
+        "labels": {"transfer_type": "GPU_to_CPU"},
+        "units": "s",
+    },
+    "kv_offload_load_time": {
+        "metric": "vllm:kv_offload_total_time_total",
+        "labels": {"transfer_type": "CPU_to_GPU"},
+        "units": "s",
+    },
     # Token throughput counters
     "prompt_tokens": {
         "metric": "vllm:prompt_tokens_total",
@@ -384,14 +406,18 @@ def _build_embedded_time_series(
         clip_to_window,
         collect_time_series_data,
         compute_ratio_series,
+        series_key,
         series_points,
     )
 
-    pod_data = collect_time_series_data(metrics_dir)
+    specs = _embed_time_series_specs()
+    label_names = frozenset(
+        name for spec in specs.values() for name in (spec.get("labels") or {})
+    )
+    pod_data = collect_time_series_data(metrics_dir, label_names)
     if not pod_data:
         return set(), {"datapoints": 0, "datapoints_available": 0}
 
-    specs = _embed_time_series_specs()
     components = obs.setdefault("components", [])
     by_replica = {c.get("replica_id"): c for c in components}
     embedded: set[str] = set()
@@ -410,7 +436,11 @@ def _build_embedded_time_series(
             if ratio:
                 points = compute_ratio_series(pod_metrics, ratio[0], ratio[1])
             else:
-                points = pod_metrics.get(spec.get("metric", ""), [])
+                key = spec.get("metric", "")
+                labels = spec.get("labels")
+                if labels:
+                    key = series_key(key, labels)
+                points = pod_metrics.get(key, [])
             if points:
                 available.add(field)
                 total += len(points)

@@ -231,6 +231,10 @@ class TimeSeriesResourceMetrics(TimeSeriesResourceMetricsV02, UnitsValidatedMode
         "external_prefix_cache_hit_rate": UNITS_PORTION,
         "prompt_tokens": UNITS_QUANTITY,
         "generation_tokens": UNITS_QUANTITY,
+        "kv_offload_store_bytes": UNITS_MEMORY,
+        "kv_offload_load_bytes": UNITS_MEMORY,
+        "kv_offload_store_time": UNITS_TIME,
+        "kv_offload_load_time": UNITS_TIME,
         "pool_avg_kv_cache_utilization": UNITS_PORTION,
         "pool_avg_queue_size": UNITS_QUANTITY,
         "pool_avg_running_requests": UNITS_QUANTITY,
@@ -259,6 +263,14 @@ class TimeSeriesResourceMetrics(TimeSeriesResourceMetricsV02, UnitsValidatedMode
     """Cumulative prompt tokens processed over time."""
     generation_tokens: TimeSeriesData | None = None
     """Cumulative generated tokens over time."""
+    kv_offload_store_bytes: TimeSeriesData | None = None
+    """Cumulative bytes written from GPU to the offload tier."""
+    kv_offload_load_bytes: TimeSeriesData | None = None
+    """Cumulative bytes read back from the offload tier to GPU."""
+    kv_offload_store_time: TimeSeriesData | None = None
+    """Cumulative time spent on GPU-to-offload transfers."""
+    kv_offload_load_time: TimeSeriesData | None = None
+    """Cumulative time spent on offload-to-GPU transfers."""
     pool_avg_kv_cache_utilization: TimeSeriesData | None = None
     """Router view of mean KV cache utilization across the pool."""
     pool_avg_queue_size: TimeSeriesData | None = None

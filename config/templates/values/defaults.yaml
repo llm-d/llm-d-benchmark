@@ -551,6 +551,8 @@ monitoring:
     - vllm:external_prefix_cache_queries_total
     - vllm:prefix_cache_hit_rate
     - vllm:external_prefix_cache_hit_rate
+    - vllm:kv_offload_total_bytes_total
+    - vllm:kv_offload_total_time_total
     - vllm:nixl_xfer_time_seconds_sum
     - vllm:nixl_xfer_time_seconds_count
     - vllm:nixl_bytes_transferred_sum

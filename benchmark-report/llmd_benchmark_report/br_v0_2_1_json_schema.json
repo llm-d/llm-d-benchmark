@@ -3348,6 +3348,54 @@
           "default": null,
           "description": "Cumulative generated tokens over time."
         },
+        "kv_offload_store_bytes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative bytes written from GPU to the offload tier."
+        },
+        "kv_offload_load_bytes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative bytes read back from the offload tier to GPU."
+        },
+        "kv_offload_store_time": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative time spent on GPU-to-offload transfers."
+        },
+        "kv_offload_load_time": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative time spent on offload-to-GPU transfers."
+        },
         "pool_avg_kv_cache_utilization": {
           "anyOf": [
             {
