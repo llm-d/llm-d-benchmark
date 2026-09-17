@@ -58,7 +58,9 @@ class PdDisaggregationValidator(BaseSmoketest):
         else:
             # Verify no prefill pods exist
             if is_kustomize and guide_name:
-                selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role=prefill"
+                selector = (
+                    f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role=prefill"
+                )
             else:
                 selector = f"llm-d.ai/model={model_short},llm-d.ai/role=prefill"
             prefill_pods = self.get_pod_specs(

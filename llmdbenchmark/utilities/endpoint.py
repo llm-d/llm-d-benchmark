@@ -474,7 +474,7 @@ def find_kustomize_endpoint(
     guide_name: str,
 ) -> tuple[str | None, str | None, str]:
     """Find the ``{guide_name}-epp`` service and pick the HTTP port."""
-    svc_name = f"{guide_name}-epp"
+    svc_name = f"{guide_name.split('/')[-1]}-epp"
     result = cmd.kube(
         "get",
         f"service/{svc_name}",

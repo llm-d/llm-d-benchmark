@@ -178,7 +178,9 @@ class UninstallHelmStep(Step):
         """
         # Delete the requester Deployment to start unbinding
         dep_selector = (
-            f"llm-d.ai/guide={guide_name}" if guide_name else "stood-up-via=fma"
+            f"llm-d.ai/guide={guide_name.split('/')[-1]}"
+            if guide_name
+            else "stood-up-via=fma"
         )
         context.logger.log_info(
             f"  Deleting FMA requester Deployment ({dep_selector}) in {namespace} "
@@ -233,7 +235,9 @@ class UninstallHelmStep(Step):
         # pods left stuck from a previous teardown.
         timeout = context.fma_teardown_timeout
         requester_selector = (
-            f"llm-d.ai/guide={guide_name}" if guide_name else "llm-d.ai/role=requester"
+            f"llm-d.ai/guide={guide_name.split('/')[-1]}"
+            if guide_name
+            else "llm-d.ai/role=requester"
         )
         pod_selectors = [
             "app.kubernetes.io/component=launcher",

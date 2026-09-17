@@ -288,7 +288,7 @@ class KustomizeDeployStep(Step):
         # --- 5. Wait ---
         context.logger.log_info(f"Waiting for pods (timeout={deploy_timeout}s)...")
         wait_result = cmd.wait_for_pods(
-            label=f"llm-d.ai/guide={guide_name}",
+            label=f"llm-d.ai/guide={guide_name.split('/')[-1]}",
             namespace=namespace,
             timeout=deploy_timeout,
             poll_interval=10,
@@ -303,7 +303,7 @@ class KustomizeDeployStep(Step):
             )
 
         # --- 6. Endpoint ---
-        epp_service = f"{guide_name}-epp"
+        epp_service = f"{guide_name.split('/')[-1]}-epp"
         context.deployed_endpoints[stack_path.name] = epp_service
         context.logger.log_info(f"Endpoint registered: {epp_service}")
 

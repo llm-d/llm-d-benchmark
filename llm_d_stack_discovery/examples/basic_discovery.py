@@ -8,10 +8,10 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from llm_d_stack_discovery.discovery.utils import kube_connect
-from llm_d_stack_discovery.discovery.tracer import StackTracer
-from llm_d_stack_discovery.output.formatter import OutputFormatter
-from llm_d_stack_discovery.output.benchmark_report import (
+from llm_d_stack_discovery.discovery.utils import kube_connect  # noqa: E402
+from llm_d_stack_discovery.discovery.tracer import StackTracer  # noqa: E402
+from llm_d_stack_discovery.output.formatter import OutputFormatter  # noqa: E402
+from llm_d_stack_discovery.output.benchmark_report import (  # noqa: E402
     discovery_to_stack_components,
     discovery_to_scenario_stack,
 )

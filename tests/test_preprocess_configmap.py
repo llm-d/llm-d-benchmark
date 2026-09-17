@@ -10,7 +10,9 @@ from llmdbenchmark.executor.context import ExecutionContext
 
 class _Logger:
     def log_info(self, *a: Any, **k: Any) -> None: ...
+
     def log_warning(self, *a: Any, **k: Any) -> None: ...
+
     def log_error(self, *a: Any, **k: Any) -> None: ...
 
 

@@ -258,9 +258,9 @@ class BaseSmoketest:
         for pod_type, role_label in roles_to_check:
             if is_kustomize and guide_name:
                 role_selector = (
-                    f"llm-d.ai/guide={guide_name}"
+                    f"llm-d.ai/guide={guide_name.split('/')[-1]}"
                     if role_label is None
-                    else f"llm-d.ai/guide={guide_name},llm-d.ai/role={role_label}"
+                    else f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role={role_label}"
                 )
             else:
                 role_selector = (
@@ -512,9 +512,7 @@ class BaseSmoketest:
             pod_ips_result = None
         else:
             if is_kustomize and guide_name:
-                primary_selector = (
-                    f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
-                )
+                primary_selector = f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role={primary_role[1]}"
             else:
                 primary_selector = (
                     f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
@@ -1115,7 +1113,9 @@ class BaseSmoketest:
         guide_name = _nested_get(config, "kustomize", "guideName") or ""
 
         if is_kustomize and guide_name:
-            role_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={role}"
+            role_selector = (
+                f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role={role}"
+            )
         else:
             role_selector = f"llm-d.ai/model={model_short},llm-d.ai/role={role}"
 
