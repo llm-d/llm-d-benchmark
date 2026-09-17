@@ -1,5 +1,5 @@
 # Schema version for this entire benchmark report
-version: '0.2.1'
+version: '0.2'
 
 run: # These are details on the benchmark run that produced these results
   # Unique ID, only this benchmark report has this ID
@@ -125,11 +125,6 @@ scenario:
       schema_version: 0.0.1
       cfg_id: a4e18f265cc33786a42b8a3f7ac2edcb
       description: "Optional description of workload"
-      # Treatment grouping, when several workloads ran against the same endpoint
-      treatment: weka_mixed
-      treatment_group: mixed
-      concurrent_with: # Treatments that ran at the same time as this one
-      - agentic_mixed
     standardized:
       tool: inference-perf
       tool_version: 0.3.0
@@ -260,54 +255,7 @@ results:
           p99: 2322.0
           p99p9: 2326.503
           max: 2328.0
-        request_size: # Total encoded request size, including media payloads
-          units: bytes
-          mean: 51234.0
-          p50: 48000.0
-          max: 120000.0
-        multimodal: # Per-modality payload statistics, for multi-modal workloads
-          image:
-            count:
-              units: count
-              mean: 2.0
-              max: 4.0
-            filesize:
-              units: bytes
-              mean: 40000.0
-            pixels:
-              units: pixels
-              mean: 2073600.0
-            aspect_ratio:
-              units: ratio
-              mean: 1.78
-          video:
-            count:
-              units: count
-              mean: 1.0
-            filesize:
-              units: bytes
-              mean: 800000.0
-            frames:
-              units: count
-              mean: 16.0
-          audio:
-            count:
-              units: count
-              mean: 1.0
-            duration:
-              units: s
-              mean: 10.0
       throughput:
-        # Per-modality delivery rates, for multi-modal workloads
-        image_rate:
-          units: images/s
-          mean: 24.0
-        video_rate:
-          units: videos/s
-          mean: 3.0
-        audio_rate:
-          units: audios/s
-          mean: 2.0
         input_token_rate:
           units: tokens/s
           mean: 2262.448

@@ -1,9 +1,21 @@
 """
-Benchmark report v0.2
+Benchmark report v0.2.x
+
+This module implements the whole 0.2 line, and VERSION is its current
+revision. Revisions only add optional fields, so a report written against an
+earlier 0.2 revision validates here unchanged.
+
+Revision history:
+
+  - 0.2.1: optional multi-modal payload statistics (image / video / audio) on
+    the request aggregates; optional engine and router serving signals on the
+    observability time series (scheduler queue depth, prefix-cache
+    effectiveness, token counters, router pool state); optional treatment
+    grouping on the workload metadata.
 """
 
 import datetime
-from typing import Any, Annotated
+from typing import Any, Annotated, ClassVar
 from enum import StrEnum, auto
 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validator
@@ -11,19 +23,22 @@ from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validato
 from .base import (
     BenchmarkReport,
     Units,
+    UnitsValidatedModel,
     UNITS_QUANTITY,
     UNITS_PORTION,
+    UNITS_RATIO,
     UNITS_TIME,
     UNITS_MEMORY,
     UNITS_GEN_LATENCY,
     UNITS_GEN_THROUGHPUT,
     UNITS_REQUEST_THROUGHPUT,
+    UNITS_MEDIA_THROUGHPUT,
     UNITS_POWER,
 )
 from .schema_v0_2_components import COMPONENTS
 
 # BenchmarkReport schema version
-VERSION = "0.2"
+VERSION = "0.2.1"
 
 # Default model_config to apply to Pydantic classes
 MODEL_CONFIG = ConfigDict(
@@ -95,6 +110,16 @@ class LoadMetadata(BaseModel):
     """Configuration ID, a hash of the workload configuration."""
     description: str | None = None
     """Descriptin of workload."""
+    treatment: str | None = None
+    """Name of the experiment treatment that produced this result set."""
+    treatment_group: str | None = None
+    """Group the treatment ran in; members of a group run concurrently."""
+    concurrent_with: list[str] | None = None
+    """Treatments that ran at the same time, against the same endpoint.
+
+    Non-empty means the metrics here reflect the combined load of those
+    treatments rather than this workload in isolation.
+    """
 
 
 class Distribution(StrEnum):
@@ -276,10 +301,107 @@ class Statistics(BaseModel):
     max: float | int | None = None
 
 
-class AggregateRequests(BaseModel):
+###############################################################################
+# Per-modality payload statistics
+#
+# Single-inheritance hierarchy so that fields shared across modalities are
+# declared exactly once:
+#
+#   MediaPayloadStats        count, filesize              (all modalities)
+#     └─ VisualPayloadStats  + pixels, aspect_ratio       (image, video)
+#         ├─ ImagePayloadStats
+#         └─ VideoPayloadStats  + frames
+#     └─ AudioPayloadStats   + duration
+#
+# Adding a modality is a new leaf class plus one field on MultiModalRequests.
+###############################################################################
+
+
+class MediaPayloadStats(UnitsValidatedModel):
+    """Payload statistics shared by every media modality.
+
+    All fields are distributions over the individual media instances the client
+    sent, derived purely from the request payload.
+    """
+
+    model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "count": UNITS_QUANTITY,
+        "filesize": UNITS_MEMORY,
+    }
+
+    count: Statistics | None = None
+    """Number of media instances of this modality per request."""
+    filesize: Statistics | None = None
+    """Encoded size per media instance."""
+
+
+class VisualPayloadStats(MediaPayloadStats):
+    """Payload statistics common to pixel-based modalities (image and video)."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "pixels": UNITS_QUANTITY,
+        "aspect_ratio": UNITS_RATIO,
+    }
+
+    pixels: Statistics | None = None
+    """Pixel count per media instance (height x width, summed over frames)."""
+    aspect_ratio: Statistics | None = None
+    """Aspect ratio (width / height) per media instance."""
+
+
+class ImagePayloadStats(VisualPayloadStats):
+    """Image payload statistics."""
+
+    model_config = MODEL_CONFIG.copy()
+
+
+class VideoPayloadStats(VisualPayloadStats):
+    """Video payload statistics."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"frames": UNITS_QUANTITY}
+
+    frames: Statistics | None = None
+    """Number of frames per video instance."""
+
+
+class AudioPayloadStats(MediaPayloadStats):
+    """Audio payload statistics."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"duration": UNITS_TIME}
+
+    duration: Statistics | None = None
+    """Duration per audio instance."""
+
+
+class MultiModalRequests(BaseModel):
+    """Per-modality request payload statistics for multi-modal workloads."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    image: ImagePayloadStats | None = None
+    """Image payload statistics."""
+    video: VideoPayloadStats | None = None
+    """Video payload statistics."""
+    audio: AudioPayloadStats | None = None
+    """Audio payload statistics."""
+
+
+class AggregateRequests(UnitsValidatedModel):
     """Request statistics."""
 
     model_config = MODEL_CONFIG.copy()
+
+    # Declarative rules for fields added in 0.2.1; the earlier fields keep
+    # their hand-written check below.
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"request_size": UNITS_MEMORY}
 
     total: int = Field(..., ge=0)
     """Total number of requests sent."""
@@ -291,6 +413,10 @@ class AggregateRequests(BaseModel):
     """Input sequence length."""
     output_length: Statistics | None = None
     """Output sequence length."""
+    request_size: Statistics | None = None
+    """Total encoded request size, including all media payloads."""
+    multimodal: MultiModalRequests | None = None
+    """Per-modality payload statistics."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -380,10 +506,18 @@ class AggregateLatency(BaseModel):
         return self
 
 
-class AggregateThroughput(BaseModel):
+class AggregateThroughput(UnitsValidatedModel):
     """Aggregate response throughput performance metrics."""
 
     model_config = MODEL_CONFIG.copy()
+
+    # Declarative rules for fields added in 0.2.1; the earlier fields keep
+    # their hand-written check below.
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "image_rate": UNITS_MEDIA_THROUGHPUT,
+        "video_rate": UNITS_MEDIA_THROUGHPUT,
+        "audio_rate": UNITS_MEDIA_THROUGHPUT,
+    }
 
     input_token_rate: Statistics | None = None
     """Input token rate."""
@@ -393,6 +527,12 @@ class AggregateThroughput(BaseModel):
     """Total token rate (input + output)."""
     request_rate: Statistics | None = None
     """Request (query) processing rate."""
+    image_rate: Statistics | None = None
+    """Image delivery rate."""
+    video_rate: Statistics | None = None
+    """Video delivery rate."""
+    audio_rate: Statistics | None = None
+    """Audio delivery rate."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -739,10 +879,32 @@ class ResourceMetrics(BaseModel):
         return self
 
 
-class TimeSeriesResourceMetrics(BaseModel):
+class TimeSeriesResourceMetrics(UnitsValidatedModel):
     """Time series resource utilization metrics."""
 
     model_config = MODEL_CONFIG.copy()
+
+    # Declarative rules for the engine and router serving signals added in
+    # 0.2.1; the hardware fields keep their hand-written check below.
+    # Counter-derived rates are percent, not fraction, because
+    # compute_ratio_series emits num/den*100.
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "num_requests_running": UNITS_QUANTITY,
+        "num_requests_waiting": UNITS_QUANTITY,
+        "num_preemptions": UNITS_QUANTITY,
+        "prefix_cache_queries": UNITS_QUANTITY,
+        "prefix_cache_hits": UNITS_QUANTITY,
+        "prefix_cache_hit_rate": UNITS_PORTION,
+        "external_prefix_cache_queries": UNITS_QUANTITY,
+        "external_prefix_cache_hits": UNITS_QUANTITY,
+        "external_prefix_cache_hit_rate": UNITS_PORTION,
+        "prompt_tokens": UNITS_QUANTITY,
+        "generation_tokens": UNITS_QUANTITY,
+        "pool_avg_kv_cache_utilization": UNITS_PORTION,
+        "pool_avg_queue_size": UNITS_QUANTITY,
+        "pool_avg_running_requests": UNITS_QUANTITY,
+        "pool_ready_pods": UNITS_QUANTITY,
+    }
 
     kv_cache_usage: TimeSeriesData | None = None
     """KV cache usage percentage over time."""
@@ -762,6 +924,36 @@ class TimeSeriesResourceMetrics(BaseModel):
     """CPU utilization percentage over time."""
     power_consumption: TimeSeriesData | None = None
     """Power consumption over time."""
+    num_requests_running: TimeSeriesData | None = None
+    """Requests actively decoding on the engine over time."""
+    num_requests_waiting: TimeSeriesData | None = None
+    """Requests queued ahead of the engine over time."""
+    num_preemptions: TimeSeriesData | None = None
+    """Cumulative scheduler preemptions over time."""
+    prefix_cache_queries: TimeSeriesData | None = None
+    """Cumulative tokens looked up in the local prefix cache."""
+    prefix_cache_hits: TimeSeriesData | None = None
+    """Cumulative tokens served from the local prefix cache."""
+    prefix_cache_hit_rate: TimeSeriesData | None = None
+    """Local prefix cache hit rate over time."""
+    external_prefix_cache_queries: TimeSeriesData | None = None
+    """Cumulative tokens looked up in the external (offloaded) prefix cache."""
+    external_prefix_cache_hits: TimeSeriesData | None = None
+    """Cumulative tokens served from the external prefix cache."""
+    external_prefix_cache_hit_rate: TimeSeriesData | None = None
+    """External prefix cache hit rate over time."""
+    prompt_tokens: TimeSeriesData | None = None
+    """Cumulative prompt tokens processed over time."""
+    generation_tokens: TimeSeriesData | None = None
+    """Cumulative generated tokens over time."""
+    pool_avg_kv_cache_utilization: TimeSeriesData | None = None
+    """Router view of mean KV cache utilization across the pool."""
+    pool_avg_queue_size: TimeSeriesData | None = None
+    """Router view of mean queue depth across the pool."""
+    pool_avg_running_requests: TimeSeriesData | None = None
+    """Router view of mean running requests across the pool."""
+    pool_ready_pods: TimeSeriesData | None = None
+    """Endpoints the router considers ready over time."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -1176,7 +1368,7 @@ class BenchmarkReportV02(BenchmarkReport):
     """Base class for a benchmark report."""
 
     model_config = MODEL_CONFIG.copy()
-    model_config["title"] = "Benchmark Report v0.2"
+    model_config["title"] = f"Benchmark Report v{VERSION}"
 
     version: str = VERSION
     """Version of the schema."""
@@ -1186,3 +1378,7 @@ class BenchmarkReportV02(BenchmarkReport):
     """Stack configuration and workload details of experiment"""
     results: Results
     """Experiment results."""
+
+
+# 0.2.1 used to be a separate subclass; the name stays for existing imports.
+BenchmarkReportV021 = BenchmarkReportV02

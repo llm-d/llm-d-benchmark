@@ -13,8 +13,7 @@ from .core import (
     yaml_str_to_benchmark_report,
 )
 from .schema_v0_1 import BenchmarkReportV01
-from .schema_v0_2 import BenchmarkReportV02
-from .schema_v0_2_1 import BenchmarkReportV021
+from .schema_v0_2 import BenchmarkReportV02, BenchmarkReportV021
 
 __all__ = [
     "BenchmarkReport",

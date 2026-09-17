@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2_1 import (
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
     AggregateRequests,
     AggregateThroughput,
     AudioPayloadStats,

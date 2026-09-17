@@ -1,0 +1,101 @@
+results:
+  request_performance:
+    aggregate:
+      latency:
+        inter_token_latency:
+          mean: 13.5139
+          p0p1: 9.2947
+          p1: 10.215
+          p10: 11.5641
+          p5: 11.0751
+          p50: 13.4501
+          p75: 14.5219
+          p90: 15.5386
+          p95: 16.1869
+          p99: 17.4396
+          p99p9: 18.8694
+          stddev: 1.5556
+          units: ms/token
+        request_latency:
+          mean: 13834.4001
+          p0p1: 10564.2693
+          p1: 11601.7319
+          p10: 12367.9892
+          p5: 11961.8938
+          p50: 13863.1789
+          p75: 14579.106
+          p90: 15246.5387
+          p95: 15686.1233
+          p99: 16278.1657
+          p99p9: 17033.3706
+          stddev: 1136.5178
+          units: ms
+        time_per_output_token:
+          mean: 13.4707
+          p0p1: 10.2814
+          p1: 11.295
+          p10: 12.0298
+          p5: 11.649
+          p50: 13.4965
+          p75: 14.1662
+          p90: 14.8646
+          p95: 15.2945
+          p99: 15.8575
+          p99p9: 16.6006
+          stddev: 1.112
+          units: ms/token
+        time_to_first_token:
+          mean: 53.8569
+          p0p1: 12.4459
+          p1: 13.6399
+          p10: 27.4314
+          p5: 21.1096
+          p50: 50.8835
+          p75: 68.7741
+          p90: 81.6681
+          p95: 94.2737
+          p99: 114.7431
+          p99p9: 132.0561
+          stddev: 22.7253
+          units: ms
+      requests:
+        failures: 2
+        input_length:
+          mean: 233.93
+          units: count
+        output_length:
+          mean: 1024.0
+          units: count
+        total: 200
+      throughput:
+        output_token_rate:
+          mean: 5197.9355
+          units: tokens/s
+        request_rate:
+          mean: 5.0761
+          units: queries/s
+        total_token_rate:
+          mean: 6397.3841
+          units: tokens/s
+run:
+  time:
+    end: '2026-09-12T18:15:30Z'
+  uid: 00000000-0000-0000-0000-000000000000
+scenario:
+  load:
+    metadata:
+      cfg_id: 44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a
+      schema_version: 0.0.1
+    native: {}
+    standardized:
+      concurrency: 512
+      input_seq_len:
+        distribution: other
+        value: 236.2929292929293
+      parallelism: 1
+      rate_qps: 8.0
+      source: sampled
+      stage: 0
+      tool: vllm-benchmark
+      tool_version: ''
+version: 0.2.1

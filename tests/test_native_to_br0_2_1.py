@@ -17,10 +17,10 @@ import pytest
 import yaml
 
 from llmdbenchmark.analysis.benchmark_report.base import Units
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_2_1 import (
+from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
     import_inference_perf,
 )
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2_1 import BenchmarkReportV021
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import BenchmarkReportV021
 
 FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle.yaml"
 

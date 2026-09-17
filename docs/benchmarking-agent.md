@@ -193,12 +193,10 @@ several `Units` members and would reject valid reports). Every level of
 that path may be absent in a real report, so a missing percentile or a
 missing `aggregate.throughput` produces a diagnostic (`missing_percentile`,
 `missing_throughput`), never an interpolated or derived number. Reports
-whose `version` field is absent, `"0.2.1"`, or anything else produce
-`missing_report_version`, `version_superset`, or
-`unsupported_report_version` respectively; `"0.2.1"` is accepted and
-scored as an additive superset of `"0.2"` because nothing in the
-converter pipeline currently emits it and rejecting it outright seemed
-more likely to surprise a future caller than accepting it.
+declaring `"0.2.1"` (what the converters emit) or `"0.2"` (reports
+converted before `0.2.1`, which validate unchanged under it) are scored
+alike. Reports whose `version` field is absent or anything else produce
+`missing_report_version` or `unsupported_report_version` respectively.
 
 **This is gate-at-percentile plus the passing reports' throughput, not
 per-request SLO attainment.** benchmark-report v0.2 stores aggregates
