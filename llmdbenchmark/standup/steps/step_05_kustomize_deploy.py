@@ -639,22 +639,27 @@ class KustomizeDeployStep(Step):
 
     @staticmethod
     def _dedupe_path_segments(path: str) -> str:
-        """Collapse consecutive duplicate segments in a POSIX path.
+        """Collapse consecutive duplicate segments in a POSIX path, working
+        from the end of the path towards the start.
 
         e.g. "modelserver/gpu/vllm/native/native/cpu" -> "modelserver/gpu/vllm/native/cpu"
 
-        Only applied if `path` does not already exist on disk, since a real
-        directory may legitimately contain a repeated segment.
+        After each collapse, the resulting path is checked against disk; if
+        it exists, deduping stops immediately and that path is returned,
+        since a real directory may legitimately contain a repeated segment.
         """
         if Path(path).exists():
             return path
         parts = path.split("/")
-        deduped: list[str] = []
-        for part in parts:
-            if part and deduped and deduped[-1] == part:
-                continue
-            deduped.append(part)
-        return "/".join(deduped)
+        i = len(parts) - 1
+        while i > 0:
+            if parts[i] and parts[i] == parts[i - 1]:
+                del parts[i]
+                candidate = "/".join(parts)
+                if Path(candidate).exists():
+                    return candidate
+            i -= 1
+        return "/".join(parts)
 
     @staticmethod
     def _select_modelserver_command(commands, accel_backend, resolver):
