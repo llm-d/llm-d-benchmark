@@ -74,28 +74,4 @@ spec:
     - name: http
       port: 80
       targetPort: {{ prism.port | default(8080) }}
-{% if prism.ingress is defined and prism.ingress.enabled | default(false) %}
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: {{ prism.name | default('llm-d-prism') }}
-  namespace: {{ namespace.name }}
-  labels:
-    app.kubernetes.io/name: llm-d-prism
-    app.kubernetes.io/managed-by: llm-d-benchmark
-    llm-d-benchmark.ai/persist: "true"
-spec:
-  rules:
-    - host: {{ prism.ingress.host }}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ prism.serviceName | default('llm-d-prism') }}
-                port:
-                  number: 80
-{% endif %}
 {% endif %}
