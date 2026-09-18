@@ -1860,9 +1860,6 @@ prism:
   port: 8080
   route:
     enabled: true               # OpenShift route
-  ingress:
-    enabled: false              # set enabled + host to expose on vanilla K8s
-    host: ""
   env:
     PRISM_LOCAL_DIR: /requests  # plots benchmark reports from workload-pvc
     DEFAULT_BUCKETS: ","         # show local dir only: no GCS/GIQ cloud sources
