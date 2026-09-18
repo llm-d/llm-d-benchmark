@@ -52,6 +52,11 @@ VALIDATORS: dict[str, type] = {
     # stack's config has wva.enabled: true.
     "workload-autoscaling": OptimizedBaselineValidator,
     "tiered-prefix-cache": TieredPrefixCacheValidator,
+    # wide-ep is the renamed wide-ep-lws guide (llm-d dropped the lws
+    # substring after DisaggregatedSet became the base). Both names stay
+    # registered until the rename lands in llm-d and the old scenario is
+    # removed.
+    "wide-ep": WideEpLwsValidator,
     "wide-ep-lws": WideEpLwsValidator,
     "simulated-accelerators": SimulatedAcceleratorsValidator,
     "wva": WvaValidator,
