@@ -1159,6 +1159,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         if _cli_stop_on_error is not None
         else _run_controls["treatment_stop_on_error"]
     )
+    reset_caches_required = _run_controls["reset_caches_required"]
     _cli_validate_failures = getattr(args, "validate_failures", None)
     validate_failures = (
         bool(_cli_validate_failures)
@@ -1229,6 +1230,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_skip_run=getattr(args, "skip", False),
         harness_data_collect=getattr(args, "data_collect", None) or "default",
         reset_caches=reset_caches,
+        reset_caches_required=reset_caches_required,
         treatment_max_attempts=treatment_max_attempts,
         treatment_stop_on_error=treatment_stop_on_error,
         validate_failures=validate_failures,

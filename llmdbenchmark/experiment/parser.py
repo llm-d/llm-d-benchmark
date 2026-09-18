@@ -193,6 +193,7 @@ def read_reset_caches(experiments_file: str | Path | None) -> bool:
 RUN_CONTROL_DEFAULTS = {
     "treatment_max_attempts": 1,
     "treatment_stop_on_error": False,
+    "reset_caches_required": False,
     "validate_failures": False,
     "max_parallel_treatments": 1,
 }
@@ -232,6 +233,8 @@ def read_run_controls(experiments_file: str | Path | None) -> dict:
             pass
     if "treatment_stop_on_error" in data:
         controls["treatment_stop_on_error"] = bool(data["treatment_stop_on_error"])
+    if "reset_caches_required" in data:
+        controls["reset_caches_required"] = bool(data["reset_caches_required"])
     if "validate_failures" in data:
         controls["validate_failures"] = bool(data["validate_failures"])
     if "max_parallel_treatments" in data:

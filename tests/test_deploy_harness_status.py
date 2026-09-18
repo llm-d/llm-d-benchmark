@@ -488,3 +488,112 @@ def test_treatment_profile_name_strips_in_extension():
         )
         == "concurrent_sessions-concurrent.yaml"
     )
+
+
+# ---------------------------------------------------------------------------
+# reset_caches_required
+# ---------------------------------------------------------------------------
+
+
+class _Recorder:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, *_args: Any, **_kwargs: Any) -> tuple[bool, list[str], int]:
+        self.calls += 1
+        return True, [], 1
+
+
+def _reset_required_run(
+    tmp_path: Path,
+    monkeypatch: Any,
+    *,
+    required: bool,
+    reset_warnings: list[str],
+    reset_caches: bool = True,
+) -> tuple[Any, _Logger, Any]:
+    """Drive execute() with the cache reset faked to return *reset_warnings*."""
+    stack_path = tmp_path / "plan" / "stack"
+    stack_path.mkdir(parents=True)
+    (stack_path / "config.yaml").write_text(
+        yaml.safe_dump(_plan_config()), encoding="utf-8"
+    )
+    logger = _Logger()
+    context = ExecutionContext(
+        plan_dir=tmp_path / "plan",
+        workspace=tmp_path,
+        base_dir=Path(__file__).resolve().parents[1],
+        namespace="bench",
+        harness_namespace="bench",
+        logger=logger,
+        cmd=_Command(),
+        reset_caches=reset_caches,
+        reset_caches_required=required,
+    )
+    context.deployed_endpoints["stack"] = "http://endpoint"
+    monkeypatch.setattr(
+        DeployHarnessStep,
+        "_reset_caches_for_batch",
+        staticmethod(lambda *_args, **_kwargs: list(reset_warnings)),
+    )
+    run_treatment = _Recorder()
+    monkeypatch.setattr(DeployHarnessStep, "_run_treatment", run_treatment)
+    result = DeployHarnessStep().execute(context, stack_path)
+    return result, logger, run_treatment
+
+
+def test_reset_required_aborts_before_the_group(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    result, logger, run_treatment = _reset_required_run(
+        tmp_path,
+        monkeypatch,
+        required=True,
+        reset_warnings=["reset_caches: could not confirm the /reset_prefix_cache"],
+    )
+
+    assert not result.success
+    assert run_treatment.calls == 0
+    assert any("reset_caches_required" in error for error in result.errors)
+    assert any("could not confirm the /reset_prefix_cache" in e for e in logger.errors)
+
+
+def test_reset_warning_without_required_still_runs(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    result, _logger, run_treatment = _reset_required_run(
+        tmp_path,
+        monkeypatch,
+        required=False,
+        reset_warnings=["reset_caches: could not confirm the /reset_prefix_cache"],
+    )
+
+    assert result.success
+    assert run_treatment.calls == 1
+
+
+def test_reset_required_with_confirmed_reset_runs(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    result, _logger, run_treatment = _reset_required_run(
+        tmp_path, monkeypatch, required=True, reset_warnings=[]
+    )
+
+    assert result.success
+    assert run_treatment.calls == 1
+
+
+def test_reset_required_without_reset_caches_fails_fast(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    result, logger, run_treatment = _reset_required_run(
+        tmp_path, monkeypatch, required=True, reset_warnings=[], reset_caches=False
+    )
+
+    assert not result.success
+    assert run_treatment.calls == 0
+    assert any(
+        "reset_caches_required is set but reset_caches is not" in e
+        for e in result.errors
+    )
+    assert logger.errors

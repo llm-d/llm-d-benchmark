@@ -9,7 +9,7 @@ import random
 import string
 import time
 
-from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.executor.command import CommandExecutor, CommandResult
 
 
 def _rand_suffix(length: int = 8) -> str:
@@ -860,12 +860,57 @@ def test_model_serving(
 
 # vLLM cache-reset endpoints hit on each serving pod when ``reset_caches``
 # is enabled. All are POST, take no body, and only exist when the server was
-# launched with VLLM_SERVER_DEV_MODE=1.
+# launched with VLLM_SERVER_DEV_MODE=1. ``reset_external=true`` asks the
+# prefix-cache reset to also clear connector-managed tiers (vLLM's CPU
+# offloading connector honours it; the LMCache connector does not implement
+# the reset yet and reports success without clearing). Servers older than
+# vLLM 0.13 ignore the parameter, and it is a no-op without a KV connector.
+_PREFIX_CACHE_RESET_ENDPOINT = "/reset_prefix_cache?reset_external=true"
 _CACHE_RESET_ENDPOINTS = (
-    "/reset_prefix_cache",
+    _PREFIX_CACHE_RESET_ENDPOINT,
     "/reset_mm_cache",
     "/reset_encoder_cache",
 )
+
+
+def _parse_reset_output(stdout: str) -> list[tuple[str, str, str, str]]:
+    """Split curl-pod output into ``(ip, endpoint, status, body)`` records.
+
+    Each request prints a ``== <ip><endpoint> ==`` header, then the response
+    body (empty before vLLM 0.26), then the HTTP status on its own line.
+    Lines that are not part of a recognised request are ignored.
+    """
+    records: list[tuple[str, str, str, str]] = []
+    current: tuple[str, str] | None = None
+    body_lines: list[str] = []
+    for raw in stdout.splitlines():
+        line = raw.strip()
+        if line.startswith("== ") and line.endswith(" ==") and "/" in line:
+            ip, _, path = line[3:-3].partition("/")
+            current = (ip, "/" + path)
+            body_lines = []
+        elif current and line.isdigit():
+            records.append((current[0], current[1], line, "\n".join(body_lines)))
+            current = None
+        elif current:
+            body_lines.append(line)
+    return records
+
+
+def _prefix_reset_refused(status: str, body: str) -> bool:
+    """True when vLLM answered 2xx but reported the prefix reset failed.
+
+    vLLM 0.26+ returns ``{"success": false}`` while blocks are still held,
+    e.g. by running requests or in-flight async KV offload transfers. Older
+    servers send no body; that is treated as success, as before.
+    """
+    if not status.startswith("2"):
+        return False
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return False
+    return isinstance(payload, dict) and payload.get("success") is False
 
 
 def reset_caches_pods(
@@ -876,6 +921,8 @@ def reset_caches_pods(
     plan_config: dict | None = None,
     logger=None,
     timeout_seconds: int = 30,
+    max_retries: int = 3,
+    retry_interval: int = 5,
 ) -> list[str]:
     """Reset the prefix, multimodal, and encoder caches on every vLLM pod.
 
@@ -883,8 +930,15 @@ def reset_caches_pods(
     *namespace* (all stack types -- modelservice, standalone, FMA --
     apply this label to their served vLLM pods) and issues a single
     ephemeral curl pod that loops over every pod IP, POSTing each of
-    ``/reset_prefix_cache``, ``/reset_mm_cache``, and
-    ``/reset_encoder_cache`` to it on *inference_port*.
+    ``/reset_prefix_cache?reset_external=true``, ``/reset_mm_cache``, and
+    ``/reset_encoder_cache`` to it on *inference_port*. ``reset_external``
+    asks vLLM to also reset connector-managed tiers such as CPU offload.
+
+    vLLM 0.26+ reports a refused prefix-cache reset as HTTP 200 with
+    ``{"success": false}``. Pods that refuse are retried, on that endpoint
+    only, up to *max_retries* attempts in total and *retry_interval* seconds
+    apart. Pods whose reset is still unconfirmed after that produce a single
+    warning.
 
     These reset endpoints only exist when the vLLM server was launched with
     ``VLLM_SERVER_DEV_MODE=1`` (the repo default via
@@ -942,47 +996,50 @@ def reset_caches_pods(
         )
         return warnings
 
-    # Batch every pod IP x every cache endpoint into a single ephemeral curl
-    # pod. `-w '\n%{http_code}'` appends each request's status so a total
-    # failure is still diagnosable; per-request failures are surfaced inline
-    # by curl's own stderr (folded in via 2>&1). Non-2xx (esp. 404 when dev
-    # mode is off) is a warning, not an error.
-    ip_list = " ".join(pod_ips)
-    endpoint_list = " ".join(_CACHE_RESET_ENDPOINTS)
-    reset_url_tmpl = f"http://$ip:{inference_port}$ep"
-    inner = (
-        f"for ip in {ip_list}; do "
-        f"for ep in {endpoint_list}; do "
-        f'echo "== $ip$ep =="; '
-        f"curl -sk --max-time {timeout_seconds} "
-        f'-w "\\n%{{http_code}}\\n" -X POST {reset_url_tmpl} 2>&1; '
-        f"done; "
-        f"done"
-    )
-    curl_cmd = f"'{inner}'"
-
     override_args = _build_overrides(plan_config)
     curl_image = "quay.io/fedora/fedora"
-    pod_name = f"reset-caches-{_rand_suffix()}"
 
-    kubectl_args = (
-        [
-            "run",
-            pod_name,
-            "--rm",
-            "--attach",
-            "--quiet",
-            "--restart=Never",
-            "--namespace",
-            namespace,
-            f"--image={curl_image}",
-        ]
-        + _ephemeral_label_args()
-        + override_args
-        + ["--command", "--", "sh", "-c", curl_cmd]
-    )
+    def _run_curl_pod(ips: list[str], endpoints: tuple[str, ...]) -> CommandResult:
+        # Batch every pod IP x endpoint into a single ephemeral curl pod.
+        # `-w '\n%{http_code}'` appends each request's status so a total
+        # failure is still diagnosable; per-request failures are surfaced
+        # inline by curl's own stderr (folded in via 2>&1). Endpoints and the
+        # URL are double-quoted because the prefix endpoint carries a `?`,
+        # which the shell would otherwise treat as a glob.
+        ip_list = " ".join(ips)
+        endpoint_list = " ".join(f'"{ep}"' for ep in endpoints)
+        reset_url_tmpl = f'"http://$ip:{inference_port}$ep"'
+        inner = (
+            f"for ip in {ip_list}; do "
+            f"for ep in {endpoint_list}; do "
+            f'echo "== $ip$ep =="; '
+            f"curl -sk --max-time {timeout_seconds} "
+            f'-w "\\n%{{http_code}}\\n" -X POST {reset_url_tmpl} 2>&1; '
+            f"done; "
+            f"done"
+        )
+        curl_cmd = f"'{inner}'"
+        pod_name = f"reset-caches-{_rand_suffix()}"
 
-    result = cmd.kube(*kubectl_args, check=False)
+        kubectl_args = (
+            [
+                "run",
+                pod_name,
+                "--rm",
+                "--attach",
+                "--quiet",
+                "--restart=Never",
+                "--namespace",
+                namespace,
+                f"--image={curl_image}",
+            ]
+            + _ephemeral_label_args()
+            + override_args
+            + ["--command", "--", "sh", "-c", curl_cmd]
+        )
+        return cmd.kube(*kubectl_args, check=False)
+
+    result = _run_curl_pod(pod_ips, _CACHE_RESET_ENDPOINTS)
 
     if result.dry_run:
         return warnings
@@ -1013,7 +1070,54 @@ def reset_caches_pods(
             f"reset_caches: {len(bad)}/{len(statuses)} reset request(s) "
             f"returned non-2xx (e.g. HTTP {bad[0]}){hint}"
         )
-    elif logger:
+
+    # A 200 is not proof the prefix cache is cold: vLLM refuses the reset
+    # while blocks are still held, typically by KV offload transfers from
+    # the previous treatment that are still finishing. Retry only the pods
+    # that refused, and only the prefix-cache endpoint.
+    failed_ips = [
+        ip
+        for ip, endpoint, status, body in _parse_reset_output(result.stdout)
+        if endpoint.startswith("/reset_prefix_cache")
+        and _prefix_reset_refused(status, body)
+    ]
+    attempts = 1
+    while failed_ips and attempts < max_retries:
+        attempts += 1
+        if logger:
+            logger.log_info(
+                f"reset_caches: {len(failed_ips)} vLLM pod(s) "
+                f"({', '.join(failed_ips)}) have not confirmed the prefix-cache reset, "
+                f"retrying in {retry_interval}s (attempt {attempts}/{max_retries})"
+            )
+        time.sleep(retry_interval)
+        retry = _run_curl_pod(failed_ips, (_PREFIX_CACHE_RESET_ENDPOINT,))
+        if retry.dry_run:
+            return warnings
+        if not retry.success:
+            _warn(
+                f"reset_caches: retry curl pod failed against "
+                f"{len(failed_ips)} vLLM pod(s) ({', '.join(failed_ips)}): "
+                f"{(retry.stderr or retry.stdout)[:200]}"
+            )
+            return warnings
+        confirmed = {
+            ip
+            for ip, endpoint, status, body in _parse_reset_output(retry.stdout)
+            if endpoint.startswith("/reset_prefix_cache")
+            and status.startswith("2")
+            and not _prefix_reset_refused(status, body)
+        }
+        failed_ips = [ip for ip in failed_ips if ip not in confirmed]
+
+    if failed_ips:
+        _warn(
+            f"reset_caches: could not confirm the /reset_prefix_cache reset on "
+            f"{len(failed_ips)} vLLM pod(s) ({', '.join(failed_ips)}) after "
+            f"{attempts} attempt(s) -- the next treatment may start against a "
+            f"warm prefix cache"
+        )
+    elif not bad and logger:
         logger.log_info(
             f"Reset prefix/mm/encoder caches on {len(pod_ips)} vLLM pod(s) "
             f"in ns/{namespace}"
