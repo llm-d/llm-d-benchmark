@@ -1,20 +1,20 @@
 # FAST MODEL ACTUATION WELL LIT PATH (kustomize-only)
 #
-# Deploys the upstream llm-d `fast-model-actuation` guide directly via the
+# Deploys the upstream llm-d `fast-model-actuation-base` guide directly via the
 # kustomize deploy method.
 #
 # NOTE: FMA-specific handling in standup/smoketest/teardown
-# keys off kustomize.guideName == "fast-model-actuation".
-# See https://github.com/llm-d/llm-d/tree/main/guides/fast-model-actuation
+# keys off kustomize.guideName == "fast-model-actuation-base".
+# See https://github.com/llm-d/llm-d/tree/main/guides/fast-model-actuation-base
 #
 # Run with:
-#   llmdbenchmark --spec guides/fast-model-actuation standup   -t kustomize -p "$NS"
-#   llmdbenchmark --spec guides/fast-model-actuation smoketest -t kustomize -p "$NS"
-#   llmdbenchmark --spec guides/fast-model-actuation teardown  -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/fast-model-actuation-base standup   -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/fast-model-actuation-base smoketest -t kustomize -p "$NS"
+#   llmdbenchmark --spec guides/fast-model-actuation-base teardown  -t kustomize -p "$NS"
 # ===========================================================================
 
 scenario:
-  - name: "fast-model-actuation"
+  - name: "fast-model-actuation-base"
     common:
       # -----------------------------------------------------------------------
       # Model metadata. Under kustomize the deployed model is fixed by the
@@ -100,7 +100,7 @@ scenario:
     kustomize:
       enabled: true
 
-      guideName: "fast-model-actuation"
+      guideName: "fast-model-actuation-base"
       repoPath: ""
       repoRef: "main"
       gaieVersion: ""
@@ -116,4 +116,4 @@ scenario:
       experimentProfile: nop.yaml
       executable: llm-d-benchmark.py
 
-    workDir: "~/data/fast-model-actuation"
+    workDir: "~/data/fast-model-actuation-base"
