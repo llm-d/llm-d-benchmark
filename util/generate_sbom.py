@@ -76,7 +76,7 @@ SYSTEM_TOOL_REPOS: dict[str, str] = {
     "helmfile": "https://github.com/helmfile/helmfile",
     "jq": "https://github.com/jqlang/jq",
     "kubectl": "https://github.com/kubernetes/kubernetes",
-    "kustomize": "https://github.com/kubernetes-sigs/kustomize",
+    "kustomize": "https://kubectl.docs.kubernetes.io/installation/kustomize/",
     "llm-d-planner (git)": "https://github.com/llm-d-incubation/llm-d-planner",
     "oc": "https://github.com/openshift/oc",
     "skopeo": "https://github.com/containers/skopeo",
@@ -106,6 +106,8 @@ def _label_from_url(url: str) -> str:
         # https://hub.docker.com/_/python -> "Docker Hub: python"
         name = url.rstrip("/").rsplit("/", 1)[-1]
         return f"Docker Hub: {name}"
+    if "kubectl.docs.kubernetes.io/installation/kustomize" in url:
+        return "kustomize docs"
     # GitHub-style: take the last two path segments (org/repo)
     parts = re.sub(r"^https?://[^/]+/", "", url.rstrip("/")).split("/")
     if len(parts) >= 2:
