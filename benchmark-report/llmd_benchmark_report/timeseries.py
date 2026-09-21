@@ -11,10 +11,28 @@ from datetime import datetime, timezone
 from typing import Any
 
 _METRIC_RE = re.compile(r"([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)")
+_LABEL_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"')
 
 
-def _parse_scrape(file_path: str) -> tuple[str | None, dict[str, list]]:
-    """Parse one raw scrape file into (pod_name, {metric: [(datetime, value), ...]})."""
+def series_key(metric: str, labels: dict[str, str]) -> str:
+    """Key a label-selected series as ``metric{name="value",...}``, names sorted."""
+    inner = ",".join(f'{k}="{labels[k]}"' for k in sorted(labels))
+    return f"{metric}{{{inner}}}" if inner else metric
+
+
+def _parse_scrape(
+    file_path: str, label_names: frozenset[str] = frozenset()
+) -> tuple[str | None, dict[str, list]]:
+    """Parse one raw scrape file into (pod_name, {metric: [(datetime, value), ...]}).
+
+    Metrics are keyed by bare name, which interleaves series differing only by a
+    label -- the two ``transfer_type`` directions of the KV-offload counters
+    collapse into one list no consumer can separate. Labels named in
+    ``label_names`` get an extra ``metric{name="value"}`` key so a spec can select
+    one direction. Restricted to the requested names on purpose: indexing every
+    label pair costs ~6x the parse time and 19x the keys on a real scrape, mostly
+    on histogram buckets nothing selects.
+    """
     metrics: dict[str, list] = {}
     timestamp_dt = None
     pod_name = None
@@ -35,19 +53,32 @@ def _parse_scrape(file_path: str) -> tuple[str | None, dict[str, list]]:
                 continue
             match = _METRIC_RE.match(line)
             if match and timestamp_dt:
-                base_name = match.group(1).split("{")[0]
-                metrics.setdefault(base_name, []).append(
-                    (timestamp_dt, float(match.group(2)))
-                )
+                selector = match.group(1)
+                base_name = selector.split("{")[0]
+                point = (timestamp_dt, float(match.group(2)))
+                metrics.setdefault(base_name, []).append(point)
+                brace = selector.find("{")
+                if label_names and brace != -1:
+                    for name, value in _LABEL_RE.findall(selector[brace:]):
+                        if name in label_names:
+                            metrics.setdefault(
+                                series_key(base_name, {name: value}), []
+                            ).append(point)
     return pod_name, metrics
 
 
-def collect_time_series_data(metrics_dir: str) -> dict[str, dict[str, list]]:
-    """Return {pod_name: {metric_name: [(datetime, value), ...]}} sorted by time."""
+def collect_time_series_data(
+    metrics_dir: str, label_names: frozenset[str] = frozenset()
+) -> dict[str, dict[str, list]]:
+    """Return {pod_name: {metric_name: [(datetime, value), ...]}} sorted by time.
+
+    ``label_names`` are additionally indexed per label value; see
+    :func:`_parse_scrape`.
+    """
     raw_dir = os.path.join(metrics_dir, "raw")
     pod_data: dict[str, dict[str, list]] = {}
     for file_path in glob.glob(os.path.join(raw_dir, "*.log")):
-        pod_name, metrics = _parse_scrape(file_path)
+        pod_name, metrics = _parse_scrape(file_path, label_names)
         if not pod_name:
             continue
         pod = pod_data.setdefault(pod_name, {})

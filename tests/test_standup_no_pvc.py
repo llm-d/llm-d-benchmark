@@ -65,7 +65,9 @@ def test_step04_rejects_hostpath_with_no_pvc(tmp_path) -> None:
 
     class _Logger:
         def log_info(self, *a, **k): ...
+
         def log_warning(self, *a, **k): ...
+
         def log_error(self, *a, **k): ...
 
     stack = tmp_path / "plan" / "stack01"
@@ -97,7 +99,9 @@ def test_run_step02_no_pvc_skips_pvc_and_data_access(tmp_path) -> None:
 
     class _Logger:
         def log_info(self, *a, **k): ...
+
         def log_warning(self, *a, **k): ...
+
         def log_error(self, *a, **k): ...
 
     class _Cmd:
@@ -178,7 +182,9 @@ def test_step04_no_pvc_skips_storage_class_validation(tmp_path, monkeypatch) -> 
 
     class _Logger:
         def log_info(self, *a, **k): ...
+
         def log_warning(self, *a, **k): ...
+
         def log_error(self, *a, **k): ...
 
     class _Cmd:

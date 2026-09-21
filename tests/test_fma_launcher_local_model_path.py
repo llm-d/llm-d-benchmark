@@ -95,3 +95,49 @@ class TestFmaLauncherLocalModelPath:
         stay the repo ID regardless of the launcher's --model arg."""
         values = _base_values(load_from_local_dir=True)
         assert values["model"]["name"] == "facebook/opt-125m"
+
+    def test_opt_in_pins_served_model_name_to_repo_id(self):
+        """Without --served-model-name, vLLM advertises the model under its
+        local PATH and the run phase's verify_model step fails."""
+        docs = _render(_base_values(load_from_local_dir=True))
+        assert "--served-model-name facebook/opt-125m" in _options(docs)
+
+
+class TestFmaLauncherBaselineParity:
+    """The launcher's prefix-caching flag inherits vllmCommon.flags.noPrefixCaching
+    -- the key _macros.j2 emits the baseline's --no-enable-prefix-caching from --
+    so an FMA arm cannot silently desync from the arm it is compared against."""
+
+    def test_prefix_caching_on_by_default(self):
+        assert "--no-enable-prefix-caching" not in _options(
+            _render(_base_values(load_from_local_dir=False))
+        )
+
+    def test_prefix_caching_inherits_baseline_disable(self):
+        values = _base_values(load_from_local_dir=False)
+        values["vllmCommon"] = {"flags": {"noPrefixCaching": True}}
+        assert "--no-enable-prefix-caching" in _options(_render(values))
+
+    def test_logging_flags_inherit_when_launcher_keys_absent(self):
+        """An absent launcher key is Jinja Undefined, not none -- it must still
+        inherit rather than fall through and drop the flag."""
+        values = _base_values(load_from_local_dir=False)
+        values["vllmCommon"] = {
+            "flags": {"disableLogRequests": True, "disableUvicornAccessLog": True}
+        }
+        options = _options(_render(values))
+        assert "--no-enable-log-requests" in options
+        assert "--disable-uvicorn-access-log" in options
+
+    def test_explicit_false_overrides_inherited_true(self):
+        """`| default(x, true)` would treat false as empty and wrongly inherit."""
+        values = _base_values(load_from_local_dir=False)
+        values["vllmCommon"] = {"flags": {"disableLogRequests": True}}
+        values["fma"]["launcher"]["disableLogRequests"] = False
+        assert "--no-enable-log-requests" not in _options(_render(values))
+
+    def test_block_size_inherits_model_block_size(self):
+        """model.blockSize is the same key the baseline feeds VLLM_BLOCK_SIZE."""
+        values = _base_values(load_from_local_dir=False)
+        values["model"]["blockSize"] = 64
+        assert "--block-size 64" in _options(_render(values))

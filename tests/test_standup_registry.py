@@ -11,8 +11,8 @@ def test_standup_has_no_harness_step() -> None:
 def test_standup_numbering_is_contiguous_after_renumber() -> None:
     numbers = sorted({s.number for s in get_standup_steps()})
     # 0=infra, 2=admin, 3=monitoring, 4=model ns, 5=deploy (4 variants),
-    # 6=deploy setup, 7=router, 8=modelservice. (1 remains reserved.)
-    assert numbers == [0, 2, 3, 4, 5, 6, 7, 8]
+    # 6=deploy setup, 7=router, 8=modelservice, 9=prism. (1 remains reserved.)
+    assert numbers == [0, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 def test_deploy_variants_share_number_five() -> None:

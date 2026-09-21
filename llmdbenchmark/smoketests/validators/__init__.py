@@ -46,6 +46,7 @@ VALIDATORS: dict[str, type] = {
     # 2.benchmark path (standup_method: fma) is mapped to
     # "fast-model-actuation" by get_validator.
     "fast-model-actuation": FmaValidator,
+    "fast-model-actuation-base": FmaValidator,
     "fast-model-actuation-keda": FmaValidator,
     # inference-scheduling-wva reuses the inference-scheduling validator;
     # the WvaSmoketestMixin auto-activates its extra checks when the

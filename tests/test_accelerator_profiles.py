@@ -208,12 +208,12 @@ def test_same_guide_uses_intel_runtime_profile(tmp_path):
     assert merged["storage"]["modelPvc"]["size"] == "50Gi"
     assert merged["storage"]["modelPvc"]["accessModes"] == ["ReadWriteOnce"]
     assert merged["storage"]["workloadPvc"]["accessModes"] == ["ReadWriteOnce"]
-    # memoryLimit pinned to the request: constrained hardware must not inherit
-    # the headroom the default allows for concurrent treatments.
+    # Keep the constrained-hardware request at 8Gi, while allowing enough
+    # limit headroom for CI's 64Gi harness request override.
     assert merged["harness"]["resources"] == {
         "cpu": 2,
         "memory": "8Gi",
-        "memoryLimit": "8Gi",
+        "memoryLimit": "64Gi",
     }
     assert "--enforce-eager" in merged["decode"]["vllm"]["customCommand"]
     assert "--disable-sliding-window" in merged["decode"]["vllm"]["customCommand"]

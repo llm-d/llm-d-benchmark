@@ -30,5 +30,21 @@ for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,st
   kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
 done
 echo ""
+# Pods stuck in CrashLoopBackOff stay in phase Running, so the loop above
+# never sees them and the crash output only exists in the *previous*
+# container instance. Dump it for every container that has restarted or
+# is waiting on a crash/backoff, along with the last termination state.
+echo "=== Restarted / crash-looping containers (previous logs) ==="
+for pod in $(kubectl get pods -n "$NS" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+  kubectl get pod -n "$NS" "$pod" -o jsonpath='{range .status.containerStatuses[*]}{.name}{"|"}{.restartCount}{"|"}{.state.waiting.reason}{"|"}{.lastState.terminated.reason}{"|"}{.lastState.terminated.exitCode}{"|"}{.lastState.terminated.startedAt}{"|"}{.lastState.terminated.finishedAt}{"\n"}{end}' 2>/dev/null \
+  | while IFS='|' read -r container restarts waiting reason exitcode started finished; do
+    [[ -z $container ]] && continue
+    if [[ ${restarts:-0} -gt 0 || $waiting == CrashLoopBackOff || $waiting == Error ]]; then
+      echo "--- pod/$pod container=$container restarts=$restarts waiting=${waiting:-none} lastTerminated=${reason:-none} exitCode=${exitcode:-none} ran=${started:-?} -> ${finished:-?} ---"
+      kubectl logs -n "$NS" "$pod" -c "$container" --previous --tail=100 2>&1 || true
+    fi
+  done
+done
+echo ""
 echo "=== Events ==="
 kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true

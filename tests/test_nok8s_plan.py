@@ -89,6 +89,24 @@ def test_nok8s_scenario_renders_templates_and_flags(tmp_path: Path) -> None:
     assert kinds == ["envoy", "epp", "vllm"]
 
 
+def test_nok8s_scenario_skips_the_kubernetes_template_set(tmp_path: Path) -> None:
+    """nok8s applies no Kubernetes manifests, so the k8s-only templates
+    (PVCs, RBAC, the harness pod, helmfiles, HTTPRoute, PodMonitor, ...)
+    must not be rendered to disk at all -- they were previously written with
+    real content that nothing ever applies (#1704)."""
+    stack = _stack_dir(_render(tmp_path))
+
+    filenames = {p.name for p in stack.iterdir()}
+
+    assert filenames == {
+        "31_nok8s-epp-config.yaml",
+        "32_nok8s-epp-endpoints.yaml",
+        "33_nok8s-envoy.yaml",
+        "34_nok8s-containers.yaml",
+        "config.yaml",
+    }
+
+
 def test_should_skip_selects_by_method() -> None:
     from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
     from llmdbenchmark.run.steps.step_07_deploy_harness_local import (

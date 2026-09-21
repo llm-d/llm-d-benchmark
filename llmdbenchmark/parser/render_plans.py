@@ -11,9 +11,9 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional, Any
-import yaml
+from typing import Any
 
+import yaml
 from jinja2 import Environment, TemplateSyntaxError, UndefinedError
 
 from llmdbenchmark.config import config
@@ -47,6 +47,15 @@ class RenderPlans:
     # Prefix for partial/macro files (not rendered directly)
     PARTIAL_PREFIX = "_"
 
+    # Substring marking a template as nok8s-specific (e.g. 34_nok8s-containers.yaml.j2).
+    # On a nok8s stack, only these are ever read back (see step_05_nok8s_deploy.py
+    # and step_06_nok8s_teardown.py): everything else is a Kubernetes manifest --
+    # PVCs, RBAC, the harness pod, helmfiles, HTTPRoute, PodMonitor -- that nok8s
+    # never applies. Rendering them anyway produced 30+ dead files per stack and
+    # version-resolver warnings for tools (helm, skopeo) the nok8s path itself
+    # tells users are unnecessary (docs/nok8s.md) (#1704).
+    NOK8S_TEMPLATE_INFIX = "nok8s"
+
     # Default namespace when "auto" is specified (matches original bash: llmdbench)
     DEFAULT_NAMESPACE = "llmdbench"
 
@@ -63,6 +72,7 @@ class RenderPlans:
         cli_model: str | None = None,
         cli_methods: str | None = None,
         cli_monitoring: bool | None = None,
+        cli_prism: bool | None = None,
         cli_wva: bool = False,
         cli_epp_keda_saturation: bool = False,
         cli_gateway_class: str | None = None,
@@ -81,6 +91,7 @@ class RenderPlans:
         self.cli_model = cli_model
         self.cli_methods = cli_methods
         self.cli_monitoring = cli_monitoring
+        self.cli_prism = cli_prism
         self.cli_wva = cli_wva
         self.cli_epp_keda_saturation = cli_epp_keda_saturation
         # CLI override for `gateway.className`. Applied per-stack in
@@ -125,10 +136,10 @@ class RenderPlans:
         )
 
         # Cache for parsed templates (avoid re-parsing on multiple evals)
-        self._template_cache: Optional[list[dict]] = None
+        self._template_cache: list[dict] | None = None
 
         # Jinja2 environment (reusable)
-        self._jinja_env: Optional[Environment] = None
+        self._jinja_env: Environment | None = None
 
     def _get_jinja_env(self) -> Environment:
         """Get or create the Jinja2 environment with custom filters."""
@@ -600,6 +611,25 @@ class RenderPlans:
                 "PodMonitor and router ServiceMonitor will not be created"
             )
 
+        return result
+
+    def _resolve_prism(self, values: dict) -> dict:
+        """Override prism deployment based on ``--prism`` / ``--no-prism``.
+
+        Prism is deployed by default (``prism.enabled: true`` in defaults).
+        ``--prism`` forces it on, ``--no-prism`` forces it off. When neither
+        flag is given (``cli_prism is None``), scenario/defaults values are
+        used unchanged.
+        """
+        if self.cli_prism is None:
+            return values
+
+        result = deepcopy(values)
+        prism_config = result.setdefault("prism", {})
+        prism_config["enabled"] = bool(self.cli_prism)
+        self.logger.log_info(
+            f"Prism {'enabled' if self.cli_prism else 'disabled'} from CLI"
+        )
         return result
 
     def _resolve_wva(self, values: dict) -> dict:
@@ -1729,7 +1759,7 @@ class RenderPlans:
         return self._CONFIG_VAR_RE.sub(_replace, text)
 
     @staticmethod
-    def _resolve_dotted_path(path: str, root: dict) -> Optional[str]:
+    def _resolve_dotted_path(path: str, root: dict) -> str | None:
         """Resolve a dotted path like ``model.name`` against the config dict."""
         current = root
         for part in path.split("."):
@@ -2220,6 +2250,7 @@ class RenderPlans:
         merged_values = self._resolve_deploy_method(merged_values)
         merged_values = self._resolve_gateway_class(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
+        merged_values = self._resolve_prism(merged_values)
         merged_values = self._resolve_wva(merged_values)
         merged_values = self._resolve_epp_keda_saturation(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
@@ -2305,6 +2336,15 @@ class RenderPlans:
 
         for template_info in templates:
             filename = template_info["filename"]
+
+            # nok8s applies no Kubernetes manifests, so only its own
+            # templates (31-34_nok8s-*) are relevant -- see NOK8S_TEMPLATE_INFIX.
+            if is_nok8s and self.NOK8S_TEMPLATE_INFIX not in filename:
+                self.logger.log_info(
+                    f"Skipped (not applicable to nok8s): {filename}", emoji="⏭️"
+                )
+                continue
+
             content = template_info["content"]
 
             try:

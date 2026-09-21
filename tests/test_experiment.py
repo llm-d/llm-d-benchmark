@@ -114,7 +114,8 @@ class TestParseExperimentWithSetup:
     @pytest.fixture
     def experiment_yaml(self, tmp_path: Path) -> Path:
         """Create a complete experiment YAML with setup + run treatments."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: test-experiment
               harness: inference-perf
@@ -148,7 +149,8 @@ class TestParseExperimentWithSetup:
                 data.shared_prefix.num_groups: 40
               - name: grp60
                 data.shared_prefix.num_groups: 60
-        """)
+        """
+        )
         p = tmp_path / "test-experiment.yaml"
         p.write_text(content)
         return p
@@ -209,7 +211,8 @@ class TestSetupConstantsOverrideOrder:
     @pytest.fixture
     def yaml_with_override_conflict(self, tmp_path: Path) -> Path:
         """Setup where a treatment overrides a constant."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: override-test
 
@@ -221,7 +224,8 @@ class TestSetupConstantsOverrideOrder:
                 - name: custom-model-len
                   model.maxModelLen: 32000
                   vllmCommon.flags.numCpuBlocks: 500
-        """)
+        """
+        )
         p = tmp_path / "override-test.yaml"
         p.write_text(content)
         return p
@@ -245,7 +249,8 @@ class TestParseExperimentWithoutSetup:
     @pytest.fixture
     def run_only_yaml(self, tmp_path: Path) -> Path:
         """Create an experiment YAML without setup section."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: run-only-test
               harness: vllm-benchmark
@@ -261,7 +266,8 @@ class TestParseExperimentWithoutSetup:
               - name: conc32
                 max-concurrency: 32
                 num-prompts: 320
-        """)
+        """
+        )
         p = tmp_path / "run-only.yaml"
         p.write_text(content)
         return p
@@ -331,7 +337,8 @@ class TestParseExperimentEdgeCases:
         """experiment.datasetUrl is exposed on ExperimentPlan."""
         p = tmp_path / "with-dataset.yaml"
         p.write_text(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             experiment:
               name: with-dataset
               harness: aiperf
@@ -340,14 +347,16 @@ class TestParseExperimentEdgeCases:
             treatments:
               - name: t1
                 k: v
-        """)
+        """
+            )
         )
         plan = parse_experiment(p)
         assert plan.dataset_url == "s3://bucket/path/to/trace.jsonl"
 
     def test_setup_without_treatments_key(self, tmp_path: Path):
         """Setup section without 'treatments' is ignored."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: no-setup-treatments
             setup:
@@ -356,7 +365,8 @@ class TestParseExperimentEdgeCases:
             treatments:
               - name: t1
                 key: value
-        """)
+        """
+        )
         p = tmp_path / "no-setup-treatments.yaml"
         p.write_text(content)
         plan = parse_experiment(p)
@@ -365,7 +375,8 @@ class TestParseExperimentEdgeCases:
 
     def test_empty_setup_treatments_list(self, tmp_path: Path):
         """Setup with empty treatments list."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: empty-setup
             setup:
@@ -373,7 +384,8 @@ class TestParseExperimentEdgeCases:
             treatments:
               - name: t1
                 key: value
-        """)
+        """
+        )
         p = tmp_path / "empty-setup.yaml"
         p.write_text(content)
         plan = parse_experiment(p)
@@ -382,14 +394,16 @@ class TestParseExperimentEdgeCases:
 
     def test_setup_treatment_without_name(self, tmp_path: Path):
         """Setup treatment missing name gets auto-generated name."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: no-name-treatment
             setup:
               treatments:
                 - vllmCommon.flags.numCpuBlocks: 500
                 - vllmCommon.flags.numCpuBlocks: 1000
-        """)
+        """
+        )
         p = tmp_path / "no-name.yaml"
         p.write_text(content)
         plan = parse_experiment(p)
@@ -398,14 +412,16 @@ class TestParseExperimentEdgeCases:
 
     def test_no_run_treatments(self, tmp_path: Path):
         """Experiment with setup but no run treatments."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: setup-only
             setup:
               treatments:
                 - name: t1
                   key.sub: value
-        """)
+        """
+        )
         p = tmp_path / "setup-only.yaml"
         p.write_text(content)
         plan = parse_experiment(p)
@@ -415,14 +431,16 @@ class TestParseExperimentEdgeCases:
 
     def test_empty_treatments_list_returns_zero(self, tmp_path: Path):
         """An explicit empty treatments list should return 0, not fall through."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: empty-treatments
             treatments: []
             run:
               - name: should-not-count
                 key: value
-        """)
+        """
+        )
         p = tmp_path / "empty-treatments.yaml"
         p.write_text(content)
         plan = parse_experiment(p)
@@ -430,14 +448,16 @@ class TestParseExperimentEdgeCases:
 
     def test_setup_constants_without_constants_key(self, tmp_path: Path):
         """Setup section without constants key — treatments still parse."""
-        content = textwrap.dedent("""\
+        content = textwrap.dedent(
+            """\
             experiment:
               name: no-constants
             setup:
               treatments:
                 - name: t1
                   model.maxModelLen: 16000
-        """)
+        """
+        )
         p = tmp_path / "no-constants.yaml"
         p.write_text(content)
         plan = parse_experiment(p)

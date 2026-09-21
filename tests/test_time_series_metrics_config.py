@@ -300,6 +300,47 @@ def test_embedded_time_series_covers_serving_metrics(tmp_path: Path) -> None:
     assert [p.value for p in epp.pool_ready_pods.series] == [1.0, 1.0]
 
 
+def test_embedded_time_series_splits_kv_offload_by_direction(tmp_path: Path) -> None:
+    """Both transfer_type directions embed separately, not as one interleaved series."""
+    from llmdbenchmark.analysis.benchmark_report.schema_v0_2_1 import Observability
+
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+
+    for ts, store_bytes, load_bytes, store_time, load_time in (
+        ("2026-07-14T00:00:00Z", "1000", "10", "1.5", "0.5"),
+        ("2026-07-14T00:00:30Z", "4000", "40", "3.0", "1.0"),
+    ):
+        _write_scrape(
+            raw_dir,
+            "qwen-decode-abc",
+            ts,
+            [
+                f'vllm:kv_offload_total_bytes_total{{engine="0",transfer_type="GPU_to_CPU"}} {store_bytes}',
+                f'vllm:kv_offload_total_bytes_total{{engine="0",transfer_type="CPU_to_GPU"}} {load_bytes}',
+                f'vllm:kv_offload_total_time_total{{engine="0",transfer_type="GPU_to_CPU"}} {store_time}',
+                f'vllm:kv_offload_total_time_total{{engine="0",transfer_type="CPU_to_GPU"}} {load_time}',
+            ],
+        )
+    (processed_dir / "metrics_summary.json").write_text(
+        json.dumps({"qwen-decode-abc": {"metrics": {}}}), encoding="utf-8"
+    )
+
+    report = add_metrics_to_benchmark_report({}, str(metrics_dir))
+    observability = Observability(**report["results"]["observability"])
+    decode = observability.components[0].time_series
+
+    assert [p.value for p in decode.kv_offload_store_bytes.series] == [1000.0, 4000.0]
+    assert [p.value for p in decode.kv_offload_load_bytes.series] == [10.0, 40.0]
+    assert [p.value for p in decode.kv_offload_store_time.series] == [1.5, 3.0]
+    assert [p.value for p in decode.kv_offload_load_time.series] == [0.5, 1.0]
+    assert decode.kv_offload_store_bytes.units == "bytes"
+    assert decode.kv_offload_store_time.units == "s"
+
+
 def _metrics_dir_with(tmp_path: Path, lines: list[str]) -> Path:
     metrics_dir = tmp_path / "metrics"
     raw_dir = metrics_dir / "raw"

@@ -126,6 +126,9 @@
 {% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
 {% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
 {% set has_enable_prefix_caching = vllmCommon.flags.enablePrefixCaching | default(false) -%}
+{# Optional --kv-cache-memory cap (bytes); unset sizes the KV cache from
+   --gpu-memory-utilization. Set it to match a capped FMA arm. #}
+{% set kv_cache_memory = vllmCommon.flags.kvCacheMemory | default(none) -%}
 {% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
 {% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
 {% set gpu_mem_util = model.gpuMemoryUtilization | float -%}
@@ -167,6 +170,9 @@
 {%- endif %}
 {%- if gpu_mem_util > 0 %} \
   --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL
+{%- endif %}
+{%- if kv_cache_memory %} \
+  --kv-cache-memory {{ kv_cache_memory }}
 {%- endif %}
 {%- if has_enforce_eager %} \
   --enforce-eager

@@ -993,9 +993,10 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
                         # unavailable, and record which
                         # baseline was used via timing_source.
                         ready_ts = launcher_info.requester_info.ready_timestamp
-                        actuation_baseline, launcher_info.timing_source = (
-                            select_kube_fallback_baseline(launcher_info.requester_info)
-                        )
+                        (
+                            actuation_baseline,
+                            launcher_info.timing_source,
+                        ) = select_kube_fallback_baseline(launcher_info.requester_info)
                         if (
                             launcher_info.actuation_condition
                             == FMAActuationCondition.T_HOT

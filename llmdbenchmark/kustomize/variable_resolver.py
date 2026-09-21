@@ -68,6 +68,18 @@ class GuideVariableResolver:
         self._repo_path = Path(repo_path).resolve()
         self._accelerator_backend = accelerator_backend
 
+        # Strip path prefixes from GUIDE_NAME
+        if "/" in guide_name:
+            guide_name = guide_name.split("/")[-1]
+
+        # Split INFRA_PROVIDER into TOPOLOGY and INFRA_PROVIDER
+        if variable_overrides and "INFRA_PROVIDER" in variable_overrides:
+            infra = variable_overrides["INFRA_PROVIDER"]
+            if "/" in infra:
+                topology, actual_provider = infra.split("/", 1)
+                variable_overrides["TOPOLOGY"] = topology
+                variable_overrides["INFRA_PROVIDER"] = actual_provider
+
         self._variables: dict[str, str] = {}
         if readme_variables:
             self._variables.update(readme_variables)

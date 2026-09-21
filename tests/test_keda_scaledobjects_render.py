@@ -176,6 +176,43 @@ _KEDA_NON_PROMETHEUS_TRIGGER = """\
 
 _SCENARIO_NO_KEDA = _SCENARIO_HEADER  # no keda key at all
 
+# Template 30 (EPP saturation autoscaling). The behavior values below are
+# deliberately different from defaults.yaml so the assertions prove the
+# scenario's own policy survived rendering, not that a default did.
+_EPP_KEDA_SATURATION = """\
+    eppKedaSaturation:
+      enabled: true
+      namespace: test-ns
+      prometheus:
+        baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
+        port: 9090
+      epp:
+        poolName: test-model-router
+      scaledObject:
+        minReplicas: 1
+        maxReplicas: 6
+        pollingInterval: 15
+        triggers:
+          - name: pool-saturation
+            query: |
+              max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})
+            threshold: "0.7"
+            activationThreshold: "0"
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 2
+                periodSeconds: 30
+          scaleDown:
+            stabilizationWindowSeconds: 600
+            policies:
+              - type: Percent
+                value: 50
+                periodSeconds: 90
+"""
+
 
 def _scenario_none_auth() -> str:
     return _SCENARIO_HEADER + _KEDA_NONE_AUTH
@@ -187,6 +224,10 @@ def _scenario_bearer_auth() -> str:
 
 def _scenario_non_prometheus_trigger() -> str:
     return _SCENARIO_HEADER + _KEDA_NON_PROMETHEUS_TRIGGER
+
+
+def _scenario_epp_keda_saturation() -> str:
+    return _SCENARIO_HEADER + _EPP_KEDA_SATURATION
 
 
 # ---------------------------------------------------------------------------
@@ -325,4 +366,35 @@ class TestAuthModeBearerSecret:
         ta_file = _find_yaml(stack_dir, "27a_keda-triggerauthentication")
         assert ta_file is None or not _has_yaml_content(ta_file), (
             "Template 27a should be empty when keda is absent"
+        )
+
+
+class TestEppKedaSaturationBehavior:
+    """Template 30: the HPA ``behavior`` block must survive rendering."""
+
+    def test_behavior_survives_as_mapping(self, tmp_path: Path) -> None:
+        """``behavior:`` sits at column 6, so its body must indent to 8. At 6 the
+        body lands at the parent key's own level: YAML reads ``behavior`` as null
+        and reparents scaleUp/scaleDown onto horizontalPodAutoscalerConfig, where
+        KEDA ignores them. Nothing errors -- the HPA just silently falls back to
+        Kubernetes' defaults -- so assert on the parsed shape, not the text.
+        """
+        result = _render_with_overrides(tmp_path, _scenario_epp_keda_saturation())
+        so_file = _find_yaml(result.rendered_paths[0], "30_keda-scaledobject")
+        assert so_file is not None, "30_keda-scaledobject*.yaml not found"
+        docs = [d for d in yaml.safe_load_all(so_file.read_text(encoding="utf-8")) if d]
+        hpa_config = docs[0]["spec"]["advanced"]["horizontalPodAutoscalerConfig"]
+        behavior = hpa_config.get("behavior")
+
+        assert isinstance(behavior, dict), (
+            f"behavior must parse as a mapping, got {behavior!r} -- the scaling "
+            "policy was dropped (check the toyaml indent width)"
+        )
+        assert behavior["scaleUp"]["policies"] == [
+            {"type": "Pods", "value": 2, "periodSeconds": 30}
+        ]
+        assert behavior["scaleDown"]["stabilizationWindowSeconds"] == 600
+        assert not {"scaleUp", "scaleDown"} & set(hpa_config), (
+            "scaleUp/scaleDown leaked onto horizontalPodAutoscalerConfig instead "
+            "of nesting under behavior"
         )

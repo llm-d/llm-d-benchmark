@@ -64,6 +64,8 @@ releases:
     namespace: {{ gw_ns }}
     createNamespace: true
     installed: true
+    wait: true
+    timeout: 300
     needs:
       - {{ gw_ns }}/istio-base
     values:

@@ -333,6 +333,24 @@ class DeployHarnessStep(Step):
             )
         )
 
+        if context.reset_caches_required and not context.reset_caches:
+            # A "required" reset that never runs would let every treatment
+            # measure an unknown cache state, so reject the configuration.
+            msg = (
+                "reset_caches_required is set but reset_caches is not -- no reset "
+                "would run, so a cold cache cannot be confirmed; set "
+                "reset_caches: true or drop reset_caches_required"
+            )
+            context.logger.log_error(msg)
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="reset_caches_required without reset_caches",
+                errors=[msg],
+                stack_name=stack_name,
+            )
+
         for batch_idx, batch in enumerate(batches, 1):
             names = ", ".join(s.label for s in batch)
             shape = f"{len(batch)} concurrent" if len(batch) > 1 else "sequential"
@@ -349,7 +367,19 @@ class DeployHarnessStep(Step):
 
             # Never between concurrent siblings: it would wipe a cache one is
             # still warming.
-            self._reset_caches_for_batch(batch, context)
+            reset_warnings = self._reset_caches_for_batch(batch, context)
+            if reset_warnings and context.reset_caches_required:
+                # Before the group, not after: nothing is running yet, and
+                # running it would only produce numbers taken against an
+                # unknown cache state.
+                msg = (
+                    f"reset_caches_required: could not confirm a cold cache "
+                    f"before group {batch_idx}/{len(batches)} ({names}) -- "
+                    f"aborting run before it starts: {reset_warnings[0]}"
+                )
+                context.logger.log_error(msg)
+                errors.append(msg)
+                break
 
             if len(batch) == 1:
                 results = [self._run_treatment(batch[0], context)]
@@ -914,14 +944,16 @@ class DeployHarnessStep(Step):
     @staticmethod
     def _reset_caches_for_batch(
         batch: list["_TreatmentSpec"], context: ExecutionContext
-    ) -> None:
+    ) -> list[str]:
         """Reset the vLLM caches once, before a group's members start.
 
         Per group rather than per pod: members share the servers, so a reset
-        between them would wipe a cache another is warming.
+        between them would wipe a cache another is warming. Returns the
+        reset's warnings (empty when the reset was confirmed or skipped) so
+        the caller can honour ``reset_caches_required``.
         """
         if not context.reset_caches or context.dry_run or context.harness_debug:
-            return
+            return []
         spec = batch[0]
         if len(batch) > 1:
             context.logger.log_warning(
@@ -932,7 +964,7 @@ class DeployHarnessStep(Step):
         inference_port = (
             (spec.plan_config or {}).get("vllmCommon", {}).get("inferencePort", 8000)
         )
-        reset_caches_pods(
+        return reset_caches_pods(
             spec.cmd,
             spec.deploy_namespace or spec.harness_ns,
             spec.model_label,

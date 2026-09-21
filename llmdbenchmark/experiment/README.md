@@ -99,6 +99,12 @@ Notes and limits:
 - **`reset_caches` fires once per group**, never between concurrent members: a
   reset mid-group would wipe a cache a sibling is still warming. Members of a
   multi-member group therefore do not each start cold.
+- **`reset_caches_required` stops before a group, not after.** Any reset
+  warning (no serving pods, a 404 with dev mode off, `success: false` after
+  the retries) aborts the run before the group starts, since nothing is
+  running yet. Off by default: a plain `reset_caches` run warns and continues.
+  Setting it without `reset_caches` fails the run immediately. It cannot see
+  through LMCache, which reports success without clearing.
 - **`treatment_stop_on_error` stops at a group boundary.** The current group
   finishes first, since killing in-flight siblings would orphan pods and
   half-collect results.

@@ -1,15 +1,18 @@
 """Tests for ``reset_caches_pods`` in utilities/endpoint.py.
 
-The helper makes two ``cmd.kube`` calls: first a ``get pods`` to discover
-serving-pod IPs, then a single batched ephemeral curl pod that POSTs each of
-/reset_prefix_cache, /reset_mm_cache, and /reset_encoder_cache to every IP.
-All failures are non-fatal -- the helper returns a list of warning strings
-and never raises.
+The helper first runs ``get pods`` to discover serving-pod IPs, then one
+batched ephemeral curl pod that POSTs each of /reset_prefix_cache,
+/reset_mm_cache, and /reset_encoder_cache to every IP. If vLLM reports a
+failed prefix-cache reset, the helper retries up to *max_retries* attempts in
+total, launching another curl pod for the failed IPs each time. All failures
+are non-fatal -- the helper returns a list of warning strings and never raises.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+
+import pytest
 
 from llmdbenchmark.utilities.endpoint import (
     reset_caches_pods,
@@ -30,6 +33,18 @@ def _cmd(side_effect):
     cmd = MagicMock()
     cmd.kube = MagicMock(side_effect=side_effect)
     return cmd
+
+
+def _prefix_reply(ip: str, ok: bool) -> str:
+    # What the curl pod prints for one prefix-cache reset against vLLM >= 0.26:
+    # the echoed header, the JSON body, then the HTTP status on its own line.
+    body = '{"success":true}' if ok else '{"success":false}'
+    return f"== {ip}/reset_prefix_cache?reset_external=true ==\n{body}\n200"
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    monkeypatch.setattr("llmdbenchmark.utilities.endpoint.time.sleep", lambda _s: None)
 
 
 def test_posts_all_endpoints_to_every_pod_ip_in_one_batched_pod():
@@ -115,3 +130,96 @@ def test_logger_receives_warnings():
     cmd = _cmd([_result(stdout="\n")])
     reset_caches_pods(cmd, "bench", "my-model", 8000, logger=logger)
     assert logger.log_warning.called
+
+
+def test_prefix_reset_requests_external_tiers():
+    # Connector-managed tiers (CPU offload) are only cleared when vLLM is
+    # asked with reset_external=true. The mm and encoder endpoints take no
+    # such parameter.
+    list_result = _result(stdout="10.0.0.1")
+    curl_result = _result(stdout=_prefix_reply("10.0.0.1", ok=True))
+    cmd = _cmd([list_result, curl_result])
+
+    reset_caches_pods(cmd, "bench", "my-model", 8000)
+
+    joined = " ".join(str(a) for a in cmd.kube.call_args_list[1].args)
+    assert "/reset_prefix_cache?reset_external=true" in joined
+    assert "/reset_mm_cache?" not in joined
+    assert "/reset_encoder_cache?" not in joined
+
+
+def test_prefix_reset_success_body_does_not_retry(no_sleep):
+    list_result = _result(stdout="10.0.0.1")
+    curl_result = _result(stdout=_prefix_reply("10.0.0.1", ok=True))
+    cmd = _cmd([list_result, curl_result])
+
+    warns = reset_caches_pods(
+        cmd, "bench", "my-model", 8000, max_retries=3, retry_interval=0
+    )
+
+    assert warns == []
+    assert cmd.kube.call_count == 2  # list + one curl pod
+
+
+def test_prefix_reset_failure_is_retried_then_warned(no_sleep):
+    # vLLM >= 0.26 answers a failed prefix reset with HTTP 200 and
+    # {"success":false} while blocks are still held, e.g. by in-flight
+    # KV offload transfers, so a 200 alone does not mean the cache is cold.
+    list_result = _result(stdout="10.0.0.1")
+    first = _result(stdout=_prefix_reply("10.0.0.1", ok=False))
+    second = _result(stdout=_prefix_reply("10.0.0.1", ok=False))
+    third = _result(stdout=_prefix_reply("10.0.0.1", ok=False))
+    cmd = _cmd([list_result, first, second, third])
+    logger = MagicMock()
+
+    warns = reset_caches_pods(
+        cmd, "bench", "my-model", 8000, logger=logger, max_retries=3, retry_interval=0
+    )
+
+    assert cmd.kube.call_count == 4  # list + three curl-pod attempts
+    assert len(warns) == 1
+    assert "10.0.0.1" in warns[0]
+    assert "reset_prefix_cache" in warns[0]
+    # Each wait is announced, so a run log explains the pause.
+    retry_logs = [
+        c.args[0] for c in logger.log_info.call_args_list if "retrying in" in c.args[0]
+    ]
+    assert len(retry_logs) == 2
+    assert "attempt 2/3" in retry_logs[0] and "attempt 3/3" in retry_logs[1]
+
+
+def test_prefix_reset_failure_recovers_on_retry(no_sleep):
+    list_result = _result(stdout="10.0.0.1")
+    first = _result(stdout=_prefix_reply("10.0.0.1", ok=False))
+    second = _result(stdout=_prefix_reply("10.0.0.1", ok=True))
+    cmd = _cmd([list_result, first, second])
+
+    warns = reset_caches_pods(
+        cmd, "bench", "my-model", 8000, max_retries=3, retry_interval=0
+    )
+
+    assert warns == []
+    assert cmd.kube.call_count == 3  # list + two curl-pod attempts
+
+
+def test_only_refusing_pods_are_retried(no_sleep):
+    list_result = _result(stdout="10.0.0.1 10.0.0.2")
+    first = _result(
+        stdout=_prefix_reply("10.0.0.1", ok=False)
+        + "\n"
+        + _prefix_reply("10.0.0.2", ok=True)
+    )
+    second = _result(stdout=_prefix_reply("10.0.0.1", ok=True))
+    cmd = _cmd([list_result, first, second])
+
+    warns = reset_caches_pods(
+        cmd, "bench", "my-model", 8000, max_retries=3, retry_interval=0
+    )
+
+    assert warns == []
+    assert cmd.kube.call_count == 3
+    retry_cmd = " ".join(str(a) for a in cmd.kube.call_args_list[2].args)
+    assert "for ip in 10.0.0.1;" in retry_cmd
+    assert "10.0.0.2" not in retry_cmd
+    assert "/reset_mm_cache" not in retry_cmd
+    assert "/reset_encoder_cache" not in retry_cmd

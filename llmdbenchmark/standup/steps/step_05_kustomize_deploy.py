@@ -236,7 +236,7 @@ class KustomizeDeployStep(Step):
             ms_path = str(
                 Path(repo_path) / "guides" / guide_name / "modelserver" / accel_backend
             )
-
+        ms_path = self._dedupe_path_segments(ms_path)
         needs_wrapper = patches or (overlay_path and Path(overlay_path).is_dir())
 
         if needs_wrapper:
@@ -288,7 +288,7 @@ class KustomizeDeployStep(Step):
         # --- 5. Wait ---
         context.logger.log_info(f"Waiting for pods (timeout={deploy_timeout}s)...")
         wait_result = cmd.wait_for_pods(
-            label=f"llm-d.ai/guide={guide_name}",
+            label=f"llm-d.ai/guide={guide_name.split('/')[-1]}",
             namespace=namespace,
             timeout=deploy_timeout,
             poll_interval=10,
@@ -303,7 +303,7 @@ class KustomizeDeployStep(Step):
             )
 
         # --- 6. Endpoint ---
-        epp_service = f"{guide_name}-epp"
+        epp_service = f"{guide_name.split('/')[-1]}-epp"
         context.deployed_endpoints[stack_path.name] = epp_service
         context.logger.log_info(f"Endpoint registered: {epp_service}")
 
@@ -636,6 +636,30 @@ class KustomizeDeployStep(Step):
             if tok.startswith("-k") and len(tok) > 2:
                 return tok[2:]
         return None
+
+    @staticmethod
+    def _dedupe_path_segments(path: str) -> str:
+        """Collapse consecutive duplicate segments in a POSIX path, working
+        from the end of the path towards the start.
+
+        e.g. "modelserver/gpu/vllm/native/native/cpu" -> "modelserver/gpu/vllm/native/cpu"
+
+        After each collapse, the resulting path is checked against disk; if
+        it exists, deduping stops immediately and that path is returned,
+        since a real directory may legitimately contain a repeated segment.
+        """
+        if Path(path).exists():
+            return path
+        parts = path.split("/")
+        i = len(parts) - 1
+        while i > 0:
+            if parts[i] and parts[i] == parts[i - 1]:
+                del parts[i]
+                candidate = "/".join(parts)
+                if Path(candidate).exists():
+                    return candidate
+            i -= 1
+        return "/".join(parts)
 
     @staticmethod
     def _select_modelserver_command(commands, accel_backend, resolver):

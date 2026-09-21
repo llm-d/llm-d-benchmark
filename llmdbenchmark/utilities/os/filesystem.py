@@ -104,6 +104,11 @@ def resolve_specification_file(
             stem = stem[: -len(ext)]
             break
 
+    # Map nested slashes to hyphens
+    if "/" in stem:
+        category, rest = stem.split("/", 1)
+        stem = f"{category}/" + rest.replace("/", "-")
+
     # base_dir takes priority, fall back to package root
     search_roots: list[Path] = []
     if base_dir:

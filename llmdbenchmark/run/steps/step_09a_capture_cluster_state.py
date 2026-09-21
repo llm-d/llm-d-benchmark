@@ -69,7 +69,7 @@ def _prometheus_api_status(stdout: str) -> tuple[str, str]:
     return status, error
 
 
-_FMA_GUIDE_STACK_NAME = "fast-model-actuation"
+_FMA_GUIDE_STACK_NAME = "fast-model-actuation-base"
 
 
 class CaptureClusterStateStep(Step):

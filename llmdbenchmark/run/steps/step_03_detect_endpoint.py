@@ -109,6 +109,8 @@ class DetectEndpointStep(Step):
             gateway_port = 0
         elif is_kustomize:
             guide_name = self._resolve(plan_config, "kustomize.guideName", default="")
+            if guide_name:
+                guide_name = guide_name.split("/")[-1]
             context.logger.log_info(
                 f"Kustomize deployment -- looking for service '{guide_name}-epp'",
             )
@@ -160,13 +162,15 @@ class DetectEndpointStep(Step):
                         default="8000",
                     )
                 )
-                service_ip, service_name, gateway_port = (
-                    find_direct_modelservice_endpoint(
-                        cmd,
-                        direct_service_namespace,
-                        model_id_label,
-                        direct_port,
-                    )
+                (
+                    service_ip,
+                    service_name,
+                    gateway_port,
+                ) = find_direct_modelservice_endpoint(
+                    cmd,
+                    direct_service_namespace,
+                    model_id_label,
+                    direct_port,
                 )
             else:
                 service_ip, service_name, gateway_port = find_gateway_endpoint(

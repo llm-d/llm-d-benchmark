@@ -63,6 +63,6 @@ scenario:
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic_heavy.yaml
-      executable: llm-d-benchmark.py
+      executable: llm-d-benchmark.sh
 
     workDir: "~/data/fast-model-actuation-keda"

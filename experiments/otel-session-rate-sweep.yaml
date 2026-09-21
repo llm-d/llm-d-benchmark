@@ -20,9 +20,11 @@
 #     --analyze
 #
 # Cache reset: with `reset_caches` enabled, before each treatment's run
-# the harness POSTs /reset_prefix_cache, /reset_mm_cache, and
-# /reset_encoder_cache to every vLLM serving pod, so every session-rate
-# treatment starts against cold caches without redeploying the stack.
+# the harness POSTs /reset_prefix_cache?reset_external=true, /reset_mm_cache,
+# and /reset_encoder_cache to every vLLM serving pod, so every session-rate
+# treatment starts against cold caches without redeploying the stack
+# (reset_external asks vLLM to clear connector-managed KV tiers as well).
+# A refused prefix reset is retried, and warned about if still unconfirmed.
 # Requires the server to run with VLLM_SERVER_DEV_MODE=1 (the repo
 # default via vllmCommon.flags.serverDevMode); if dev mode is off the
 # endpoints 404 and the reset is skipped with a warning (non-fatal).
