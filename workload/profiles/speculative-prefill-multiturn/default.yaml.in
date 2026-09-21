@@ -1,0 +1,11 @@
+url: "REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL/v1/chat/completions"
+model: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+num_users: 10
+num_turns: 5
+num_user_tokens: 128
+max_completion_tokens: 256
+mean_delay_ms: 5000
+timeout: 300
+ignore_eos: false
+long_answer_words: 1200
+seed: 42
