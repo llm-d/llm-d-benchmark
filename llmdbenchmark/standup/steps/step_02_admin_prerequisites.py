@@ -599,7 +599,7 @@ class AdminPrerequisitesStep(Step):
         """Install LWS only when multinode is enabled and CRDs are missing.
 
         The bash implementation only installed LWS when
-        LLMDBENCH_VLLM_MODELSERVICE_MULTINODE was true (e.g., wide-ep-lws).
+        LLMDBENCH_VLLM_MODELSERVICE_MULTINODE was true (e.g., wide-ep).
         """
         multinode = plan_config.get("multinode", {})
         if not multinode.get("enabled", False):

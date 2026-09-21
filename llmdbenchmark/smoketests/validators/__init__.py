@@ -20,9 +20,7 @@ from llmdbenchmark.smoketests.validators.optimized_baseline import (
 from llmdbenchmark.smoketests.validators.tiered_prefix_cache import (
     TieredPrefixCacheValidator,
 )
-from llmdbenchmark.smoketests.validators.wide_ep_lws import (
-    WideEpLwsValidator,
-)
+from llmdbenchmark.smoketests.validators.wide_ep import WideEpValidator
 from llmdbenchmark.smoketests.validators.simulated_accelerators import (
     SimulatedAcceleratorsValidator,
 )
@@ -53,12 +51,7 @@ VALIDATORS: dict[str, type] = {
     # stack's config has wva.enabled: true.
     "workload-autoscaling": OptimizedBaselineValidator,
     "tiered-prefix-cache": TieredPrefixCacheValidator,
-    # wide-ep is the renamed wide-ep-lws guide (llm-d dropped the lws
-    # substring after DisaggregatedSet became the base). Both names stay
-    # registered until the rename lands in llm-d and the old scenario is
-    # removed.
-    "wide-ep": WideEpLwsValidator,
-    "wide-ep-lws": WideEpLwsValidator,
+    "wide-ep": WideEpValidator,
     "simulated-accelerators": SimulatedAcceleratorsValidator,
     "wva": WvaValidator,
     # Examples

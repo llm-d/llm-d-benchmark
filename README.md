@@ -838,11 +838,11 @@ llmdbenchmark --spec guides/optimized-baseline standup  # Optimized baseline (fo
 llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
 llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
 llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing
-llmdbenchmark --spec wide-ep-lws standup                # Wide expert-parallel with LWS
+llmdbenchmark --spec wide-ep standup                    # Wide expert-parallel (DisaggregatedSet)
 ```
 
 > [!WARNING]
-> `wide-ep-lws` requires RDMA/RoCE networking and LeaderWorkerSet (LWS) controller. Verify your cluster has working RDMA HCAs before deploying.
+> `wide-ep` requires RDMA/RoCE networking and LeaderWorkerSet (LWS) controller. Verify your cluster has working RDMA HCAs before deploying.
 
 ## Main Concepts
 

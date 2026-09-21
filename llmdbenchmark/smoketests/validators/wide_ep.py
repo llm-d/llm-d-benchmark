@@ -1,4 +1,4 @@
-"""Validator for the wide-ep-lws well-lit path."""
+"""Validator for the wide-ep well-lit path."""
 
 from pathlib import Path
 
@@ -7,8 +7,8 @@ from llmdbenchmark.smoketests.base import BaseSmoketest, _load_config, _nested_g
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 
 
-class WideEpLwsValidator(BaseSmoketest):
-    """Validates wide expert-parallel with LeaderWorkerSet scenario."""
+class WideEpValidator(BaseSmoketest):
+    """Validates the wide expert-parallel (DisaggregatedSet) scenario."""
 
     def run_config_validation(
         self,
@@ -26,7 +26,7 @@ class WideEpLwsValidator(BaseSmoketest):
                 CheckResult(
                     "config_validation",
                     True,
-                    message="[DRY RUN] wide-ep-lws config validation skipped",
+                    message="[DRY RUN] wide-ep config validation skipped",
                 )
             )
             return report

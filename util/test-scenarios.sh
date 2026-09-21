@@ -17,7 +17,7 @@ set -o pipefail
 #
 # Options:
 #   --stable       Run stable scenarios only (default)
-#   --trouble      Run known-trouble scenarios only (wide-ep-lws, spyre)
+#   --trouble      Run known-trouble scenarios only (wide-ep, spyre)
 #   --all          Run all vLLM scenario groups (stable + trouble)
 #   --sglang       Run the SGLang guide presets via the kustomize deploy method
 #   --ms-only      Only test modelservice (skip standalone); no effect on --sglang
@@ -99,13 +99,13 @@ STABLE_MS_ONLY=(
   guides/tiered-prefix-cache
 )
 
-# Trouble: known issues (RDMA/HCA for wide-ep-lws, cluster-specific for spyre)
+# Trouble: known issues (RDMA/HCA for wide-ep, cluster-specific for spyre)
 TROUBLE_BOTH=(
   examples/spyre
 )
 
 TROUBLE_MS_ONLY=(
-  guides/wide-ep-lws
+  guides/wide-ep
 )
 
 # SGLang: guide presets deployed via the kustomize method (backend gpu/sglang).

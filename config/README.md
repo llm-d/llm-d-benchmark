@@ -1160,7 +1160,7 @@ The `securityContext` capabilities vary by scenario:
 - `NET_ADMIN` and `NET_RAW` are additionally required for scenarios that need network configuration (route tables, InfiniBand detection) --e.g., `precise-prefix-cache-aware` and `tiered-prefix-cache`
 - Scenarios like `inference-scheduling` and `pd-disaggregation` use only the base capabilities
 
-For scenarios with prefill pods (e.g., `pd-disaggregation`, `wide-ep-lws`), add the same block under the `prefill` section as well.
+For scenarios with prefill pods (e.g., `pd-disaggregation`, `wide-ep`), add the same block under the `prefill` section as well.
 
 #### Custom preprocessing
 
@@ -1864,7 +1864,7 @@ Map directly to the [llm-d well-lit-path guides](https://github.com/llm-d/llm-d/
 | `pd-disaggregation.yaml` | Prefill/decode disaggregation |
 | `precise-prefix-cache-aware.yaml` | Prefix cache aware routing |
 | `tiered-prefix-cache.yaml` | Tiered CPU/GPU prefix cache |
-| `wide-ep-lws.yaml` | Expert parallelism with LeaderWorkerSet |
+| `wide-ep.yaml` | Wide expert parallelism (DisaggregatedSet) |
 | `simulated-accelerators.yaml` | CPU-only simulation with opt-125m |
 | `optimized-baseline.yaml` | Optimized baseline with kustomize deployment |
 
@@ -2194,7 +2194,7 @@ Each category contains:
 | `pd-disaggregation.yaml.j2` | Deployment method, replicas, TP sizes x concurrency |
 | `precise-prefix-cache-aware.yaml.j2` | GAIE prefix cache configs x prompt groups |
 | `tiered-prefix-cache.yaml.j2` | CPU block sizes x prompt groups |
-| `wide-ep-lws.yaml.j2` | Standup only |
+| `wide-ep.yaml.j2` | Standup only |
 | `simulated-accelerators.yaml.j2` | Standup only |
 
 **Examples:** `cpu.yaml.j2`, `gpu.yaml.j2`, `spyre.yaml.j2`

@@ -261,7 +261,7 @@ not have. Use a GPU cloud (GKE/CoreWeave/AWS) or on-prem GPU cluster instead.
   but expect the two engines' PD numbers to reflect different transfer
   mechanisms.
 - **Overlay coverage tracks upstream.** Not every guide has an SGLang overlay
-  (e.g. `wide-ep-lws`, `workload-autoscaling`). Only the guides listed above are
+  (e.g. `wide-ep`, `workload-autoscaling`). Only the guides listed above are
   supported.
 
 ## Continuous integration

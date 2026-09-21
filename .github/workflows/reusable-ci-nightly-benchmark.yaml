@@ -988,7 +988,7 @@ jobs:
           fi
           echo "### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
           # Match on the manifest's kind rather than on a patch-<name>.yaml filename: guides that ship
-          # whole resources instead of patches (e.g. wide-ep-lws, whose prefill/decode are
+          # whole resources instead of patches (e.g. wide-ep, whose prefill/decode are
           # LeaderWorkerSets) were silently skipped, so their pods ran at priority 0 and could never
           # preempt (#1677). The pod template lives at a different path per kind.
           find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | \

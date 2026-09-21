@@ -107,7 +107,7 @@ The base class (`validate_role_pods`) handles the common checks that apply to ev
 | `precise-prefix-cache-aware` | `PrecisePrefixCacheAwareValidator` | No routing proxy, EPP pod running, `--prefix-caching-hash-algo sha256_cbor`, KV events port 5557 |
 | `inference-scheduling` | `InferenceSchedulingValidator` | Decode-only, metrics port exposed, routing proxy present |
 | `tiered-prefix-cache` | `TieredPrefixCacheValidator` | KV transfer with OffloadingConnector, LMCACHE env vars, `--max-num-seq`, EPP pod |
-| `wide-ep-lws` | `WideEpLwsValidator` | LWS env vars (LWS_GROUP_SIZE, DP_SIZE_LOCAL), expert parallelism flags, RDMA network resource |
+| `wide-ep` | `WideEpValidator` | LWS env vars (LWS_GROUP_SIZE, DP_SIZE_LOCAL), expert parallelism flags, RDMA network resource |
 | `simulated-accelerators` | `SimulatedAcceleratorsValidator` | No GPU resources on pods, works for both standalone and modelservice |
 | `cpu-example-ms` | `CpuValidator` | No GPU resources, CPU vLLM image, kubeconfig + preprocesses volumes |
 | `gpu-example` | `GpuValidator` | GPU accelerator resource present, supports both modelservice and standalone |
@@ -177,5 +177,5 @@ smoketests/
     +-- precise_prefix_cache_aware.py
     +-- simulated_accelerators.py
     +-- tiered_prefix_cache.py
-    +-- wide_ep_lws.py
+    +-- wide_ep.py
 ```

@@ -220,7 +220,7 @@ scenario:
       # template's requestTimeout / backendRequestTimeout knobs never render
       # and cannot abort a long request here.
       #
-      # This is worth stating because wide-ep-lws.yaml does carry an
+      # This is worth stating because wide-ep.yaml does carry an
       # httpRoute block while also setting className: epponly, which reads
       # like the timeouts are in effect. They are not, in either scenario.
       # Long-request timeouts on this path are governed by

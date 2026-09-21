@@ -17,7 +17,7 @@
 #     --experiments workload/experiments/max-concurrency-sweep.yaml
 #
 # Example specs that use vllm-benchmark:
-#   pd-disaggregation, simulated-accelerators, wide-ep-lws
+#   pd-disaggregation, simulated-accelerators, wide-ep
 
 treatments:
   - name: conc8
