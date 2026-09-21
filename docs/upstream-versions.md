@@ -29,7 +29,7 @@ whatever the host's package manager provides.
 | **kustomize** | `v5.8.1` | version | `install.sh` line 87 (`tool_version_for`) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `v0.1.0` | commit SHA | `install.sh` line 1021 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `4.18.0` | version | `install.sh` line 86 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
-| **skopeo** | `1.20.1` | version | `install.sh` line 89 (`tool_version_for`) | [containers/skopeo](https://github.com/containers/skopeo) |
+| **skopeo** | `1.24.1` | version | `install.sh` line 89 (`tool_version_for`) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `v4.53.6` | version | `install.sh` line 79 (`tool_version_for`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 | **zstd** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | (unknown) |
 
