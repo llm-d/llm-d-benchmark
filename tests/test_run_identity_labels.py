@@ -448,7 +448,8 @@ def test_driver_env_description_does_not_override_each_treatment(
     A scenario-wide LLMDBENCH_DESCRIPTION_TEXT in the driver's environment
     outranks the per-directory metadata, so leaving it unscoped gives every
     treatment of a sweep the same description -- exactly what scoping the
-    experiment ID already prevents.
+    experiment ID already prevents. Each description is additionally prefixed
+    with its own treatment label, since the recorded value is scenario-wide.
     """
     treatments = {
         "conc32": ("inference-perf-conc32-1786024743-aaaaaa", "A SPECIFIC"),
@@ -467,7 +468,8 @@ def test_driver_env_description_does_not_override_each_treatment(
 
     from llmdbenchmark.analysis import run_analysis
 
-    for experiment_id, description in treatments.values():
+    descriptions = {}
+    for suffix, (experiment_id, description) in treatments.items():
         results_dir = tmp_path / f"{experiment_id}_1"
         assert run_analysis("inference-perf", results_dir, None) is None
         report = yaml.safe_load(
@@ -476,7 +478,10 @@ def test_driver_env_description_does_not_override_each_treatment(
                 / "benchmark_report_v0.2,_stage_0_lifecycle_metrics.json.yaml"
             ).read_text(encoding="utf-8")
         )
-        assert report["run"]["description"] == description
+        descriptions[suffix] = report["run"]["description"]
+        assert descriptions[suffix] == f"{suffix}-{description}"
+    assert descriptions["conc32"] != descriptions["conc64"]
+    assert "SCENARIO WIDE" not in descriptions.values()
     assert os.environ["LLMDBENCH_DESCRIPTION_TEXT"] == "SCENARIO WIDE"
 
 

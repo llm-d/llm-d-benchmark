@@ -12,6 +12,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -131,6 +132,30 @@ def _recorded_for(results_dir: Path, key: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _description_with_treatment(results_dir: Path, harness_name: str) -> str:
+    """Qualify this directory's description with its own treatment label.
+
+    Requires IDs of the form <treatment>-<timestamp>-<suffix>.
+    Otherwise, the shortener may incorrectly identify the last ID segment as the
+    treatment.
+    """
+    text = _recorded_for(results_dir, "description_text")
+    # An absent description falls back downstream to the full experiment ID,
+    # which is unique across a sweep; a bare treatment label is not.
+    if not text:
+        return text
+    experiment_id = _recorded_for(results_dir, "experiment_id")
+    if not re.search(r"-[a-z0-9]{6,8}$", experiment_id):
+        return text
+
+    from llmdbenchmark.analysis.cross_treatment import _shorten_treatment_label
+
+    treatment = _shorten_treatment_label(experiment_id, harness_name)
+    if not treatment or treatment == harness_name or treatment in text.split("-"):
+        return text
+    return f"{treatment}-{text}"
+
+
 def run_analysis(
     harness_name: str,
     results_dir: Path,
@@ -188,7 +213,9 @@ def run_analysis(
     scoped_env = {
         "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(results_dir),
         "LLMDBENCH_RUN_EXPERIMENT_ID": _recorded_for(results_dir, "experiment_id"),
-        "LLMDBENCH_DESCRIPTION_TEXT": _recorded_for(results_dir, "description_text"),
+        "LLMDBENCH_DESCRIPTION_TEXT": _description_with_treatment(
+            results_dir, harness_name
+        ),
         "LLMDBENCH_DESCRIPTION_KEYWORDS": _recorded_for(
             results_dir, "description_keywords"
         ),
