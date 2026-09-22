@@ -82,7 +82,7 @@ tools="curl helm helmfile"
 tool_version_for() {
     case "$1" in
         curl)      echo "8_21_0"  ;;
-        helmfile)  echo "1.5.1"   ;;
+        helmfile)  echo "1.8.0"   ;;
         helm)      echo "v4.2.0" ;;
         helm-diff) echo "v3.15.7" ;;
         *)         echo ""        ;;
@@ -277,11 +277,11 @@ def test_tool_version_for_overrides_install_fn_scrape(
     sbom_module,
     install_sh_tvf: Path,
 ) -> None:
-    """helmfile's tool_version_for pin (1.5.1) wins over the install-fn
+    """helmfile's tool_version_for pin (1.8.0) wins over the install-fn
     `local version=1.1.3` scrape."""
     entries = sbom_module.parse_install_sh(install_sh_tvf)
     by_name = {e.name: e for e in entries}
-    assert by_name["helmfile"].pin == "1.5.1"
+    assert by_name["helmfile"].pin == "1.8.0"
     assert "tool_version_for" in by_name["helmfile"].location
 
 

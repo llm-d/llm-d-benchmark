@@ -77,7 +77,7 @@ tool_version_for() {
     case "$1" in
         curl)      echo "8_21_0"  ;;
         yq)        echo "v4.53.6" ;;
-        helmfile)  echo "1.5.1"   ;;
+        helmfile)  echo "1.8.0"   ;;
         helm)      echo "v3.19.0" ;;
         helm-diff) echo "v3.13.0" ;;
         # helm-diff build compatible with Helm 4's plugin SDK; selected at
@@ -507,7 +507,7 @@ version_gte() {
 
     # Normalize a leading 'v'. Tools report versions inconsistently:
     # `helmfile --version` prints 'v1.1.3' while tool_version_for helmfile
-    # is '1.5.1'. Without this, `sort -V` ranks 'v1.1.3' ABOVE '1.5.1'
+    # is '1.8.0'. Without this, `sort -V` ranks 'v1.1.3' ABOVE '1.8.0'
     # (the 'v' breaks numeric ordering), so a stale helmfile is wrongly
     # judged up-to-date and never upgraded.
     ver1="${ver1#v}"
