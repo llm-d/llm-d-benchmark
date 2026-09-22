@@ -74,26 +74,27 @@ fi
 # -T0 reads the *host* core count, ignoring the pod's cgroup quota, and zstd's worker
 # buffers scale with it. Ask the cgroup instead -- in-pod, so it cannot drift from the
 # pod actually running. 0 means unlimited, where -T0 is right.
-threads=$(
-    q=; p=
-    if [ -r /sys/fs/cgroup/cpu.max ]; then
-        read -r q p < /sys/fs/cgroup/cpu.max
-    elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
-        q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)
-        p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)
-    fi
-    # Both numeric and a positive period, or fall back to 0 (= all cores). An
-    # unexpected cgroup format must not divide by zero: that aborts the whole
-    # script here, leaving the set uncompressed with a clean exit.
-    case "$q$p" in
-        *[!0-9]* | '') echo 0 ;;
-        *) if [ "$q" -gt 0 ] && [ "$p" -gt 0 ]; then
-               echo $(( (q + p - 1) / p ))
-           else
-               echo 0
-           fi ;;
-    esac
-)
+#
+# Top-level, not inside $(...): bash 3.2 (macOS /bin/bash, where the tests run this
+# script) cannot parse a `case` inside command substitution -- "syntax error near
+# unexpected token `;;'" -- and the parse failure aborts the whole script.
+q=; p=
+if [ -r /sys/fs/cgroup/cpu.max ]; then
+    read -r q p < /sys/fs/cgroup/cpu.max
+elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
+    q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)
+    p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)
+fi
+# Both numeric and a positive period, or fall back to 0 (= all cores). An
+# unexpected cgroup format must not divide by zero: that aborts the whole
+# script here, leaving the set uncompressed with a clean exit.
+threads=0
+case "$q$p" in
+    *[!0-9]* | '') ;;
+    *) if [ "$q" -gt 0 ] && [ "$p" -gt 0 ]; then
+           threads=$(( (q + p - 1) / p ))
+       fi ;;
+esac
 
 # In the results dir, not /tmp: the pod's /tmp is small, the tar is multi-GB.
 pack=$(mktemp ./.pack.XXXXXX.tar)
@@ -104,8 +105,10 @@ trap 'rm -f -- "$pack" "$list" "$skip"' EXIT
 # --no-wildcards, or --exclude-from reads a keeper holding '[' as a glob and
 # archives it instead. Not --null: under it GNU tar honours only the list's *first*
 # pattern, silently leaking every keeper after it.
+# -print, not GNU find's -printf './%f\n': at -maxdepth 1 under '.' they emit the
+# same './name' lines, and -print also works on BSD find (macOS test runs).
 find . -mindepth 1 -maxdepth 1 -type f \( {keep_tests} \
-    -o -name '.pack.*' -o -name '.list.*' \) -printf './%f\n' > "$skip"
+    -o -name '.pack.*' -o -name '.list.*' \) -print > "$skip"
 find . -mindepth 1 -type f \( {nested_finds} \) -print >> "$skip"
 
 # --exclude={archive} as well as the skip list: the list is a snapshot taken above,

@@ -431,6 +431,10 @@ class HarnessConfig(BaseModel):
     # cluster-config does not trip the extra="forbid" "Extra inputs" warning.
     # Type-only, no default: defaults.yaml remains the source of truth.
     runAsUser: int | None = None
+    # Renders securityContext.privileged on the harness container. Independent
+    # of runAsUser: privileged workloads usually also want runAsUser: 0, but
+    # neither implies the other.
+    privileged: bool | None = None
     serviceAccount: str | None = None
 
 

@@ -25,9 +25,49 @@ from llmdbenchmark.utilities.archive import remote_compress_script
 if shutil.which("zstd") is None and os.environ.get("CI"):
     raise RuntimeError("zstd missing in CI: these tests would skip silently")
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("zstd") is None, reason="needs the zstd CLI"
-)
+
+def _find_gnu_tar() -> str | None:
+    """Absolute path to a GNU tar, or None.
+
+    The compress script's delete-safety flags (--anchored, --no-wildcards) are
+    GNU-only; macOS ships bsdtar. Homebrew's gnu-tar installs it as ``gtar``."""
+    for name in ("tar", "gtar", "gnutar"):
+        path = shutil.which(name)
+        if path is None:
+            continue
+        try:
+            probe = subprocess.run(
+                [path, "--version"], capture_output=True, text=True, check=False
+            )
+        except OSError:
+            continue
+        if "GNU tar" in probe.stdout:
+            return path
+    return None
+
+
+_GNU_TAR = _find_gnu_tar()
+if _GNU_TAR is None and os.environ.get("CI"):
+    raise RuntimeError("GNU tar missing in CI: these tests would skip silently")
+
+# When GNU tar exists but is not the PATH's ``tar`` (macOS with gnu-tar installed),
+# expose it as ``tar`` through a PATH shim so the script under test picks it up.
+# Prepended to os.environ here, at import: the per-test shims below build their PATH
+# from os.environ too, so their overrides still land in front of this one.
+if _GNU_TAR is not None and os.path.basename(_GNU_TAR) != "tar":
+    import tempfile
+
+    _gnu_shim = Path(tempfile.mkdtemp(prefix="llmdbench-gnutar-"))
+    (_gnu_shim / "tar").symlink_to(_GNU_TAR)
+    os.environ["PATH"] = f"{_gnu_shim}:{os.environ['PATH']}"
+
+pytestmark = [
+    pytest.mark.skipif(shutil.which("zstd") is None, reason="needs the zstd CLI"),
+    pytest.mark.skipif(
+        _GNU_TAR is None,
+        reason="needs GNU tar (macOS: brew install gnu-tar)",
+    ),
+]
 
 
 def _compress(directory: Path, expect_ok: bool = True, env: dict | None = None):
@@ -311,14 +351,17 @@ def _listing_shims(tmp_path: Path, decompress_rc: int, listing: str) -> dict:
     leaving compression itself working."""
     shim = tmp_path / "bin"
     shim.mkdir(exist_ok=True)
+    # Resolved paths, not /usr/bin/…: on macOS /usr/bin/tar is bsdtar (no
+    # --anchored) and zstd lives under homebrew. _GNU_TAR and which() were
+    # captured after the module-level PATH shim, so they point at GNU tar.
     (shim / "zstd").write_text(
         f'#!/bin/bash\nif [ "$1" = "-dc" ]; then exit {decompress_rc}; fi\n'
-        'exec /usr/bin/zstd "$@"\n',
+        f'exec {shutil.which("zstd")} "$@"\n',
         encoding="utf-8",
     )
     (shim / "tar").write_text(
         f'#!/bin/bash\nif [ "$1" = "tf" ]; then printf %s {listing!r}; exit 0; fi\n'
-        'exec /usr/bin/tar "$@"\n',
+        f'exec {_GNU_TAR} "$@"\n',
         encoding="utf-8",
     )
     for name in ("zstd", "tar"):
@@ -503,7 +546,7 @@ def test_the_archive_never_becomes_a_member_of_itself(tmp_path):
     (shim / "tar").write_text(
         "#!/bin/bash\n"
         f'if [ "$1" = "cf" ]; then : > {results / "workspace.tar.zst"}; fi\n'
-        'exec /usr/bin/tar "$@"\n',
+        f'exec {_GNU_TAR} "$@"\n',
         encoding="utf-8",
     )
     (shim / "tar").chmod(0o755)

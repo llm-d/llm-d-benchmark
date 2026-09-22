@@ -575,6 +575,12 @@ class DeployHarnessStep(Step):
                     template_values["model"]["name"] = spec.model_name
                 template_values.setdefault("images", {}).setdefault("benchmark", {})
 
+                # Debug pods (-d) exist only for interactive testing/debugging:
+                # run them as privileged root so nothing gets in the way.
+                if context.harness_debug:
+                    template_values["harness"]["privileged"] = True
+                    template_values["harness"]["runAsUser"] = 0
+
                 # Service account precedence: CLI override (-q) > scenario's
                 # harness.serviceAccount > global serviceAccount.name default.
                 if context.harness_service_account:
@@ -591,6 +597,22 @@ class DeployHarnessStep(Step):
                     template_values["harness"]["serviceAccount"] = spec.plan_config[
                         "serviceAccount"
                     ].get("name", "default")
+
+                # Debug pods (-d) request privileged, but on OpenShift admission
+                # only allows that if the pod's ServiceAccount holds the
+                # privileged SCC -- standup binds it to restricted only. Grant
+                # it here at run time via a namespaced RoleBinding, so standup
+                # stays untouched and the grant disappears with the namespace.
+                if (
+                    context.harness_debug
+                    and context.is_openshift
+                    and not context.dry_run
+                ):
+                    self._grant_debug_privileged_scc(
+                        context,
+                        spec,
+                        template_values["harness"].get("serviceAccount") or "default",
+                    )
 
                 # Extra env vars to propagate into pod (-g)
                 if context.harness_envvars_to_pod:
@@ -1810,6 +1832,58 @@ class DeployHarnessStep(Step):
             if path.is_dir() and any(child.is_file() for child in path.iterdir())
         ]
         return mounts or [harness_name]
+
+    def _grant_debug_privileged_scc(self, context, spec, service_account: str) -> None:
+        """Bind the harness ServiceAccount to the privileged SCC (OpenShift).
+
+        Applied once per (namespace, serviceaccount) pair per run. A failed
+        grant is logged but does not abort the deploy: the pod itself will be
+        rejected by SCC admission and that error is surfaced normally.
+        """
+        applied = getattr(self, "_debug_scc_granted", None)
+        if applied is None:
+            applied = set()
+            self._debug_scc_granted = applied
+        key = (spec.harness_ns, service_account)
+        if key in applied:
+            return
+
+        manifest = (
+            "apiVersion: rbac.authorization.k8s.io/v1\n"
+            "kind: RoleBinding\n"
+            "metadata:\n"
+            "  name: llmdbench-harness-debug-privileged-scc\n"
+            f"  namespace: {spec.harness_ns}\n"
+            "  labels:\n"
+            "    llmdbench.ai/purpose: harness-debug\n"
+            "subjects:\n"
+            "- kind: ServiceAccount\n"
+            f"  name: {service_account}\n"
+            f"  namespace: {spec.harness_ns}\n"
+            "roleRef:\n"
+            "  kind: ClusterRole\n"
+            "  name: system:openshift:scc:privileged\n"
+            "  apiGroup: rbac.authorization.k8s.io\n"
+        )
+        binding_path = (
+            context.run_dir() / f"harness-debug-privileged-scc-{spec.harness_ns}.yaml"
+        )
+        binding_path.write_text(manifest, encoding="utf-8")
+
+        result = spec.cmd.kube("apply", "-f", str(binding_path), check=False)
+        if result.success:
+            applied.add(key)
+            context.logger.log_info(
+                f"Granted privileged SCC to ServiceAccount/{service_account} "
+                f"in ns/{spec.harness_ns} for harness debug pod"
+            )
+        else:
+            context.logger.log_warning(
+                f"Could not grant privileged SCC to "
+                f"ServiceAccount/{service_account} in ns/{spec.harness_ns} "
+                f"(needs cluster-admin); the debug pod may be rejected by "
+                f"SCC admission: {result.stderr}"
+            )
 
     @staticmethod
     def _render_template(template_content: str, values: dict) -> str:

@@ -17,9 +17,18 @@ spec:
   - name: harness
     image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
     imagePullPolicy: {{ images.benchmark.pullPolicy }}
-{% if harness.runAsUser is defined and harness.runAsUser is not none %}
+{% set harness_privileged = harness.privileged | default(false) %}
+{% if harness_privileged or (harness.runAsUser is defined and harness.runAsUser is not none) %}
     securityContext:
+{% if harness_privileged %}
+      privileged: true
+{% endif %}
+{% if harness.runAsUser is defined and harness.runAsUser is not none %}
       runAsUser: {{ harness.runAsUser }}
+{% if harness.runAsUser == 0 %}
+      runAsGroup: 0
+{% endif %}
+{% endif %}
 {% endif %}
     command: ["sh", "-c"]
     args:
