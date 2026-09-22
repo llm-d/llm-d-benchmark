@@ -1,0 +1,372 @@
+# [EXPERIMENTAL] TOKEN-AWARE AUTOSCALING GUIDE
+#
+# Scales model servers on TOKENS of outstanding work rather than a count of
+# requests. An 8192-token prompt is 16x the prefill work of a 512-token one and a
+# request counter rates them the same, so queue-depth and running-request signals
+# hold when prompt sizes are homogeneous and drift when they are not.
+#
+# Two triggers, two units, one Deployment (P+D co-located):
+#   prefill  sum(llm_d_epp_inflight_tokens) / peakPrefillThroughput  -> SECONDS of backlog
+#   decode   sum(vllm:kv_cache_usage_perc)                           -> pods' worth of full KV
+#   replicas = max( ceil(backlog_s / 1.5), ceil(kv / 0.8) )  -- the bottleneck wins
+#
+# Reuses the eppKedaSaturation plumbing (Thanos auth, TriggerAuthentication, EPP
+# ServiceMonitor, per-stack ScaledObject) with a redefined trigger list, which
+# defaults.yaml explicitly invites. No new standup step, no new controller.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/tree/main/guides/workload-autoscaling/keda-epp-token-aware
+#
+# Running:
+#
+#   llmdbenchmark --spec guides/keda-epp-token-aware standup -p <namespace>
+#   llmdbenchmark --spec guides/keda-epp-token-aware run \
+#     --harness inference-perf --workload random_prefill_heavy.yaml \
+#     --monitoring --analyze
+#
+# BEFORE YOU RUN: peakPrefillThroughput below is hardware- and model-specific.
+# The value here is a rendered starting point. Measure yours against the standing,
+# IDLE stack and write it into both consumers:
+#
+#   make calibrate-peak-prefill NAMESPACE=<ns> APPLY=1
+#
+# That target fetches llm-d's calibrate.sh at run time (nothing vendored here),
+# guards on an idle stack and a matching chunk size, then updates the router plugin
+# below together with the ScaledObject trigger and restarts the EPP.
+# See docs/token-aware-autoscaling.md.
+
+scenario:
+  # =========================================================================
+  # EPP+KEDA SATURATION AUTOSCALING - Qwen3-32B with 2 decode pods
+  # =========================================================================
+  - name: "keda-epp-token-aware"
+
+    common:
+      # =========================================================================
+      # MODEL CONFIGURATION
+      # =========================================================================
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+
+        # The prefill chunk. Unset, _macros.j2 falls back to a hardcoded '256',
+        # which turns an 8192-token prompt into 32 chunked prefill passes and
+        # makes the prefill-heavy shape measure chunking overhead instead of
+        # prefill capacity. MUST equal the calibration's CHUNK_SIZE or the
+        # measured peakPrefillThroughput is silently wrong.
+        # NOTE: this key is only valid on `model` (ModelConfig in
+        # parser/config_schema.py). _macros.j2 also probes
+        # `vllmCommon.maxNumBatchedTokens`, but STRICT_CONFIG rejects that path,
+        # so the model-level key is the only usable one.
+        maxNumBatchedTokens: 8192
+
+      # =========================================================================
+      # STORAGE
+      # =========================================================================
+      storage:
+        modelPvc:
+          size: 1Ti
+        hostPath:
+          # TODO: should we default to enabled: true for WVA scenarios?
+          enabled: false
+          path: /mnt/models
+          storageClassName: hostpath
+          capacity: 1Ti
+          # Target the GPU nodes where decode pods will schedule.
+          # Replace with your cluster's actual node labels.
+          nodeSelector:
+            nvidia.com/gpu.present: "true"
+          tolerations: []
+          daemonSetTimeout: 3600
+
+      # =========================================================================
+      # VLLM COMMON CONFIGURATION
+      # =========================================================================
+      vllmCommon:
+        kvTransfer:
+          enabled: true
+          connector: NixlConnector
+          role: kv_both
+
+        flags:
+          enforceEager: true
+          disableLogRequests: true
+          disableUvicornAccessLog: true
+          allowLongMaxModelLen: "1"
+          serverDevMode: "1"
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: shared-config
+            mountPath: /shared-config
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, router, and gateway.
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      # epponly to match the base guide this path autoscales (optimized-baseline):
+      # no Gateway pod to provision or wait for, and the EPP is reached directly.
+      # Inherited from epp-keda-saturation as `agentgateway` + externallyManaged,
+      # which requires a Gateway to already exist in the target namespace.
+      gateway:
+        className: epponly
+
+      # =========================================================================
+      # ROUTING / GAIE CONFIGURATION
+      #
+      # EPP+KEDA autoscaling is driven by EPP queue depth, so we enable the
+      # `flowControl` feature gate in the EPP's EndpointPickerConfig. That gate
+      # is not on by default, and toggling it requires shipping a custom
+      # EndpointPickerConfig (the default one the gaie chart ships has no
+      # `featureGates` block). We inline it here and point `pluginsConfigFile`
+      # at this filename so the chart mounts it as the active config.
+      # =========================================================================
+      router:
+        epp:
+          # MUST stay at 1: the inflight-load-producer's token accounting is local
+          # to each EPP process, so N replicas each publish only a fraction of the
+          # true per-endpoint load and the prefill trigger under-scales forever.
+          replicas: 1
+          pluginsConfigFile: "token-aware-plugins.yaml"
+          pluginsCustomConfig:
+            token-aware-plugins.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
+              plugins:
+              - type: token-load-scorer
+              # publishes llm_d_epp_inflight_tokens -- the prefill trigger's only source
+              - type: inflight-load-producer
+              - type: approx-prefix-cache-producer
+              - type: prefix-cache-affinity-filter
+                parameters:
+                  # Keep in sync with eppKedaSaturation.scaledObject.peakPrefillThroughput
+                  # below. The router prices recompute-vs-reuse with this; the KEDA
+                  # trigger converts tokens to seconds with it. They must agree.
+                  peakPrefillThroughput: 15845
+              schedulingProfiles:
+              - name: default
+                plugins:
+                - pluginRef: prefix-cache-affinity-filter
+                - pluginRef: token-load-scorer
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+
+      # =========================================================================
+      # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+      # =========================================================================
+      prefill:
+        enabled: false
+        replicas: 0
+
+      decode:
+        # Start at 1 so the autoscaler has room to act: the ScaledObject's
+        # minReplicaCount is also 1, so a run begins with a single replica and any
+        # scale-up is the trigger's doing rather than a pre-provisioned fleet.
+        # KEDA/HPA owns the count once the ScaledObject exists, so this is the
+        # starting point, not a ceiling (maxReplicaCount: 4 is the ceiling).
+        replicas: 1
+
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
+
+        parallelism:
+          tensor: 2
+          data: 1
+          dataLocal: 1
+          workers: 1
+
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 64Gi
+            cpu: "16"
+
+        extraEnvVars: []
+
+        extraContainerConfig:
+          ports:
+            - containerPort: 5557
+              protocol: TCP
+            - containerPort: 8200
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        additionalVolumeMounts: []
+        additionalVolumes: []
+
+        probes:
+          startup:
+            path: /v1/models
+            failureThreshold: 60
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          liveness:
+            path: /health
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readiness:
+            path: /v1/models
+            failureThreshold: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+
+        monitoring:
+          podmonitor:
+            enabled: true
+            portName: metrics
+            path: /metrics
+            interval: 30s
+            labels:
+              release: llmd
+
+
+    # =========================================================================
+    # EPP+KEDA SATURATION CONFIGURATION
+    #
+    # Direct KEDA autoscaling using EPP pool metrics. All thresholds and
+    # behavior parameters are spelled out below so users can tweak them
+    # per-experiment without editing defaults.yaml.
+    # =========================================================================
+    eppKedaSaturation:
+      # Reused as the token-aware transport: same Thanos auth, same
+      # TriggerAuthentication, same EPP ServiceMonitor, same ScaledObject
+      # renderer -- only the trigger list below differs from the saturation guide.
+      enabled: true
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      scaledObject:
+        # Distinguishes this from the saturation variant in `kubectl get hpa`.
+        nameSuffix: token-aware
+
+        # MEASURED, not assumed. Qwen3-32B / H100-80GB / TP=2 /
+        # max_num_batched_tokens=8192, via the EPP router on an idle stack:
+        #   V_P = CHUNK_SIZE / median(TTFT) = 8192 / 0.5170s = 15845 tok/s
+        # Measure your own with the llm-d repo's
+        # guides/recipes/router/calibration/calibrate.sh -- the same offered load
+        # asked for 8 replicas at V_P=2696 and 3 at V_P=15928 on one reference
+        # stack, so a borrowed figure changes when the fleet scales.
+        # Keep equal to the router plugin's peakPrefillThroughput above.
+        peakPrefillThroughput: 15845
+
+        minReplicas: 1
+        maxReplicas: 4          # TP=2 -> 8 accelerators at the ceiling
+
+        triggers:
+          # -- PREFILL: seconds of uncached prefill backlog -------------------
+          # inflight_tokens is a token COUNT; dividing by peakPrefillThroughput
+          # turns it into SECONDS, which is what `threshold` is denominated in.
+          # KEDA has no arithmetic of its own, so the division lives in PromQL.
+          #
+          # sum(), not max(): with metricType AverageValue the HPA computes
+          # ceil(value/threshold), so the numerator must GROW with the pool or the
+          # replica count is structurally capped. sum() also guarantees an empty
+          # label set, which is what lets `or vector(0)` collapse to the single
+          # series KEDA requires -- without it the result keeps its pod labels,
+          # `or` appends a second {} series, and KEDA fails with
+          # FailedGetExternalMetric.
+          #
+          # Requires an EPP with llm-d-router#2577 (series pruned when an endpoint
+          # is removed). On v0.10.0 or earlier a scaled-down pod strands a frozen
+          # series and the fleet scales UP but never DOWN.
+          - name: prefill-backlog-seconds
+            metricType: AverageValue
+            query: |
+              (
+                sum(llm_d_epp_inflight_tokens{namespace="${namespace}",
+                                              producer_name="inflight-load-producer"})
+                / ${peakPrefillThroughput}
+              ) or vector(0)
+            # Seconds of prefill queue wait tolerated per replica -- a share of the
+            # TTFT budget, not a measured quantity:
+            #   threshold ~= (TTFT_SLO - ISL/V_P) x ~0.65 for a p90/p99 SLO
+            # At V_P=15845 the idle floor is 0.517s for ISL 8192, so an 8s SLO
+            # allows ~4.9s. The shipped 1.5 suits interactive / short-context
+            # traffic (~2s SLO); raise it to run leaner.
+            threshold: "1.5"
+            activationThreshold: "0"
+
+          # -- DECODE: pods' worth of full KV cache --------------------------
+          # kv_cache_usage_perc is already a fraction of capacity, so no unit
+          # conversion is needed. When a pod's KV fills, vLLM stops admitting
+          # requests outright, so act before that: 0.8 == "80% full".
+          #
+          # sum(), not avg(): avg() cannot exceed ~1.0 no matter how many pods are
+          # full, so ceil(avg/0.8) pins the Deployment at 2 replicas forever.
+          - name: decode-kv-utilization
+            metricType: AverageValue
+            query: |
+              sum(vllm:kv_cache_usage_perc{namespace="${namespace}"}) or vector(0)
+            threshold: "0.8"
+            activationThreshold: "0"
+
+        behavior:
+          # Weights take minutes to load, so a replica bought on a burst that
+          # drains in seconds is pure cost.
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 300
+
+    harness:
+      name: inference-perf
+      # The three token shapes are the point of this guide; symmetrical is the
+      # middle case and the most diagnostic single run. Swap with
+      # random_prefill_heavy.yaml / random_decode_heavy.yaml, or sweep
+      # all three via experiments/token-aware-autoscaling.yaml.
+      experimentProfile: random_symmetrical.yaml
+
+    workDir: "~/data/keda-epp-token-aware"

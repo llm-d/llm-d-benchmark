@@ -1,0 +1,73 @@
+# =====================================================================
+# Experiment: Token-Aware Autoscaling Token Shapes (inference-perf)
+# =====================================================================
+#
+# Three workloads with very different token shapes against one token-aware
+# autoscaled stack. The shape is the independent variable; which trigger wins is
+# the result.
+#
+#   random_prefill_heavy  ISL/OSL 8192/256   32:1  -> prefill backlog should govern
+#   random_symmetrical    ISL/OSL 2048/2048   1:1  -> triggers should cross over
+#   random_decode_heavy   ISL/OSL 256/4096   1:16  -> decode KV should govern
+#
+# The profiles themselves are general-purpose token-shape workloads, not specific
+# to autoscaling -- this experiment is one consumer of them.
+#
+# If prefill-heavy and decode-heavy scale identically, something in the setup is
+# wrong (EPP replicas > 1, a shared-prefix dataset, or closed-loop load) -- that
+# is not a finding about token-awareness. See docs/token-aware-autoscaling.md.
+#
+# Usage (full DoE -- standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec guides/keda-epp-token-aware experiment \
+#     --experiments experiments/token-aware-autoscaling.yaml \
+#     --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
+#
+# Usage (run-only -- against an already-standing endpoint):
+#   llmdbenchmark --spec guides/keda-epp-token-aware run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> --namespace <NAMESPACE> \
+#     --harness inference-perf --workload random_symmetrical.yaml \
+#     --experiments experiments/token-aware-autoscaling.yaml
+#
+# =====================================================================
+
+# --- DoE Metadata (informational -- not consumed by the runtime) ------
+
+experiment:
+  name: token-aware-autoscaling
+  description: >
+    Three token-shape workloads (prefill-heavy, symmetrical, decode-heavy)
+    against token-aware KEDA autoscaling on a P+D co-located stack, to show
+    that scaling on tokens of outstanding work tracks prefill load that a
+    request counter cannot see.
+  harness: inference-perf
+  profile: random_symmetrical.yaml
+
+# Cleared once per group. The profiles use random token IDs so cross-run prefix
+# reuse is already nil, but a reset keeps the groups independent.
+reset_caches: true
+
+# A treatment that degrades under its own load is the result, not a defect.
+treatment_max_attempts: 1
+treatment_stop_on_error: false
+
+# SEQUENTIAL, deliberately. Concurrent members would share one autoscaled pool,
+# making the replica count attributable to neither shape. This is the opposite of
+# mixed-workload-contention.yaml, where interference IS the result being sought.
+max_parallel_treatments: 1
+
+groups:
+  - name: prefill_heavy
+    treatments:
+      - name: prefill_heavy
+        profile: random_prefill_heavy.yaml
+
+  - name: symmetrical
+    treatments:
+      - name: symmetrical
+        profile: random_symmetrical.yaml
+
+  - name: decode_heavy
+    treatments:
+      - name: decode_heavy
+        profile: random_decode_heavy.yaml
