@@ -558,7 +558,7 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.istioBase` | `1.29.1` | Istio base chart version |
 | `chartVersions.istiod` | `1.29.1` | Istiod chart version (also used as gateway version) |
 | `chartVersions.llmDInfra` | `auto` | llm-d-infra Helm chart (auto-resolved via helm) |
-| `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
+| `chartVersions.llmDModelservice` | `v0.4.16` | llm-d-modelservice Helm chart version |
 | `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
 | `chartVersions.agentgateway` | `v2.2.3` | agentgateway chart version |

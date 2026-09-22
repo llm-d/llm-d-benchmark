@@ -113,6 +113,7 @@ _anchors:
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
   # Used for both the standalone and gateway router charts.
   router_chart_version:              &router_chart_version              v0.10.0
+  modelservice_chart_version:        &modelservice_chart_version        v0.4.16
   vllm-openai_version:               &vllm-openai_version               v0.26.0
   llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.10.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.10.0
@@ -490,7 +491,7 @@ chartVersions:
   istioBase: *istio_version
   istiod: *istio_version
   llmDInfra: auto
-  llmDModelservice: auto
+  llmDModelservice: *modelservice_chart_version
   # llm-d-router chart version (used by the standalone and gateway
   # variants). Replaces the legacy `inferencePool` (GAIE chart) entry
   # below for the EPP/router deploy.
