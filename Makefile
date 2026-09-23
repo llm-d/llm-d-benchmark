@@ -288,6 +288,12 @@ check-kustomize:
 # The measurement is llm-d's own recipe, fetched at run time rather than vendored,
 # so there is one implementation of it and nothing here to keep in step.
 # See docs/token-aware-autoscaling.md.
+#
+# CALIBRATION_REF defaults to `main` deliberately: the calibration recipe is not in
+# a tagged llm-d release that is compatible with this guide, so a pinned tag would
+# fetch either a missing or an incompatible script. Override it to pin a tag or a
+# SHA when you need a reproducible measurement:
+#   make calibrate-peak-prefill NAMESPACE=<ns> CALIBRATION_REF=<tag-or-sha>
 CALIBRATION_REF ?= main
 CALIBRATION_BASE := https://raw.githubusercontent.com/llm-d/llm-d/$(CALIBRATION_REF)/guides/recipes/router/calibration
 CHUNK_SIZE ?= 8192
@@ -356,7 +362,11 @@ calibrate-peak-prefill: check-kubectl check-envsubst ## Measure peakPrefillThrou
 	  exit 0; fi; \
 	echo "✍️  applying $$VP to both consumers"; \
 	CM_PATCHED=0; SO_PATCHED=0; \
-	for cm in $$(kubectl get cm -n "$$NS" -o name | cut -d/ -f2); do \
+	:; \
+	: 'Scoped to *-epp ConfigMaps -- the router chart names the EPP plugin config'; \
+	: '<release>-epp, and rewriting every ConfigMap in the namespace would reach'; \
+	: 'another tenant on a shared namespace.'; \
+	for cm in $$(kubectl get cm -n "$$NS" -o name | cut -d/ -f2 | grep -- '-epp$$'); do \
 	  if kubectl get cm -n "$$NS" "$$cm" -o yaml | grep -q 'peakPrefillThroughput:'; then \
 	    kubectl get cm -n "$$NS" "$$cm" -o yaml | sed -E "s/(peakPrefillThroughput: *)[0-9]+/\1$$VP/g" | kubectl apply -f - >/dev/null; \
 	    echo "   configmap/$$cm updated"; CM_PATCHED=1; fi; done; \

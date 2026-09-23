@@ -21,7 +21,7 @@ how to run it, and the integration details that are easy to get wrong here.
 |---|---|
 | [`config/scenarios/guides/keda-epp-token-aware.yaml`](../config/scenarios/guides/keda-epp-token-aware.yaml) | scenario: EPP plugin set + the token-aware trigger list |
 | [`config/specification/guides/keda-epp-token-aware.yaml.j2`](../config/specification/guides/keda-epp-token-aware.yaml.j2) | spec pointer |
-| `workload/profiles/inference-perf/token_aware_{prefill_heavy,symmetrical,decode_heavy}.yaml.in` | the three token shapes |
+| `workload/profiles/inference-perf/random_{prefill_heavy,symmetrical,decode_heavy}.yaml.in` | the three token shapes (general-purpose, shared) |
 | [`experiments/token-aware-autoscaling.yaml`](../experiments/token-aware-autoscaling.yaml) | DoE sweeping the three shapes |
 
 ## Running
@@ -99,15 +99,15 @@ measured divisor. An `EXIT` trap restores it if calibration fails or is interrup
 never a one-way door.
 
 The load itself is not what forces this. `calibrate.sh` sends requests **sequentially** with
-`max_tokens: 1`, so at most one `CHUNK_SIZE` request is in flight, which at `V_P` = 15389 and a
-350,208-token KV cache is nowhere near either threshold:
+`max_tokens: 1`, so at most one `CHUNK_SIZE` request is in flight, which at the shipped
+`V_P` = 15845 and a 350,208-token KV cache is nowhere near either threshold:
 
 | trigger | value during calibration | shipped threshold | replicas requested |
 |---|---|---|---|
-| prefill backlog | 8192 / 15389 = **0.53 s** | 1.5 s | 1 |
+| prefill backlog | 8192 / 15845 = **0.52 s** | 1.5 s | 1 |
 | decode KV | 8192 / 350208 = **2.3 %** | 0.8 | 1 |
 
-Reaching the prefill threshold would take ~2.8 concurrent 8192-token requests; calibration never
+Reaching the prefill threshold would take ~2.9 concurrent 8192-token requests; calibration never
 exceeds one. The autoscaler is parked anyway, for two reasons that do not depend on those numbers:
 
 1. **A scale-up mid-measurement would corrupt the result.** `V_P = chunkSize / median(TTFT)`; adding a
@@ -199,8 +199,28 @@ The difference was harness pods still draining when the first run started. That 
 constant that sets replica counts, from a command that reported success both times — which is why
 the spread is worth a look before you commit the number.
 
-Three further runs on a verified-idle stack read 15845, 15810 and 15652 (~1.2% apart), so a clean
-measurement is reproducible.
+### V_P is an estimate, not a fixed property
+
+A clean measurement is reproducible, but not identical run to run. Eight clean measurements on the
+*same* stack (Qwen3-32B / H100-80GB / TP=2, `max_num_batched_tokens=8192`) spanned
+**15389-16037 tok/s — about 4%**:
+
+```
+15845  15810  15652  15661  15743  16037  15460  15389
+```
+
+Two consequences:
+
+- **Do not chase small differences.** A 2-3% move between runs is normal scatter, not a regression.
+  Only a departure on the scale of the contaminated run above (~10%) indicates something real.
+- **Re-measure when the serving path changes**, not on a schedule. `V_P` is a property of the
+  (model, accelerator, TP, `max_num_batched_tokens`, vLLM version, routing path) tuple; any of those
+  moving invalidates it. The threshold arithmetic tolerates a few percent, but not a figure borrowed
+  from different hardware — the same offered load asked for 8 replicas at `V_P` = 2696 and 3 at
+  `V_P` = 15928 on one reference stack.
+
+The value shipped in the scenario is one such measurement. Treat it as a starting point and run the
+calibration on your own stack.
 
 ## The three profiles
 
