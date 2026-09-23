@@ -2,12 +2,14 @@
 
 Each case runs one native-to-BR importer on a fixture from ``tests/fixtures/``
 and compares the report to a committed YAML file in
-``tests/fixtures/br_v0_2_golden/``. Both converter modules are covered:
-``native_to_br0_2`` (what ``-b 0.2`` runs) and ``native_to_br0_2_1`` (what
-``-b 0.2.1`` runs), for every importer each module exports.
+``tests/fixtures/br_v0_2_golden/``. There is one golden per case, and both
+converter modules must reproduce it: ``native_to_br0_2`` (what ``-b 0.2``
+runs) and ``native_to_br0_2_1`` (what ``-b 0.2.1`` runs, now a re-export of
+the former), for every importer each module exports.
 
-These pin converter output, so refactoring the two modules (#1922) shows up
-as a reviewable golden diff instead of a silent change.
+These pin converter output, so a change to the consolidated module (#1922)
+shows up as a reviewable golden diff instead of a silent change, and the
+deprecated ``native_to_br0_2_1`` names are checked to stay in step.
 
 Output is made deterministic by clearing the harness environment variables,
 fixing ``uuid.uuid4`` (the envelope's initial ``run.uid``), pinning ``TZ`` to
@@ -158,8 +160,8 @@ def _convert(case: Case, version: str, monkeypatch: pytest.MonkeyPatch) -> str:
     return yaml.safe_dump(data, sort_keys=True)
 
 
-# Each (case, version) pair, e.g. inference_perf at 0_2_1, must reproduce
-# tests/fixtures/br_v0_2_golden/inference_perf.v0_2_1.yaml byte for byte.
+# Each (case, version) pair, e.g. inference_perf at 0_2 and at 0_2_1, must
+# reproduce tests/fixtures/br_v0_2_golden/inference_perf.yaml byte for byte.
 @pytest.mark.parametrize(
     ("case", "version"),
     PARAMS,
@@ -169,7 +171,7 @@ def test_converter_output_matches_golden(
     case: Case, version: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     actual = _convert(case, version, monkeypatch)
-    golden = GOLDEN_DIR / f"{case.name}.v{version}.yaml"
+    golden = GOLDEN_DIR / f"{case.name}.yaml"
     if os.environ.get("BR_UPDATE_GOLDEN"):
         GOLDEN_DIR.mkdir(exist_ok=True)
         golden.write_text(actual, encoding="utf-8")
@@ -182,6 +184,6 @@ def test_converter_output_matches_golden(
 # Every file in br_v0_2_golden/ must belong to a case above, so a removed or
 # renamed case cannot leave a stale golden behind.
 def test_no_orphaned_goldens() -> None:
-    expected = {f"{case.name}.v{version}.yaml" for case, version in PARAMS}
+    expected = {f"{case.name}.yaml" for case in CASES}
     on_disk = {path.name for path in GOLDEN_DIR.glob("*.yaml")}
     assert on_disk <= expected, f"orphaned goldens: {sorted(on_disk - expected)}"
