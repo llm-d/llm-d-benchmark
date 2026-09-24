@@ -41,10 +41,12 @@ def test_vllm_and_vllm_openai_pins_stay_in_sync():
     assert defaults["images"]["vllmOpenai"]["tag"] == vllm_pin
     assert _doc_pin_for("vllm") == vllm_pin
     assert _doc_pin_for("vllmOpenai") == vllm_pin
-    assert cpu_scenario["scenario"], f"No scenarios defined in {CPU_SCENARIO_PATH}"
-    cpu_images = cpu_scenario["scenario"][0]["common"]["images"]
-    assert cpu_images["vllm"]["tag"] == vllm_pin
-    assert cpu_images["vllmOpenai"]["tag"] == vllm_pin
+    scenarios = cpu_scenario["scenario"]
+    assert scenarios, f"No scenarios defined in {CPU_SCENARIO_PATH}"
+    for scenario in scenarios:
+        cpu_images = scenario["common"]["images"]
+        assert cpu_images["vllm"]["tag"] == vllm_pin
+        assert cpu_images["vllmOpenai"]["tag"] == vllm_pin
 
     assert _docker_arg_value(dockerfile, "VLLM_BENCHMARK_BRANCH") == vllm_pin
     assert _docker_arg_value(dockerfile, "VLLM_BENCHMARK_COMMIT") == vllm_pin
