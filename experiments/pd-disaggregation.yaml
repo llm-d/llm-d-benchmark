@@ -11,7 +11,7 @@
 #
 # Usage (full DoE — automatic standup/run/teardown per setup treatment):
 #   llmdbenchmark --spec pd-disaggregation experiment \
-#     --experiments workload/experiments/pd-disaggregation.yaml
+#     --experiments experiments/pd-disaggregation.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
 #   llmdbenchmark --spec pd-disaggregation run \
@@ -20,7 +20,7 @@
 #     --namespace <NAMESPACE> \
 #     --harness vllm-benchmark \
 #     --workload random_concurrent.yaml \
-#     --experiments workload/experiments/pd-disaggregation.yaml
+#     --experiments experiments/pd-disaggregation.yaml
 #
 # The experiment form auto-detects the endpoint from stood-up stacks
 # and reads harness/profile defaults from the plan config.

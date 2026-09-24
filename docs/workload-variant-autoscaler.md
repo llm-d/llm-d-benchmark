@@ -131,20 +131,20 @@ one of them surfaces as `TARGETS: <unknown>` on the HPA - see the
 ### 2a. Via the CLI flag
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling standup -p <namespace> --wva
+llmdbenchmark --spec guides/optimized-baseline standup -p <namespace> --wva
 ```
 
 That sets `wva.enabled: true` at render time. All other WVA settings come from
 defaults - fine for a quick test, but you can't tweak per-experiment HPA
 behavior without editing the defaults file.
 
-### 2b. Via the dedicated `inference-scheduling-wva` scenario
+### 2b. Via the dedicated `workload-autoscaling` scenario
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling-wva standup -p <namespace>
+llmdbenchmark --spec guides/workload-autoscaling standup -p <namespace>
 ```
 
-Same model and inference setup as `inference-scheduling`, plus a fully spelled-out
+Same model and inference setup as `optimized-baseline`, plus a fully spelled-out
 `wva:` block in the scenario YAML. The `-u/--wva` flag is **not required** here
 because `wva.enabled: true` is already set in the file.
 
@@ -185,7 +185,7 @@ typical reasons you'd touch it.
 ```yaml
 wva:
   enabled: true                  # master switch (same as -u/--wva on CLI)
-  wellLitPath: inference-scheduling   # surfaced as `llm-d.ai/guide` label on the VA
+  wellLitPath: optimized-baseline   # surfaced as `llm-d.ai/guide` label on the VA
   namespace: ""                  # empty = use the deploy namespace from -p
   replicaCount: 1                # WVA controller pod replicas
 

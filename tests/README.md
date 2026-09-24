@@ -49,7 +49,7 @@ Validates the DoE experiment parser (`llmdbenchmark/experiment/parser.py`) and s
 | `TestSetupConstantsOverrideOrder` | Treatment-specific values override `setup.constants` |
 | `TestParseExperimentWithoutSetup` | Run-only experiments (no `setup` section) -- backward compat |
 | `TestParseExperimentEdgeCases` | Missing files, invalid YAML, auto-generated names, empty sections |
-| `TestParseRealExperimentFiles` | All 4 experiment YAMLs in `workload/experiments/` parse correctly |
+| `TestParseRealExperimentFiles` | All 4 experiment YAMLs in `experiments/` parse correctly |
 | `TestTieredPrefixCacheExperiment` | Detailed validation of tiered-prefix-cache setup treatments and matrix |
 | `TestPrecisePrefixCacheAwareExperiment` | Routing plugin setup treatments and matrix |
 | `TestPdDisaggregationExperiment` | 9 fractional factorial treatments, modelservice/standalone split |

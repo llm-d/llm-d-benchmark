@@ -32,7 +32,7 @@ class OptimizedBaselineValidator(WvaSmoketestMixin, BaseSmoketest):
                 CheckResult(
                     "config_validation",
                     True,
-                    message="[DRY RUN] inference-scheduling config validation skipped",
+                    message="[DRY RUN] optimized-baseline config validation skipped",
                 )
             )
             return report

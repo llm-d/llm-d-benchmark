@@ -1,4 +1,4 @@
-"""Validator for the precise-prefix-cache-aware well-lit path."""
+"""Validator for the precise-prefix-cache-routing well-lit path."""
 
 from pathlib import Path
 
@@ -26,7 +26,7 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
                 CheckResult(
                     "config_validation",
                     True,
-                    message="[DRY RUN] precise-prefix-cache-aware config validation skipped",
+                    message="[DRY RUN] precise-prefix-cache-routing config validation skipped",
                 )
             )
             return report

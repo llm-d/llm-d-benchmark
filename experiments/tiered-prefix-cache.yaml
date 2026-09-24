@@ -10,7 +10,7 @@
 #
 # Usage (full DoE — automatic standup/run/teardown per setup treatment):
 #   llmdbenchmark --spec tiered-prefix-cache experiment \
-#     --experiments workload/experiments/tiered-prefix-cache.yaml
+#     --experiments experiments/tiered-prefix-cache.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
 #   llmdbenchmark --spec tiered-prefix-cache run \
@@ -19,7 +19,7 @@
 #     --namespace <NAMESPACE> \
 #     --harness inference-perf \
 #     --workload shared_prefix_synthetic.yaml \
-#     --experiments workload/experiments/tiered-prefix-cache.yaml
+#     --experiments experiments/tiered-prefix-cache.yaml
 #
 # The experiment form auto-detects the endpoint from stood-up stacks
 # and reads harness/profile defaults from the plan config.

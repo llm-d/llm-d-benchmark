@@ -192,7 +192,7 @@ scenario:
 llmdbenchmark --spec gpu standup -c config/scenarios/my-gpu-custom.yaml
 ```
 
-For modelservice deployments (e.g. `inference-scheduling`), override `images.vllm` instead:
+For modelservice deployments (e.g. `optimized-baseline`), override `images.vllm` instead:
 
 ```yaml
 scenario:
@@ -211,7 +211,7 @@ Export `LLMDBENCH_*` environment variables to set defaults without passing CLI f
 
 ```bash
 # Set common defaults in .bashrc or CI pipeline
-export LLMDBENCH_SPEC=inference-scheduling
+export LLMDBENCH_SPEC=optimized-baseline
 export LLMDBENCH_NAMESPACE=my-team-ns
 export LLMDBENCH_KUBECONFIG=~/.kube/my-cluster
 export LLMDBENCH_DRY_RUN=true
@@ -1157,8 +1157,8 @@ decode:
 
 The `securityContext` capabilities vary by scenario:
 - `IPC_LOCK` and `SYS_RAWIO` are the base capabilities needed for most deployments
-- `NET_ADMIN` and `NET_RAW` are additionally required for scenarios that need network configuration (route tables, InfiniBand detection) --e.g., `precise-prefix-cache-aware` and `tiered-prefix-cache`
-- Scenarios like `inference-scheduling` and `pd-disaggregation` use only the base capabilities
+- `NET_ADMIN` and `NET_RAW` are additionally required for scenarios that need network configuration (route tables, InfiniBand detection) --e.g., `precise-prefix-cache-routing` and `tiered-prefix-cache`
+- Scenarios like `optimized-baseline` and `pd-disaggregation` use only the base capabilities
 
 For scenarios with prefill pods (e.g., `pd-disaggregation`, `wide-ep`), add the same block under the `prefill` section as well.
 
@@ -1640,7 +1640,7 @@ scenario:
         pullPolicy: Always
 ```
 
-**Modelservice deployment** (inference-scheduling, pd-disaggregation, etc.):
+**Modelservice deployment** (optimized-baseline, pd-disaggregation, etc.):
 
 Override `images.vllm` in your scenario. The `pullPolicy` applies to both decode and prefill containers:
 
@@ -1860,13 +1860,22 @@ Map directly to the [llm-d well-lit-path guides](https://github.com/llm-d/llm-d/
 
 | Scenario | Description |
 |----------|-------------|
-| `inference-scheduling.yaml` | Qwen3-32B with inference scheduling plugins |
+| `agentic-serving.yaml` | Reasoning and tool-call serving driven by OTel-trace replay |
+| `epp-keda-saturation.yaml` | Optimized baseline plus EPP+KEDA saturation autoscaling (no WVA) |
+| `fast-model-actuation-base.yaml` | Fast model actuation, kustomize deploy only |
+| `fast-model-actuation-keda.yaml` | Fast model actuation plus scale-from-zero KEDA |
+| `flow-control.yaml` | Optimized baseline with custom EPP flow-control plugins |
+| `multimodal-serving-aggregation.yaml` | Multimodal serving, aggregated prefill and decode |
+| `multimodal-serving-e-disaggregation.yaml` | Multimodal serving, encode disaggregated from prefill/decode |
+| `nok8s.yaml` | vLLM, EPP and Envoy as local containers, no cluster |
+| `optimized-baseline.yaml` | Qwen3-32B with inference scheduling plugins |
+| `p2p-kv-cache-sharing.yaml` | Peer-to-peer KV cache sharing between pods |
 | `pd-disaggregation.yaml` | Prefill/decode disaggregation |
-| `precise-prefix-cache-aware.yaml` | Prefix cache aware routing |
+| `precise-prefix-cache-routing.yaml` | Prefix cache aware routing |
+| `predicted-latency-routing.yaml` | Routing on predicted request latency |
 | `tiered-prefix-cache.yaml` | Tiered CPU/GPU prefix cache |
 | `wide-ep.yaml` | Wide expert parallelism (DisaggregatedSet) |
-| `simulated-accelerators.yaml` | CPU-only simulation with opt-125m |
-| `optimized-baseline.yaml` | Optimized baseline with kustomize deployment |
+| `workload-autoscaling.yaml` | Optimized baseline plus the Workload Variant Autoscaler |
 
 #### Kustomize Deployment (`-t kustomize`)
 
@@ -2020,7 +2029,7 @@ Used by automated CI/CD pipelines:
 | Scenario | Description |
 |----------|-------------|
 | `kind.yaml` | Kind cluster with `llm-d-inference-sim` (no GPU, CPU-only, public model). Exercises the full modelservice and standalone paths in CI. |
-| `gke-h100.yaml` | Google Kubernetes Engine with H100 |
+| `gke.yaml` | Google Kubernetes Engine with H100 |
 | `cks.yaml` | Cloud Kubernetes Service with H200 |
 | `ocp.yaml` | OpenShift Container Platform with Istio |
 
@@ -2109,8 +2118,8 @@ The `--spec` flag supports three input forms --you don't need to type the full p
 | Form | Example | Resolves to |
 |------|---------|-------------|
 | **Bare name** | `--spec gpu` | `config/specification/examples/gpu.yaml.j2` |
-| **Category/name** | `--spec guides/inference-scheduling` | `config/specification/guides/inference-scheduling.yaml.j2` |
-| **Full path** | `--spec config/specification/guides/inference-scheduling.yaml.j2` | Used as-is |
+| **Category/name** | `--spec guides/optimized-baseline` | `config/specification/guides/optimized-baseline.yaml.j2` |
+| **Full path** | `--spec config/specification/guides/optimized-baseline.yaml.j2` | Used as-is |
 
 The `.yaml.j2` suffix is added automatically. If a bare name matches files in multiple categories, you'll be prompted to disambiguate with the category prefix.
 
@@ -2119,7 +2128,7 @@ The `.yaml.j2` suffix is added automatically. If a bare name matches files in mu
 All paths are relative to `base_dir`, which defaults to `../` (the repository root when running from the repo directory). Override it with `--bd`:
 
 ```bash
-llmdbenchmark --bd /path/to/repo --spec inference-scheduling plan
+llmdbenchmark --bd /path/to/repo --spec optimized-baseline plan
 ```
 
 ### Creating a New Specification
@@ -2149,25 +2158,25 @@ Choose a **unique file name** for your specification. Auto-discovery searches ac
 
 ```text
 config/specification/
-    guides/inference-scheduling.yaml.j2     <- exists
-    examples/inference-scheduling.yaml.j2   <- collision!
+    guides/optimized-baseline.yaml.j2     <- exists
+    examples/optimized-baseline.yaml.j2   <- collision!
 ```
 
-Running `--spec inference-scheduling` with both present produces an error:
+Running `--spec optimized-baseline` with both present produces an error:
 
 ```text
-Ambiguous specification name 'inference-scheduling' matches 2 files:
-  - /path/to/config/specification/examples/inference-scheduling.yaml.j2
-  - /path/to/config/specification/guides/inference-scheduling.yaml.j2
+Ambiguous specification name 'optimized-baseline' matches 2 files:
+  - /path/to/config/specification/examples/optimized-baseline.yaml.j2
+  - /path/to/config/specification/guides/optimized-baseline.yaml.j2
 
 Use category/name to disambiguate, e.g.
-'--spec guides/inference-scheduling' or '--spec examples/inference-scheduling'.
+'--spec guides/optimized-baseline' or '--spec examples/optimized-baseline'.
 ```
 
 To avoid this:
 
-- **Use a distinct name** that reflects your use case (e.g. `my-team-inference.yaml.j2` instead of reusing `inference-scheduling.yaml.j2`)
-- **Or always use category/name** when specs share a base name: `--spec guides/inference-scheduling`
+- **Use a distinct name** that reflects your use case (e.g. `my-team-inference.yaml.j2` instead of reusing `optimized-baseline.yaml.j2`)
+- **Or always use category/name** when specs share a base name: `--spec guides/optimized-baseline`
 
 ### Experiments
 
@@ -2188,18 +2197,34 @@ Each category contains:
 
 **Guides:**
 
-| Specification | Experiments |
-|---------------|-------------|
-| `inference-scheduling.yaml.j2` | GAIE plugin configs x prompt/output lengths |
-| `pd-disaggregation.yaml.j2` | Deployment method, replicas, TP sizes x concurrency |
-| `precise-prefix-cache-aware.yaml.j2` | GAIE prefix cache configs x prompt groups |
-| `tiered-prefix-cache.yaml.j2` | CPU block sizes x prompt groups |
-| `wide-ep.yaml.j2` | Standup only |
-| `simulated-accelerators.yaml.j2` | Standup only |
+Every guide specification stands up on its own. Sweeps are supplied
+separately with `--experiments` (see [Experiments](#experiments)); the
+right column names the file under `experiments/` that matches the guide.
 
-**Examples:** `cpu.yaml.j2`, `gpu.yaml.j2`, `spyre.yaml.j2`
+| Specification | Matching experiment |
+|---------------|---------------------|
+| `agentic-serving.yaml.j2` | -- |
+| `epp-keda-saturation.yaml.j2` | -- |
+| `fast-model-actuation-base.yaml.j2` | -- |
+| `fast-model-actuation-keda.yaml.j2` | -- |
+| `flow-control.yaml.j2` | -- |
+| `multimodal-serving-aggregation.yaml.j2` | -- |
+| `multimodal-serving-e-disaggregation.yaml.j2` | -- |
+| `nok8s.yaml.j2` | -- |
+| `optimized-baseline.yaml.j2` | `optimized-baseline.yaml` |
+| `p2p-kv-cache-sharing.yaml.j2` | -- |
+| `pd-disaggregation.yaml.j2` | `pd-disaggregation.yaml` |
+| `precise-prefix-cache-routing.yaml.j2` | `precise-prefix-cache-aware.yaml` |
+| `predicted-latency-routing.yaml.j2` | -- |
+| `tiered-prefix-cache.yaml.j2` | `tiered-prefix-cache.yaml` |
+| `wide-ep.yaml.j2` | -- |
+| `workload-autoscaling.yaml.j2` | -- |
 
-**CI/CD:** `cks.yaml.j2`, `gke-h100.yaml.j2`, `kind.yaml.j2`, `ocp.yaml.j2`
+**Examples:** `cpu.yaml.j2`, `eval-containers-aider-polyglot.yaml.j2`, `eval-containers-aider-polyglot-gpu.yaml.j2`, `eval-containers-gaia.yaml.j2`, `eval-containers-gaia-gpu.yaml.j2`, `fma.yaml.j2`, `gpu.yaml.j2`, `launcher.yaml.j2`, `multi-model-optimized-baseline.yaml.j2`, `sim.yaml.j2`, `spyre.yaml.j2`, `spyre-s390x.yaml.j2`
+
+**CI/CD:** `cks.yaml.j2`, `gke.yaml.j2`, `kind.yaml.j2`, `ocp.yaml.j2`, `ocp-keda.yaml.j2`, `ocp-keda-fma-hotstart.yaml.j2`, `ocp-keda-fma-warmstart.yaml.j2`
+
+**Experimental:** `kimi-k3-h100.yaml.j2`
 
 ---
 
@@ -2207,26 +2232,26 @@ Each category contains:
 
 ```bash
 # Plan (render templates into manifests)
-llmdbenchmark --spec inference-scheduling plan
+llmdbenchmark --spec optimized-baseline plan
 
 # Standup (plan + apply to cluster)
-llmdbenchmark --spec inference-scheduling standup
+llmdbenchmark --spec optimized-baseline standup
 
 # Dry run
-llmdbenchmark --spec inference-scheduling --dry-run standup
+llmdbenchmark --spec optimized-baseline --dry-run standup
 
 # Teardown
-llmdbenchmark --spec inference-scheduling teardown
+llmdbenchmark --spec optimized-baseline teardown
 
 # Override namespace at runtime
-llmdbenchmark --spec inference-scheduling standup -p my-ns
+llmdbenchmark --spec optimized-baseline standup -p my-ns
 
 # Override deployment method
-llmdbenchmark --spec inference-scheduling standup -t standalone
+llmdbenchmark --spec optimized-baseline standup -t standalone
 
 # Use category/name to disambiguate
-llmdbenchmark --spec guides/inference-scheduling standup
+llmdbenchmark --spec guides/optimized-baseline standup
 
 # Full path still works
-llmdbenchmark --spec config/specification/guides/inference-scheduling.yaml.j2 standup
+llmdbenchmark --spec config/specification/guides/optimized-baseline.yaml.j2 standup
 ```

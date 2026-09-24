@@ -1,4 +1,4 @@
-# MULTIMODAL OPTIMIZED BASELINE (AGGREGATION) WELL LIT PATH for LLM-D Deployment
+# MULTIMODAL SERVING (AGGREGATION) WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
 # Based on https://github.com/llm-d/llm-d/tree/main/guides/multimodal-serving/aggregation
 #

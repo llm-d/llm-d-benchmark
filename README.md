@@ -837,7 +837,7 @@ See module-level READMEs for detailed documentation:
 llmdbenchmark --spec guides/optimized-baseline standup  # Optimized baseline (formerly inference-scheduling)
 llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
 llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
-llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing
+llmdbenchmark --spec precise-prefix-cache-routing standup # Precise prefix cache-aware routing
 llmdbenchmark --spec wide-ep standup                    # Wide expert-parallel (DisaggregatedSet)
 ```
 

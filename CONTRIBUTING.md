@@ -99,7 +99,7 @@ The script always prints exactly which scenarios it is about to render and why, 
 
 ```text
 Rendering 2 scenarios:
-  - cicd/kind          [shared render path touched (llmdbenchmark/parser/version_resolver.py)]
+  - cicd/kind                   [shared render path touched (llmdbenchmark/parser/version_resolver.py)]
   - guides/tiered-prefix-cache  [edited config/specification/guides/tiered-prefix-cache.yaml.j2]
 Rendering: cicd/kind
 Rendering: guides/tiered-prefix-cache

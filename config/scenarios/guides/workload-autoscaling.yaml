@@ -1,6 +1,6 @@
-# INFERENCE SCHEDULING + WVA WELL LIT PATH for LLM-D Deployment
+# WORKLOAD AUTOSCALING (OPTIMIZED BASELINE + WVA) WELL LIT PATH for LLM-D Deployment
 #
-# Same base configuration as `inference-scheduling.yaml` (Qwen3-32B, 2 decode
+# Same base configuration as `optimized-baseline.yaml` (Qwen3-32B, 2 decode
 # pods, modelservice deployment) but with the Workload Variant Autoscaler
 # (WVA) explicitly enabled. The scaling knobs this scenario actually consumes
 # (variantAutoscaling.variantCost + the hpa.* block, which drive the KEDA
@@ -16,7 +16,7 @@
 #
 # The `-u/--wva` CLI flag is NOT required with this scenario because
 # `wva.enabled: true` is already hard-coded below. Pass `-u` with the
-# plain `inference-scheduling` scenario if you want to toggle WVA on
+# plain `optimized-baseline` scenario if you want to toggle WVA on
 # without editing YAML.
 
 scenario:
@@ -198,7 +198,7 @@ scenario:
         backendRequestTimeout: "0s"
 
       # =========================================================================
-      # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+      # PREFILL / DECODE CONFIGURATION (same as optimized-baseline.yaml)
       # =========================================================================
       prefill:
         enabled: false
