@@ -7,7 +7,27 @@
    Triggers come entirely from scaledObject.triggers (see defaults.yaml); a
    scenario can redefine the whole list. Each entry: query (required),
    threshold, optional name/metricType/activationThreshold. In `query`,
-   ${poolName} and ${modelName} are substituted at render time.
+   ${poolName}, ${modelName}, ${namespace} and ${peakPrefillThroughput} are
+   substituted at render time.
+
+   ${namespace} exists because a token-aware query MUST pin the namespace label:
+   on a cluster-wide store (OpenShift Thanos, or any Prometheus scraping several
+   namespaces) an unpinned query silently aggregates every EPP on the cluster, so
+   a shared-cluster deployment would scale on another tenant's traffic.
+
+   ${peakPrefillThroughput} exists because the token-aware prefill trigger divides
+   an in-flight token count by that hardware-specific constant to turn tokens into
+   SECONDS of backlog. Kustomize/Jinja cannot reach inside a PromQL string, so
+   without this the value is a bare magic number in the query -- and it has to
+   agree with the same constant on the EPP's prefix-cache-affinity-filter plugin.
+
+   Two optional scaledObject keys, both defaulted here rather than in defaults.yaml:
+     nameSuffix            -- renders as <model_id_label>-<nameSuffix> (default
+                              'saturation'), so two autoscaler variants trialled
+                              against the same model are distinguishable in
+                              `kubectl get hpa`.
+     peakPrefillThroughput -- substituted into `query` as above; measure it with
+                              `make calibrate-peak-prefill NAMESPACE=<ns>`.
 
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
@@ -26,10 +46,12 @@
 {% set prom_url = eppKedaSaturation.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local', true) %}
 {% set prom_url = prom_url ~ ':' ~ (eppKedaSaturation.prometheus.port | default(9091, true)) %}
 {% set triggers = eppKedaSaturation.scaledObject.triggers | default([], true) %}
+{% set name_suffix = eppKedaSaturation.scaledObject.nameSuffix | default('saturation', true) %}
+{% set peak_prefill = eppKedaSaturation.scaledObject.peakPrefillThroughput | default('', true) %}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: {{ hpa_name }}-saturation
+  name: {{ hpa_name }}-{{ name_suffix }}
   namespace: {{ epp_ns }}
   annotations:
     llm-d.ai/managed: "true"
@@ -53,7 +75,7 @@ spec:
       serverAddress: "{{ prom_url }}"
       authModes: bearer
       query: |
-        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) }}
+        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) | replace('${namespace}', epp_ns) | replace('${peakPrefillThroughput}', peak_prefill | string) | indent(8) }}
       threshold: "{{ t.threshold | default('1') }}"
       activationThreshold: "{{ t.activationThreshold | default('0') }}"
 {% endfor %}

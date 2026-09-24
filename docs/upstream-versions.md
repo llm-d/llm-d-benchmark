@@ -43,7 +43,7 @@ OCI registry at generation (and plan) time.
 | **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 493 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
 | **llmDModelservice** | `v0.4.16` | tag | `config/templates/values/defaults.yaml` line 494 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
 | **llmDRouter** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 498 (`chartVersions.llmDRouter`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) |
-| **lws** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 504 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
+| **lws** | `v0.11.0` | tag | `config/templates/values/defaults.yaml` line 504 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 
 
 ## Container Image Dependencies
@@ -61,7 +61,7 @@ generation (and plan) time.
 | **routingSidecar** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 419 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
 | **udsTokenizer** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 425 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 | **vllm** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 388 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllmOpenai** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 399 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 398 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)

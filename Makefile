@@ -278,6 +278,117 @@ check-kustomize:
 	@command -v kustomize >/dev/null 2>&1 || { \
 	  echo "❌ kustomize is not installed. Install it from https://kubectl.docs.kubernetes.io/installation/kustomize/"; exit 1; }
 
+##@ Token-aware autoscaling
+
+# peakPrefillThroughput (V_P) = CHUNK_SIZE / median(TTFT), tokens/sec per replica.
+# Needed only by the token-aware autoscaling path (and any router config using
+# prefix-cache-affinity-filter) -- hence a standalone target rather than anything
+# in the standup pipeline or defaults.yaml.
+#
+# The measurement is llm-d's own recipe, fetched at run time rather than vendored,
+# so there is one implementation of it and nothing here to keep in step.
+# See docs/token-aware-autoscaling.md.
+#
+# CALIBRATION_REF defaults to `main` deliberately: the calibration recipe is not in
+# a tagged llm-d release that is compatible with this guide, so a pinned tag would
+# fetch either a missing or an incompatible script. Override it to pin a tag or a
+# SHA when you need a reproducible measurement:
+#   make calibrate-peak-prefill NAMESPACE=<ns> CALIBRATION_REF=<tag-or-sha>
+CALIBRATION_REF ?= main
+CALIBRATION_BASE := https://raw.githubusercontent.com/llm-d/llm-d/$(CALIBRATION_REF)/guides/recipes/router/calibration
+CHUNK_SIZE ?= 8192
+APPLY ?= 0
+
+.PHONY: calibrate-peak-prefill
+calibrate-peak-prefill: check-kubectl check-envsubst ## Measure peakPrefillThroughput via the upstream llm-d recipe. NAMESPACE=<ns> [APPLY=1] [CHUNK_SIZE=8192] [CALIBRATION_REF=main]
+	@test -n "$(NAMESPACE)" || { \
+	  echo "❌ NAMESPACE is required:  make calibrate-peak-prefill NAMESPACE=<ns> [APPLY=1]"; exit 1; }
+	@set -e; \
+	NS="$(NAMESPACE)"; \
+	DIR=$$(mktemp -d); trap 'rm -rf "$$DIR"' EXIT; \
+	echo "⬇️  fetching the upstream calibration recipe (ref=$(CALIBRATION_REF))"; \
+	curl -sfL "$(CALIBRATION_BASE)/calibrate.sh" -o "$$DIR/calibrate.sh"; \
+	curl -sfL "$(CALIBRATION_BASE)/calibration-peak-throughput.yaml" -o "$$DIR/calibration-peak-throughput.yaml"; \
+	chmod +x "$$DIR/calibrate.sh"; \
+	EPP=$$(kubectl get svc -n "$$NS" -o jsonpath='{range .items[?(@.spec.clusterIP)]}{.metadata.name}{" "}{.spec.clusterIP}{"\n"}{end}' | awk '/-epp /{print $$2; exit}'); \
+	test -n "$$EPP" || { echo "❌ no *-epp Service in ns/$$NS"; exit 2; }; \
+	MODEL=$$(kubectl get deploy -n "$$NS" -o jsonpath='{range .items[*]}{range .spec.template.spec.containers[?(@.name=="vllm")].env[?(@.name=="MODEL_NAME")]}{.value}{"\n"}{end}{end}' | awk 'NF{print;exit}'); \
+	test -n "$$MODEL" || { echo "❌ could not read MODEL_NAME from the vllm container in ns/$$NS"; exit 2; }; \
+	SERVED=$$(kubectl get deploy -n "$$NS" -o jsonpath='{range .items[*]}{range .spec.template.spec.containers[?(@.name=="vllm")].env[?(@.name=="VLLM_MAX_NUM_BATCHED_TOKENS")]}{.value}{"\n"}{end}{end}' | awk 'NF{print;exit}'); \
+	if [ -n "$$SERVED" ] && [ "$$SERVED" != "$(CHUNK_SIZE)" ]; then \
+	  echo "❌ CHUNK_SIZE=$(CHUNK_SIZE) != serving VLLM_MAX_NUM_BATCHED_TOKENS=$$SERVED"; \
+	  echo "   A chunk larger than the batch budget is prefilled in several passes,"; \
+	  echo "   so the measured TTFT would not be one prefill pass."; exit 2; fi; \
+	echo "🔎 endpoint=http://$$EPP:80  model=$$MODEL  chunk=$(CHUNK_SIZE)"; \
+	SO_BACKUP="$$DIR/scaledobjects.yaml"; SO_PARKED=0; \
+	if kubectl get scaledobject -n "$$NS" -o name 2>/dev/null | grep -q .; then \
+	  echo "🅿️  parking the ScaledObject(s) for the duration of the measurement"; \
+	  echo "   (an autoscaler could add replicas mid-measurement, and its prefill"; \
+	  echo "    divisor is the very number being measured)"; \
+	  kubectl get scaledobject -n "$$NS" -o yaml > "$$SO_BACKUP"; \
+	  python3 -c "import sys,yaml; d=yaml.safe_load(open(sys.argv[1])); items=d.get('items',[d]) if isinstance(d,dict) else d; \
+	    [ (i.pop('status',None), [i['metadata'].pop(k,None) for k in ('resourceVersion','uid','creationTimestamp','generation','managedFields','selfLink')]) for i in items ]; \
+	    yaml.safe_dump_all(items, open(sys.argv[1],'w'))" "$$SO_BACKUP"; \
+	  kubectl delete scaledobject -n "$$NS" --all >/dev/null; \
+	  SO_PARKED=1; \
+	  trap 'if [ "$$SO_PARKED" = "1" ] && [ -s "$$SO_BACKUP" ]; then echo "↩️  restoring the ScaledObject(s)"; kubectl apply -f "$$SO_BACKUP" >/dev/null 2>&1 || true; fi; rm -rf "$$DIR"' EXIT; \
+	fi; \
+	echo "⏳ checking the fleet is idle (V_P is a single-request measurement --"; \
+	echo "   residual load inflates TTFT and UNDERSTATES V_P)"; \
+	BUSY=0; \
+	for p in $$(kubectl get pods -n "$$NS" --field-selector=status.phase=Running -o name | grep decode | cut -d/ -f2); do \
+	  M=$$(kubectl exec -n "$$NS" "$$p" -c vllm -- curl -s localhost:8200/metrics 2>/dev/null | awk '/^vllm:kv_cache_usage_perc/{k=$$NF} /^vllm:num_requests_running/{r=$$NF} END{print k+0, r+0}'); \
+	  echo "   $$p kv=$$(echo $$M | cut -d" " -f1) running=$$(echo $$M | cut -d" " -f2)"; \
+	  echo "$$M" | awk '{ if ($$1 > 0.02 || $$2 >= 1) exit 1 }' || BUSY=1; \
+	done; \
+	if [ "$$BUSY" -eq 1 ]; then \
+	  echo "❌ the fleet is not idle -- stop the load, wait for the KV cache to drain, retry"; exit 3; fi; \
+	echo "▶️  running the upstream calibrate.sh"; \
+	VLLM_ENDPOINT="http://$$EPP:80" NAMESPACE="$$NS" MODEL_NAME="$$MODEL" \
+	CHUNK_SIZE="$(CHUNK_SIZE)" "$$DIR/calibrate.sh" 2>&1 | tee "$$DIR/out.log"; \
+	VP=$$(grep -oE 'Measured peakPrefillThroughput = [0-9]+' "$$DIR/out.log" | tail -1 | grep -oE '[0-9]+$$'); \
+	test -n "$$VP" || { echo "❌ no value produced; see kubectl logs -n $$NS job/calibrate-peak-throughput"; exit 4; }; \
+	kubectl logs -n "$$NS" job/calibrate-peak-throughput 2>/dev/null | grep -oE 'TTFT=[0-9.]+' | cut -d= -f2 \
+	  | tail -n +6 | sort -n \
+	  | awk '{v[++n]=$$1} END{ if(!n) exit; m=(n%2)?v[(n+1)/2]:(v[n/2]+v[n/2+1])/2; s=(v[n]-v[1])/m; \
+	      printf "📊 n=%d median=%.4fs spread=%.1f%% of median\n", n, m, s*100; \
+	      if (s > 0.5) print "⚠️  spread >50%: the stack was probably not idle -- discard this value" }' || true; \
+	echo "✅ PEAK_PREFILL_THROUGHPUT=$$VP"; \
+	if [ "$(APPLY)" != "1" ]; then \
+	  echo ""; \
+	  echo "Not applied (pass APPLY=1). Set $$VP in BOTH places that must agree:"; \
+	  echo "  1. prefix-cache-affinity-filter.parameters.peakPrefillThroughput  (router)"; \
+	  echo "  2. eppKedaSaturation.scaledObject.peakPrefillThroughput           (KEDA trigger)"; \
+	  exit 0; fi; \
+	echo "✍️  applying $$VP to both consumers"; \
+	CM_PATCHED=0; SO_PATCHED=0; \
+	:; \
+	: 'Scoped to *-epp ConfigMaps -- the router chart names the EPP plugin config'; \
+	: '<release>-epp, and rewriting every ConfigMap in the namespace would reach'; \
+	: 'another tenant on a shared namespace.'; \
+	for cm in $$(kubectl get cm -n "$$NS" -o name | cut -d/ -f2 | grep -- '-epp$$'); do \
+	  if kubectl get cm -n "$$NS" "$$cm" -o yaml | grep -q 'peakPrefillThroughput:'; then \
+	    kubectl get cm -n "$$NS" "$$cm" -o yaml | sed -E "s/(peakPrefillThroughput: *)[0-9]+/\1$$VP/g" | kubectl apply -f - >/dev/null; \
+	    echo "   configmap/$$cm updated"; CM_PATCHED=1; fi; done; \
+	if [ "$$SO_PARKED" = "1" ] && [ -s "$$SO_BACKUP" ]; then \
+	  python3 -c "import re,sys; p,vp=sys.argv[1],sys.argv[2]; t=open(p).read(); open(p,'w').write(re.sub(r'(llm_d_epp_inflight_tokens[\\s\\S]*?/\\s*)\\d+', lambda m: m.group(1)+vp, t))" "$$SO_BACKUP" "$$VP"; \
+	  kubectl apply -f "$$SO_BACKUP" >/dev/null; SO_PARKED=0; \
+	  echo "   scaledobject(s) restored with divisor $$VP"; SO_PATCHED=1; \
+	fi; \
+	if [ "$$CM_PATCHED" -eq 0 ]; then \
+	  echo "   ℹ️  no ConfigMap carries peakPrefillThroughput -- this router config has no"; \
+	  echo "      prefix-cache-affinity-filter, so nothing consumes V_P on the router side."; \
+	  echo "      Not restarting the EPP: a restart with nothing to re-read is pure disruption."; fi; \
+	if [ "$$SO_PATCHED" -eq 0 ]; then \
+	  echo "   ℹ️  no ScaledObject trigger references llm_d_epp_inflight_tokens (expected"; \
+	  echo "      unless you are autoscaling on V_P)."; fi; \
+	if [ "$$SO_PATCHED" -eq 1 ] && [ "$$CM_PATCHED" -eq 0 ]; then \
+	  echo "❌ the ScaledObject was updated but the router was not -- they now disagree on V_P."; exit 6; fi; \
+	if [ "$$CM_PATCHED" -eq 1 ]; then \
+	  for d in $$(kubectl get deploy -n "$$NS" -o name | cut -d/ -f2 | grep -- '-epp$$' || true); do \
+	    kubectl rollout restart -n "$$NS" "deployment/$$d" >/dev/null; \
+	    echo "   restarted deployment/$$d (the EPP reads its plugin config at startup only)"; done; fi
+
 .PHONY: check-envsubst
 check-envsubst:
 	@command -v envsubst >/dev/null 2>&1 || { \
