@@ -22,6 +22,12 @@
 #     --experiments experiments/token-aware-autoscaling.yaml \
 #     --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
 #
+# Shared across topologies -- swap --spec to run the same DoE against the
+# P/D-disaggregated scenario instead:
+#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation experiment \
+#     --experiments experiments/token-aware-autoscaling.yaml \
+#     --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
+#
 # Usage (run-only -- against an already-standing endpoint):
 #   llmdbenchmark --spec guides/keda-epp-token-aware run \
 #     --endpoint-url http://<HOST>:<PORT> \
@@ -37,9 +43,10 @@ experiment:
   name: token-aware-autoscaling
   description: >
     Three token-shape workloads (prefill-heavy, symmetrical, decode-heavy)
-    against token-aware KEDA autoscaling on a P+D co-located stack, to show
-    that scaling on tokens of outstanding work tracks prefill load that a
-    request counter cannot see.
+    against token-aware KEDA autoscaling, to show that scaling on tokens of
+    outstanding work tracks prefill load that a request counter cannot see.
+    Works against either topology -- P+D co-located (one ScaledObject) or
+    P/D-disaggregated (one ScaledObject per role) -- by choosing --spec.
   harness: inference-perf
   profile: random_symmetrical.yaml
 
