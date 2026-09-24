@@ -44,6 +44,15 @@ def test_agentgateway_pin_stays_in_sync_with_upstream_versions_doc():
     assert _doc_pin_for("agentgateway") == agentgateway_pin
 
 
+def test_lws_pin_stays_in_sync_with_defaults_and_doc():
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+
+    lws_pin = defaults["_anchors"]["lws_version"]
+
+    assert defaults["chartVersions"]["lws"] == lws_pin
+    assert _doc_pin_for("lws") == lws_pin
+
+
 def test_inference_pool_pin_stays_in_sync_with_defaults_and_doc():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
 
