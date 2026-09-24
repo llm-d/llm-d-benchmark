@@ -651,6 +651,16 @@ def test_format_source_repo_docker_hub(sbom_module) -> None:
     assert "Docker Hub: python" in out
 
 
+def test_format_source_repo_kustomize_docs_label(sbom_module) -> None:
+    out = sbom_module.format_source_repo(
+        "https://kubectl.docs.kubernetes.io/installation/kustomize/"
+    )
+    assert out == (
+        "[kustomize docs]"
+        "(https://kubectl.docs.kubernetes.io/installation/kustomize/)"
+    )
+
+
 def test_format_source_repo_empty_returns_unknown(sbom_module) -> None:
     assert sbom_module.format_source_repo(None) == "(unknown)"
     assert sbom_module.format_source_repo("") == "(unknown)"
@@ -659,6 +669,8 @@ def test_format_source_repo_empty_returns_unknown(sbom_module) -> None:
 def test_upstream_for_system_tool(sbom_module) -> None:
     out = sbom_module.upstream_for_system_tool("yq")
     assert "github.com/mikefarah/yq" in out
+    kustomize = sbom_module.upstream_for_system_tool("kustomize")
+    assert "kubectl.docs.kubernetes.io/installation/kustomize" in kustomize
     # Unknown tool returns "(unknown)"
     assert sbom_module.upstream_for_system_tool("nonsense") == "(unknown)"
 
