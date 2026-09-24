@@ -121,7 +121,7 @@ _anchors:
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.26.0
   llm-d-cuda_version:                &llm-d-cuda_version                v0.9.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.10.2
-  llm-d-benchmark_version:           &llm-d-benchmark_version           nightly
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.8.0
   llm-d-prism_version:               &llm-d-prism_version               latest
 
   # Common labels

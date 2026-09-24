@@ -52,3 +52,12 @@ def test_inference_pool_pin_stays_in_sync_with_defaults_and_doc():
     assert defaults["chartVersions"]["inferencePool"] == gaie_pin
     assert defaults["gatewayApiCrd"]["inferenceExtensionRevision"] == gaie_pin
     assert _doc_pin_for("inferencePool") == gaie_pin
+
+
+def test_benchmark_pin_stays_in_sync_with_defaults_and_doc():
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+
+    benchmark_pin = defaults["_anchors"]["llm-d-benchmark_version"]
+
+    assert defaults["images"]["benchmark"]["tag"] == benchmark_pin
+    assert _doc_pin_for("benchmark") == benchmark_pin
