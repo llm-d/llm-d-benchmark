@@ -6,8 +6,8 @@ the staged file list and map paths to specs:
 
     config/specification/<name>.yaml.j2  -> <name>
     config/scenarios/<name>.yaml         -> <name>
-    llmdbenchmark/<shared>/**, templates -> cicd/kind-sim (canary)
-    nothing / docs-only                  -> cicd/kind-sim (baseline)
+    llmdbenchmark/<shared>/**, templates -> cicd/kind (canary)
+    nothing / docs-only                  -> cicd/kind (baseline)
 
 The exhaustive per-spec render lives in CI (ci-pr-plan-rendering-
 validation.yaml); locally we only render what actually changed.
@@ -27,7 +27,7 @@ from typing import TextIO
 
 # Fallback spec for shared-path and docs-only commits. Matches what CI
 # runs on every PR (ci-pr-benchmark.yaml).
-CANARY_SPEC = "cicd/kind-sim"
+CANARY_SPEC = "cicd/kind"
 
 # Touching anything starting with one of these means "this could affect
 # every spec". We render the canary only — CI handles the full loop.
@@ -237,12 +237,14 @@ def main(argv: list[str]) -> int:
         if spec_exists(root, CANARY_SPEC):
             specs = {CANARY_SPEC: "baseline sanity check (no scenarios touched)"}
         else:
+            # Loud on purpose: a missing canary means the hook renders
+            # nothing, and exiting 0 here would hide that forever.
             print(
                 f"No scenarios touched and canary spec '{CANARY_SPEC}' "
                 "not found on disk; nothing to render.",
                 file=sys.stderr,
             )
-            return 0
+            return 2
 
     entrypoint = resolve_llmdbenchmark(root)
     tty = _open_tty()

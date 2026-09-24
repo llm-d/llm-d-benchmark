@@ -78,7 +78,7 @@ You only need to run this once per clone. On subsequent invocations `install.sh`
 |---|---|---|---|
 | `py-compile` | `pre-commit`, `pre-push` | `python -m compileall -q llmdbenchmark` (only on changed `llmdbenchmark/**.py`) | — (fast local-only syntax gate) |
 | `pytest` | `pre-commit`, `pre-push` | `python -m pytest tests/ -x -q` | `unit-tests` job in [`ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml) |
-| `render-validation-changed` | `pre-commit`, `pre-push` | [`util/precommit_render_changed.py`](util/precommit_render_changed.py) — detects which scenarios the commit actually touched and renders only those (falls back to `cicd/kind-sim` canary for shared-path changes) | Scoped subset of [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
+| `render-validation-changed` | `pre-commit`, `pre-push` | [`util/precommit_render_changed.py`](util/precommit_render_changed.py) — detects which scenarios the commit actually touched and renders only those (falls back to `cicd/kind` canary for shared-path changes) | Scoped subset of [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
 | `detect-secrets` | `pre-commit` | [`ibm/detect-secrets`](https://github.com/ibm/detect-secrets) against `.secrets.baseline` with `--use-all-plugins` | — (local-only secrets scan) |
 
 Stages explained:
@@ -92,16 +92,16 @@ The helper script [`util/precommit_render_changed.py`](util/precommit_render_cha
 
 1. `config/specification/<path>.yaml.j2` → render `<path>`.
 2. `config/scenarios/<path>.yaml` → render `<path>` (the `scenarios/` and `specification/` trees are kept 1:1).
-3. Any change under a shared render path (`config/templates/`, `llmdbenchmark/{parser,plan,executor,utilities,standup,run,teardown,smoketests}/`, `llmdbenchmark/cli.py`, `llmdbenchmark/config.py`) → render the `cicd/kind-sim` canary. We do **not** expand shared-path changes into every scenario locally — that's what CI's full per-spec render job does on the PR.
-4. **Nothing resolved** (docs-only commit, test-only commit, anything else that doesn't touch a scenario or shared render path) → render the `cicd/kind-sim` canary as a **baseline sanity check**. Every commit proves the render path is healthy, even when the diff has nothing to do with scenarios.
+3. Any change under a shared render path (`config/templates/`, `llmdbenchmark/{parser,plan,executor,utilities,standup,run,teardown,smoketests}/`, `llmdbenchmark/cli.py`, `llmdbenchmark/config.py`) → render the `cicd/kind` canary. We do **not** expand shared-path changes into every scenario locally — that's what CI's full per-spec render job does on the PR.
+4. **Nothing resolved** (docs-only commit, test-only commit, anything else that doesn't touch a scenario or shared render path) → render the `cicd/kind` canary as a **baseline sanity check**. Every commit proves the render path is healthy, even when the diff has nothing to do with scenarios.
 
 The script always prints exactly which scenarios it is about to render and why, e.g.:
 
 ```text
 Rendering 2 scenarios:
-  - cicd/kind-sim          [shared render path touched (llmdbenchmark/parser/version_resolver.py)]
+  - cicd/kind          [shared render path touched (llmdbenchmark/parser/version_resolver.py)]
   - guides/tiered-prefix-cache  [edited config/specification/guides/tiered-prefix-cache.yaml.j2]
-Rendering: cicd/kind-sim
+Rendering: cicd/kind
 Rendering: guides/tiered-prefix-cache
 Render results: 2 passed, 0 failed
 ```
@@ -131,7 +131,7 @@ If a hook fails, the first line of output tells you which hook and exits with th
   ```bash
   llmdbenchmark --spec <the-failing-spec> --dry-run plan -p debug
   ```
-  Render failures are usually caused by Jinja template changes or missing keys in `config/scenarios/**/<name>.yaml`. If the hook says it rendered `cicd/kind-sim` and you were expecting a different spec, it means your change touched a shared render path and the hook fell back to the canary — the exhaustive per-spec render runs in CI on the PR.
+  Render failures are usually caused by Jinja template changes or missing keys in `config/scenarios/**/<name>.yaml`. If the hook says it rendered `cicd/kind` and you were expecting a different spec, it means your change touched a shared render path and the hook fell back to the canary — the exhaustive per-spec render runs in CI on the PR.
 - **`detect-secrets` failure** — either your change added a secret (remove it) or added a new pattern the baseline doesn't know about. To update the baseline after reviewing the finding:
   ```bash
   detect-secrets scan --baseline .secrets.baseline --use-all-plugins

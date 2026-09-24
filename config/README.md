@@ -2019,7 +2019,7 @@ Used by automated CI/CD pipelines:
 
 | Scenario | Description |
 |----------|-------------|
-| `kind-sim.yaml` | Kind cluster with `llm-d-inference-sim` (no GPU, CPU-only, public model). Exercises the full modelservice and standalone paths in CI. |
+| `kind.yaml` | Kind cluster with `llm-d-inference-sim` (no GPU, CPU-only, public model). Exercises the full modelservice and standalone paths in CI. |
 | `gke-h100.yaml` | Google Kubernetes Engine with H100 |
 | `cks.yaml` | Cloud Kubernetes Service with H200 |
 | `ocp.yaml` | OpenShift Container Platform with Istio |
@@ -2199,7 +2199,7 @@ Each category contains:
 
 **Examples:** `cpu.yaml.j2`, `gpu.yaml.j2`, `spyre.yaml.j2`
 
-**CI/CD:** `cks.yaml.j2`, `gke-h100.yaml.j2`, `kind-sim.yaml.j2`, `ocp.yaml.j2`
+**CI/CD:** `cks.yaml.j2`, `gke-h100.yaml.j2`, `kind.yaml.j2`, `ocp.yaml.j2`
 
 ---
 
