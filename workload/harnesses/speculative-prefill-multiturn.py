@@ -79,6 +79,9 @@ def post_stream(
     max_tokens: int,
     use_speculative_prefill: bool,
     ignore_eos: bool,
+    temperature: float | None,
+    top_p: float | None,
+    request_seed: int | None,
     timeout: int,
     case_label: str,
     user_id: int,
@@ -92,6 +95,12 @@ def post_stream(
     }
     if ignore_eos:
         body["ignore_eos"] = True
+    if temperature is not None:
+        body["temperature"] = temperature
+    if top_p is not None:
+        body["top_p"] = top_p
+    if request_seed is not None:
+        body["seed"] = request_seed + user_id * 1000 + turn
 
     request = urllib.request.Request(
         url,
@@ -155,6 +164,9 @@ def run_user(
             args.max_completion_tokens,
             use_header,
             args.ignore_eos,
+            args.temperature,
+            args.top_p,
+            args.request_seed,
             args.timeout,
             case_label,
             user_id,
@@ -330,6 +342,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-turns", type=int, default=5)
     parser.add_argument("--num-user-tokens", type=int, default=128)
     parser.add_argument("--max-completion-tokens", type=int, default=4096)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--top-p", type=float, default=1.0)
+    parser.add_argument("--request-seed", type=int, default=42)
     parser.add_argument("--mean-delay-ms", type=int, default=5000)
     parser.add_argument("--delay-mode", choices=("exponential", "fixed"), default="fixed")
     parser.add_argument("--timeout", type=int, default=300)
