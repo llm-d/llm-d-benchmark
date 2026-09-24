@@ -1,6 +1,6 @@
 # EPP+KEDA SATURATION AUTOSCALING GUIDE
 #
-# Same base configuration as `inference-scheduling.yaml` (Qwen3-32B, 2 decode
+# Same base configuration as `optimized-baseline.yaml` (Qwen3-32B, 2 decode
 # pods, modelservice deployment) but with direct EPP+KEDA saturation autoscaling.
 # No WVA controller, no VariantAutoscaling, no prometheus-adapter.
 #
@@ -10,7 +10,7 @@
 #
 # The `--epp-keda-saturation` CLI flag is NOT required with this scenario because
 # `eppKedaSaturation.enabled: true` is already hard-coded below. Pass the flag with
-# the plain `inference-scheduling` scenario if you want to toggle EPP+KEDA on
+# the plain `optimized-baseline` scenario if you want to toggle EPP+KEDA on
 # without editing YAML.
 
 scenario:
@@ -133,7 +133,7 @@ scenario:
                       weight: 2
 
       # =========================================================================
-      # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+      # PREFILL / DECODE CONFIGURATION (same as optimized-baseline.yaml)
       # =========================================================================
       prefill:
         enabled: false

@@ -1719,7 +1719,7 @@ extraObjects: []
 # ============================================================================
 wva:
   enabled: false
-  wellLitPath: inference-scheduling
+  wellLitPath: optimized-baseline
   # When blank, resolves to namespace.name at render time. Overridable via
   # the third component of `--namespace deploy,harness,wva`.
   namespace: ""

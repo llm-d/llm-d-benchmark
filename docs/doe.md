@@ -80,7 +80,7 @@ run:
 ** This particular example can be used with the following command :
 
 ```
-llmdbenchmark experiment --spec disaggregated_vs_llmd --experiments disaggregated_vs_llmd
+llmdbenchmark experiment --spec guides/pd-disaggregation --experiments pd-disaggregation
 ```
 
 2) Compare different parameters for GAIE (Gateway API Inference Extension), using a fixed set of `decode` `pods`. Once deployed, run a workload profile varying `num_groups` and `system_prompt_len`)
@@ -114,7 +114,7 @@ run:
 ** This particular example can be used with the following command
 
 ```
-llmdbenchmark experiment --spec precise-prefix-cache-aware --experiments precise-prefix-cache-aware
+llmdbenchmark experiment --spec guides/precise-prefix-cache-routing --experiments precise-prefix-cache-aware
 ```
 
 ## Treatment Execution Lifecycle

@@ -1,7 +1,7 @@
 # ============================================================================
 # PRECISE PREFIX CACHE AWARE ROUTING WELL LIT PATH
 # Converted from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-aware/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-routing/README.md
 #
 # Notes:
 # - Removed pod monitoring; can be added using decode.extraContainerConfig

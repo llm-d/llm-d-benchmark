@@ -26,9 +26,9 @@ This directory contains the benchmark workloads that `llmdbenchmark` deploys and
   - [Experiment File Format](#experiment-file-format)
   - [Treatment x Parallelism Matrix](#treatment-x-parallelism-matrix)
 - [Available Experiments](#available-experiments)
-  - [inference-scheduling](#inference-scheduling)
+  - [optimized-baseline](#optimized-baseline)
   - [tiered-prefix-cache](#tiered-prefix-cache)
-  - [precise-prefix-cache-aware](#precise-prefix-cache-aware)
+  - [precise-prefix-cache-routing](#precise-prefix-cache-routing)
   - [pd-disaggregation](#pd-disaggregation)
   - [Writing Custom Experiments](#writing-custom-experiments)
 - [Run Modes](#run-modes)
@@ -46,12 +46,13 @@ This directory contains the benchmark workloads that `llmdbenchmark` deploys and
 ## Directory Layout
 
 ```
+experiments/                                # DoE experiment definitions (repo root)
+  optimized-baseline.yaml                   # Scheduling strategy comparison
+  tiered-prefix-cache.yaml                  # CPU-offloaded prefix cache sweep
+  precise-prefix-cache-aware.yaml           # Prefix-cache-aware routing sweep
+  pd-disaggregation.yaml                    # Prefill-decode disaggregation load curve
+
 workload/
-  experiments/                              # DoE experiment definitions
-    inference-scheduling.yaml               # Scheduling strategy comparison
-    tiered-prefix-cache.yaml                # CPU-offloaded prefix cache sweep
-    precise-prefix-cache-aware.yaml         # Prefix-cache-aware routing sweep
-    pd-disaggregation.yaml                  # Prefill-decode disaggregation load curve
   harnesses/                                # Benchmark entry-point scripts
     guidellm-llm-d-benchmark.sh             # guidellm harness wrapper
     inference-perf-llm-d-benchmark.sh       # inference-perf harness wrapper
@@ -409,7 +410,7 @@ max-concurrency: 1
 
 Experiments control **how many times** and **with what parameter variations** a benchmark runs. The experiment system follows **Design of Experiments (DoE)** principles, providing structured, reproducible experiment definitions with clearly documented factors, levels, constants, and treatments.
 
-Pre-built experiment files live in `workload/experiments/`. You can also create custom experiments for ad-hoc sweeps.
+Pre-built experiment files live in `experiments/`. You can also create custom experiments for ad-hoc sweeps.
 
 ### Design of Experiments (DoE) Concepts
 
@@ -469,13 +470,13 @@ Overrides support dotted key paths for nested YAML values. Values are auto-coerc
 The `--experiments` flag points to a YAML file that defines multiple **treatments**. Each treatment gets its own rendered profile, experiment ID, and pod deployment.
 
 ```bash
-llmdbenchmark --spec inference-scheduling run \
+llmdbenchmark --spec optimized-baseline run \
   --harness inference-perf \
   --workload shared_prefix_synthetic.yaml \
-  --experiments workload/experiments/inference-scheduling.yaml
+  --experiments experiments/optimized-baseline.yaml
 ```
 
-**What gets created** (for the 9-treatment inference-scheduling experiment):
+**What gets created** (for the 9-treatment optimized-baseline experiment):
 - 9 rendered profiles: `shared_prefix_synthetic-qlen100-olen100.yaml`, etc.
 - 9 experiment IDs: `inference-perf-qlen100-olen100-{ts}-{rand}`, etc.
 - 9 harness pods (one per treatment)
@@ -483,7 +484,7 @@ llmdbenchmark --spec inference-scheduling run \
 
 ### Experiment File Format
 
-Experiment files are standalone YAML files in `workload/experiments/`. They contain up to four sections:
+Experiment files are standalone YAML files in `experiments/`. They contain up to four sections:
 
 1. **DoE metadata** (`experiment`, `design`) -- informational, documents the experimental design
 2. **Setup treatments** (`setup`) -- consumed by the `experiment` command orchestrator (optional)
@@ -575,7 +576,7 @@ treatments:
 
 #### Sweeping EPP plugins config (`router.epp.pluginsConfigFile`)
 
-The EPP's inference-scheduling plugin set (prefix-cache routing, predicted-latency
+The EPP's optimized-baseline plugin set (prefix-cache routing, predicted-latency
 scoring, queue policies, etc.) is selected by `router.epp.pluginsConfigFile`.
 It flows straight through to the chart at render time:
 
@@ -691,7 +692,7 @@ All pods within the same treatment share the same experiment ID (they run the sa
 
 ## Available Experiments
 
-Pre-built experiment files are in `workload/experiments/`. Each file is self-contained with DoE metadata, setup requirements, and executable treatments.
+Pre-built experiment files are in `experiments/`. Each file is self-contained with DoE metadata, setup requirements, and executable treatments.
 
 Each experiment can be run in three ways:
 
@@ -699,9 +700,9 @@ Each experiment can be run in three ways:
 - **Full pipeline** (`standup run teardown`) -- stands up a single stack, runs, and tears down. Use for a single setup configuration.
 - **Run-only** (`run --experiments`) -- targets an already-running endpoint. You must provide `--endpoint-url`, `--model`, `--namespace`, `--harness`, and `--workload` explicitly.
 
-### inference-scheduling
+### optimized-baseline
 
-**File:** `workload/experiments/inference-scheduling.yaml`
+**File:** `experiments/optimized-baseline.yaml`
 
 Evaluates how different prompt and output token lengths affect inference latency and throughput with shared-prefix workloads. Designed for comparing scheduling strategies (no optimization, prefix-aware, KV-aware, queue-based).
 
@@ -725,30 +726,30 @@ Evaluates how different prompt and output token lengths affect inference latency
 
 **Full DoE experiment** (automated setup × run matrix):
 ```bash
-llmdbenchmark --spec inference-scheduling experiment \
-  --experiments workload/experiments/inference-scheduling.yaml
+llmdbenchmark --spec optimized-baseline experiment \
+  --experiments experiments/optimized-baseline.yaml
 ```
 
 **Single setup, all run treatments:**
 ```bash
-llmdbenchmark --spec inference-scheduling standup run teardown \
-  --experiments workload/experiments/inference-scheduling.yaml
+llmdbenchmark --spec optimized-baseline standup run teardown \
+  --experiments experiments/optimized-baseline.yaml
 ```
 
 **Run-only** (against an existing endpoint):
 ```bash
-llmdbenchmark --spec inference-scheduling run \
+llmdbenchmark --spec optimized-baseline run \
   --endpoint-url http://10.131.0.42:80 \
   --model Qwen/Qwen3-32B \
   --namespace my-namespace \
   --harness inference-perf \
   --workload shared_prefix_synthetic.yaml \
-  --experiments workload/experiments/inference-scheduling.yaml
+  --experiments experiments/optimized-baseline.yaml
 ```
 
 ### tiered-prefix-cache
 
-**File:** `workload/experiments/tiered-prefix-cache.yaml`
+**File:** `experiments/tiered-prefix-cache.yaml`
 
 Evaluates how prefix group count and system prompt length affect performance under tiered (CPU-offloaded) prefix caching. Measures cache utilization and latency as the working set changes relative to the cache tier size.
 
@@ -773,7 +774,7 @@ Evaluates how prefix group count and system prompt length affect performance und
 **Full DoE experiment:**
 ```bash
 llmdbenchmark --spec tiered-prefix-cache experiment \
-  --experiments workload/experiments/tiered-prefix-cache.yaml
+  --experiments experiments/tiered-prefix-cache.yaml
 ```
 
 **Run-only:**
@@ -784,12 +785,12 @@ llmdbenchmark --spec tiered-prefix-cache run \
   --namespace my-namespace \
   --harness inference-perf \
   --workload shared_prefix_synthetic.yaml \
-  --experiments workload/experiments/tiered-prefix-cache.yaml
+  --experiments experiments/tiered-prefix-cache.yaml
 ```
 
-### precise-prefix-cache-aware
+### precise-prefix-cache-routing
 
-**File:** `workload/experiments/precise-prefix-cache-aware.yaml`
+**File:** `experiments/precise-prefix-cache-aware.yaml`
 
 Evaluates how prefix group count and system prompt length affect performance under different prefix-cache-aware routing strategies. Measures how well each routing plugin steers requests to replicas that already have the relevant prefix cached.
 
@@ -808,24 +809,24 @@ Evaluates how prefix group count and system prompt length affect performance und
 
 **Full DoE experiment:**
 ```bash
-llmdbenchmark --spec precise-prefix-cache-aware experiment \
-  --experiments workload/experiments/precise-prefix-cache-aware.yaml
+llmdbenchmark --spec precise-prefix-cache-routing experiment \
+  --experiments experiments/precise-prefix-cache-aware.yaml
 ```
 
 **Run-only:**
 ```bash
-llmdbenchmark --spec precise-prefix-cache-aware run \
+llmdbenchmark --spec precise-prefix-cache-routing run \
   --endpoint-url http://10.131.0.42:80 \
   --model Qwen/Qwen3-32B \
   --namespace my-namespace \
   --harness inference-perf \
   --workload shared_prefix_synthetic.yaml \
-  --experiments workload/experiments/precise-prefix-cache-aware.yaml
+  --experiments experiments/precise-prefix-cache-aware.yaml
 ```
 
 ### pd-disaggregation
 
-**File:** `workload/experiments/pd-disaggregation.yaml`
+**File:** `experiments/pd-disaggregation.yaml`
 
 Measures how a disaggregated prefill-decode architecture handles increasing concurrency. Concurrency and prompt count scale proportionally (1:10 ratio) to keep per-worker load constant while increasing system pressure, producing a load curve from idle through saturation.
 
@@ -852,7 +853,7 @@ Measures how a disaggregated prefill-decode architecture handles increasing conc
 **Full DoE experiment:**
 ```bash
 llmdbenchmark --spec pd-disaggregation experiment \
-  --experiments workload/experiments/pd-disaggregation.yaml
+  --experiments experiments/pd-disaggregation.yaml
 ```
 
 **Run-only:**
@@ -863,7 +864,7 @@ llmdbenchmark --spec pd-disaggregation run \
   --namespace my-namespace \
   --harness vllm-benchmark \
   --workload random_concurrent.yaml \
-  --experiments workload/experiments/pd-disaggregation.yaml
+  --experiments experiments/pd-disaggregation.yaml
 ```
 
 ### Writing Custom Experiments
@@ -904,13 +905,13 @@ treatments:
     load.stages.0.rate: 50
 ```
 
-Save to `workload/experiments/my-rate-sweep.yaml` and run:
+Save to `experiments/my-rate-sweep.yaml` and run:
 
 ```bash
 llmdbenchmark --spec gpu run \
   --harness inference-perf \
   --workload sanity_random.yaml \
-  --experiments workload/experiments/my-rate-sweep.yaml
+  --experiments experiments/my-rate-sweep.yaml
 ```
 
 ---

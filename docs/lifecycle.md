@@ -69,7 +69,7 @@ llmdbenchmark standup
 ```
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line options for `llmdbenchmark standup` (e.g. `llmdbenchmark standup --spec ocp_H100MIG_modelservice_llama-3b`)
+> The scenario can also be indicated as part of the command line options for `llmdbenchmark standup` (e.g. `llmdbenchmark standup --spec guides/optimized-baseline`)
 
 To re-execute only individual steps (by number):
 
@@ -93,7 +93,7 @@ Smoketests include three steps:
 - **Step 01** -- Inference test: sends a sample `/v1/completions` request, logs generated text and a demo curl command
 - **Step 02** -- Config validation: per-scenario checks that compare deployed pod configuration against the rendered scenario config (resources, parallelism, env vars, probes, volumes, security, vLLM flags, etc.)
 
-Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, inference-scheduling-wva, tiered-prefix-cache, wide-ep, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios (including multi-stack scenarios like `multi-model-optimized-baseline`) run steps 00 and 01 only.
+Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-routing, optimized-baseline, workload-autoscaling, tiered-prefix-cache, wide-ep) have dedicated validators with scenario-specific checks. Other scenarios (including multi-stack scenarios like `multi-model-optimized-baseline`) run steps 00 and 01 only.
 
 Multi-stack scenarios run smoketest steps sequentially (one stack at a time) regardless of the `--parallel` flag - parallel probes of a shared gateway would be noisy and harder to debug. Each stack's `/health` and `/v1/models` requests are automatically prefixed with its routing path (e.g. `/qwen3-06b/...`) when the scenario uses a shared HTTPRoute.
 
@@ -110,7 +110,7 @@ llmdbenchmark run --harness inference-perf --workload chatbot_synthetic.yaml
 > This command will run an experiment, collect data and perform an initial analysis (generating statistics and plots). One can go straight to the analysis by adding the option `-z`/`--skip` to the above command
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line options for `llmdbenchmark run` (e.g., `llmdbenchmark run --spec ocp_L40_standalone_llama-8b`)
+> The scenario can also be indicated as part of the command line options for `llmdbenchmark run` (e.g., `llmdbenchmark run --spec guides/optimized-baseline`)
 
 Finally, cleanup everything
 
@@ -119,4 +119,4 @@ llmdbenchmark teardown
 ```
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line options for `llmdbenchmark teardown` (e.g., `llmdbenchmark teardown --spec kubernetes_H200_modelservice_llama-8b`)
+> The scenario can also be indicated as part of the command line options for `llmdbenchmark teardown` (e.g., `llmdbenchmark teardown --spec guides/optimized-baseline`)

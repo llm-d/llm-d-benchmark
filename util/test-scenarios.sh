@@ -35,7 +35,7 @@ set -o pipefail
 # `-t kustomize` and the --ms-only/--sa-only method filters do not apply to
 # them. --sglang is opt-in and is NOT included in --all.
 #
-# Note: CICD scenarios (cks, gke-h100, kind-sim, ocp) are not included.
+# Note: CICD scenarios (cks, gke, kind, ocp) are not included.
 # They require specific cluster infrastructure and are tested via GitHub Actions.
 
 # Parse arguments

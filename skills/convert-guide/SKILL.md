@@ -32,7 +32,7 @@ See [references/harnesses.md](references/harnesses.md) for all available harness
 
 ```bash
 # Convert a guide
-/convert-guide https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
+/convert-guide https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
 
 # Specify custom harness and profile
 /convert-guide https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation with inference-perf shared_prefix_synthetic

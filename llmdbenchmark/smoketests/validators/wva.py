@@ -1,7 +1,7 @@
 """WVA smoketest checks: controller + KEDA + per-stack ScaledObject.
 
 This is a *mixin* rather than a top-level validator so scenario-specific
-validators (e.g. inference-scheduling) can layer it on without having to
+validators (e.g. optimized-baseline) can layer it on without having to
 duplicate its logic. A concrete validator exists too
 (:class:`WvaValidator`) for scenarios whose only WVA concerns are the
 baseline controller + per-stack ScaledObject checks.

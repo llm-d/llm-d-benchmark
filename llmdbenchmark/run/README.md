@@ -70,7 +70,7 @@ oc exec -n <NS> $(oc get pod -n <NS> -l role=llm-d-benchmark-data-access -o json
 
 ```bash
 # Generate a config YAML from current settings
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml --generate-config
 
 # Use the generated config for subsequent runs
@@ -83,7 +83,7 @@ Start the harness pod with `sleep infinity` instead of running the benchmark.
 Useful for exec-ing into the pod to debug issues:
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml -d
 
 # Then exec into the pod:
@@ -95,7 +95,7 @@ oc exec -it -n <NS> $(oc get pod -n <NS> -l app=llmdbench-harness-launcher -o na
 If a previous run left results on the PVC, collect them without re-running:
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -z
 ```
 
 ## CLI Flags
@@ -176,16 +176,16 @@ which scripts run inside the harness pod and which profiles are available:
 
 ```bash
 # inference-perf (default for most well-lit paths)
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -l inference-perf -w sanity_random.yaml
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -l inference-perf -w sanity_random.yaml
 
 # vllm-benchmark (built-in vLLM benchmarking)
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -l vllm-benchmark -w random_concurrent.yaml
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -l vllm-benchmark -w random_concurrent.yaml
 
 # guidellm
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -l guidellm -w chatbot_synthetic.yaml
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -l guidellm -w chatbot_synthetic.yaml
 
 # nop (no-op -- measures model load time only)
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -l nop -w nop.yaml
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -l nop -w nop.yaml
 ```
 
 ### Run with workload parameter overrides
@@ -193,7 +193,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -l nop -w nop.yaml
 Override individual workload profile parameters without editing the profile YAML:
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml \
   -o "concurrency=32,duration=300,max_tokens=512"
 ```
@@ -203,9 +203,9 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
 Execute a matrix of parameter combinations automatically:
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml \
-  -e experiments/concurrency_sweep.yaml
+  -e experiments/max-concurrency-sweep.yaml
 ```
 
 The experiment YAML defines factors and levels:
@@ -232,7 +232,7 @@ profile. Bounded by `--max-parallel-treatments`. See
 Deploy multiple harness pods per treatment for higher aggregate load:
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml -j 4
 ```
 
@@ -328,11 +328,11 @@ For a fully PVC-less flow, stand the stack up with `standup --no-pvc` as well.
 
 ```bash
 # Google Cloud Storage
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml -r gs://my-bucket/results/
 
 # Amazon S3
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml -r s3://my-bucket/results/
 ```
 
@@ -340,14 +340,14 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
 
 ```bash
 # Only deploy and wait (skip cleanup, analysis, upload)
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> \
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> \
   -l inference-perf -w sanity_random.yaml -s 0-8
 
 # Only collect existing results and analyze
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -s 8,11
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -s 8,11
 
 # Only clean up leftover pods
-llmdbenchmark --spec guides/inference-scheduling run -p <NS> -s 10
+llmdbenchmark --spec guides/optimized-baseline run -p <NS> -s 10
 ```
 
 ## Treatment System

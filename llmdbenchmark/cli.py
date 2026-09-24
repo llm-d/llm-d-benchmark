@@ -2323,7 +2323,7 @@ def cli() -> None:
         "--spec",
         default=argparse.SUPPRESS,
         help="Specification file for the experiment. Accepts a bare name (e.g. 'gpu'), "
-        "a category/name (e.g. 'guides/inference-scheduling'), or a full path. "
+        "a category/name (e.g. 'guides/optimized-baseline'), or a full path. "
         "Bare names are searched in config/specification/**/<name>.yaml.j2.",
     )
     benchmark_parser.add_argument(

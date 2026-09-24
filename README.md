@@ -83,7 +83,7 @@ Two supported entry points depending on what you have access to:
 
 **🖥️ No Accelerators  / No Cluster Access - Utilize a Kind Quickstart**
 
-Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind` scenario that CI runs on every PR, so if it works locally it works in CI.
 
 - **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
 - **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md) (or try the simpler [EPP+KEDA Saturation Autoscaling](docs/workload-variant-autoscaler.md) guide)
@@ -837,7 +837,7 @@ See module-level READMEs for detailed documentation:
 llmdbenchmark --spec guides/optimized-baseline standup  # Optimized baseline (formerly inference-scheduling)
 llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
 llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
-llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing
+llmdbenchmark --spec precise-prefix-cache-routing standup # Precise prefix cache-aware routing
 llmdbenchmark --spec wide-ep standup                    # Wide expert-parallel (DisaggregatedSet)
 ```
 
