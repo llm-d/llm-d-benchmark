@@ -45,7 +45,7 @@ design:
   setup:
     factors:
       - name: numCpuBlocks
-        key: vllmCommon.flags.numCpuBlocks
+        key: vllmCommon.kvTransfer.extraConfig.num_cpu_blocks
         levels: [500, 1000, 2000, 5000]
         description: CPU blocks allocated for KV cache tier
     constants:
