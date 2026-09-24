@@ -11,7 +11,7 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 from jinja2 import Environment, TemplateSyntaxError, UndefinedError
@@ -43,6 +43,11 @@ class RenderPlans:
     Templates prefixed with ``_`` are treated as macros/partials and not
     rendered directly. All others are rendered per stack with merged values.
     """
+
+    # Shared by all instances: compiling a template costs far more than
+    # rendering it, and every instance builds the same ones.
+    _SHARED_JINJA_ENV: ClassVar["Environment | None"] = None
+    _COMPILED_TEMPLATES: ClassVar[dict] = {}
 
     # Prefix for partial/macro files (not rendered directly)
     PARTIAL_PREFIX = "_"
@@ -146,6 +151,10 @@ class RenderPlans:
         if self._jinja_env is not None:
             return self._jinja_env
 
+        if RenderPlans._SHARED_JINJA_ENV is not None:
+            self._jinja_env = RenderPlans._SHARED_JINJA_ENV
+            return self._jinja_env
+
         env = Environment(
             autoescape=False,
             trim_blocks=True,
@@ -169,7 +178,21 @@ class RenderPlans:
         env.globals["raise"] = self._raise_helper
 
         self._jinja_env = env
+        RenderPlans._SHARED_JINJA_ENV = env
         return env
+
+    @classmethod
+    def _compile_template(cls, env: Environment, template_content: str):
+        """Compile a template source, reusing the result across instances.
+
+        Keyed on the source itself, so two templates never share an entry;
+        filters and globals resolve at render time, not compile time.
+        """
+        cached = cls._COMPILED_TEMPLATES.get(template_content)
+        if cached is None:
+            cached = env.from_string(template_content)
+            cls._COMPILED_TEMPLATES[template_content] = cached
+        return cached
 
     @staticmethod
     def _raise_helper(message: str) -> str:
@@ -1903,7 +1926,7 @@ class RenderPlans:
     def _render_template(self, template_content: str, values: dict) -> str:
         """Render a Jinja2 template string with the given values dict."""
         env = self._get_jinja_env()
-        template = env.from_string(template_content)
+        template = self._compile_template(env, template_content)
         return template.render(**values)
 
     def _validate_yaml_files(self, directory: Path) -> list[str]:
