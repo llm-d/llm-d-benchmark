@@ -1,9 +1,10 @@
-"""Resolve ``"auto"`` image tags and chart versions via skopeo/helm."""
+"""Resolve ``"auto"`` image tags and chart versions via the registry API/helm."""
 
-import json
 import re
 import subprocess
 from copy import deepcopy
+
+import requests
 
 
 class ImageOverrideConfigError(RuntimeError):
@@ -16,7 +17,7 @@ class ImageOverrideConfigError(RuntimeError):
 
 
 class VersionResolver:
-    """Resolve ``"auto"`` image tags (skopeo/podman) and chart versions (helm)."""
+    """Resolve ``"auto"`` image tags (registry/podman) and chart versions (helm)."""
 
     def __init__(self, logger, dry_run: bool = False):
         self.logger = logger
@@ -36,21 +37,16 @@ class VersionResolver:
         return max(tags, key=version_key) if tags else None
 
     def resolve_image_tag(self, registry: str, repository: str) -> str:
-        """Resolve the latest tag for an image via skopeo, falling back to podman."""
+        """Resolve the latest tag for an image via the registry, falling back to podman."""
         image_ref = repository
         if registry and not repository.startswith(registry):
             image_ref = f"{registry}/{repository}"
 
         self.logger.log_info(f"🔍 Resolving image tag for: {image_ref}")
 
-        tag = self._resolve_via_skopeo(image_ref)
+        tag = self._resolve_via_registry(image_ref)
         if tag:
             self.logger.log_info(f"📦 Resolved {image_ref} to {tag}")
-            return tag
-
-        tag = self._resolve_via_crane(image_ref)
-        if tag:
-            self.logger.log_info(f"📦 Resolved {image_ref} to {tag} (via crane)")
             return tag
 
         tag = self._resolve_via_podman(image_ref)
@@ -60,41 +56,82 @@ class VersionResolver:
 
         raise RuntimeError(
             f'Unable to resolve latest tag for image "{image_ref}". '
-            "Ensure skopeo, crane, or podman is installed and the image exists."
+            "Check the image exists, the registry is reachable, and that it "
+            "does not require credentials (only anonymous pulls are resolved)."
         )
 
-    def _resolve_via_crane(self, image_ref: str) -> str | None:
-        """Resolve latest tag using crane ls."""
-        cmd = f"crane ls {image_ref}"
-        try:
-            result = subprocess.run(
-                cmd.split(), capture_output=True, text=True, check=False
-            )
-            if result.returncode == 0:
-                lines = [
-                    line.strip()
-                    for line in result.stdout.strip().split("\n")
-                    if line.strip()
-                ]
-                return self._latest_version_tag(lines)
-        except FileNotFoundError:
-            pass
-        return None
+    @staticmethod
+    def _registry_endpoint(image_ref: str) -> tuple[str, str]:
+        """Split an image reference into the host to query and the repository path.
 
-    def _resolve_via_skopeo(self, image_ref: str) -> str | None:
-        """Resolve latest tag using skopeo list-tags."""
-        cmd = ["skopeo", "list-tags", f"docker://{image_ref}"]
+        A reference with no registry host is Docker Hub, whose bare names live under
+        ``library/`` and whose API is on a different host than its pull alias.
+        """
+        head, _, rest = image_ref.partition("/")
+        if not rest or ("." not in head and ":" not in head and head != "localhost"):
+            repo = image_ref if "/" in image_ref else f"library/{image_ref}"
+            return "registry-1.docker.io", repo
+        if head in ("docker.io", "index.docker.io"):
+            return "registry-1.docker.io", rest
+        return head, rest
+
+    def _resolve_via_registry(self, image_ref: str) -> str | None:
+        """Resolve latest tag from the registry's tag list over HTTPS."""
+        host, repo = self._registry_endpoint(image_ref)
+        url = f"https://{host}/v2/{repo}/tags/list?n=1000"
+        tags: list = []
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            tags_data = json.loads(result.stdout)
-            tags = tags_data.get("Tags", [])
-            if isinstance(tags, list):
-                return self._latest_version_tag(
-                    [tag for tag in tags if isinstance(tag, str) and tag]
-                )
-        except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
-            pass
-        return None
+            with requests.Session() as session:
+                headers: dict[str, str] = {}
+                response = session.get(url, timeout=30)
+                if response.status_code == 401:
+                    token = self._anonymous_token(
+                        session, response.headers.get("www-authenticate", ""), repo
+                    )
+                    if not token:
+                        return None
+                    headers["Authorization"] = f"Bearer {token}"
+                    response = session.get(url, headers=headers, timeout=30)
+                # `n` is a hint the registry may cap, so a short page means more
+                # pages, not the end of the list. Missing one hands the caller an
+                # older tag with nothing to say it happened.
+                while True:
+                    response.raise_for_status()
+                    page = response.json().get("tags") or []
+                    if not isinstance(page, list):
+                        return None
+                    tags.extend(page)
+                    next_link = response.links.get("next", {}).get("url")
+                    if not next_link:
+                        break
+                    response = session.get(
+                        requests.compat.urljoin(url, next_link),
+                        headers=headers,
+                        timeout=30,
+                    )
+        except (requests.RequestException, ValueError):
+            return None
+        return self._latest_version_tag(
+            [tag for tag in tags if isinstance(tag, str) and tag]
+        )
+
+    @staticmethod
+    def _anonymous_token(session, challenge: str, repo: str) -> str | None:
+        """Fetch a pull token for the realm the registry's challenge names."""
+        realm = re.search(r'realm="([^"]+)"', challenge)
+        if not realm:
+            return None
+        params = {"scope": f"repository:{repo}:pull"}
+        service = re.search(r'service="([^"]+)"', challenge)
+        if service:
+            params["service"] = service.group(1)
+        try:
+            response = session.get(realm.group(1), params=params, timeout=30)
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError):
+            return None
+        return payload.get("token") or payload.get("access_token")
 
     def _resolve_via_podman(self, image_ref: str) -> str | None:
         """Resolve latest tag using podman search."""
@@ -252,8 +289,8 @@ class VersionResolver:
             ImageOverrideConfigError: invalid configuration -- both fields set,
                 unknown imageKey, imageKey points at an entry with empty
                 ``repository`` or ``tag``.
-            RuntimeError: registry resolution failed (skopeo/crane/podman
-                unavailable or image not found).
+            RuntimeError: registry resolution failed (registry unreachable or
+                image not found).
         """
         has_image = bool(owner.get("image"))
         has_image_key = bool(owner.get("imageKey"))

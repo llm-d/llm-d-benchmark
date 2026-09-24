@@ -4,8 +4,7 @@
 #
 # The CI dump steps used `[ -f "$f" ] && cat "$f"`, which reads as "absent" for an
 # archived file -- and the fallback branch is the success path, so a compressed run
-# degrades to "no <file>" with a green check. Logs are archived, so that is now the
-# normal case rather than an edge one.
+# degrades to "no <file>" with a green check.
 #
 # Usage: dump_result_file.sh [--tail N] [--glob] <results_dir> <relative_path>
 #
@@ -65,29 +64,36 @@ elif [[ -f "$results_dir/$relative" ]]; then
   exit 0
 fi
 
-# The archive the PVC script wrote inside this result set, keyed relative to it.
-# The member is addressed by its full path, never by basename: several treatments
-# have a file by the same name, so basename-matching would attribute one arm's
-# state to another.
-archive="$results_dir/workspace.tar.zst"
-if [[ -f "$archive" ]]; then
-  if ! command -v zstd >/dev/null 2>&1; then
-    echo "cannot read $archive: zstd not installed" >&2
-  else
-    # Escape unconditionally: an exact path carrying a '.' or '+' would otherwise
-    # reach grep -E as a wildcard and can match a different member. '/' is not an
-    # ERE metacharacter, so escaping it only earns a "stray \ before /" warning.
-    want="$(printf '%s' "$relative" | sed -e 's/[].[^$*+?(){}|\\]/\\&/g')"
-    if ((use_glob)); then
-      # Only '*' is meaningful in these patterns, and it must not cross a '/'.
-      want="${want//\\\*/[^/]*}"
-    fi
-    member="$(zstd -dc "$archive" 2>/dev/null | tar -tf - 2>/dev/null \
-      | grep -m1 -x -E "(\./)?${want}")" || true
-    if [[ -n "$member" ]]; then
-      zstd -dc "$archive" | tar -xOf - "$member" | emit && exit 0
-    fi
-  fi
+# The lookup lives in the package, so this and the readers cannot drift apart.
+repo_root="$(cd -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/.." && pwd)"
+read -r -d '' extract <<'PY' || true
+import sys
+
+from llmdbenchmark.utilities.archive import read_member, read_members
+
+root, relative, use_glob = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+if use_glob:
+    found = read_members(root, relative)
+    payload = found[sorted(found)[0]] if found else None
+else:
+    payload = read_member(root, relative)
+if payload is None:
+    sys.exit(1)
+sys.stdout.buffer.write(payload)
+PY
+
+# Status through a file: the pipe into emit would otherwise hide it, and a stale
+# "no <file>" on a real hit is the failure this script was written to remove.
+status="$(mktemp)" || { echo "no $relative (no temp file)"; exit 0; }
+trap 'rm -f "$status"' EXIT
+{
+  PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}" python3 -c "$extract" \
+    "$results_dir" "$relative" "$use_glob"
+  echo "$?" > "$status"
+} | emit
+
+if [[ "$(cat "$status")" == "0" ]]; then
+  exit 0
 fi
 
 echo "no $relative for $(basename -- "$results_dir")"

@@ -252,9 +252,10 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     entries = sbom_module.parse_install_sh(install_sh)
     by_name = {e.name: e for e in entries}
     # Sanity-check a couple of known upstream mappings.
-    assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
-    assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+    assert "github.com/helm/helm" in by_name["helm"].upstream
+    # A tool with no mapping is reported as a gap, not silently dropped.
+    assert by_name["crane"].upstream == "(unknown)"
 
 
 def test_tool_version_for_is_authoritative(
@@ -657,8 +658,8 @@ def test_format_source_repo_empty_returns_unknown(sbom_module) -> None:
 
 
 def test_upstream_for_system_tool(sbom_module) -> None:
-    out = sbom_module.upstream_for_system_tool("yq")
-    assert "github.com/mikefarah/yq" in out
+    out = sbom_module.upstream_for_system_tool("helmfile")
+    assert "github.com/helmfile/helmfile" in out
     # Unknown tool returns "(unknown)"
     assert sbom_module.upstream_for_system_tool("nonsense") == "(unknown)"
 

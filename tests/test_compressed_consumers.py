@@ -522,9 +522,8 @@ def test_a_converter_exiting_does_not_kill_the_analysis_phase(tmp_path):
     assert isinstance(run_analysis("guidellm", results, None), str)
 
 
-def test_the_remote_dir_is_quoted_and_the_fallback_backend_reads():
-    """Two holes with no other cover: the script interpolates a path straight into
-    `cd`, and the pure-Python backend is never chosen while the zstd CLI is present."""
+def test_the_remote_dir_is_quoted():
+    """A hole with no other cover: the script interpolates a path straight into `cd`."""
     from llmdbenchmark.utilities.archive import remote_compress_script
 
     script = remote_compress_script("/requests/exp 1; rm -rf /tmp/PWNED")
@@ -584,20 +583,59 @@ def test_a_glob_matches_the_same_set_plain_or_archived(tmp_path):
     assert set(read_members(plain, pattern)) == {"metrics/raw/a_metrics.log"}
 
 
+def _dump(*args: str) -> str:
+    script = Path(__file__).resolve().parent.parent / "util" / "dump_result_file.sh"
+    result = subprocess.run(
+        [str(script), *args], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_the_dumper_reads_a_result_set_the_same_way_compressed_or_not(tmp_path):
+    """CI's only window into a failed run. A miss has to stay exit 0 with a spoken
+    reason, or the dump steps paint a red X over whatever actually failed."""
+
+    def build(root: Path) -> None:
+        (root / "analysis").mkdir(parents=True)
+        (root / "analysis" / "result.txt").write_text(
+            "line1\nline2\nline3\n", encoding="utf-8"
+        )
+        (root / "pod-launcher-populator-xy.log").write_text("POD\n", encoding="utf-8")
+
+    plain = tmp_path / "plain"
+    archived = tmp_path / "archived"
+    build(plain)
+    build(archived)
+    _compress(archived)
+
+    for args in (
+        ("analysis/result.txt",),
+        ("--tail", "1", "analysis/result.txt"),
+        ("--glob", "*launcher-populator*.log"),
+    ):
+        head, tail = args[:-1], args[-1]
+        assert _dump(*head, str(archived), tail) == _dump(*head, str(plain), tail)
+
+    assert _dump(str(archived), "analysis/result.txt") == "line1\nline2\nline3\n"
+    assert _dump(str(archived), "nope.txt") == "no nope.txt for archived\n"
+    # A `*` must not cross a `/`, so a bare pattern never reaches a nested file.
+    assert _dump("--glob", str(archived), "*result.txt").startswith("no ")
+
+
 @pytest.mark.parametrize(
-    ("settled", "driver_zstd", "pod_zstd", "expected", "probes"),
+    ("settled", "pod_zstd", "expected", "probes"),
     [
-        (True, True, True, True, 1),
-        (False, True, True, False, 0),
-        (True, False, True, False, 0),
-        (True, True, False, False, 1),
+        (True, True, True, 1),
+        (False, True, False, 0),
+        (True, False, False, 1),
     ],
 )
 def test_pvc_compression_needs_every_gate(
-    monkeypatch, settled, driver_zstd, pod_zstd, expected, probes
+    monkeypatch, settled, pod_zstd, expected, probes
 ):
-    """Guards an irreversible delete, so all four gates must hold -- and the pod
-    probe (a live `kubectl exec`) must not run once a cheaper gate has said no."""
+    """Guards an irreversible delete, so every gate must hold -- and the pod probe
+    (a live `kubectl exec`) must not run once a cheaper gate has said no."""
     from llmdbenchmark.executor.context import ExecutionContext
     from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
 
@@ -606,10 +644,6 @@ def test_pvc_compression_needs_every_gate(
         DeployHarnessStep,
         "_pvc_has_zstd",
         staticmethod(lambda *a: calls.append(a) or pod_zstd),
-    )
-    monkeypatch.setattr(
-        "llmdbenchmark.run.steps.step_07_deploy_harness.shutil.which",
-        lambda name: "/usr/bin/zstd" if driver_zstd else None,
     )
 
     warnings = []

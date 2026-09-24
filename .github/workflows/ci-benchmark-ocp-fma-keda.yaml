@@ -267,6 +267,12 @@ jobs:
       - name: Checkout llm-d-benchmark (for the results-table script)
         uses: actions/checkout@v7.0.0
 
+      # The dump script reads archived members through the package, which needs
+      # the decompressor. Without it every result reads as absent and the
+      # summary renders empty with a green check.
+      - name: Install the archive reader
+        run: pip install zstandard
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:

@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      # zstd explicitly: install.sh only installs it best-effort, and without it the
-      # compression tests skip themselves and the suite passes vacuously. The analysis
+      # zstd explicitly: the tests covering the pod-side script need it, and without
+      # it they skip themselves and the suite passes vacuously. The analysis
       # requirements are image-only, so the plot tests need them installed.
       - name: Install llmdbenchmark
         run: |

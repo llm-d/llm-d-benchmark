@@ -23,7 +23,9 @@ INSTALLER_ONLY = {"curl", "git"}
 # `tools="..."`, ignoring the conditional `tools="$tools oc"` append that adds
 # a kube client when neither kubectl nor oc is on PATH.
 _TOOLS_RE = re.compile(r'^(?P<var>(?:optional_)?tools)="(?P<list>[^"$]+)"$')
-_AUTOINSTALL_RE = re.compile(r'^autoinstall_optional="(?P<list>[^"$]+)"$')
+# Matches an empty list too: nothing is auto-installed today, and an empty
+# assignment must read as "none" rather than as "assignment missing".
+_AUTOINSTALL_RE = re.compile(r'^autoinstall_optional="(?P<list>[^"$]*)"$')
 _EVAL_RE = re.compile(r'eval\s+"\$\{?install_func\}?"')
 _GUARDED_EVAL_RE = re.compile(r'eval\s+"\$\{?install_func\}?"[^|]*\|\|')
 
