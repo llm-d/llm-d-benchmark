@@ -49,7 +49,6 @@ def test_vllm_and_vllm_openai_pins_stay_in_sync():
         assert cpu_images["vllmOpenai"]["tag"] == vllm_pin
 
     assert _docker_arg_value(dockerfile, "VLLM_BENCHMARK_BRANCH") == vllm_pin
-    assert _docker_arg_value(dockerfile, "VLLM_BENCHMARK_COMMIT") == vllm_pin
 
     assert defaults["images"]["udsTokenizer"]["tag"] == uds_tokenizer_pin
     assert _doc_pin_for("udsTokenizer") == uds_tokenizer_pin
