@@ -252,14 +252,26 @@ scenario:
             periodSeconds: 5
             timeoutSeconds: 2
 
+        # Fix for the s1 (decode-KV) double-scrape defect: leave this chart-level
+        # PodMonitor OFF (inherits monitoring.podmonitor.enabled: false from
+        # defaults.yaml). The top-level `monitoring.podmonitor.enabled: true`
+        # elsewhere in this scenario already renders 18_podmonitor.yaml.j2's
+        # standalone PodMonitor (vllm-<model_id_label>), which matches the same
+        # decode pods. Turning this one on too makes Prometheus scrape every
+        # decode pod twice under two different `job` labels, so
+        # sum(vllm:kv_cache_usage_perc{...}) -- the s1 KEDA trigger's own query --
+        # legitimately adds both and reports ~2x real KV usage. The guide's
+        # published scaledobject.yaml (llm-d/llm-d) ships the same unguarded
+        # sum(), and its own base guide (optimized-baseline) never deploys this
+        # Helm chart at all -- it applies decode/prefill via plain Kustomize and
+        # has exactly one PodMonitor source (recipes/modelserver/components/
+        # monitoring). So the duplicate is specific to how this scenario deploys
+        # via the llm-d-modelservice chart, not something a guide user hits.
+        # See verification/04-run-log.md ("Defect B") and
+        # verification/evidence/bug-s1-double-counting-podmonitor.txt.
         monitoring:
           podmonitor:
-            enabled: true
-            portName: metrics
-            path: /metrics
-            interval: 30s
-            labels:
-              release: llmd
+            enabled: false
 
 
     # =========================================================================
