@@ -58,6 +58,8 @@ workload/
     inferencemax-llm-d-benchmark.sh         # inferencemax harness wrapper
     lm-eval-llm-d-benchmark.sh              # lm-eval (accuracy) harness wrapper
     nop-llm-d-benchmark.py                  # No-op harness (testing/validation)
+    speculative-prefill-multiturn.py        # Multi-turn speculative prefill A/B runner
+    speculative-prefill-multiturn-llm-d-benchmark.sh # Standard wrapper for the A/B runner
     vllm-benchmark-llm-d-benchmark.sh       # vllm-benchmark harness wrapper
   profiles/                                 # Workload profile templates
     guidellm/                               # Profiles for the guidellm harness
@@ -82,6 +84,8 @@ workload/
       accuracy_default.yaml.in
     nop/                                     # Profiles for the no-op harness
       nop.yaml.in
+    speculative-prefill-multiturn/           # Profiles for speculative prefill multi-turn A/B
+      default.yaml.in
     vllm-benchmark/                          # Profiles for vllm-benchmark
       fixed_dataset.yaml.in
       random_concurrent.yaml.in
@@ -165,6 +169,7 @@ The harness script runs inside the **benchmark container image** as a Kubernetes
 | `inferencemax` | `inferencemax-llm-d-benchmark.sh` | Custom Python script | Benchmarking with warmup and random seed control |
 | `lm-eval` | `lm-eval-llm-d-benchmark.sh` | `lm_eval` (lm-evaluation-harness) | Accuracy/quality evaluation against standard tasks (hellaswag, mmlu, piqa, ...) |
 | `priority-mix` | `priority-mix-llm-d-benchmark.sh` | Custom Python script | Mixed traffic classes with different `x-llm-d-inference-objective` headers |
+| `speculative-prefill-multiturn` | `speculative-prefill-multiturn.py` | Custom Python script | Multi-turn TTFT A/B runner for validating `x-speculative-prefill`; assistant1 is long by default so turn2 cache warmup benefit is visible |
 | `nop` | `nop-llm-d-benchmark.py` | No-op | Testing and validation without running real benchmarks |
 
 > **lm-eval smoke test:** the `accuracy_default` profile runs the full task set. For a quick pipeline check, cap samples per task and propagate the override into the harness pod, e.g. `LIMIT=10 llmdbenchmark ... -l lm-eval -w accuracy_default.yaml -g LIMIT ...`.
