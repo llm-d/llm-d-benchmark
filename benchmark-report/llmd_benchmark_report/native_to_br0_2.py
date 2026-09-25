@@ -125,9 +125,56 @@ def _resolve_experiment_id() -> str:
     return experiment_id
 
 
+_KNOWN_HARNESS_PREFIXES = (
+    "inference-perf",
+    "guidellm",
+    "vllm-benchmark",
+    "inferencemax",
+    "nop",
+    "priority-mix",
+    "eval-containers",
+    "aiperf",
+    "lm-eval",
+)
+
+
+def _treatment_label(experiment_id: str, harness_name: str = "") -> str:
+    """Extract the treatment segment of an ID, or "" when it has none.
+
+    Duplicated from ``llmdbenchmark.analysis.cross_treatment``: this package
+    ships flat into the harness pod, with no llmdbenchmark package to import.
+    """
+    # Without the full tail, the last segment could be either the treatment or
+    # the random suffix.
+    if not re.search(r"-\d{10,}-[a-z0-9]{6,8}$", experiment_id):
+        return ""
+    name = re.sub(r"-[a-z0-9]{6,8}$", "", experiment_id)
+    name = re.sub(r"-\d{10,}$", "", name)
+
+    prefixes = (harness_name,) if harness_name else _KNOWN_HARNESS_PREFIXES
+    for prefix in prefixes:
+        if prefix and name.startswith(f"{prefix}-"):
+            return name[len(prefix) + 1 :]
+    return "" if name == harness_name or name in _KNOWN_HARNESS_PREFIXES else name
+
+
 def _user_description() -> str:
-    """Return the submitter-supplied description, or "" when none was given."""
-    return _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+    """Return the submitter-supplied description, or "" when none was given.
+
+    The recorded text is scenario-wide, so every treatment of a sweep reports
+    the same one. Prefixing the treatment keeps them apart.
+    """
+    text = _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+    if not text:
+        # Falls back to the experiment ID, already unique.
+        return text
+    treatment = _treatment_label(
+        _resolve_experiment_id(),
+        _get_harness_meta("harness_name", "LLMDBENCH_HARNESS_NAME"),
+    )
+    if not treatment or treatment in text.split("-"):
+        return text
+    return f"{treatment}-{text}"
 
 
 def _user_keywords() -> list[str]:

@@ -24,6 +24,7 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
 FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle.yaml"
 
 EXPERIMENT_ID = "inference-perf-conc32-1786024743-hipkpq"
+TREATMENT = "conc32"
 # No treatment segment: <harness>-<timestamp>-<rand>.
 UNSWEPT_EXPERIMENT_ID = "inference-perf-1786001414-kdonyb"
 
@@ -247,7 +248,10 @@ def test_keywords_are_left_to_the_submitter(tmp_path, monkeypatch) -> None:
 def test_submitter_description_wins_over_the_generated_label(
     tmp_path, monkeypatch
 ) -> None:
-    """The schema documents run.description as submitter-provided."""
+    """The schema documents run.description as submitter-provided.
+
+    Prefixed with the treatment: the submitted text is scenario-wide.
+    """
     results_file = _setup_run(
         tmp_path,
         monkeypatch,
@@ -257,7 +261,7 @@ def test_submitter_description_wins_over_the_generated_label(
 
     run = import_inference_perf(results_file).run
 
-    assert run.description == "Sweep A: KV cache offload"
+    assert run.description == f"{TREATMENT}-Sweep A: KV cache offload"
     # An override renames the run; it must not change what the run *is*.
     assert run.eid == str(uuid.uuid5(uuid.NAMESPACE_URL, EXPERIMENT_ID))
 
@@ -272,7 +276,10 @@ def test_description_envar_outranks_the_metadata_file(tmp_path, monkeypatch) -> 
     )
     monkeypatch.setenv("LLMDBENCH_DESCRIPTION_TEXT", "from the envar")
 
-    assert import_inference_perf(results_file).run.description == "from the envar"
+    assert (
+        import_inference_perf(results_file).run.description
+        == f"{TREATMENT}-from the envar"
+    )
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\n"])
@@ -320,7 +327,7 @@ def test_a_description_survives_conversion_off_the_pod(tmp_path, monkeypatch) ->
     delattr(_get_harness_meta, "_cache")
     monkeypatch.setenv("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", str(results_dir))
 
-    assert in_pod == "Sweep A"
+    assert in_pod == f"{TREATMENT}-Sweep A"
     assert import_inference_perf(results_file).run.description == in_pod
 
 
@@ -448,8 +455,8 @@ def test_driver_env_description_does_not_override_each_treatment(
     A scenario-wide LLMDBENCH_DESCRIPTION_TEXT in the driver's environment
     outranks the per-directory metadata, so leaving it unscoped gives every
     treatment of a sweep the same description -- exactly what scoping the
-    experiment ID already prevents. Each description is additionally prefixed
-    with its own treatment label, since the recorded value is scenario-wide.
+    experiment ID already prevents. The report library additionally prefixes
+    each description with its own treatment.
     """
     treatments = {
         "conc32": ("inference-perf-conc32-1786024743-aaaaaa", "A SPECIFIC"),
@@ -508,3 +515,28 @@ def test_failed_conversion_does_not_leak_the_results_dir(tmp_path, monkeypatch) 
         analysis.run_analysis("inference-perf", results_dir, None)
 
     assert "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" not in os.environ
+
+
+def test_description_is_not_prefixed_twice(tmp_path, monkeypatch) -> None:
+    """Re-analysing a directory must not restack the treatment label."""
+    already = f"{TREATMENT}-a description"
+    results_file = _setup_run(
+        tmp_path,
+        monkeypatch,
+        experiment_id=EXPERIMENT_ID,
+        description_text=already,
+    )
+    report = import_inference_perf(results_file).model_dump()
+    assert report["run"]["description"] == already
+
+
+def test_unswept_description_is_left_alone(tmp_path, monkeypatch) -> None:
+    """An ID with no treatment segment has no label to add."""
+    results_file = _setup_run(
+        tmp_path,
+        monkeypatch,
+        experiment_id=UNSWEPT_EXPERIMENT_ID,
+        description_text="a description",
+    )
+    report = import_inference_perf(results_file).model_dump()
+    assert report["run"]["description"] == "a description"
