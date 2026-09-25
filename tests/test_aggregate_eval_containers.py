@@ -305,7 +305,7 @@ def test_report_validates_against_v0_2_schema(tmp_path: Path) -> None:
         (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
     )
     report = load_benchmark_report(data)
-    assert report.version == "0.2"
+    assert report.version == "0.2.1"
     assert report.run.uid == "run"
 
 

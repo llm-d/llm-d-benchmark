@@ -28,7 +28,13 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
+from .schema_v0_2 import (
+    VERSION,
+    BenchmarkReportV02,
+    Component,
+    Distribution,
+    LoadSource,
+)
 from .schema_v0_2_components import HostType
 
 
@@ -940,7 +946,7 @@ def _populate_benchmark_report_from_envars() -> dict:
     """
     # Start benchmark report
     br_dict = {
-        "version": "0.2",
+        "version": VERSION,
         "run": {
             "uid": str(uuid.uuid4()),  # Initial UID, may be updated
         },
@@ -1803,6 +1809,167 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+# Native (inference-perf) field name -> (schema field name, units) for each
+# modality. The native report nests these under successes.{image,video,audio};
+# see inference_perf/payloads/{image,video,audio}/metrics.py and
+# tests/required/reportgen/test_lifecycle_report_shape.py upstream. The schema
+# names properties rather than units, hence bytes->filesize, seconds->duration.
+_MODALITY_FIELDS = {
+    "image": [
+        ("count", "count", Units.COUNT),
+        ("pixels", "pixels", Units.PIXELS),
+        ("bytes", "filesize", Units.BYTES),
+        ("aspect_ratio", "aspect_ratio", Units.RATIO),
+    ],
+    "video": [
+        ("count", "count", Units.COUNT),
+        ("frames", "frames", Units.COUNT),
+        ("pixels", "pixels", Units.PIXELS),
+        ("bytes", "filesize", Units.BYTES),
+        ("aspect_ratio", "aspect_ratio", Units.RATIO),
+    ],
+    "audio": [
+        ("count", "count", Units.COUNT),
+        ("seconds", "duration", Units.S),
+        ("bytes", "filesize", Units.BYTES),
+    ],
+}
+
+# Native throughput scalar -> (schema field name, units).
+_MEDIA_RATE_FIELDS = [
+    ("images_per_sec", "image_rate", Units.IMAGE_PER_S),
+    ("videos_per_sec", "video_rate", Units.VIDEO_PER_S),
+    ("audios_per_sec", "audio_rate", Units.AUDIO_PER_S),
+]
+
+
+def _payload_stats(raw: dict | None, units: Units) -> dict | None:
+    """Map an inference-perf summary dict to a schema Statistics dict.
+
+    inference-perf reports percentiles as ``median``/``p0.1``/``p99.9``; the
+    schema names them ``p50``/``p0p1``/``p99p9``. Returns None when the source
+    summary is absent so the (Optional) schema field is simply omitted.
+    """
+    if not isinstance(raw, dict):
+        return None
+    return {
+        "units": units,
+        "mean": raw.get("mean"),
+        "min": raw.get("min"),
+        "p0p1": raw.get("p0.1"),
+        "p1": raw.get("p1"),
+        "p5": raw.get("p5"),
+        "p10": raw.get("p10"),
+        "p25": raw.get("p25"),
+        "p50": raw.get("median"),
+        "p75": raw.get("p75"),
+        "p90": raw.get("p90"),
+        "p95": raw.get("p95"),
+        "p99": raw.get("p99"),
+        "p99p9": raw.get("p99.9"),
+        "max": raw.get("max"),
+    }
+
+
+def _media_rate(value: float | None, units: Units) -> dict | None:
+    """Wrap a scalar per-second rate as a schema Statistics dict, or None."""
+    if value is None:
+        return None
+    return {"units": units, "mean": value}
+
+
+def _build_multimodal(successes: dict) -> dict:
+    """Build the multimodal block from the successes section of the results.
+
+    Only modalities actually present in the run are included, and within each
+    only the sub-fields the harness reported.
+    """
+    multimodal = {}
+    for modality, fields in _MODALITY_FIELDS.items():
+        native = successes.get(modality)
+        if not isinstance(native, dict):
+            continue
+        stats = {
+            schema_name: _payload_stats(native.get(native_name), units)
+            for native_name, schema_name, units in fields
+            if isinstance(native.get(native_name), dict)
+        }
+        if stats:
+            multimodal[modality] = stats
+    return multimodal
+
+
+def _add_payload_statistics(br_dict: dict, results: dict) -> None:
+    """Fold inference-perf's request size, per-modality payload statistics and
+    media delivery rates into results.request_performance.aggregate.
+
+    They live under successes; when every request failed there are no
+    successes-derived statistics, and nothing is added.
+    """
+    successes = results.get("successes")
+    if not isinstance(successes, dict):
+        return
+
+    requests_add = {}
+
+    request_size = _payload_stats(successes.get("request_size_bytes"), Units.BYTES)
+    if request_size:
+        requests_add["request_size"] = request_size
+
+    multimodal = _build_multimodal(successes)
+    if multimodal:
+        requests_add["multimodal"] = multimodal
+
+    throughput = successes.get("throughput", {})
+    rates = {
+        schema_name: _media_rate(throughput.get(native_name), units)
+        for native_name, schema_name, units in _MEDIA_RATE_FIELDS
+        if throughput.get(native_name) is not None
+    }
+
+    aggregate = {}
+    if requests_add:
+        aggregate["requests"] = requests_add
+    if rates:
+        aggregate["throughput"] = rates
+
+    if aggregate:
+        update_dict(
+            br_dict,
+            {"results": {"request_performance": {"aggregate": aggregate}}},
+        )
+
+
+def _treatment_metadata() -> dict:
+    """Treatment grouping from the harness environment.
+
+    Concurrent treatments share a stack, so a reader needs to know what else
+    was running.
+    """
+    concurrent_with = [
+        name.strip()
+        for name in os.environ.get("LLMDBENCH_TREATMENT_CONCURRENT_WITH", "").split(",")
+        if name.strip()
+    ]
+    metadata: dict = {}
+    if os.environ.get("LLMDBENCH_TREATMENT_NAME"):
+        metadata["treatment"] = os.environ["LLMDBENCH_TREATMENT_NAME"]
+    if os.environ.get("LLMDBENCH_TREATMENT_GROUP"):
+        metadata["treatment_group"] = os.environ["LLMDBENCH_TREATMENT_GROUP"]
+    if concurrent_with:
+        metadata["concurrent_with"] = concurrent_with
+    return metadata
+
+
+def _add_treatment_metadata(br_dict: dict) -> None:
+    """Merge the harness treatment grouping into scenario.load.metadata."""
+    metadata = _treatment_metadata()
+    if metadata:
+        br_dict.setdefault("scenario", {}).setdefault("load", {}).setdefault(
+            "metadata", {}
+        ).update(metadata)
+
+
 def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     """Import data from a Inference Perf run as a BenchmarkReportV02.
 
@@ -2638,6 +2805,9 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
         },
     )
 
+    _add_treatment_metadata(br_dict)
+    _add_payload_statistics(br_dict, results)
+
     return load_benchmark_report(br_dict)
 
 
@@ -2752,6 +2922,10 @@ def import_inference_perf_session(results_file: str) -> BenchmarkReportV02:
             },
         },
     )
+
+    # Trace-replay workloads produce only a session report, so it has to carry
+    # the grouping itself.
+    _add_treatment_metadata(br_dict)
 
     return load_benchmark_report(br_dict)
 

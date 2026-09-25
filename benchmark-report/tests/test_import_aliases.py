@@ -18,3 +18,39 @@ def test_public_api_reexported() -> None:
     assert benchmark_report.__all__ == llmd_benchmark_report.__all__
     for name in llmd_benchmark_report.__all__:
         assert getattr(benchmark_report, name) is getattr(llmd_benchmark_report, name)
+
+
+# schema_v0_2_1 and native_to_br0_2_1 are deprecated names for the v0.2
+# modules. schema_v0_2_1.LoadMetadata must be schema_v0_2.LoadMetadata (same
+# for the other extended models and every importer), BenchmarkReportV021 must
+# be BenchmarkReportV02, and both modules report VERSION "0.2.1".
+def test_v0_2_1_modules_alias_v0_2() -> None:
+    from llmd_benchmark_report import (
+        native_to_br0_2,
+        native_to_br0_2_1,
+        schema_v0_2,
+        schema_v0_2_1,
+    )
+
+    assert schema_v0_2.BenchmarkReportV021 is schema_v0_2.BenchmarkReportV02
+    assert schema_v0_2_1.VERSION == schema_v0_2.VERSION == "0.2.1"
+    for name in (
+        "BenchmarkReportV02",
+        "BenchmarkReportV021",
+        "LoadMetadata",
+        "AggregateRequests",
+        "AggregateThroughput",
+        "TimeSeriesResourceMetrics",
+        "Observability",
+        "MultiModalRequests",
+    ):
+        assert getattr(schema_v0_2_1, name) is getattr(schema_v0_2, name)
+    for name in (
+        "import_guidellm",
+        "import_guidellm_all",
+        "import_inference_max",
+        "import_inference_perf",
+        "import_inference_perf_session",
+        "import_vllm_benchmark",
+    ):
+        assert getattr(native_to_br0_2_1, name) is getattr(native_to_br0_2, name)
