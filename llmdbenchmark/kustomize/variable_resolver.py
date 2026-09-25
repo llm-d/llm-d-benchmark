@@ -72,8 +72,16 @@ class GuideVariableResolver:
         if "/" in guide_name:
             guide_name = guide_name.split("/")[-1]
 
-        # Split INFRA_PROVIDER into TOPOLOGY and INFRA_PROVIDER
-        if variable_overrides and "INFRA_PROVIDER" in variable_overrides:
+        # Split INFRA_PROVIDER into TOPOLOGY and INFRA_PROVIDER only when the
+        # guide README uses TOPOLOGY (e.g. multimodal-serving/e-disaggregation).
+        # Otherwise preserve nested provider paths such as "gke/base" or
+        # "gke/a4x" in pd-disaggregation.
+        if (
+            variable_overrides
+            and "INFRA_PROVIDER" in variable_overrides
+            and readme_variables
+            and "TOPOLOGY" in readme_variables
+        ):
             infra = variable_overrides["INFRA_PROVIDER"]
             if "/" in infra:
                 topology, actual_provider = infra.split("/", 1)
