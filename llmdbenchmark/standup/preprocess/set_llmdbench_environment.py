@@ -40,6 +40,11 @@ deps_present["ip"] = False
 deps_present["ibstat"] = False
 deps_present["show_gids.sh"] = False
 deps_present["gemini-arp-fix.sh"] = False
+deps_present["set_llmdbench_environment.py"] = False
+
+deps_pkg = {}
+deps_pkg["ip"] = "iproute2"
+deps_pkg["ibstat"] = "infiniband-diags"
 
 nvshmem_remote_transport = "ibgda"
 nvshmem_ib_enable_ibgda = "true"
@@ -132,7 +137,7 @@ for dep in deps_present.keys():
         deps_present[dep] = True
         executable_found_path = result.stdout.split("\n")[0]
         executable_found_name = executable_found_path.split("/")[-1]
-        if dep.count(".sh"):
+        if dep.count(".sh") or dep.count(".py"):
             shutil.copy2(
                 executable_found_path, f"{options.envdir}/{executable_found_name}"
             )
@@ -141,16 +146,27 @@ for dep in deps_present.keys():
     except subprocess.CalledProcessError as e:
         if os.access(executables_path, os.W_OK):
             print(
-                f'WARNING: Dependency "{dep}" not available on the image: {e.cmd} returned {e.returncode}. Trying to obtain externally...'
+                f'WARNING: Dependency "{dep}" not available on the image (path {executables_path}): {e.cmd} returned {e.returncode}. Trying to obtain externally...'
             )
             tool_cfgmap_fn = f"/setup/preprocess/{dep}.sh"
             if Path(tool_cfgmap_fn).is_file():
                 tool_image_fn = f"{executables_path}/{dep}"
-                if dep.count(".sh"):
+                if dep.count(".sh") or dep.count(".py"):
                     shutil.copy2(tool_cfgmap_fn, tool_image_fn)
                     if dep not in deps_to_copy:
                         deps_to_copy.append(dep)
                 os.chmod(tool_image_fn, 0o755)
+
+            if dep in deps_pkg and os.geteuid() == 0:
+                try:
+                    _cmd = f"apt-get update && apt install -y {deps_pkg[dep]}"
+                    result = subprocess.run(
+                        _cmd, capture_output=True, text=True, check=True, shell=True
+                    )
+                except subprocess.CalledProcessError as e:
+                    print(
+                        f'WARNING: Unable to install dependency "{dep}" via apt: {e.cmd} returned {e.returncode}.'
+                    )
     try:
         result = subprocess.run(
             ["which", dep], capture_output=True, text=True, check=True
@@ -158,7 +174,7 @@ for dep in deps_present.keys():
         deps_present[dep] = True
         executable_found_path = result.stdout.split("\n")[0]
         executable_found_name = executable_found_path.split("/")[-1]
-        if dep.count(".sh"):
+        if dep.count(".sh") or dep.count(".py"):
             shutil.copy2(
                 executable_found_path, f"{options.envdir}/{executable_found_name}"
             )
@@ -282,6 +298,10 @@ if options.debug:
     print(f"{'-' * 20} gid_to_device {'-' * 20}")
     print(json.dumps(gid_to_device, sort_keys=True, indent=4))
     print(f"{'-' * 20} gid_to_device {'-' * 20}")
+
+    print(f"{'-' * 20} selected gid {'-' * 20}")
+    print(s_gid)
+    print(f"{'-' * 20} selected gid {'-' * 20}")
 
     print(f"{'-' * 20} hcadev_to_gid {'-' * 20}")
     print(json.dumps(hcadev_to_gid, sort_keys=True, indent=4))
@@ -421,6 +441,7 @@ if create_multiple_routing_tables:
             ):
                 table = f"table{i}"
                 new_routing_table_entry_found = False
+                new_routing_table_entry = None
                 for line in rt_tables_content:
                     if line.count(f" table{i} "):
                         new_routing_table_entry_found = True
@@ -450,7 +471,7 @@ if create_multiple_routing_tables:
                 except subprocess.CalledProcessError as e:
                     print(f'WARNING: Command "{e.cmd}" returned {e.returncode}.')
 
-                if not new_routing_table_populated:
+                if not new_routing_table_populated and new_routing_table_entry:
                     if options.initcontainermode:
                         init_container_commands.append(
                             f'echo "{new_routing_table_entry}" >> {rt_tables_path}'
@@ -461,7 +482,9 @@ if create_multiple_routing_tables:
                         init_container_commands.append(
                             f"ip rule add from {ip} lookup {table}"
                         )
+                        print(f"INFO: adding routing table {table} update command \"ip route add {network} dev {interface} src {ip} table {table}\" to {options.envfile}")
                     else:
+                        print(f"INFO: executing routing table {table} update command \"ip route add {network} dev {interface} src {ip} table {table}\"...")
                         try:
                             subprocess.run(
                                 [
@@ -502,8 +525,10 @@ if create_multiple_routing_tables:
     if deps_present["gemini-arp-fix.sh"]:
         if options.initcontainermode:
             init_container_commands.append(f"{options.envdir}/gemini-arp-fix.sh")
+            print(f"INFO: adding command \"gemini-arp-fix.sh\" to {options.envfile}")
         else:
             try:
+                print(f"INFO: executing command \"gemini-arp-fix.sh\"...")
                 subprocess.run(
                     ["gemini-arp-fix.sh"], capture_output=True, text=True, check=True
                 )
