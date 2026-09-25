@@ -290,9 +290,10 @@ def test_embedded_time_series_covers_serving_metrics(tmp_path: Path) -> None:
     assert decode.num_requests_running.units == "count"
     assert decode.prompt_tokens.series[0].value == 5000.0
     assert decode.generation_tokens.series[0].value == 1200.0
-    # Derived from the counters, since vLLM v1 exposes no hit-rate gauge.
+    # Derived from the counters, since vLLM v1 exposes no hit-rate gauge, and
+    # from their deltas, since a cache reset leaves the counters running.
     assert decode.prefix_cache_hit_rate.units == "percent"
-    assert [p.value for p in decode.prefix_cache_hit_rate.series] == [10.0, 20.0]
+    assert [p.value for p in decode.prefix_cache_hit_rate.series] == [30.0]
 
     epp = by_replica["qwen-router-epp-xyz"].time_series
     assert epp.pool_avg_kv_cache_utilization.units == "fraction"
