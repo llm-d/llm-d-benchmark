@@ -434,7 +434,12 @@ def _build_embedded_time_series(
         for field, spec in specs.items():
             ratio = spec.get("ratio")
             if ratio:
-                points = compute_ratio_series(pod_metrics, ratio[0], ratio[1])
+                # clip first, or the first delta includes the stage before
+                clipped = {
+                    name: clip_to_window(pod_metrics.get(name, []), window)
+                    for name in (ratio[0], ratio[1])
+                }
+                points = compute_ratio_series(clipped, ratio[0], ratio[1])
             else:
                 key = spec.get("metric", "")
                 labels = spec.get("labels")

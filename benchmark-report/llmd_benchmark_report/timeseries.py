@@ -93,20 +93,25 @@ def collect_time_series_data(
 def compute_ratio_series(
     pod_metrics: dict[str, list], numerator: str, denominator: str
 ) -> list[tuple[datetime, float]]:
-    """Per-pod ratio (numerator/denominator*100) over shared timestamps.
+    """Per-pod rate (numerator/denominator*100) between consecutive scrapes.
 
-    No default allow-list entry uses this; it serves "ratio" specs supplied via
-    METRICS_EMBED_TIME_SERIES_SPEC.
+    A cache reset does not reset the counters, so raw values would report the
+    average since the pod started.
     """
     if numerator not in pod_metrics or denominator not in pod_metrics:
         return []
     num_by_ts = {ts: val for ts, val in pod_metrics[numerator]}
     den_by_ts = {ts: val for ts, val in pod_metrics[denominator]}
     common_ts = sorted(set(num_by_ts) & set(den_by_ts))
-    return [
-        (ts, (num_by_ts[ts] / den_by_ts[ts] * 100) if den_by_ts[ts] > 0 else 0.0)
-        for ts in common_ts
-    ]
+    out: list[tuple[datetime, float]] = []
+    for prev, curr in zip(common_ts, common_ts[1:]):
+        d_den = den_by_ts[curr] - den_by_ts[prev]
+        d_num = num_by_ts[curr] - num_by_ts[prev]
+        # a pod restart sends the counter backwards
+        if d_den <= 0 or d_num < 0:
+            continue
+        out.append((curr, max(0.0, min(100.0, d_num / d_den * 100))))
+    return out
 
 
 def clip_to_window(points: list, window: tuple[datetime, datetime] | None) -> list:
