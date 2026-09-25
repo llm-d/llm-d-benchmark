@@ -1,0 +1,352 @@
+# TURN-PRIORITY FAIRNESS WELL LIT PATH
+# https://github.com/llm-d/llm-d/tree/main/guides/turn-priority-fairness
+#
+# The InferenceObjective below needs the inferenceobjectives.llm-d.ai CRD, which
+# standup does not install. Apply it once per cluster:
+#   kubectl apply -f https://github.com/llm-d/llm-d-router/releases/latest/download/manifests.yaml
+
+scenario:
+  # ============================================================================
+  # Turn-priority fairness: Qwen3-30B-A3B over a 1M-token context
+  # ============================================================================
+  - name: "turn-priority-fairness"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+    common:
+      # -------------------------------------------------------------------------
+      # Model Configuration
+      # -------------------------------------------------------------------------
+      model:
+        name: Qwen/Qwen3-30B-A3B-Instruct-2507
+        shortName: qwen-qwen3-30b-a3b-instruct-2507
+        path: models/Qwen/Qwen3-30B-A3B-Instruct-2507
+        huggingfaceId: Qwen/Qwen3-30B-A3B-Instruct-2507
+        size: 1Ti
+        # YaRN in decode.vllm.customCommand is what lifts the served window this
+        # far past the model's native 262144.
+        maxModelLen: 1010000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+        cacheBase: /model-cache
+
+      # -------------------------------------------------------------------------
+      # Image. The EPP tag defaults.yaml pins has no program-aware-fairness
+      # plugin.
+      # -------------------------------------------------------------------------
+      images:
+        routerEndpointPicker:
+          tag: v0.11.0-rc.2
+
+      # -------------------------------------------------------------------------
+      # Storage Configuration
+      # -------------------------------------------------------------------------
+      storage:
+        modelPvc:
+          size: 1Ti
+        workloadPvc:
+          size: 1Ti
+
+      vllmCommon:
+        networkResource: "auto"
+        networkNr: "auto"
+
+        kvTransfer:
+          enabled: true
+          connector: OffloadingConnector
+          role: kv_both
+          extraConfig:
+            num_cpu_blocks: 1280
+            cpu_bytes_to_use: 549755813888
+            block_size: 256
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: shared-config
+            mountPath: /shared-config
+
+      # Routes session traffic to band -1.
+      extraObjects:
+        - apiVersion: llm-d.ai/v1alpha2
+          kind: InferenceObjective
+          metadata:
+            name: agentic-sessions
+            labels:
+              llm-d.ai/guide: "turn-priority-fairness"
+              llm-d.ai/inference-serving: "true"
+          spec:
+            priority: -1
+            poolRef:
+              name: ${model.idLabel}-router
+
+    # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD -- inert while disabled (the default).
+    # See docs/kustomize.md for what the keys below do when enabled.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      guideName: "turn-priority-fairness"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}
+      patches: []
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      gateway:
+        className: epponly
+
+      # -------------------------------------------------------------------------
+      # Routing / GAIE Configuration
+      # -------------------------------------------------------------------------
+      # modelServers.matchLabels is left unset on purpose: render_plans fills it
+      # with the model selector, and naming a label here would drop that and pool
+      # any other model in the namespace into this InferencePool.
+      router:
+        extraServicePorts:
+          - name: http
+            port: 80
+            protocol: TCP
+            targetPort: 8081
+        epp:
+          replicas: 1
+          flags:
+            v: 2
+            allow-experimental-plugins: true
+          pluginsConfigFile: "turn-priority-plugins.yaml"
+          pluginsCustomConfig:
+            turn-priority-plugins.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
+              featureGates:
+              - flowControl
+              plugins:
+              - type: program-aware-fairness
+                parameters:
+                  strategy: turn-priority
+                  # 0.05 x the band's 9000s TTL = 450 turn-equivalents a waiting
+                  # newcomer can overcome, past any depth this trace reaches, so
+                  # no new session is shed in favour of a deeper one.
+                  turnPriorityTimeWeight: 0.05
+                  # The stock 3600 is shorter than a stage, which would re-admit
+                  # a still-active session at depth one.
+                  evictionTtlSeconds: 18000
+                  evictionSweepSeconds: 18000
+              - type: agent-identity
+              - type: fcfs-ordering-policy
+              - type: queue-scorer
+              - type: kv-cache-utilization-scorer
+              - type: prefix-cache-scorer
+              # Caps in-flight per replica so the backlog builds in llm-d, where
+              # the fairness policy can still reorder it, instead of in vLLM's
+              # fixed-order queue. Fleet-specific: re-derive for other hardware.
+              - type: concurrency-detector
+                parameters:
+                  maxConcurrency: 32
+                  concurrencyMode: requests
+                  headroom: 0.0
+
+              schedulingProfiles:
+              - name: default
+                plugins:
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: kv-cache-utilization-scorer
+                  weight: 2
+                - pluginRef: prefix-cache-scorer
+                  weight: 3
+
+              flowControl:
+                enableEviction: true
+                saturationDetector:
+                  pluginRef: concurrency-detector
+                priorityBands:
+                # Batch, using turn-priority to increase Throughput
+                - priority: -1
+                  defaultRequestTTL: "9000s"
+                  fairnessPolicyRef: program-aware-fairness
+                  orderingPolicyRef: fcfs-ordering-policy
+                - priority: 0
+                  orderingPolicyRef: fcfs-ordering-policy
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        proxy:
+          # Override the chart's `--log-level trace` (expensive under load) and
+          # unset `--concurrency` (Envoy oversubscribes the cgroup's CPU slice).
+          args:
+            - "--service-node"
+            - "envoy-sidecar"
+            - "--log-level"
+            - "warn"
+            - "--concurrency"
+            - "8"
+            - "--drain-strategy"
+            - "immediate"
+            - "--drain-time-s"
+            - "60"
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        inferencePool:
+          failureMode: "FailOpen"
+        modelServers:
+          protocol: http
+
+      # -------------------------------------------------------------------------
+      # HTTPRoute Configuration
+      # No HTTPRoute renders under epponly; these matter only if the gateway
+      # class changes, and they match the band's queue-wait budget.
+      # -------------------------------------------------------------------------
+      httpRoute:
+        requestTimeout: "9000s"
+        backendRequestTimeout: "0s"
+
+      # -------------------------------------------------------------------------
+      # Prefill Configuration
+      # -------------------------------------------------------------------------
+      prefill:
+        enabled: false
+        replicas: 0
+
+      # -------------------------------------------------------------------------
+      # Decode Configuration
+      # -------------------------------------------------------------------------
+      decode:
+        replicas: 1
+
+        vllm:
+          customCommand: |
+            export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+            export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+            vllm serve $MODEL_SERVE_REF \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_METRICS_PORT \
+            --block-size $VLLM_BLOCK_SIZE \
+            --hf-overrides '{"rope_scaling":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":262144}}' \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+            --no-enable-log-requests \
+            --reasoning-parser qwen3 \
+            --enable-auto-tool-choice \
+            --tool-call-parser qwen3_xml \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+            --override-generation-config '{"temperature": 0, "top_p": 1.0, "top_k": -1, "seed": 42}' \
+            --enable-prefix-caching \
+            --prefix-caching-hash-algo sha256_cbor
+
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
+
+        parallelism:
+          tensor: 4
+          data: 1
+          dataLocal: 1
+          workers: 1
+
+        # Resource configuration. Increase because of kv cache offload to CPU
+        resources:
+          limits:
+            memory: 768Gi
+            cpu: "16"
+          requests:
+            memory: 576Gi
+            cpu: "16"
+
+        # Otherwise dict/set iteration order varies between runs.
+        extraEnvVars:
+          - name: PYTHONHASHSEED
+            value: "42"
+
+        # Loading a 1M-token context takes time.
+        probes:
+          startup:
+            path: /v1/models
+            failureThreshold: 2700
+            initialDelaySeconds: 240
+            periodSeconds: 30
+            timeoutSeconds: 5
+          liveness:
+            failureThreshold: 12
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readiness:
+            path: /v1/models
+            failureThreshold: 6
+            periodSeconds: 15
+            timeoutSeconds: 10
+
+        # -----------------------------------------------------------------------
+        # Extra Container Configuration
+        # -----------------------------------------------------------------------
+        extraContainerConfig:
+          ports:
+            - containerPort: 5557  # NIXL side channel port
+              protocol: TCP
+            - containerPort: 8200  # Metrics port
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        additionalVolumeMounts: []
+        additionalVolumes: []
+
+    harness:
+      name: inference-perf
+      experimentProfile: weka_traces.yaml
+      # The trace corpus is held in memory while it replays.
+      resources:
+        cpu: 16
+        memory: 256Gi
+        memoryLimit: 256Gi
+
+    workDir: "~/data/turn-priority-fairness"
