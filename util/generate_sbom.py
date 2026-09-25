@@ -68,19 +68,14 @@ if str(_REPO_ROOT) not in sys.path:
 # mapping here. Helm charts and container images get their source repo
 # from `defaults.yaml`'s ``sourceRepo`` keys -- see ``format_source_repo``.
 SYSTEM_TOOL_REPOS: dict[str, str] = {
-    "crane": "https://github.com/google/go-containerregistry",
     "curl": "https://github.com/curl/curl",
     "git": "https://github.com/git/git",
     "helm": "https://github.com/helm/helm",
     "helm-diff": "https://github.com/databus23/helm-diff",
     "helmfile": "https://github.com/helmfile/helmfile",
-    "jq": "https://github.com/jqlang/jq",
     "kubectl": "https://github.com/kubernetes/kubernetes",
-    "kustomize": "https://github.com/kubernetes-sigs/kustomize",
     "llm-d-planner (git)": "https://github.com/llm-d-incubation/llm-d-planner",
     "oc": "https://github.com/openshift/oc",
-    "skopeo": "https://github.com/containers/skopeo",
-    "yq": "https://github.com/mikefarah/yq",
 }
 
 

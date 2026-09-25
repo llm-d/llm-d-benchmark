@@ -76,7 +76,6 @@ esac
 tool_version_for() {
     case "$1" in
         curl)      echo "8_21_0"  ;;
-        yq)        echo "v4.53.6" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v3.19.0" ;;
         helm-diff) echo "v3.13.0" ;;
@@ -84,10 +83,6 @@ tool_version_for() {
         # install time when an on-PATH helm is already major version 4+.
         helm-diff-v4) echo "v3.15.7" ;;
         oc)        echo "4.18.0"  ;;
-        kustomize) echo "v5.8.1"  ;;
-        crane)     echo "0.22.1"  ;;
-        skopeo)    echo "1.24.1"  ;;
-        jq)        echo "1.8.2"   ;;
         *)         echo ""        ;;
     esac
 }
@@ -157,10 +152,8 @@ DESCRIPTION
     Sets up the complete development / runtime environment for llm-d-benchmark.
 
     1. Validates Python 3.11+ and pip
-    2. Checks for required system tools  (curl, git, kubectl, helm, helmfile,
-                                          jq, yq)
-    3. Checks optional system tools       (oc); best-effort installs the rest
-                                          (kustomize, skopeo, crane)
+    2. Checks for required system tools  (curl, git, kubectl, helm, helmfile)
+    3. Checks optional system tools       (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
     5. Installs planner (llm-d-planner)  (pip install git+https://...)
     6. Verifies that all Python packages are importable
@@ -436,12 +429,8 @@ echo ""
 echo "=== System tools ==="
 
 # curl and git stay required: install.sh itself uses them to fetch the pinned
-# binaries and to clone the planner. skopeo/crane are optional because
-# version_resolver only needs ANY ONE of skopeo/crane/podman, and only to
-# resolve `:auto` image tags. kustomize is optional because nothing shells out
-# to the binary -- the kustomize deploy path runs `kubectl apply -k`, and
-# kubectl embeds kustomize.
-tools="curl git helm helmfile jq yq"
+# binaries and to clone the planner.
+tools="curl git helm helmfile"
 
 kube_tool=""
 if command -v kubectl &>/dev/null; then
@@ -456,20 +445,10 @@ else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
 
-# zstd: the driver reads collected result sets out of their archive with it, but
-# only for a compressed one -- read_member returns from the plain file first, and
-# `--no-compress` never writes an archive at all. Optional so a host whose package
-# manager cannot supply it can still run `plan`, and because the pod side already
-# warns-and-degrades on the same dependency rather than failing.
-optional_tools="oc kustomize skopeo crane zstd"
+optional_tools="oc"
 
-# Demoted from `tools=` above, so install.sh has to keep provisioning them,
-# only without the power to abort the install. `oc` stays report-only, as on
-# every previous release: install_oc_linux unpacks the OpenShift client tarball
-# and moves ITS kubectl into /usr/local/bin, which would replace a kubectl the
-# user already has. CI installs oc itself where it needs it (see the "Install
-# oc" step in .github/workflows/reusable-ci-nightly-benchmark.yaml).
-autoinstall_optional="kustomize skopeo crane zstd"
+# Installing oc would also replace the user's kubectl, so it is report-only.
+autoinstall_optional=""
 
 # ---------------------------------------------------------------------------
 # Version helper
@@ -485,15 +464,6 @@ tool_version() {
         helm)       helm version --short 2>&1 | tr -d '\n' ;;
         oc)         oc version --client 2>&1 | head -1 | awk '{print $NF}' ;;
         helmfile)   helmfile --version 2>&1 | awk '{print $NF}' ;;
-        kustomize)  kustomize version 2>&1 | head -1 ;;
-        jq)         jq --version 2>&1 ;;
-        yq)         yq --version 2>&1 | awk '{print $NF}' ;;
-        skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
-        crane)      crane version 2>&1 | tr -d '\n' ;;
-        # Not $NF: the banner is '*** Zstandard CLI (64-bit) v1.5.7, by ... ***',
-        # so the last field is '***'. Matching the number also keeps version_gte
-        # off its "(unknown)" branch, which returns 1 even against an empty pin.
-        zstd)       zstd --version 2>&1 | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 ;;
         *)          echo "(unknown)" ;;
     esac
 }
@@ -542,14 +512,6 @@ _pin_not_enforced() {
 # without that, a failed fetch installs whatever stale /tmp file is left over.
 # `curl -f` is part of the same contract, since a 404 body is a 0 exit status.
 # ---------------------------------------------------------------------------------
-
-install_yq_linux() {
-    local version=$(tool_version_for yq)
-    local binary="yq_linux_${ARCH_GO}"
-    curl -fsSL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}" || return 1
-    chmod +x "/tmp/${binary}"
-    sudo cp -f "/tmp/${binary}" /usr/local/bin/yq
-}
 
 install_helmfile_linux() {
     local version=$(tool_version_for helmfile)
@@ -623,80 +585,10 @@ install_oc_linux() {
     sudo chmod +x /usr/local/bin/kubectl
 }
 
-install_kustomize_linux() {
-    local version="$(tool_version_for kustomize)"
-    local arch
-    arch=$(uname -m)
-    local go_arch="amd64"
-    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
-    curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${version}/kustomize_${version}_linux_${go_arch}.tar.gz" \
-        -o "/tmp/kustomize.tar.gz" || return 1
-    tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize || return 1
-    sudo mv /tmp/kustomize /usr/local/bin/
-    sudo chmod +x /usr/local/bin/kustomize
-}
-
-install_crane_linux() {
-    local version
-    version="v$(tool_version_for crane)"
-    # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
-    local go_arch_cap
-    case "$ARCH_GO" in
-        amd64)   go_arch_cap="x86_64" ;;
-        arm64)   go_arch_cap="arm64"  ;;
-        arm)     go_arch_cap="armv6"  ;;
-        ppc64le) go_arch_cap="ppc64le" ;;
-        s390x)   go_arch_cap="s390x"  ;;
-        *)       go_arch_cap="x86_64" ;;
-    esac
-    local pkg="go-containerregistry_Linux_${go_arch_cap}"
-    curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
-        -o "/tmp/${pkg}.tar.gz" || return 1
-    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane || return 1
-    sudo cp -f /tmp/crane /usr/local/bin/crane
-    sudo chmod +x /usr/local/bin/crane
-}
-
-install_skopeo_linux() {
-    local version=$(tool_version_for skopeo)
-    local pkg="skopeo-linux-${ARCH_GO}"
-    if curl -sfL "https://github.com/lework/skopeo-binary/releases/download/v${version}/${pkg}" \
-            -o "/tmp/${pkg}"; then
-        chmod +x "/tmp/${pkg}"
-        sudo cp -f "/tmp/${pkg}" /usr/local/bin/skopeo
-        rm -f "/tmp/${pkg}"
-    else
-        echo "  Pre-built binary for skopeo ${version} not available; falling back to package manager"
-        ${PKG_MGR} skopeo || true
-    fi
-}
-
 install_curl_linux() {
     # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
     local version=8_21_0
     ${PKG_MGR} curl || true
-}
-
-install_jq_linux() {
-    local version
-    version="$(tool_version_for jq)"
-    local arch_name
-    case "$ARCH_GO" in
-        amd64)   arch_name="amd64"   ;;
-        arm64)   arch_name="arm64"   ;;
-        ppc64le) arch_name="ppc64el" ;;
-        s390x)   arch_name="s390x"   ;;
-        *)       arch_name="amd64"   ;;
-    esac
-    if curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-${arch_name}" \
-            -o /tmp/jq; then
-        chmod +x /tmp/jq
-        sudo cp -f /tmp/jq /usr/local/bin/jq
-        rm -f /tmp/jq
-    else
-        echo "  Pre-built binary for jq ${version} not available; falling back to package manager"
-        ${PKG_MGR} jq || true
-    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -726,7 +618,6 @@ install_pg_dev_deps() {
 # macOS install helpers — Homebrew handles arch transparently on both
 # Intel and Apple Silicon, so these are simple wrappers.
 # ---------------------------------------------------------------------------
-install_yq_mac()       { brew install yq; }
 # `brew install` is a no-op when the formula is already present, so it never
 # upgrades a stale binary (this is why a pinned helmfile/helm could stay
 # outdated). Always follow with `brew upgrade` so the pin is honored; the
@@ -737,13 +628,7 @@ install_helmfile_mac() { brew install helmfile 2>/dev/null || true; brew upgrade
 install_helm_mac()     { brew install helm 2>/dev/null || true; brew upgrade helm 2>/dev/null || true; }
 install_kubectl_mac()  { brew install kubectl; }
 install_oc_mac()       { brew install openshift-cli; }
-install_kustomize_mac(){ brew install kustomize; }
-install_crane_mac()    { brew install crane; }
-install_skopeo_mac()   { brew install skopeo; }
 install_curl_mac()     { brew install curl; }
-install_jq_mac()       { brew install jq; }
-install_zstd_mac()     { brew install zstd; }
-install_zstd_linux()   { ${PKG_MGR} zstd || true; }
 
 # ---------------------------------------------------------------------------
 # Check required tools (fail if missing, upgrade if outdated)
@@ -944,12 +829,6 @@ for tool in $optional_tools; do
     elif [[ " $autoinstall_optional " != *" $tool "* ]]; then
         printf "  %-14s %-20s %s\n" "$tool" "—" "(optional, not found)"
     else
-        # For the tools demoted out of `tools=`, optional still means "try to
-        # install it", same as the required loop, only never fatal: skopeo and
-        # crane are the pinned static binaries the render-validation hooks
-        # expect (util/setup_precommit.sh), and kustomize keeps its installer
-        # for parity with the required behaviour it had before, even though
-        # nothing shells out to the binary.
         echo "  ${tool} — NOT FOUND, attempting optional install..."
         expected_ver=$(tool_version_for "$tool")
         install_func="install_${tool}_${target_os}"
@@ -960,10 +839,6 @@ for tool in $optional_tools; do
         fi
         if command -v "$tool" &>/dev/null; then
             new_ver=$(tool_version "$tool")
-            # Same pin check the required loop does, since these tools used to
-            # get it: a package-manager fallback (install_skopeo_linux) can
-            # land well below the pin, and the cache line written below means
-            # no later run would look again.
             if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
                 echo "  WARNING: ${tool} is ${new_ver}; pinned ${expected_ver}"
                 echo "           not applied (continuing -- optional tool)."
@@ -1046,7 +921,7 @@ fi
 # 3. Show key dependencies
 echo ""
 echo "  Dependencies:"
-for pkg in PyYAML Jinja2 requests kubernetes pykube-ng kubernetes-asyncio \
+for pkg in PyYAML Jinja2 requests kubernetes pykube-ng zstandard \
            GitPython huggingface_hub transformers packaging \
            pydantic scipy pandas numpy; do
     ver=$(_pip_isolated show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')

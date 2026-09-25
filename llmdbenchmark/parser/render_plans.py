@@ -52,7 +52,7 @@ class RenderPlans:
     # and step_06_nok8s_teardown.py): everything else is a Kubernetes manifest --
     # PVCs, RBAC, the harness pod, helmfiles, HTTPRoute, PodMonitor -- that nok8s
     # never applies. Rendering them anyway produced 30+ dead files per stack and
-    # version-resolver warnings for tools (helm, skopeo) the nok8s path itself
+    # version-resolver warnings for tools (helm) the nok8s path itself
     # tells users are unnecessary (docs/nok8s.md) (#1704).
     NOK8S_TEMPLATE_INFIX = "nok8s"
 

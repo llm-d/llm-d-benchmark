@@ -521,13 +521,13 @@ jobs:
         id: infra_show_cluster_nodes_deep
         run: |
           echo "### Attempting to show node annotations..."
-          kubectl get nodes -o json | jq -r '.items[].metadata.annotations'
+          kubectl get nodes -o jsonpath='{.items[*].metadata.annotations}'
           echo ""
           echo "### Attempting to show node labels..."
-          kubectl get nodes -o json | jq -r '.items[].metadata.labels'
+          kubectl get nodes -o jsonpath='{.items[*].metadata.labels}'
           echo ""
           echo "### Attempting to show node resources..."
-          kubectl get nodes -o json | jq -r '.items[].status.allocatable'
+          kubectl get nodes -o jsonpath='{.items[*].status.allocatable}'
           echo ""
         shell: bash
 

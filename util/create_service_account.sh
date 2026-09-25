@@ -2,11 +2,7 @@
 
 LLMDBENCH_NAMESPACE=testns
 LLMDBENCH_SERVICE_ACCOUNT=testsa
-if [[ ! -z $KUBECONFIG ]]; then
-  LLMDBENCH_SERVER=$(cat $KUBECONFIG  | yq '.clusters[].cluster.server')
-else
-  LLMDBENCH_SERVER=$(cat ~/.kube/config | yq '.clusters[].cluster.server')
-fi
+LLMDBENCH_SERVER=$(kubectl config view -o 'jsonpath={.clusters[*].cluster.server}')
 LLMDBENCH_CLOUD=$(echo $LLMDBENCH_SERVER | cut -d '.' -f 2)
 
 #LLMDBENCH_WORK_DIR=$(mktemp -d)

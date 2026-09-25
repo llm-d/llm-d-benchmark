@@ -564,7 +564,7 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.agentgateway` | `v2.2.3` | agentgateway chart version |
 | `chartVersions.lws` | `v0.11.0` | LeaderWorkerSet chart version |
 
-Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
+Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries. Fixed versions are used as-is.
 
 ### Overriding versions in a scenario
 
@@ -604,7 +604,7 @@ chartVersions:
 ### How `auto` resolution works
 
 1. For charts with a `helmRepositories` entry: queries the repo via `helm search repo` or OCI registry
-2. Falls back to `skopeo list-tags` or `crane ls` for OCI registries
+2. Falls back to the registry's tag list API for OCI registries
 3. Selects the latest semver-compatible tag
 4. Resolved versions are logged during `plan`: `📦 Resolved chart llmDInfra to v1.4.0 (via repo URL)`
 
@@ -1118,7 +1118,7 @@ Init container images can be specified three ways, in order of preference:
 
 1. **`imageKey: <entry>`** -- references an entry under `images.*` in `defaults.yaml` (e.g. `imageKey: benchmark`, `imageKey: udsTokenizer`). The resolver expands it to `<repo>:<tag>` and inherits `imagePullPolicy` from the same entry. This is the recommended form -- single source of truth, automatically tracks version bumps in `defaults.yaml`.
 
-2. **`image: <full-string>`** -- any image string. Tags ending in `:auto` are resolved against the registry at render time via `skopeo list-tags` (falling back to `crane` then `podman`). Use for one-off images that don't have an `images.*` entry.
+2. **`image: <full-string>`** -- any image string. Tags ending in `:auto` are resolved against the registry's tag list at render time (falling back to `podman`). Use for one-off images that don't have an `images.*` entry.
 
 3. **Neither set** -- the template falls back to `images.benchmark`.
 
