@@ -254,7 +254,6 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     # Sanity-check a couple of known upstream mappings.
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/helm/helm" in by_name["helm"].upstream
-    # A tool with no mapping is reported as a gap, not silently dropped.
     assert by_name["crane"].upstream == "(unknown)"
 
 

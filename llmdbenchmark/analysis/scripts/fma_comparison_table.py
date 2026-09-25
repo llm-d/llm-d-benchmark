@@ -29,8 +29,6 @@ import os
 import sys
 import tarfile
 
-# Same reason as dpc_log_parser below: this runs straight off a GCS download,
-# where a wheel may be missing. A skipped archive beats no table at all.
 try:
     import zstandard
 except ImportError:

@@ -2,10 +2,6 @@
 #
 # Print one result file, whether the run left it plain or inside its archive.
 #
-# The CI dump steps used `[ -f "$f" ] && cat "$f"`, which reads as "absent" for an
-# archived file -- and the fallback branch is the success path, so a compressed run
-# degrades to "no <file>" with a green check.
-#
 # Usage: dump_result_file.sh [--tail N] [--glob] <results_dir> <relative_path>
 #
 #   --glob   treat <relative_path> as a shell pattern and print the first match,
@@ -41,10 +37,8 @@ emit() {
   fi
 }
 
-# An empty results dir is the caller's normal "nothing found" state, not an error:
-# the discovery step upstream initialises exp="" and the dump steps run under
-# `if: always()`, so exiting nonzero here would paint a red X per dump step on top
-# of whatever actually failed, which is exactly what those dumps exist to show.
+# A missing dir is normal, and the dump steps run under `if: always()`, so a
+# nonzero exit here would paint a red X over the real failure.
 if [[ -z "$results_dir" || ! -d "$results_dir" ]]; then
   echo "no $relative (no results directory)"
   exit 0
@@ -64,7 +58,6 @@ elif [[ -f "$results_dir/$relative" ]]; then
   exit 0
 fi
 
-# The lookup lives in the package, so this and the readers cannot drift apart.
 repo_root="$(cd -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/.." && pwd)"
 read -r -d '' extract <<'PY' || true
 import sys
@@ -82,8 +75,6 @@ if payload is None:
 sys.stdout.buffer.write(payload)
 PY
 
-# Status through a file: the pipe into emit would otherwise hide it, and a stale
-# "no <file>" on a real hit is the failure this script was written to remove.
 status="$(mktemp)" || { echo "no $relative (no temp file)"; exit 0; }
 trap 'rm -f "$status"' EXIT
 {

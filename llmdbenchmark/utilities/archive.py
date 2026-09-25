@@ -227,12 +227,11 @@ def _read_archive(archive, consume, partial: bool = False, source=None) -> None:
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
             consume(tar)
     finally:
-        # Close first, or the writer blocks on a pipe nobody drains and wait()
-        # deadlocks. An early-stopping consumer makes that the norm.
+        # Close first or wait() deadlocks on a pipe nobody reads.
         proc.stdout.close()
         stderr = proc.stderr.read().decode("utf-8", errors="replace")
         code = proc.wait()
-        # Before the local verdict: it reports the truncation, not the cause.
+        # Reports the cause, not the truncation.
         if upstream is not None:
             up_stderr = upstream.stderr.read().decode("utf-8", errors="replace")
             upstream.stderr.close()
@@ -352,8 +351,7 @@ def _archives_covering(root: Path) -> list[tuple[Path, str]]:
     return [(archive, "")] if archive.is_file() else []
 
 
-# ZstdError is not a RuntimeError, so a corrupt archive would escape and crash
-# the run instead of reading as absent.
+# ZstdError is not a RuntimeError, so it needs listing here.
 _UNREADABLE = (RuntimeError, tarfile.TarError, OSError, zstandard.ZstdError)
 
 
@@ -480,8 +478,7 @@ class RemoteReader:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        # cat keeps owning its pipe, so closing ours would give it EOF too early.
-        # Checked by _read_archive; unwatched it would read as a short archive.
+        # cat owns the pipe, closing it here gives EOF too early.
         return _ZstdSource(cat.stdout, upstream=cat, closefd=False)
 
     def archive_source(self):

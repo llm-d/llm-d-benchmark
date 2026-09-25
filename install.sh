@@ -447,10 +447,7 @@ fi
 
 optional_tools="oc"
 
-# `oc` is report-only: install_oc_linux unpacks the OpenShift client tarball and
-# moves ITS kubectl into /usr/local/bin, which would replace a kubectl the user
-# already has. CI installs oc itself where it needs it (see the "Install oc" step
-# in .github/workflows/reusable-ci-nightly-benchmark.yaml).
+# Installing oc would also replace the user's kubectl, so it is report-only.
 autoinstall_optional=""
 
 # ---------------------------------------------------------------------------
@@ -832,8 +829,6 @@ for tool in $optional_tools; do
     elif [[ " $autoinstall_optional " != *" $tool "* ]]; then
         printf "  %-14s %-20s %s\n" "$tool" "—" "(optional, not found)"
     else
-        # Reached only for a tool listed in autoinstall_optional: try to install
-        # it like the required loop does, but never fatally.
         echo "  ${tool} — NOT FOUND, attempting optional install..."
         expected_ver=$(tool_version_for "$tool")
         install_func="install_${tool}_${target_os}"
@@ -844,9 +839,6 @@ for tool in $optional_tools; do
         fi
         if command -v "$tool" &>/dev/null; then
             new_ver=$(tool_version "$tool")
-            # Same pin check the required loop does: a package-manager fallback
-            # can land well below the pin, and the cache line written below
-            # means no later run would look again.
             if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
                 echo "  WARNING: ${tool} is ${new_ver}; pinned ${expected_ver}"
                 echo "           not applied (continuing -- optional tool)."

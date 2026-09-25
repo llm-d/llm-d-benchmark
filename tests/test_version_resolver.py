@@ -93,8 +93,6 @@ class _StubResponse:
         next_url: str | None = None,
     ) -> None:
         self.status_code = status_code
-        # Real responses match a header whatever its casing; a plain dict would
-        # only match the spelling a test happens to use.
         self.headers = requests.structures.CaseInsensitiveDict(headers or {})
         self.links = {"next": {"url": next_url}} if next_url else {}
         self._payload = payload
@@ -215,8 +213,6 @@ class TestRegistryTagOrdering:
     @pytest.mark.parametrize(
         "routes",
         [
-            # Unreachable, unparsable, and a challenge with no realm to answer:
-            # each must degrade to the podman fallback, never raise.
             (_StubResponse(status_code=404),),
             (_StubResponse(None),),
             (_StubResponse(status_code=401, headers={"www-authenticate": "Bearer"}),),

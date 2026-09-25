@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-09-24 08:50:28` (UTC)
-- Generated against git ref: `42faf95d9a3820dfa5712d981382bffecf0477c7`
+- Generated at: `2026-09-25 09:22:47` (UTC)
+- Generated against git ref: `a94a2eb7c7d257150a294b3c9604c750d8d9fc89`
 
 ## System Tool Dependencies
 
@@ -24,7 +24,7 @@ whatever the host's package manager provides.
 | **helm** | `v3.19.0` | version | `install.sh` line 80 (`tool_version_for`) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `v3.13.0` | plugin (version) | `install.sh` line 81 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `1.5.1` | version | `install.sh` line 79 (`tool_version_for`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
-| **llm-d-planner (git)** | `v0.1.0` | commit SHA | `install.sh` line 904 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
+| **llm-d-planner (git)** | `v0.1.0` | commit SHA | `install.sh` line 896 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `4.18.0` | version | `install.sh` line 85 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
 
 
@@ -59,9 +59,9 @@ generation (and plan) time.
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 436 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routerEndpointPicker** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 413 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
 | **routingSidecar** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 419 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
-| **udsTokenizer** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 425 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllm** | `v0.26.0` | tag | `config/templates/values/defaults.yaml` line 388 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllmOpenai** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 398 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **udsTokenizer** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 425 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllm** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 388 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 399 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)

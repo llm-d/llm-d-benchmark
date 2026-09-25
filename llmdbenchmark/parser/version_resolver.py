@@ -92,9 +92,6 @@ class VersionResolver:
                         return None
                     headers["Authorization"] = f"Bearer {token}"
                     response = session.get(url, headers=headers, timeout=30)
-                # `n` is a hint the registry may cap, so a short page means more
-                # pages, not the end of the list. Missing one hands the caller an
-                # older tag with nothing to say it happened.
                 while True:
                     response.raise_for_status()
                     page = response.json().get("tags") or []
