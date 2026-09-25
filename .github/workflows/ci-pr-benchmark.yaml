@@ -120,8 +120,8 @@ jobs:
       monitoring_enabled: true
       dry_run: false
       verbose: false
-      harness: inference-perf
-      workload: sanity_random.yaml
+      harness: inference-perf,inferencemax
+      workload: sanity_random.yaml,sanity.yaml
       harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
@@ -149,8 +149,8 @@ jobs:
       monitoring_enabled: true
       dry_run: false
       verbose: false
-      harness: guidellm
-      workload: sanity_random.yaml
+      harness: guidellm,vllm-benchmark
+      workload: sanity_random.yaml,sanity_random.yaml
       harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
@@ -178,8 +178,8 @@ jobs:
       monitoring_enabled: true
       dry_run: false
       verbose: false
-      harness: aiperf
-      workload: sanity_random.yaml
+      harness: aiperf,lm-eval
+      workload: sanity_random.yaml,sanity.yaml
       harness_resources: 1/2Gi
       admin_privileges: true
     secrets: inherit
