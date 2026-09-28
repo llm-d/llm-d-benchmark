@@ -673,7 +673,9 @@ class KustomizeDeployStep(Step):
         selected = [
             gc
             for gc in commands
-            if not any(f"/router/{other}.values.yaml" in gc.raw for other in other_accels)
+            if not any(
+                f"/router/{other}.values.yaml" in gc.raw for other in other_accels
+            )
         ]
         return selected or commands
 
