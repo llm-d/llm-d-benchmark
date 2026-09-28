@@ -17,6 +17,7 @@ from llmdbenchmark.kustomize.readme_parser import (
     DeployMode,
     parse_guide_readme,
 )
+from llmdbenchmark.kustomize.render_probe import probe_render_service
 from llmdbenchmark.kustomize.variable_resolver import (
     DEFAULT_ACCEL_BACKEND,
     GuideVariableResolver,
@@ -305,7 +306,34 @@ class KustomizeDeployStep(Step):
                 context=context,
             )
 
-        # --- 6. Endpoint ---
+        # --- 6. Render Service ---
+        # The README may apply the render Service in a separate step after
+        # modelserver deployment. A successful modelserver wait alone does not
+        # mean EPP can tokenize requests through that Service.
+        render_cmds = parsed.get_commands(CommandPhase.RENDER)
+        for gc in render_cmds:
+            resolved = resolver.resolve(gc.raw)
+            result = self._run_resolved(
+                cmd, resolved, check=False, context=context, phase="render"
+            )
+            if not result.success:
+                return self._fail(
+                    [f"Render Service deploy failed: {result.stderr}"],
+                    stack_path,
+                    "Render Service deployment failed",
+                    context=context,
+                )
+        if render_cmds:
+            render_error = probe_render_service(cmd, context, guide_name, namespace)
+            if render_error:
+                return self._fail(
+                    [render_error],
+                    stack_path,
+                    "Render Service probe failed",
+                    context=context,
+                )
+
+        # --- 7. Endpoint ---
         epp_service = f"{guide_name.split('/')[-1]}-epp"
         context.deployed_endpoints[stack_path.name] = epp_service
         context.logger.log_info(f"Endpoint registered: {epp_service}")
