@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _toolchain import requires_compress_tools
 
 from llmdbenchmark.cli import _resolve_data_collect, _validate_data_collect
 from llmdbenchmark.interface import run as run_interface
@@ -191,7 +192,10 @@ def test_transport_failure_raises_instead_of_reading_as_absent(tmp_path) -> None
         )
 
 
-@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize(
+    "compressed",
+    [False, pytest.param(True, marks=requires_compress_tools)],
+)
 def test_remote_reads_match_local_ones(tmp_path, compressed) -> None:
     """Same bytes and same glob set, whichever transport and whether archived."""
     d = _result_set(tmp_path)
@@ -277,6 +281,7 @@ def test_exists_reads_the_sentinel_not_the_exit_code() -> None:
         reader.exists("/requests/x")
 
 
+@requires_compress_tools
 def test_dropped_exec_stream_raises_instead_of_reading_as_absent(tmp_path) -> None:
     """The upstream cat, not zstd, holds the cause of a truncated archive."""
     d = _result_set(tmp_path)

@@ -905,6 +905,15 @@ vllmCommon:
   # UCX socket address transport priority.
   ucxSockaddrTlsPriority: "tcp"
 
+  # Network device(s) UCX may use for the NIXL KV-transfer data plane, e.g.
+  # "eth0" or "mlx5_1:1". Empty means UCX auto-selects, which is right on a
+  # pod with one interface. Pin it when secondary networks are attached (a
+  # k8s.v1.cni.cncf.io/networks annotation): UCX then picks among every
+  # attached interface independently of VLLM_NIXL_SIDE_CHANNEL_HOST (the pod
+  # IP), and a rail that cannot carry the traffic makes the NIXL handshake
+  # time out -- which surfaces as a request that hangs, not as an error.
+  ucxNetDevices: ""
+
   # Network resource (RDMA/InfiniBand) for pod limits/requests (optional)
   # Only added to pod specs when both networkResource and networkNr are non-empty.
   # Equivalent to bash LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE / _NR.

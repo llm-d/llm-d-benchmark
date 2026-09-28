@@ -27,6 +27,10 @@ hcaids_down = []
 hcaids_wrong_gid = []
 hcaids_excluded = os.getenv("NCCL_EXCLUDE_IB_HCA", "").split(",")
 ucx_tls = os.getenv("UCX_TLS", "").split(",")
+# A non-empty UCX_NET_DEVICES in the environment is an explicit request to pin
+# the KV-transfer data plane (vllmCommon.ucxNetDevices), so it wins over
+# whatever device discovery finds here.
+ucx_net_devices_preset = os.getenv("UCX_NET_DEVICES", "").strip()
 executables_path = "/usr/local/bin"
 
 ips_for_fping = []
@@ -383,7 +387,18 @@ if deps_present["ibstat"]:
             ipv4 = ip_address_info[lo]["ipv4"]
             ipv6 = ip_address_info[lo]["ipv6"]
             if status == "UP":
-                if s_gid == hcadev_to_gid[hcaid]:
+                # A device qualifies when it exposes every GID index in s_gid,
+                # not when its GID list is exactly s_gid. What NCCL and UCX
+                # actually need is one index (NCCL_IB_GID_INDEX below) valid on
+                # every selected rail; extra indexes on some rails are
+                # harmless. Demanding exact equality rejected every device on
+                # nodes whose RoCE GID table is non-uniform -- and that table
+                # churns with co-tenancy ("IB Async event ... GID table change
+                # on port 1"), so the same node passed one hour and failed the
+                # next. The `device_gids and` guard keeps the no-GID-data case
+                # (show_gids.sh absent) selecting nothing, as before.
+                device_gids = hcadev_to_gid.get(hcaid, [])
+                if device_gids and set(s_gid).issubset(device_gids):
                     if hcaid not in hcaids_excluded:
                         hca_info[entry]["ipv4"] = ipv4
                         ips_for_fping.append(ipv4.split("/")[0])
@@ -421,13 +436,19 @@ if not nvshmem_ib_addr_range and multi_if_net:
 
 i = 0
 if create_multiple_routing_tables:
-    rtdir = None
-    for rtdir in ["/etc/iproute2", "/usr/share/iproute2"]:
-        rt_tables_path = Path(f"{rtdir}/rt_tables")
-        if rt_tables_path.is_file():
+    # IPROUTE2_CONF_DIR is iproute2's own override for where it reads rt_tables.
+    rt_tables_path = None
+    conf_dirs = ["/etc/iproute2", "/usr/share/iproute2"]
+    iproute2_conf_dir = os.getenv("IPROUTE2_CONF_DIR", "").strip()
+    if iproute2_conf_dir:
+        conf_dirs.insert(0, iproute2_conf_dir)
+    for conf_dir in conf_dirs:
+        candidate = Path(f"{conf_dir}/rt_tables")
+        if candidate.is_file():
+            rt_tables_path = candidate
             break
 
-    if rtdir:
+    if rt_tables_path:
         print(
             "INFO: one or more interfaces have IPs on the same subnet, will create multiple routing tables"
         )
@@ -440,14 +461,14 @@ if create_multiple_routing_tables:
                 and ip_address_info[entry]["interface_name"] != "lo"
             ):
                 table = f"table{i}"
-                new_routing_table_entry_found = False
-                new_routing_table_entry = None
-                for line in rt_tables_content:
-                    if line.count(f" table{i} "):
-                        new_routing_table_entry_found = True
-                        break
+                # Assigned before the lookup: the entry is echoed into the
+                # serving container's own rt_tables further down, which has not
+                # seen this init container's write.
+                new_routing_table_entry = f"{100 + i} {table} "
+                new_routing_table_entry_found = any(
+                    line.count(f" table{i} ") for line in rt_tables_content
+                )
                 if not new_routing_table_entry_found:
-                    new_routing_table_entry = f"{100 + i} {table} "
                     with open(f"{rt_tables_path}", "a") as file:
                         file.write(new_routing_table_entry + "\n")
                     time.sleep(1)
@@ -482,9 +503,13 @@ if create_multiple_routing_tables:
                         init_container_commands.append(
                             f"ip rule add from {ip} lookup {table}"
                         )
-                        print(f"INFO: adding routing table {table} update command \"ip route add {network} dev {interface} src {ip} table {table}\" to {options.envfile}")
+                        print(
+                            f'INFO: adding routing table {table} update command "ip route add {network} dev {interface} src {ip} table {table}" to {options.envfile}'
+                        )
                     else:
-                        print(f"INFO: executing routing table {table} update command \"ip route add {network} dev {interface} src {ip} table {table}\"...")
+                        print(
+                            f'INFO: executing routing table {table} update command "ip route add {network} dev {interface} src {ip} table {table}"...'
+                        )
                         try:
                             subprocess.run(
                                 [
@@ -522,21 +547,27 @@ if create_multiple_routing_tables:
 
                 i = i + 1
 
-    if deps_present["gemini-arp-fix.sh"]:
-        if options.initcontainermode:
-            init_container_commands.append(f"{options.envdir}/gemini-arp-fix.sh")
-            print(f"INFO: adding command \"gemini-arp-fix.sh\" to {options.envfile}")
-        else:
-            try:
-                print(f"INFO: executing command \"gemini-arp-fix.sh\"...")
-                subprocess.run(
-                    ["gemini-arp-fix.sh"], capture_output=True, text=True, check=True
-                )
-            except subprocess.CalledProcessError as e:
-                print(f'WARNING: Command "{e.cmd}" returned {e.returncode}.')
+        if deps_present["gemini-arp-fix.sh"]:
+            if options.initcontainermode:
+                init_container_commands.append(f"{options.envdir}/gemini-arp-fix.sh")
+                print(f'INFO: adding command "gemini-arp-fix.sh" to {options.envfile}')
+            else:
+                try:
+                    print('INFO: executing command "gemini-arp-fix.sh"...')
+                    subprocess.run(
+                        ["gemini-arp-fix.sh"],
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                    )
+                except subprocess.CalledProcessError as e:
+                    print(f'WARNING: Command "{e.cmd}" returned {e.returncode}.')
 
     else:
-        print('WARNING: unable to find a directory for the file "rt_tables"')
+        print(
+            'WARNING: unable to find a directory for the file "rt_tables", so'
+            " interfaces sharing a subnet will not get source-based routing"
+        )
 
 env_file_contents = []
 env_file_name = f"{options.envfile}"
@@ -563,6 +594,20 @@ print(f"INFO: HCA IDs marked as down: {hcaids_down}")
 print(f"INFO: HCA IDs with wrong gid: {hcaids_wrong_gid}")
 print(f"INFO: HCA IDs excluded: {hcaids_excluded}")
 
+if not nixl_list and create_multiple_routing_tables:
+    print(
+        "WARNING: no usable HCA was found, so UCX_NET_DEVICES and NCCL_IB_HCA are left"
+        " unset while this pod has interfaces sharing one subnet. Peers that do pin"
+        " those devices will not be reachable (KV transfer hangs). Set"
+        " vllmCommon.ucxNetDevices to pin the data plane explicitly."
+    )
+    if hcaids_wrong_gid:
+        print(
+            f"WARNING: {len(hcaids_wrong_gid)} device(s) were rejected because their GID"
+            f" indexes {sorted({tuple(hcadev_to_gid.get(h, [])) for h in hcaids_wrong_gid})}"
+            f" do not include all of the selected {s_gid}."
+        )
+
 if nixl_list:
     nccl_list.sort(key=len)
     nixl_list.sort(key=len)
@@ -585,7 +630,11 @@ if nixl_list:
     ips_for_fping = " ".join(ips_for_fping)
     if "SMOKETEST_IPS" not in options.omitenvvars:
         env_file_contents.append(f'export SMOKETEST_IPS="{ips_for_fping}"')
-    if "UCX_NET_DEVICES" not in options.omitenvvars:
+    if "UCX_NET_DEVICES" not in options.omitenvvars and ucx_net_devices_preset:
+        print(
+            f'INFO: UCX_NET_DEVICES is already set to "{ucx_net_devices_preset}", keeping it'
+        )
+    elif "UCX_NET_DEVICES" not in options.omitenvvars:
         if "rc" in ucx_tls:
             env_file_contents.append(
                 f'export UCX_NET_DEVICES="{nccl_list.replace(",", ":1,")}:1"'
@@ -599,7 +648,6 @@ if nixl_list:
     if "NCCL_IB_GID_INDEX" not in options.omitenvvars:
         if s_gid:
             env_file_contents.append(f"export NCCL_IB_GID_INDEX={s_gid[0]}")
-    env_file_contents.append("\n".join(init_container_commands))
     if "NVSHMEM_HCA_LIST" in env_vars != "none":
         if "GLOO_SOCKET_IFNAME" not in options.omitenvvars:
             env_file_contents.append(f'export GLOO_SOCKET_IFNAME="{default_interface}"')
@@ -637,6 +685,12 @@ if nixl_list:
                 env_file_contents.append(
                     f'export NVSHMEM_IB_ENABLE_IBGDA="{is_infiniband}"'
                 )
+
+# Emitted regardless of device discovery: without these rules a pod whose
+# secondary interfaces share one subnet egresses every packet through the first
+# rail, no matter which source address the sender bound to.
+if init_container_commands:
+    env_file_contents.append("\n".join(init_container_commands))
 
 lwswi = int(os.getenv("LWS_WORKER_INDEX", "0"))
 dpsi = int(os.getenv("DP_SIZE_LOCAL", "0"))
