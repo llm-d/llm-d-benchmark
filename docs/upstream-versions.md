@@ -63,7 +63,7 @@ generation (and plan) time.
 | **benchmark** | `nightly` | tag | `config/templates/values/defaults.yaml` line 381 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **prism** | `latest` | tag | `config/templates/values/defaults.yaml` line 404 (`images.prism`) | [llm-d/llm-d-prism](https://github.com/llm-d/llm-d-prism) (`ghcr.io/llm-d/llm-d-prism`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 435 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routerEndpointPicker** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 412 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
+| **routerEndpointPicker** | `v0.11.0` | tag | `config/templates/values/defaults.yaml` line 412 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
 | **routingSidecar** | `v0.10.0` | tag | `config/templates/values/defaults.yaml` line 418 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
 | **udsTokenizer** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 424 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 | **vllm** | `v0.30.0` | tag | `config/templates/values/defaults.yaml` line 387 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
