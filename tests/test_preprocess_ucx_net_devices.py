@@ -9,9 +9,12 @@ along with the device list).
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -214,6 +217,22 @@ class TestRoutingSurvivesEmptyDiscovery:
 
 def test_missing_rt_tables_directory_is_reported_not_fatal(tmp_path):
     """Neither directory existing used to raise instead of warning."""
+    # Same lookup order as the script once IPROUTE2_CONF_DIR misses.
+    system_rt_tables = next(
+        (
+            p
+            for p in (
+                Path(d, "rt_tables") for d in ("/etc/iproute2", "/usr/share/iproute2")
+            )
+            if p.is_file()
+        ),
+        None,
+    )
+    if system_rt_tables and not os.access(system_rt_tables, os.W_OK):
+        # The script appends to it (it runs as root in the pod), so a
+        # read-only system file cannot exercise either branch here.
+        pytest.skip(f"{system_rt_tables} exists but is not writable")
+
     stdout, env_file = _run(
         tmp_path,
         _SAME_SUBNET_ADDRS,
@@ -223,9 +242,6 @@ def test_missing_rt_tables_directory_is_reported_not_fatal(tmp_path):
     )
 
     assert env_file.startswith("#!/usr/bin/env bash")
-    system_rt_tables = any(
-        Path(d, "rt_tables").is_file() for d in ("/etc/iproute2", "/usr/share/iproute2")
-    )
     if system_rt_tables:
         # A system rt_tables was picked up instead, so routing still happens.
         assert "ip rule add from 172.23.0.5" in env_file
