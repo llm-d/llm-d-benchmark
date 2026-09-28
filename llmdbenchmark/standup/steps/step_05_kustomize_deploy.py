@@ -196,7 +196,10 @@ class KustomizeDeployStep(Step):
                 )
 
         # --- 2. Router ---
-        router_cmds = parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE)
+        router_cmds = self._select_router_commands(
+            parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE),
+            accel_backend,
+        )
         for gc in router_cmds:
             resolved = resolver.resolve(gc.raw)
             resolved = self._inject_extra_helm_args(
@@ -660,6 +663,19 @@ class KustomizeDeployStep(Step):
                     return candidate
             i -= 1
         return "/".join(parts)
+
+    _KNOWN_ACCEL_TYPES = ("gpu", "xpu", "tpu", "spyre", "cpu", "gh200")
+
+    @classmethod
+    def _select_router_commands(cls, commands, accel_backend: str):
+        accel_type = (accel_backend or "").split("/")[0].lower()
+        other_accels = [a for a in cls._KNOWN_ACCEL_TYPES if a != accel_type]
+        selected = [
+            gc
+            for gc in commands
+            if not any(f"/router/{other}.values.yaml" in gc.raw for other in other_accels)
+        ]
+        return selected or commands
 
     @staticmethod
     def _select_modelserver_command(commands, accel_backend, resolver):
