@@ -19,10 +19,12 @@ how to run it, and the integration details that are easy to get wrong here.
 
 | path | purpose |
 |---|---|
-| [`config/scenarios/guides/keda-epp-token-aware.yaml`](../config/scenarios/guides/keda-epp-token-aware.yaml) | scenario: EPP plugin set + the token-aware trigger list |
-| [`config/specification/guides/keda-epp-token-aware.yaml.j2`](../config/specification/guides/keda-epp-token-aware.yaml.j2) | spec pointer |
-| `workload/profiles/inference-perf/random_{prefill_heavy,symmetrical,decode_heavy}.yaml.in` | the three token shapes (general-purpose, shared) |
-| [`experiments/token-aware-autoscaling.yaml`](../experiments/token-aware-autoscaling.yaml) | DoE sweeping the three shapes |
+| [`config/scenarios/guides/keda-epp-token-aware.yaml`](../config/scenarios/guides/keda-epp-token-aware.yaml) | scenario (P+D co-located): EPP plugin set + the token-aware trigger list |
+| [`config/specification/guides/keda-epp-token-aware.yaml.j2`](../config/specification/guides/keda-epp-token-aware.yaml.j2) | spec pointer (P+D co-located) |
+| [`config/scenarios/guides/keda-epp-token-aware-pd-disaggregation.yaml`](../config/scenarios/guides/keda-epp-token-aware-pd-disaggregation.yaml) | scenario (P/D-disaggregated): same triggers, split across two `ScaledObject`s |
+| [`config/specification/guides/keda-epp-token-aware-pd-disaggregation.yaml.j2`](../config/specification/guides/keda-epp-token-aware-pd-disaggregation.yaml.j2) | spec pointer (P/D-disaggregated) |
+| `workload/profiles/inference-perf/random_{prefill_heavy,symmetrical,decode_heavy}.yaml.in` | the three token shapes (general-purpose, shared by both scenarios) |
+| [`experiments/token-aware-autoscaling.yaml`](../experiments/token-aware-autoscaling.yaml) | DoE sweeping the three shapes (shared by both scenarios) |
 
 ## Running
 
@@ -62,6 +64,32 @@ llmdbenchmark --spec guides/keda-epp-token-aware experiment \
   --experiments experiments/token-aware-autoscaling.yaml \
   --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
 ```
+
+### P/D-disaggregated variant
+
+Everything above is written for the P+D co-located scenario. The P/D-disaggregated sibling runs the
+same three commands against a different `--spec`:
+
+```bash
+llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation standup -p <namespace>
+make calibrate-peak-prefill NAMESPACE=<namespace> APPLY=1
+llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation run \
+  --harness inference-perf --workload random_prefill_heavy.yaml \
+  --monitoring --analyze
+```
+
+The difference downstream: prefill and decode are separate Deployments, so standup creates **two**
+`ScaledObject`s (one per role) instead of one, and `kubectl get hpa` shows both
+`<model>-prefill-token-aware` and `<model>-decode-token-aware`. Both are produced by the same
+`30_keda-scaledobject.yaml.j2` renderer via a new `eppKedaSaturation.scaledObject.targets` list (see
+[How it is wired here](#how-it-is-wired-here) below) — the co-located scenario doesn't set `targets`,
+so its single-object output is unaffected.
+
+**Calibration caveat specific to P/D**: `make calibrate-peak-prefill`'s idle-check only inspects pods
+matched by `grep decode` and curls their port `8200` — it never inspects prefill pods, which are a
+separate role here and listen on port `8000`. A busy prefill pod would inflate the measured `V_P`
+without the idle guard catching it. Manually confirm prefill pods are idle (no in-flight requests, no
+queued KV) before trusting a calibration run against this scenario.
 
 ### Why calibration is a separate command
 
@@ -136,6 +164,14 @@ Two `query` substitutions exist for this path, because Jinja cannot reach inside
 
 `scaledObject.nameSuffix` renders the object as `<model>-decode-token-aware`, so this and the
 saturation variant can be told apart in `kubectl get hpa`.
+
+The P/D-disaggregated scenario uses the same renderer through one addition:
+`scaledObject.targets`, a list that -- when non-empty -- renders **one `ScaledObject` per entry**
+(one per role, e.g. `prefill` and `decode`) instead of the single combined object above, each
+scaling its own Deployment (`<model>-prefill`, `<model>-decode`) with its own trigger. The
+`${namespace}`/`${peakPrefillThroughput}` substitutions and the shared `TriggerAuthentication`/
+`ServiceMonitor` infrastructure are unchanged either way. When `targets` is unset (the co-located
+scenario's case), rendering is byte-for-byte identical to before this addition existed.
 
 ## Integration details that fail silently
 

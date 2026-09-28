@@ -316,6 +316,10 @@
   value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
 - name: UCX_SOCKADDR_TLS_PRIORITY
   value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+{% if vllmCommon.ucxNetDevices is defined and vllmCommon.ucxNetDevices %}
+- name: UCX_NET_DEVICES
+  value: "{{ vllmCommon.ucxNetDevices }}"
+{% endif %}
 - name: POD_IP
   valueFrom:
     fieldRef:

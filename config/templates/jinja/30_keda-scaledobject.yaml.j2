@@ -29,9 +29,89 @@
      peakPrefillThroughput -- substituted into `query` as above; measure it with
                               `make calibrate-peak-prefill NAMESPACE=<ns>`.
 
+   MULTI-TARGET (P/D-disaggregated) VARIANT
+   -----------------------------------------
+   scaledObject.targets, if set to a non-empty list, renders ONE ScaledObject
+   document PER ENTRY instead of the single-object shape below -- e.g. one for
+   the prefill Deployment and one for the decode Deployment, each with its own
+   trigger list. Each target entry:
+     role          -- defaults to 'decode'; used to build the scaleTargetRef
+                      name (<model_id_label>-<role>) and the HPA name
+                      (<model_id_label>-<role>-<nameSuffix>).
+     triggers      -- required; same shape as the single-object `triggers` above.
+     scaleTargetRef.name/.kind -- optional override of the computed default.
+     minReplicas/maxReplicas/pollingInterval/nameSuffix/behavior -- optional
+                      per-target overrides; fall back to the shared
+                      scaledObject.* keys of the same name when omitted.
+   ${poolName}/${modelName}/${namespace}/${peakPrefillThroughput} substitute the
+   same way as the single-object path. When `targets` is unset or empty, this
+   whole branch is skipped and the single-object shape below is unchanged --
+   every existing eppKedaSaturation consumer leaves `targets` unset, so their
+   rendered output stays byte-for-byte identical to before this branch existed.
+
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
+{% set epp_targets = eppKedaSaturation.scaledObject.targets | default([], true) %}
+{% if epp_targets %}
+{% set fma_enabled = fma is defined and fma.enabled | default(false) %}
+{% set epp_ns = eppKedaSaturation.namespace | default(namespace.name, true) %}
+{% set pool_name = eppKedaSaturation.epp.poolName | default(model_id_label ~ '-router', true) %}
+{% set prom_url = eppKedaSaturation.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local', true) %}
+{% set prom_url = prom_url ~ ':' ~ (eppKedaSaturation.prometheus.port | default(9091, true)) %}
+{% set peak_prefill = eppKedaSaturation.scaledObject.peakPrefillThroughput | default('', true) %}
+{% for target in epp_targets %}
+{% set role = target.role | default('decode', true) %}
+{% set override_name = target.scaleTargetRef.name | default('', true) if target.scaleTargetRef is defined else '' %}
+{% set scale_kind = (target.scaleTargetRef.kind | default('Deployment', true)) if target.scaleTargetRef is defined else 'Deployment' %}
+{% set scale_name = override_name if override_name else ('fma-requester-' ~ model_id_label if fma_enabled else (model_id_label ~ '-' ~ role)) %}
+{% set hpa_name = (model_id_label ~ '-fma') if fma_enabled else (model_id_label ~ '-' ~ role) %}
+{% set name_suffix = target.nameSuffix | default(eppKedaSaturation.scaledObject.nameSuffix | default('saturation', true), true) %}
+{% set t_min = target.minReplicas | default(eppKedaSaturation.scaledObject.minReplicas | default(1)) %}
+{% set t_max = target.maxReplicas | default(eppKedaSaturation.scaledObject.maxReplicas | default(10)) %}
+{% set t_poll = target.pollingInterval | default(eppKedaSaturation.scaledObject.pollingInterval | default(15)) %}
+{% set t_behavior = target.behavior if target.behavior is defined else eppKedaSaturation.scaledObject.behavior %}
+{% set t_triggers = target.triggers | default([], true) %}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ hpa_name }}-{{ name_suffix }}
+  namespace: {{ epp_ns }}
+  annotations:
+    llm-d.ai/managed: "true"
+    llm-d.ai/model-id: "{{ model.name }}"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: {{ scale_kind }}
+    name: {{ scale_name }}
+  minReplicaCount: {{ t_min }}
+  maxReplicaCount: {{ t_max }}
+  pollingInterval: {{ t_poll }}
+  triggers:
+{% for t in t_triggers %}
+  - type: prometheus
+    name: {{ t.name | default('trigger-' ~ loop.index) }}
+    metricType: {{ t.metricType | default('AverageValue') }}
+    authenticationRef:
+      name: prometheus-auth
+    metadata:
+      serverAddress: "{{ prom_url }}"
+      authModes: bearer
+      query: |
+        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) | replace('${namespace}', epp_ns) | replace('${peakPrefillThroughput}', peak_prefill | string) | indent(8) }}
+      threshold: "{{ t.threshold | default('1') }}"
+      activationThreshold: "{{ t.activationThreshold | default('0') }}"
+{% endfor %}
+{% if t_behavior is defined %}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+{{ t_behavior | toyaml | indent(8, first=True) }}
+{% endif %}
+{% endfor %}
+{% else %}
 {% if fma is defined and fma.enabled | default(false) %}
 {% set scale_kind = 'Deployment' %}
 {% set scale_name = 'fma-requester-' ~ model_id_label %}
@@ -86,5 +166,6 @@ spec:
 {# indent(8), not 6: `behavior:` sits at column 6, so a 6-space body makes YAML
    read `behavior` as null and drop the whole policy silently. #}
 {{ eppKedaSaturation.scaledObject.behavior | toyaml | indent(8, first=True) }}
+{% endif %}
 {% endif %}
 {% endif %}

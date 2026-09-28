@@ -803,33 +803,48 @@ class DeployModelserviceStep(Step):
         ).get("name", "")
         model_id_label = plan_config.get("model_id_label", "")
         fma_enabled = plan_config.get("fma", {}).get("enabled", False)
-        hpa_name = f"{model_id_label}-{'fma' if fma_enabled else 'decode'}-saturation"
+        so_cfg = epp_keda_cfg.get("scaledObject", {}) or {}
+        name_suffix = so_cfg.get("nameSuffix", "saturation")
+        targets = so_cfg.get("targets") or []
+        # P/D-disaggregated stacks render one ScaledObject per role (targets);
+        # everything else keeps the single decode/fma object it always had.
+        roles = (
+            [t.get("role", "decode") for t in targets]
+            if targets
+            else ["fma" if fma_enabled else "decode"]
+        )
 
-        # hpa_name already ends in -saturation, and the resource type has to be
-        # a literal: deriving it from the name yielded `oc get qwen` / `keda`.
-        for label, kind, resource_name in (
-            ("ScaledObject", "scaledobjects.keda.sh", hpa_name),
-            ("HPA", "hpa", f"keda-hpa-{hpa_name}"),
-        ):
-            result = cmd.kube(
-                "get",
-                kind,
-                resource_name,
-                "-n",
-                epp_keda_ns,
-                "-o",
-                "wide",
-                check=False,
+        for role in roles:
+            base_name = (
+                f"{model_id_label}-fma" if fma_enabled else f"{model_id_label}-{role}"
             )
-            if result.success and result.stdout.strip():
-                context.logger.log_info(f"📋 {label} state in ns/{epp_keda_ns}:")
-                for line in result.stdout.rstrip().splitlines():
-                    context.logger.log_info(f"    {line}")
-            else:
-                context.logger.log_warning(
-                    f"Could not query {label}/{resource_name} for state log: "
-                    f"{result.stderr.strip()[:200] or '(empty)'}"
+            hpa_name = f"{base_name}-{name_suffix}"
+
+            # hpa_name already ends in -<nameSuffix>, and the resource type has to
+            # be a literal: deriving it from the name yielded `oc get qwen` / `keda`.
+            for label, kind, resource_name in (
+                ("ScaledObject", "scaledobjects.keda.sh", hpa_name),
+                ("HPA", "hpa", f"keda-hpa-{hpa_name}"),
+            ):
+                result = cmd.kube(
+                    "get",
+                    kind,
+                    resource_name,
+                    "-n",
+                    epp_keda_ns,
+                    "-o",
+                    "wide",
+                    check=False,
                 )
+                if result.success and result.stdout.strip():
+                    context.logger.log_info(f"📋 {label} state in ns/{epp_keda_ns}:")
+                    for line in result.stdout.rstrip().splitlines():
+                        context.logger.log_info(f"    {line}")
+                else:
+                    context.logger.log_warning(
+                        f"Could not query {label}/{resource_name} for state log: "
+                        f"{result.stderr.strip()[:200] or '(empty)'}"
+                    )
 
     def _propagate_standup_parameters(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict

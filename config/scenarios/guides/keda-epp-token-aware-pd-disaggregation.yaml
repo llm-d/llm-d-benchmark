@@ -1,0 +1,542 @@
+# [EXPERIMENTAL] TOKEN-AWARE AUTOSCALING GUIDE -- P/D-DISAGGREGATED VARIANT
+#
+# Scales prefill and decode Deployments INDEPENDENTLY on TOKENS of outstanding
+# work rather than a count of requests. Two ScaledObjects, two Deployments:
+#   prefill  sum(llm_d_epp_inflight_tokens{endpoint_name=~".*prefill.*"})
+#              / peakPrefillThroughput                -> SECONDS of backlog
+#   decode   sum(vllm:kv_cache_usage_perc{pod=~".*decode.*"}) -> pods' worth of full KV
+#   each Deployment scales independently: replicas = ceil(signal / threshold)
+#
+# This is the P/D-disaggregated sibling of guides/keda-epp-token-aware (P+D
+# co-located). Built on guides/pd-disaggregation the same way that scenario was
+# built on guides/optimized-baseline -- everything about the base topology
+# (model, storage, disagg routing plugins, prefill/decode Deployments) is
+# reused verbatim; only the router's token-aware plugins, decode's pod
+# monitoring, and the eppKedaSaturation block are added/changed.
+#
+# Reuses the eppKedaSaturation plumbing (Thanos auth, TriggerAuthentication, EPP
+# ServiceMonitor) with scaledObject.targets -- a list that renders ONE
+# ScaledObject per Deployment instead of the co-located guide's single object.
+# No new standup step, no new controller.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/tree/main/guides/workload-autoscaling/keda-epp-token-aware/pd-disaggregation
+#   https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation
+#
+# Running:
+#
+#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation standup -p <namespace>
+#   make calibrate-peak-prefill NAMESPACE=<namespace> APPLY=1
+#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation run \
+#     --harness inference-perf --workload random_prefill_heavy.yaml \
+#     --monitoring --analyze
+#
+# BEFORE YOU RUN: peakPrefillThroughput below is a PLACEHOLDER borrowed from the
+# co-located guide's own measurement (Qwen3-32B / H100-80GB / TP=2, same model
+# and accelerator class -- but a DIFFERENT topology). The upstream guide
+# explicitly warns V_P through a disaggregated KV-transfer path can be "several
+# times lower" than the co-located path for the identical model/GPU, so treat
+# this as a smoke-test value only. Measure your own before trusting the
+# threshold:
+#
+#   make calibrate-peak-prefill NAMESPACE=<ns> APPLY=1
+#
+# CAVEAT for P/D specifically: `make calibrate-peak-prefill`'s idle-check only
+# inspects pods matched by `grep decode` and curls their port 8200 -- it never
+# inspects prefill pods (a separate role here, listening on port 8000). A busy
+# prefill pod would inflate the measured V_P without being caught. Manually
+# confirm prefill pods are idle (no in-flight requests, no queued KV) before
+# trusting a calibration run against this scenario. See docs/token-aware-autoscaling.md.
+
+scenario:
+  # =========================================================================
+  # EPP+KEDA TOKEN-AWARE AUTOSCALING -- P/D-disaggregated, Qwen3-32B
+  # =========================================================================
+  - name: "keda-epp-token-aware-pd-disaggregation"
+
+    common:
+      accelerator:
+        profile: auto
+        resource: auto
+
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16384
+        blockSize: 128
+        gpuMemoryUtilization: 0.90
+        cacheBase: /model-cache
+
+        # The prefill chunk. Unset, _macros.j2 falls back to a hardcoded '256',
+        # which turns an 8192-token prompt into 32 chunked prefill passes and
+        # makes the prefill-heavy shape measure chunking overhead instead of
+        # prefill capacity. MUST equal the calibration's CHUNK_SIZE or the
+        # measured peakPrefillThroughput is silently wrong.
+        # NOTE: this key is only valid on `model` (ModelConfig in
+        # parser/config_schema.py). _macros.j2 also probes
+        # `vllmCommon.maxNumBatchedTokens`, but STRICT_CONFIG rejects that path,
+        # so the model-level key is the only usable one.
+        maxNumBatchedTokens: 8192
+
+      storage:
+        modelPvc:
+          size: 1Ti
+
+      vllmCommon:
+        networkResource: "auto"   # auto-detect from cluster nodes
+        networkNr: "1"            # number of network devices
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+          - name: dshm
+            mountPath: /dev/shm
+
+      annotations:
+        prefill:
+          pod:
+        decode:
+          pod:
+
+      timeouts:
+        controlWait: 900000
+        harnessWait: 900000
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # No kustomize.* block here (unlike pd-disaggregation.yaml) -- there is no
+    # single upstream guideName for this composed scenario, matching how
+    # keda-epp-token-aware.yaml also drops kustomize support relative to its
+    # own base (optimized-baseline.yaml).
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      gateway:
+        className: epponly
+
+      # -------------------------------------------------------------------------
+      # Routing Configuration
+      # -------------------------------------------------------------------------
+      routing:
+        connector: nixlv2
+
+      # -------------------------------------------------------------------------
+      # Routing / GAIE Configuration
+      # Base disagg plugins reused verbatim from pd-disaggregation.yaml. Token-
+      # aware plugins added; the PREFILL profile's scorer set is REPLACED (not
+      # layered) with prefix-cache-affinity-filter + token-load-scorer, mirroring
+      # exactly how keda-epp-token-aware.yaml converted optimized-baseline's
+      # `default` profile for the co-located guide (queue-scorer/kv-cache-
+      # utilization-scorer/prefix-cache-scorer swapped out wholesale for the
+      # token-aware pair, unweighted). prefix-cache-scorer stays in the DECODE
+      # profile unchanged -- that's a different decision (which decode replica
+      # gets a request after KV transfer) unrelated to prefill-side recompute
+      # economics, so it is not redundant with prefix-cache-affinity-filter there.
+      # -------------------------------------------------------------------------
+      router:
+        extraServicePorts:
+          - name: http
+            port: 80
+            protocol: TCP
+            targetPort: 8081
+        epp:
+          # MUST stay at 1: inflight-load-producer's token accounting is local
+          # to each EPP process, so N replicas each publish only a fraction of
+          # the true per-endpoint load and the prefill trigger under-scales
+          # forever. (Already 1 in the base pd-disaggregation.yaml; called out
+          # here because it is now load-bearing for autoscaling correctness.)
+          replicas: 1
+          flags:
+            v: 2
+          pluginsConfigFile: "token-aware-pd-plugins.yaml"
+          pluginsCustomConfig:
+            token-aware-pd-plugins.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
+              plugins:
+              - type: disagg-headers-handler
+              - type: always-disagg-pd-decider
+              - type: disagg-profile-handler
+                parameters:
+                  deciderPluginName: always-disagg-pd-decider
+              - type: prefill-filter
+              - type: decode-filter
+              - type: prefix-cache-scorer
+              - type: active-request-scorer
+              - type: token-load-scorer
+              # publishes llm_d_epp_inflight_tokens -- the prefill trigger's only source
+              - type: inflight-load-producer
+              - type: approx-prefix-cache-producer
+              - type: prefix-cache-affinity-filter
+                parameters:
+                  # Keep in sync with eppKedaSaturation.scaledObject.peakPrefillThroughput
+                  # below. The router prices recompute-vs-reuse with this; the KEDA
+                  # prefill trigger converts tokens to seconds with it. They must agree.
+                  peakPrefillThroughput: 15845
+              schedulingProfiles:
+              - name: prefill
+                plugins:
+                - pluginRef: prefill-filter
+                - pluginRef: prefix-cache-affinity-filter
+                - pluginRef: token-load-scorer
+              - name: decode
+                plugins:
+                - pluginRef: decode-filter
+                - pluginRef: active-request-scorer
+                  weight: 2
+                - pluginRef: prefix-cache-scorer
+                  weight: 3
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        proxy:
+          # CLI args for the Envoy sidecar. Override the chart's defaults of
+          # `--log-level trace` (very expensive under load) and no `--concurrency`
+          # (Envoy spawns ~hardware_concurrency() worker threads, oversubscribing
+          # the cgroup's CPU slice). `--concurrency 8` matches the resources.limits
+          # equivalent below; trace-level logging would burn a meaningful share of
+          # the sidecar's CPU at high QPS.
+          args:
+            - "--service-node"
+            - "envoy-sidecar"
+            - "--log-level"
+            - "warn"
+            - "--concurrency"
+            - "8"
+            - "--drain-strategy"
+            - "immediate"
+            - "--drain-time-s"
+            - "60"
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+        inferencePool:
+          failureMode: "FailOpen"
+          providerConfig:
+            destinationRule:
+              trafficPolicy:
+                connectionPool:
+                  http:
+                    http1MaxPendingRequests: 256000
+                    maxRequestsPerConnection: 256000
+                    http2MaxRequests: 256000
+                    idleTimeout: "900s"
+                  tcp:
+                    maxConnections: 256000
+                    maxConnectionDuration: "1800s"
+                    connectTimeout: "900s"
+        # matchLabels intentionally omitted: pd-disaggregation.yaml hardcodes
+        # llm-d.ai/guide: "pd-disaggregation" here because ITS scenario name is
+        # literally "pd-disaggregation", so the InferencePool selector happens to
+        # match. This scenario's name is different (see `_ms_guide_label` in
+        # 13_ms-values.yaml.j2 -- pods are labeled with the scenario name, not
+        # this string), so a copied-over hardcoded value here would leave the
+        # InferencePool selecting zero pods ("no pods available in datastore").
+        # Leaving matchLabels unset falls back to render_plans.py's
+        # _normalize_router_block default (llm-d.ai/inferenceServing +
+        # llm-d.ai/model), which correctly matches both prefill and decode pods
+        # regardless of scenario name -- the same default keda-epp-token-aware.yaml
+        # relies on.
+        modelServers:
+          protocol: http
+        tracing:
+          otelExporterEndpoint: "http://localhost:4317"
+          sampling:
+            sampler: "parentbased_traceidratio"
+            samplerArg: "0.1"
+
+      # -------------------------------------------------------------------------
+      # HTTPRoute Configuration
+      # -------------------------------------------------------------------------
+      httpRoute:
+        requestTimeout: "300s"
+        backendRequestTimeout: "0s"
+
+      # -------------------------------------------------------------------------
+      # Prefill Configuration -- unchanged from pd-disaggregation.yaml.
+      # -------------------------------------------------------------------------
+      prefill:
+        enabled: true
+        replicas: 1
+        vllm:
+          customCommand: |
+            ${accelerator.runtimePreamble}
+            . /shared-config/llmdbench_env.sh
+            vllm serve $MODEL_SERVE_REF \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_INFERENCE_PORT \
+            --block-size $VLLM_BLOCK_SIZE \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+            --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"${accelerator.kvBufferDeviceJson}}' \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+            --no-enable-prefix-caching \
+            ${accelerator.dtypeArgs} \
+            ${accelerator.executionArgs} \
+            --no-disable-hybrid-kv-cache-manager
+
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
+
+        parallelism:
+          tensor: 1
+          data: 1
+          dataLocal: 1
+          workers: 1
+
+        resources:
+          limits:
+            memory: 16Gi
+            cpu: "8"
+          requests:
+            memory: 16Gi
+            cpu: "8"
+
+        extraEnvVars:
+          - name: NCCL_EXCLUDE_IB_HCA
+            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlx5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+          - name: NVSHMEM_DEBUG
+            value: "none"
+          - name: NCCL_DEBUG
+            value: "WARN"
+          - name: NIXL_LOG_LEVEL
+            value: debug
+          - name: UCX_MAX_RMA_RAILS
+            value: "1"
+
+        extraContainerConfig:
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+                - "NET_ADMIN"
+                - "NET_RAW"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        additionalVolumeMounts: []
+        additionalVolumes: []
+
+      # -------------------------------------------------------------------------
+      # Decode Configuration
+      # replicas: 1 (down from pd-disaggregation.yaml's 2) -- start at the
+      # eppKedaSaturation minReplicaCount floor and let the autoscaler drive
+      # any scale-up, matching keda-epp-token-aware.yaml's decode.replicas: 1.
+      # extraContainerConfig.ports / monitoring.podmonitor are NEW relative to
+      # pd-disaggregation.yaml, which ships with no pod monitoring (see its own
+      # header comment) -- the named "metrics" containerPort is what lets the
+      # PodMonitor below actually resolve a scrape target (18_podmonitor.yaml.j2
+      # selects podMetricsEndpoints[].port by container-port NAME, not number).
+      # -------------------------------------------------------------------------
+      decode:
+        replicas: 1
+        vllm:
+          customCommand: |
+            ${accelerator.runtimePreamble}
+            . /shared-config/llmdbench_env.sh
+            vllm serve $MODEL_SERVE_REF \
+            --host 0.0.0.0 \
+            --served-model-name $MODEL_NAME \
+            --port $VLLM_METRICS_PORT \
+            --block-size $VLLM_BLOCK_SIZE \
+            --max-model-len $VLLM_MAX_MODEL_LEN \
+            --max-num-seq $VLLM_MAX_NUM_SEQ \
+            --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+            --tensor-parallel-size $TP_SIZE \
+            --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+            --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"${accelerator.kvBufferDeviceJson}}' \
+            --disable-uvicorn-access-log \
+            --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+            --no-enable-prefix-caching \
+            ${accelerator.dtypeArgs} \
+            ${accelerator.executionArgs} \
+            --no-disable-hybrid-kv-cache-manager
+
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
+
+        parallelism:
+          tensor: 2
+          data: 1
+          dataLocal: 1
+          workers: 1
+
+        resources:
+          limits:
+            memory: 128Gi
+            cpu: "32"
+          requests:
+            memory: 128Gi
+            cpu: "32"
+
+        extraEnvVars:
+          - name: NCCL_EXCLUDE_IB_HCA
+            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlx5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+          - name: NVSHMEM_DEBUG
+            value: "none"
+          - name: NCCL_DEBUG
+            value: "WARN"
+          - name: NIXL_LOG_LEVEL
+            value: debug
+          - name: UCX_MAX_RMA_RAILS
+            value: "1"
+
+        extraContainerConfig:
+          ports:
+            - containerPort: 8200
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+                - "NET_ADMIN"
+                - "NET_RAW"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        additionalVolumeMounts: []
+        additionalVolumes: []
+
+        # Leave this chart-level PodMonitor OFF (inherits monitoring.podmonitor.
+        # enabled: false from defaults.yaml) -- the top-level monitoring.podmonitor
+        # (defaults.yaml: enabled: true) already renders 18_podmonitor.yaml.j2's
+        # standalone PodMonitor (vllm-<model_id_label>), which matches every pod
+        # carrying llm-d.ai/inferenceServing + llm-d.ai/model, decode included.
+        # Turning this one on too double-scrapes every decode pod under two
+        # different `job` labels, so sum(vllm:kv_cache_usage_perc{...}) -- the
+        # decode KEDA trigger's own query -- legitimately adds both series and
+        # reports ~2x real KV usage (the 0.8 threshold is effectively crossed at
+        # ~0.4 real KV). Same root cause and fix as the co-located scenario's
+        # decode-KV double-count (#1973) -- verified live against this scenario:
+        # `kubectl get podmonitor` showed both `<model>-decode-podmonitor` and
+        # `vllm-<model_id_label>` selecting the same decode pods.
+        monitoring:
+          podmonitor:
+            enabled: false
+
+    # =========================================================================
+    # EPP+KEDA TOKEN-AWARE AUTOSCALING -- P/D-disaggregated: one ScaledObject
+    # per Deployment via scaledObject.targets. minReplicas/maxReplicas/behavior
+    # are shared defaults for both targets here (both currently want the same
+    # 1..4 range and the same scaleUp/scaleDown behavior); override per-target
+    # if you want asymmetric ceilings later (e.g. prefill TP=1 could run a
+    # higher replica ceiling than decode TP=2 for the same GPU budget).
+    # =========================================================================
+    eppKedaSaturation:
+      enabled: true
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      scaledObject:
+        # Distinguishes this from the saturation variant in `kubectl get hpa`.
+        nameSuffix: token-aware
+
+        # PLACEHOLDER -- see the "BEFORE YOU RUN" note at the top of this file.
+        # Borrowed from keda-epp-token-aware.yaml's own measurement (Qwen3-32B /
+        # H100-80GB / TP=2, co-located), NOT measured through this P/D path.
+        # Keep equal to the router plugin's peakPrefillThroughput above.
+        peakPrefillThroughput: 15845
+
+        minReplicas: 1
+        maxReplicas: 4          # prefill TP=1 -> 4 accelerators; decode TP=2 -> 8
+
+        behavior:
+          # Weights take minutes to load, so a replica bought on a burst that
+          # drains in seconds is pure cost.
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 300
+
+        targets:
+          # -- PREFILL: seconds of uncached prefill backlog, THIS pool only ---
+          # endpoint_name filter isolates prefill endpoints from decode's, since
+          # both roles' EPP-published series otherwise share the same namespace.
+          - role: prefill
+            triggers:
+              - name: prefill-backlog-seconds
+                metricType: AverageValue
+                query: |
+                  (
+                    sum(llm_d_epp_inflight_tokens{namespace="${namespace}",
+                                                  producer_name="inflight-load-producer",
+                                                  endpoint_name=~".*prefill.*"})
+                    / ${peakPrefillThroughput}
+                  ) or vector(0)
+                threshold: "1.5"
+                activationThreshold: "0"
+
+          # -- DECODE: pods' worth of full KV cache, decode pods only ---------
+          - role: decode
+            triggers:
+              - name: decode-kv-utilization
+                metricType: AverageValue
+                query: |
+                  sum(vllm:kv_cache_usage_perc{namespace="${namespace}", pod=~".*decode.*"}) or vector(0)
+                threshold: "0.8"
+                activationThreshold: "0"
+
+    harness:
+      name: inference-perf
+      # random_symmetrical.yaml is the crossover case; swap for
+      # random_prefill_heavy.yaml / random_decode_heavy.yaml, or sweep all
+      # three via experiments/token-aware-autoscaling.yaml. Open-loop Poisson
+      # load only -- every *_concurrent* profile pegs inflight_tokens at
+      # concurrency x ISL regardless of capacity and is unusable here.
+      experimentProfile: random_symmetrical.yaml
+
+    workDir: "~/data/keda-epp-token-aware-pd-disaggregation"
