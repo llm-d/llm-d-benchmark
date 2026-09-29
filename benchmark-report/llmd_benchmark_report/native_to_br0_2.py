@@ -1803,6 +1803,30 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+def _find_inference_perf_partial(results_file: str, stage: int) -> dict | None:
+    """Return the sibling BR0.2 partial for this stage, if inference-perf wrote one.
+
+    inference-perf >= v0.7.0 (kubernetes-sigs/inference-perf#461) drops
+    ``inference-perf.partial.stage_<N>.yaml`` next to each
+    ``stage_<N>_lifecycle_metrics.json``, carrying ``results.request_performance
+    .aggregate`` and ``run.{uid,eid,time}`` computed from the same request
+    lifecycle metrics this module otherwise re-derives by hand. Preferring the
+    partial when present retires that duplicate ~700-line mapping (llm-d/
+    llm-d-benchmark#1891); older harness images with no partial fall back to
+    the native derivation below unchanged.
+    """
+    partial_path = os.path.join(
+        os.path.dirname(results_file), f"inference-perf.partial.stage_{stage}.yaml"
+    )
+    if not os.path.isfile(partial_path):
+        return None
+    try:
+        return import_yaml(partial_path)
+    except (OSError, yaml.YAMLError) as e:
+        sys.stderr.write(f"Failed to read inference-perf partial {partial_path}: {e}\n")
+        return None
+
+
 def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     """Import data from a Inference Perf run as a BenchmarkReportV02.
 
@@ -1943,6 +1967,48 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
         },
     )
 
+    partial = _find_inference_perf_partial(results_file, stage)
+    if partial is not None:
+        # Only uid/eid/time: version and results are this function's own
+        # concern (it must keep returning a v0.2 report regardless of the
+        # v0.2.1 version the partial itself declares), and nothing else in
+        # `run` (cid/pid/user/description/keywords) is inference-perf's to
+        # set. Present partial fields win over the envelope's placeholders
+        # (run.uid is explicitly "Initial UID, may be updated"; run.time
+        # here is this stage's own wall-clock window, more precise than the
+        # overall-harness window every stage would otherwise share).
+        run_from_partial = {
+            k: v
+            for k, v in (get_nested(partial, ["run"], {}) or {}).items()
+            if k in ("uid", "eid", "time")
+        }
+        if run_from_partial:
+            update_dict(br_dict, {"run": run_from_partial})
+        aggregate = get_nested(partial, ["results", "request_performance", "aggregate"])
+    else:
+        aggregate = _build_inference_perf_aggregate_native(results)
+
+    update_dict(
+        br_dict,
+        {
+            "results": {
+                "request_performance": {"aggregate": aggregate},
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)
+
+
+def _build_inference_perf_aggregate_native(results: dict) -> dict:
+    """Derive results.request_performance.aggregate from native inference-perf
+    lifecycle metrics.
+
+    Fallback path for harness images built from an inference-perf release
+    that predates the BR0.2 partial (kubernetes-sigs/inference-perf#461,
+    llm-d/llm-d-benchmark#1891) -- import_inference_perf prefers the partial
+    when a sibling one is found next to ``results_file``.
+    """
     total_reqs = get_nested(results, ["load_summary", "count"])
     failures = get_nested(results, ["failures", "count"])
     if total_reqs == failures:
@@ -2629,16 +2695,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
             if aggregate["requests"].get(opt, {}).get("mean") is None:
                 aggregate["requests"].pop(opt, None)
 
-    update_dict(
-        br_dict,
-        {
-            "results": {
-                "request_performance": {"aggregate": aggregate},
-            },
-        },
-    )
-
-    return load_benchmark_report(br_dict)
+    return aggregate
 
 
 def import_inference_perf_session(results_file: str) -> BenchmarkReportV02:

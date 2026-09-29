@@ -1,0 +1,22 @@
+# Token-Aware Autoscaling Guide Specification -- P/D-disaggregated variant
+# Thin pointer to the template directory, values defaults, and scenario YAML.
+
+# [REQUIRED]
+{% set base_dir = base_dir | default('../') -%}
+base_dir: {{ base_dir }}
+
+# [REQUIRED]
+values_file:
+  path: {{ base_dir }}/config/templates/values/defaults.yaml
+
+# [REQUIRED]
+template_dir:
+  path: {{ base_dir }}/config/templates/jinja
+
+# [OPTIONAL]
+scenario_file:
+  path: {{ base_dir }}/config/scenarios/guides/keda-epp-token-aware-pd-disaggregation.yaml
+
+# Experiment definitions live in experiments/token-aware-autoscaling.yaml --
+# shared with guides/keda-epp-token-aware (same three token-shape treatments,
+# now generalized across both topologies).

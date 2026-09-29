@@ -84,10 +84,10 @@ scenario:
       images:
         vllmOpenai:
           repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
-          tag: v0.26.0
+          tag: v0.30.0
         vllm:
           repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
-          tag: v0.26.0
+          tag: v0.30.0
 
       # -------------------------------------------------------------------------
       # vLLM Common Configuration

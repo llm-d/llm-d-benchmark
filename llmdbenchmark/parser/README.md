@@ -206,7 +206,7 @@ class VersionResolver:
     def has_unresolved(self, values: dict) -> list[str]: ...
 ```
 
-Image tag resolution order: skopeo `list-tags` then podman `search --list-tags`.
+Image tag resolution order: the registry's `/v2/<repo>/tags/list` then podman `search --list-tags`.
 
 Chart version resolution order: `helm search repo`, then for repo URLs: OCI uses `helm show chart`, traditional repos temporarily add/search/remove.
 

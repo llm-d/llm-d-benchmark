@@ -258,8 +258,8 @@ Both `_MinimalLogger` in `command.py` and `LLMDBenchmarkLogger` in `logging/logg
 Checks for required and optional CLI tools on `$PATH`.
 
 ```python
-REQUIRED_TOOLS = ["kubectl", "helm", "helmfile", "jq", "yq"]
-OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "crane", "rsync", "make"]
+REQUIRED_TOOLS = ["kubectl", "helm", "helmfile"]
+OPTIONAL_TOOLS = ["oc"]
 
 
 def check_system_dependencies(

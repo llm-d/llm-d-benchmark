@@ -1,0 +1,22 @@
+# Token-Aware Autoscaling Guide Specification
+# Thin pointer to the template directory, values defaults, and scenario YAML.
+
+# [REQUIRED]
+{% set base_dir = base_dir | default('../') -%}
+base_dir: {{ base_dir }}
+
+# [REQUIRED]
+values_file:
+  path: {{ base_dir }}/config/templates/values/defaults.yaml
+
+# [REQUIRED]
+template_dir:
+  path: {{ base_dir }}/config/templates/jinja
+
+# [OPTIONAL]
+scenario_file:
+  path: {{ base_dir }}/config/scenarios/guides/keda-epp-token-aware.yaml
+
+# Experiment definitions live in experiments/token-aware-autoscaling.yaml --
+# the three token-shape treatments are the point of this guide, so unlike
+# epp-keda-saturation they are NOT shared with inference-scheduling.

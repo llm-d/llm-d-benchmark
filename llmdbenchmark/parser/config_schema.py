@@ -339,6 +339,7 @@ class VllmCommonConfig(BaseModel):
     nixlSideChannelPort: str
     ucxTls: str
     ucxSockaddrTlsPriority: str
+    ucxNetDevices: str
     flags: VllmFlagsConfig
     volumes: list[dict[str, Any]]
     volumeMounts: list[dict[str, Any]]

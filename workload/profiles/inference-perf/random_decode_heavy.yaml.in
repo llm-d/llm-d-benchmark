@@ -1,0 +1,71 @@
+# Decode-heavy synthetic load (ISL 256 / OSL 4096)
+#
+# Open-loop synthetic load with a fixed 1:16 input:output token ratio, from a
+# random-token dataset. One of three profiles that share everything except ISL/OSL
+# and rate, so the TOKEN SHAPE is the independent variable:
+#
+#   random_prefill_heavy   ISL/OSL 8192/256   32:1   prefill-dominated
+#   random_symmetrical     ISL/OSL 2048/2048   1:1   balanced
+#   random_decode_heavy    ISL/OSL  256/4096  1:16   decode-dominated
+#
+# Useful for any question about how the prefill:decode balance affects a serving
+# stack -- prefill vs decode capacity, KV-cache pressure, scheduler behaviour, or
+# an autoscaler's choice of signal.
+#
+# Two properties worth knowing before you change them:
+#
+# 1. OPEN LOOP (poisson + a fixed rate), not `load.type: concurrent`. Offered load
+#    is independent of how fast the pool answers, so a saturated pool shows up as
+#    growing latency rather than self-throttling. Signals derived from in-flight
+#    work are only meaningful under open-loop arrivals -- see
+#    docs/token-aware-autoscaling.md for the autoscaling case, where a closed-loop
+#    generator pins the signal to `concurrency x ISL` regardless of capacity.
+#
+# 2. data.type: random -- random token IDs, so the prefix cache misses on every
+#    request and ISL is genuinely UNCACHED prefill work. Switch to shared_prefix
+#    and most of the prompt becomes a cache hit, which makes this profile behave
+#    like a much shorter one. Confirm with
+#    vllm:prompt_tokens_by_source_total{source="local_cache_hit"}.
+#
+# Rate below is sized for a specific reference stack (~70% of measured fleet decode capacity on the same stack). Derive your own
+# rather than reusing it; docs/token-aware-autoscaling.md shows the arithmetic.
+# Override without editing this file:
+#   --overrides load.stages.0.rate=<r>,load.stages.0.duration=<seconds>
+load:
+  type: poisson
+  interval: 30.0
+  stages:
+    - rate: 0.52
+      duration: 1200           # 20 min; >= 2x the HPA scaleUp period (180s) so a
+                               # scaling run measures the signal, not the rate limiter
+  request_timeout: 600.0
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: random
+  input_distribution:
+    min: 256
+    max: 256
+    mean: 256
+    std: 0
+  output_distribution:
+    min: 4096
+    max: 4096
+    mean: 4096
+    std: 0
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace

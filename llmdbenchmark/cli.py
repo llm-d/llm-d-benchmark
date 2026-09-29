@@ -224,7 +224,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         version_resolver = VersionResolver(logger=render_logger, dry_run=args.dry_run)
         cluster_resource_resolver = ClusterResourceResolver(
             logger=render_logger,
-            dry_run=args.dry_run,
+            dry_run=args.dry_run or args.command == Command.TEARDOWN.value,
             kubeconfig=getattr(args, "kubeconfig", None),
         )
 
