@@ -1,6 +1,6 @@
-# PREDICTED LATENCY BASED SCHEDULING WELL LIT PATH for LLM-D Deployment
+# PREDICTED LATENCY ROUTING WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-based-scheduling
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-routing
 #
 # Notes:
 # - Removed pod monitoring; can be added using decode.extraContainerConfig

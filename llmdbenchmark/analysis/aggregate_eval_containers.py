@@ -38,6 +38,7 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
     agentic_stat,
     is_agentic_request_span,
 )
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import VERSION
 
 # aider-polyglot ships language-ordered, so a task id implies its language. Used
 # to report per-language pass rates: a contiguous slice of this dataset is
@@ -489,7 +490,7 @@ def _build_report(tasks: list[_TaskMetrics]) -> dict:
     models = sorted({t.model for t in tasks if t.model})
 
     return {
-        "version": "0.2",
+        "version": VERSION,
         # run.uid is required by the schema. Reuse the experiment id the pods
         # already share (results dirs are named <experiment>_<index>) so this
         # report is traceable to the run that produced it, rather than minting an

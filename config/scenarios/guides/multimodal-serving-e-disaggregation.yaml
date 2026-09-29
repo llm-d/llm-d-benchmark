@@ -1,6 +1,6 @@
-# MULTIMODAL OPTIMIZED BASELINE (AGGREGATION) WELL LIT PATH for LLM-D Deployment
+# MULTIMODAL SERVING (E-DISAGGREGATION) WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/multimodal-serving/aggregation
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/multimodal-serving/e-disaggregation
 #
 # Routes multimodal (text + image) traffic with the token-based stack, matching
 # the optimized-baseline reference:
@@ -15,6 +15,9 @@
 # - Prefix caching is left ENABLED (the affinity filter depends on it) -- unlike
 #   the text optimized-baseline, this scenario does NOT pass
 #   --no-enable-prefix-caching.
+# - Encode disaggregation only happens on the kustomize path, which applies the
+#   upstream e-pd overlay. The modelservice path below still deploys aggregated
+#   (prefill.enabled: false), same as multimodal-serving-aggregation.yaml.
 
 scenario:
   # ============================================================================
@@ -88,14 +91,15 @@ scenario:
     kustomize:
       enabled: false
 
-      # The multimodal aggregation guide is nested under guides/multimodal-serving/;
-      # guideName is the path segment beneath guides/ (README + modelserver live at
-      # guides/multimodal-serving/aggregation/).
-      guideName: "multimodal-serving/aggregation"
+      # The multimodal e-disaggregation guide is nested under
+      # guides/multimodal-serving/; guideName is the path segment beneath
+      # guides/ (README + modelserver live at
+      # guides/multimodal-serving/e-disaggregation/).
+      guideName: "multimodal-serving/e-disaggregation"
       repoPath: ""
       repoRef: "main"
       gaieVersion: ""
-      acceleratorBackend: "gpu/vllm"
+      acceleratorBackend: "gpu/vllm/e-pd"
       monitoring: false
       overlayPath: ""
       extraHelmValues: []

@@ -34,9 +34,9 @@ repos:
       #   - config/scenarios/<path>.yaml          -> render <path>
       #   - shared render path (templates, parser, plan, executor,
       #     utilities, standup, run, teardown, smoketests, cli.py,
-      #     config.py) -> render the cicd/kind-sim canary
+      #     config.py) -> render the cicd/kind canary
       #   - nothing resolved (docs-only commit, test-only commit, ...)
-      #     -> render the cicd/kind-sim canary as a baseline sanity
+      #     -> render the cicd/kind canary as a baseline sanity
       #     check, so every commit proves the render path is healthy
       #
       # The script prints each spec it is about to render along with

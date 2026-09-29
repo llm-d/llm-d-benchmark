@@ -83,7 +83,7 @@ Two supported entry points depending on what you have access to:
 
 **🖥️ No Accelerators  / No Cluster Access - Utilize a Kind Quickstart**
 
-Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind` scenario that CI runs on every PR, so if it works locally it works in CI.
 
 - **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
 - **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md) (or try the simpler [EPP+KEDA Saturation Autoscaling](docs/workload-variant-autoscaler.md) guide)
@@ -341,14 +341,9 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
   helmfile is incompatible with Helm 4 (it probes helm with the removed
   `helm version --client` flag and panics). `./install.sh` installs the
   pinned Helm 4 / helmfile combination for you.
-- **jq**, **yq** -- Required for template rendering
-- **kustomize** (optional) -- The kustomize deploy path uses `kubectl apply -k`,
-  which has kustomize built in; the standalone binary is only a convenience
-- **skopeo**, **crane** (optional) -- Used to resolve `:auto` image tags; any one
-  of `skopeo`, `crane` or `podman` is enough
-- **zstd** (optional) -- Reads a compressed result set back out of its archive.
-  Without it a run collects uncompressed instead of failing
 - **oc** (optional) -- Required for OpenShift clusters (either `kubectl` or `oc` must be present)
+- **podman** (optional) -- Fallback for resolving `:auto` image tags when the
+  registry cannot be queried directly
 
 ### Administrative Requirements
 
@@ -379,7 +374,7 @@ The install script:
 
 1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
 2. Validates Python 3.11+ and pip
-3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, jq, yq) and best-effort installs the optional ones (kustomize, skopeo, crane, zstd)
+3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile)
 4. Installs the `helm-diff` plugin (required by helmfile)
 5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
 6. Verifies all Python packages are importable
@@ -669,10 +664,6 @@ and fall back to plain collection with a warning, never a failure. Compression i
 skipped when the harness did not finish (a wait timeout, or `--wait-timeout 0`), since
 deleting files the harness may still be writing is not recoverable.
 
-`zstd` is needed on the driver too, to read a collected archive back. `install.sh`
-installs it best-effort; without it the run collects uncompressed and says so, so a
-host that cannot supply the package still works.
-
 `llmdbenchmark results add <path>` and UID lookups behave identically on a compressed and an
 uncompressed workspace: the plain files stay at `results/<experiment_id>/`, and `plan/`, which
 the store reads the scenario name from, is never touched.
@@ -837,7 +828,7 @@ See module-level READMEs for detailed documentation:
 llmdbenchmark --spec guides/optimized-baseline standup  # Optimized baseline (formerly inference-scheduling)
 llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
 llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
-llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing
+llmdbenchmark --spec precise-prefix-cache-routing standup # Precise prefix cache-aware routing
 llmdbenchmark --spec wide-ep standup                    # Wide expert-parallel (DisaggregatedSet)
 ```
 

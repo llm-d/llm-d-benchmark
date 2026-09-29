@@ -144,5 +144,44 @@ class TestOptimizedBaselineRegression:
         )
 
 
+class TestInfraProviderSubpathHandling:
+    def test_preserves_nested_infra_provider_when_no_topology_in_readme(self):
+        resolver = GuideVariableResolver(
+            guide_name="pd-disaggregation",
+            namespace="llm-d-pd",
+            gaie_version="v1.6.1",
+            repo_path=_REPO_PATH,
+            readme_variables={"INFRA_PROVIDER": "base"},
+            variable_overrides={"INFRA_PROVIDER": "gke/base"},
+        )
+        out = resolver.resolve(
+            "kubectl apply -n ${NAMESPACE} -k ${REPO_ROOT}/guides/${GUIDE_NAME}/modelserver/gpu/vllm/${INFRA_PROVIDER}"
+        )
+        assert (
+            out
+            == f"kubectl apply -n llm-d-pd -k {_REPO_PATH}/guides/pd-disaggregation/modelserver/gpu/vllm/gke/base"
+        )
+
+    def test_splits_infra_provider_into_topology_when_readme_defines_topology(self):
+        resolver = GuideVariableResolver(
+            guide_name="multimodal-serving/e-disaggregation",
+            namespace="llm-d-mm",
+            gaie_version="v1.6.1",
+            repo_path=_REPO_PATH,
+            readme_variables={
+                "GUIDE_PATH": "multimodal-serving/e-disaggregation",
+                "TOPOLOGY": "e-pd",
+                "INFRA_PROVIDER": "gke",
+                "MODEL_SERVER_PATH": "${REPO_ROOT}/guides/${GUIDE_PATH}/modelserver/gpu/vllm/${TOPOLOGY}/${INFRA_PROVIDER}",
+            },
+            variable_overrides={"INFRA_PROVIDER": "e-p-d/gke"},
+        )
+        out = resolver.resolve("kubectl apply -n ${NAMESPACE} -k ${MODEL_SERVER_PATH}")
+        assert (
+            out
+            == f"kubectl apply -n llm-d-mm -k {_REPO_PATH}/guides/multimodal-serving/e-disaggregation/modelserver/gpu/vllm/e-p-d/gke"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

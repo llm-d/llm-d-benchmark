@@ -71,7 +71,7 @@ scenario:
       workspaceHostDir: "~/.llmdbench/nok8s"
       vllm:
         image: docker.io/vllm/vllm-openai
-        tag: v0.19.1
+        tag: v0.30.0
         hostPort: 8000
         tensorParallel: 1
         # Accelerator: nvidia | amd | intel | gaudi | cpu | spyre.

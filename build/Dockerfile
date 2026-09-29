@@ -1,6 +1,4 @@
-#FROM ghcr.io/llm-d/python:3.12.9-slim-bookworm
-#FROM docker.io/library/python:3.14.6-slim-bookworm
-FROM docker.io/library/python:3.13.14-slim-bookworm
+FROM docker.io/library/python:3.13.5-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
@@ -66,8 +64,8 @@ WORKDIR /workspace
 RUN pip install --upgrade pip setuptools setuptools-rust wheel
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=v0.6.1
-ARG INFERENCE_PERF_COMMIT=v0.6.1
+ARG INFERENCE_PERF_BRANCH=v0.7.0
+ARG INFERENCE_PERF_COMMIT=v0.7.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
@@ -116,12 +114,15 @@ RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
 
 ARG AIPERF_REPO=https://github.com/ai-dynamo/aiperf.git
-ARG AIPERF_BRANCH=v0.8.0
-ARG AIPERF_COMMIT=v0.8.0
+ARG AIPERF_BRANCH=v0.12.0
+ARG AIPERF_COMMIT=v0.12.0
 RUN git clone --branch ${AIPERF_BRANCH} ${AIPERF_REPO}
 RUN cd aiperf; \
     git checkout ${AIPERF_COMMIT}; \
     pip install .
+
+ARG LM_EVAL_VERSION=0.4.12
+RUN pip install --root-user-action=ignore "lm-eval[api]==$LM_EVAL_VERSION"
 
 RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
