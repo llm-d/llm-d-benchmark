@@ -825,3 +825,69 @@ def capture_infrastructure_logs(
             context.logger.log_warning(
                 f"EPP log processing failed (non-fatal): {type(e).__name__}: {e}"
             )
+
+
+def list_helm_releases(cmd, namespace: str, statuses: list[str]) -> list[dict] | None:
+    """Helm releases in *namespace* with one of *statuses*, or None when unknown.
+
+    Status flags are named one by one because ``--all`` is not in both helm
+    v3 and v4.
+    """
+    result = cmd.helm(
+        "list",
+        "--namespace",
+        namespace,
+        *[f"--{status}" for status in statuses],
+        "-o",
+        "json",
+        check=False,
+    )
+    if not result.success:
+        return None
+    try:
+        releases = json.loads(result.stdout or "[]")
+    except ValueError:
+        return None
+    return releases if isinstance(releases, list) else None
+
+
+def wait_for_epp(cmd, namespace: str, model_id_label: str, timeout: int):
+    """Wait for a stack's EPP pod, whichever router chart label it carries.
+
+    The label depends on ``router.inferencePool.create``, so both are probed.
+    Returns the wait result, or None when no EPP pod is expected.
+    """
+    release_epp = f"{model_id_label}-router-epp"
+    chosen_label = f"llm-d-router-gateway={release_epp}"
+    for candidate_key in ("llm-d-router-gateway", "llm-d-router-standalone"):
+        probe_label = f"{candidate_key}={release_epp}"
+        probe = cmd.kube(
+            "get",
+            "pods",
+            "-l",
+            probe_label,
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.items[*].metadata.name}",
+            check=False,
+        )
+        if probe.success and probe.stdout.strip():
+            chosen_label = probe_label
+            break
+
+    result = cmd.wait_for_pods(
+        label=chosen_label,
+        namespace=namespace,
+        timeout=timeout,
+        poll_interval=10,
+        description="inference pool",
+    )
+    if not result.success:
+        stderr_lower = result.stderr.lower()
+        if (
+            "no matching resources found" in stderr_lower
+            or "no pods found" in stderr_lower
+        ):
+            return None
+    return result

@@ -80,9 +80,30 @@ llmdbenchmark standup -s 3-5
 llmdbenchmark standup -s 5,7
 ```
 
+#### Updating a live deployment
+
+To change a knob on a stack that is already up, use `update` instead of a
+teardown + standup. It re-renders the plan and re-applies only the standup
+steps that own the changed config, so a vLLM knob restarts the serving pods
+without re-downloading weights or touching PVCs and CRDs:
+
+```
+llmdbenchmark --spec guides/pd-disaggregation update -p <namespace> --set decode.replicas=4
+```
+
+An override that cannot be applied in place (`model`, `storage`, `namespace`,
+`release`, ...) is refused, naming the key and why. In a multi-stack scenario,
+an unscoped change restarts every stack in the namespace: `--stack NAME`
+re-applies only that stack, and `--set 'NAME:key=value'` changes only its value
+while the other stacks are re-applied unchanged. The flags of the original
+standup are read back from the in-cluster `llm-d-benchmark-standup-invocation`
+Secret, so they do not have to be repeated; the phases after the update do
+not read them, so pass them the changed value too. Full details in
+[llmdbenchmark/update/README.md](../llmdbenchmark/update/README.md).
+
 #### Smoketests
 
-After standup, smoketests run automatically to validate the deployment. They can also be run independently:
+After standup and after `update`, smoketests run automatically to validate the deployment. They can also be run independently:
 
 ```
 llmdbenchmark --spec guides/pd-disaggregation smoketest -p <namespace>

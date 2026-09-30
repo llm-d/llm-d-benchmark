@@ -5,6 +5,9 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.utilities.standup_parameters import (
+    SECRET_NAME as STANDUP_INVOCATION_SECRET,
+)
 
 
 class CleanHarnessStep(Step):
@@ -88,17 +91,16 @@ class CleanHarnessStep(Step):
                     "--ignore-not-found",
                 )
 
-            context.logger.log_info(
-                f"    Deleting secret/{context_secret_name}", emoji="🗑️"
-            )
-            cmd.kube(
-                "delete",
-                "secret",
-                context_secret_name,
-                "--namespace",
-                harness_ns,
-                "--ignore-not-found",
-            )
+            for secret_name in [context_secret_name, STANDUP_INVOCATION_SECRET]:
+                context.logger.log_info(f"    Deleting secret/{secret_name}", emoji="🗑️")
+                cmd.kube(
+                    "delete",
+                    "secret",
+                    secret_name,
+                    "--namespace",
+                    harness_ns,
+                    "--ignore-not-found",
+                )
 
         ns_list = ", ".join(harness_namespaces)
         return StepResult(

@@ -130,7 +130,7 @@ Verify the CLI is on PATH:
 llmdbenchmark --help
 ```
 
-You should see the `llmdbenchmark` help banner with `plan`, `standup`, `smoketest`, `run`, `teardown`, and `experiment` subcommands.
+You should see the `llmdbenchmark` help banner with `plan`, `standup`, `update`, `smoketest`, `run`, `teardown`, and `experiment` subcommands.
 
 > **Tip:** The installer caches its own "already checked" state in `~/.llmdbench_dependencies_checked`. Subsequent `./install.sh` runs skip dependencies that have already been verified.
 

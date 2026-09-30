@@ -21,7 +21,7 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 llmdbenchmark --spec gpu smoketest -p my-namespace --dry-run
 ```
 
-Smoketests also run automatically at the end of `llmdbenchmark standup`. Use `--skip-smoketest` to skip them.
+Smoketests also run automatically at the end of `llmdbenchmark standup` and `llmdbenchmark update`. Use `--skip-smoketest` to skip them.
 
 ## Steps
 

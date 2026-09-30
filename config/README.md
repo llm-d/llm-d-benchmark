@@ -298,8 +298,9 @@ applied override is logged with its previous value
 (`[llama-31-8b] Scenario override: decode.replicas: 1 -> 4`).
 
 `--set` is available on every subcommand that renders templates
-(`plan`, `standup`, `smoketest`, `run`, `teardown`, `experiment`) -- pass it
-to each phase of a lifecycle, since they all re-render. Full reference:
+(`plan`, `standup`, `update`, `smoketest`, `run`, `teardown`, `experiment`) -- pass it
+to each phase of a lifecycle, since they all re-render. `update` reuses the
+standup's `--set` from the cluster, so it needs only what changes. Full reference:
 [docs/standup.md](../docs/standup.md#overriding-scenario-values-from-the-cli---set).
 
 > [!IMPORTANT]

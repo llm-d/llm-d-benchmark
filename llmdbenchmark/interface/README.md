@@ -11,6 +11,7 @@ interface/
 ├── env.py           -- Environment variable helpers
 ├── plan.py          -- plan subcommand
 ├── standup.py       -- standup subcommand
+├── update.py        -- update subcommand
 ├── smoketest.py     -- smoketest subcommand
 ├── run.py           -- run subcommand
 ├── teardown.py      -- teardown subcommand
@@ -23,6 +24,7 @@ interface/
 class Command(Enum):
     PLAN = "plan"
     STANDUP = "standup"
+    UPDATE = "update"
     SMOKETEST = "smoketest"
     RUN = "run"
     TEARDOWN = "teardown"

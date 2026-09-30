@@ -266,13 +266,19 @@ class CommandExecutor:
         namespace: str | None = None,
         check: bool = True,
         force: bool = False,
+        timeout: int | None = None,
     ) -> CommandResult:
         """Execute a kubectl/oc command with auto-injected kubeconfig flags.
 
         When *force* is True the command runs even in dry-run mode.
         Use for local-only reads like ``config view``.
+
+        *timeout* wraps the command in coreutils ``timeout``: against an
+        endpoint that never answers (a stale tunnel) kubectl blocks before
+        its own ``--request-timeout`` applies.
         """
-        parts = [self._kube_bin]
+        parts = ["timeout", str(timeout)] if timeout else []
+        parts.append(self._kube_bin)
         parts.extend(self._kubeconfig_args())
         if namespace:
             parts.extend(["--namespace", namespace])
