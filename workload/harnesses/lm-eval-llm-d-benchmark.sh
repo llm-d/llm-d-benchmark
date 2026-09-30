@@ -29,22 +29,6 @@ echo "Using experiment result dir: ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
 mkdir -p "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
 
 # ---------------------------------------------------------------------------
-# 2. Dependency checks
-# ---------------------------------------------------------------------------
-if ! command -v yq >/dev/null 2>&1; then
-  echo "ERROR: 'yq' (v4+) not found. Install it before running this harness." >&2
-  exit 1
-fi
-
-if ! command -v lm_eval >/dev/null 2>&1; then
-  echo "'lm_eval' not found -- installing lm-eval[api] at runtime..." >&2
-  pip install --root-user-action=ignore "lm-eval[api]==0.4.12" >&2 || {
-    echo "ERROR: failed to install lm-eval. Install with: pip install 'lm-eval[api]' transformers" >&2
-    exit 1
-  }
-fi
-
-# ---------------------------------------------------------------------------
 # 3. Load profile config (YAML rendered by the framework from the .yaml.in)
 # ---------------------------------------------------------------------------
 PROFILE_FILE="${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/lm-eval/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
@@ -56,14 +40,14 @@ fi
 cfg_get() {
   # Read a scalar from the profile; treat yq "null" (missing key) as empty.
   local v
-  v="$(yq "$1" "${PROFILE_FILE}" 2>/dev/null)"
+  v="$(yq -r "$1" "${PROFILE_FILE}" 2>/dev/null)"
   [[ "${v}" == "null" ]] && v=""
   printf '%s' "${v}"
 }
 
 # Config keys -> shell vars; environment values override profile values.
 MODEL="${MODEL:-${LLMDBENCH_DEPLOY_CURRENT_MODEL:-}}"
-TASKS="${TASKS:-$(yq '.evaluation.tasks // [] | join(",")' "${PROFILE_FILE}" 2>/dev/null)}"
+TASKS="${TASKS:-$(yq -r '.evaluation.tasks // [] | join(",")' "${PROFILE_FILE}" 2>/dev/null)}"
 NUM_FEWSHOT="${NUM_FEWSHOT:-$(cfg_get '.evaluation.num_fewshot')}"
 NUM_FEWSHOT="${NUM_FEWSHOT:-0}"
 MAX_GEN_TOKS="${MAX_GEN_TOKS:-$(cfg_get '.evaluation.max_gen_toks')}"
@@ -123,7 +107,18 @@ HARNESS_ARGS=(
   "${LIMIT_ARG[@]}"
   --output_path "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
 )
-export LLMDBENCH_HARNESS_ARGS="${HARNESS_ARGS[*]}"
+# Record the args with their word boundaries intact: single-quote any element
+# that is not made of plain shell-safe characters. Not `printf %q`, which
+# escapes the commas in --model_args/--tasks with backslashes that are invalid
+# inside the double-quoted YAML scalar written to run_metadata.yaml.
+_harness_args_str=""
+for _arg in "${HARNESS_ARGS[@]}"; do
+  if [[ -z "${_arg}" || "${_arg}" =~ [^A-Za-z0-9_./:=,@%+-] ]]; then
+    _arg="'${_arg//\'/\'\\\'\'}'"
+  fi
+  _harness_args_str+="${_harness_args_str:+ }${_arg}"
+done
+export LLMDBENCH_HARNESS_ARGS="${_harness_args_str}"
 
 # ---------------------------------------------------------------------------
 # 6. Log run parameters
@@ -184,15 +179,15 @@ cat > "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/run_metadata.yaml" <<METADATA
 harness_start: "${LLMDBENCH_HARNESS_START}"
 harness_stop: "${LLMDBENCH_HARNESS_STOP}"
 harness_delta: "${LLMDBENCH_HARNESS_DELTA}"
-harness_args: "${LLMDBENCH_HARNESS_ARGS}"
+harness_args: "$(_yaml_escape "${LLMDBENCH_HARNESS_ARGS}")"
 harness_version: "${LLMDBENCH_HARNESS_VERSION}"
 harness_name: "lm-eval"
 harness_workload: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME:-}"
 harness_rc: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC}"
 experiment_id: "${LLMDBENCH_RUN_EXPERIMENT_ID:-}"
-model: "${MODEL}"
-endpoint_url: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL:-}"
-tasks: "${TASKS}"
+model: "$(_yaml_escape "${MODEL}")"
+endpoint_url: "$(_yaml_escape "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL:-}")"
+tasks: "$(_yaml_escape "${TASKS}")"
 num_fewshot: "${NUM_FEWSHOT}"
 limit: "${LIMIT:-}"
 num_concurrent: "${NUM_CONCURRENT}"

@@ -7,6 +7,8 @@
 #   --glob   treat <relative_path> as a shell pattern and print the first match,
 #            for the logs whose names carry a pod suffix.
 #   --tail N print only the last N lines.
+#
+# PYTHON selects the interpreter that reads archives (default: python3).
 set -uo pipefail
 
 tail_lines=""
@@ -78,7 +80,7 @@ PY
 status="$(mktemp)" || { echo "no $relative (no temp file)"; exit 0; }
 trap 'rm -f "$status"' EXIT
 {
-  PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}" python3 -c "$extract" \
+  PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}" "${PYTHON:-python3}" -c "$extract" \
     "$results_dir" "$relative" "$use_glob"
   echo "$?" > "$status"
 } | emit

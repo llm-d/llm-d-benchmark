@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -537,7 +538,11 @@ def test_a_glob_matches_the_same_set_plain_or_archived(tmp_path):
 def _dump(*args: str) -> str:
     script = Path(__file__).resolve().parent.parent / "util" / "dump_result_file.sh"
     result = subprocess.run(
-        [str(script), *args], capture_output=True, text=True, check=False
+        [str(script), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=dict(os.environ, PYTHON=sys.executable),
     )
     assert result.returncode == 0, result.stderr
     return result.stdout
