@@ -21,6 +21,9 @@ from llmdbenchmark.kustomize.variable_resolver import (
     DEFAULT_ACCEL_BACKEND,
     GuideVariableResolver,
 )
+from llmdbenchmark.utilities.standup_parameters import (
+    write as write_standup_parameters,
+)
 
 
 class KustomizeDeployStep(Step):
@@ -770,7 +773,6 @@ class KustomizeDeployStep(Step):
         from llmdbenchmark import __version__
 
         harness_ns = context.harness_namespace or context.require_namespace()
-        cm_name = "llm-d-benchmark-standup-parameters"
 
         model_cfg = plan_config.get("model", {})
         kust_cfg = plan_config.get("kustomize", {})
@@ -793,28 +795,4 @@ class KustomizeDeployStep(Step):
             "gaie_version": kust_cfg.get("gaieVersion", ""),
         }
 
-        literal_args = []
-        for key, value in params.items():
-            literal_args.append(f"--from-literal={key}={value}")
-
-        create_args = (
-            [
-                "create",
-                "configmap",
-                cm_name,
-                "--namespace",
-                harness_ns,
-            ]
-            + literal_args
-            + ["--dry-run=client", "-o", "yaml"]
-        )
-
-        result = cmd.kube(*create_args)
-        if result.success:
-            yaml_path = context.setup_yamls_dir() / "standup-parameters.yaml"
-            yaml_path.write_text(result.stdout, encoding="utf-8")
-            apply_result = cmd.kube("apply", "-f", str(yaml_path))
-            if apply_result.success:
-                context.logger.log_info(
-                    f"Deployment metadata saved to configmap/{cm_name} in ns/{harness_ns}"
-                )
+        write_standup_parameters(cmd, context, params)

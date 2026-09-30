@@ -1,6 +1,5 @@
 """Teardown Step 01 -- Uninstall Helm releases, OpenShift routes, and download jobs."""
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from llmdbenchmark.standup.keda_saturation import (
 from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
 from llmdbenchmark.utilities.kube_helpers import (
     force_remove_finalizers_by_selector,
+    list_helm_releases,
     wait_for_pods_deleted,
 )
 
@@ -321,32 +321,21 @@ class UninstallHelmStep(Step):
         the EPP/InferencePool never redeploy. For such wedged releases
         ``helm uninstall`` does not reliably clear the release, so we delete
         the backing release secret directly.
-
-        Combining the status filters (rather than passing ``--all``) keeps
-        this working across both Helm v3 (pinned by ``install.sh``) and
-        Helm v4, which dropped the ``--all`` flag in favor of listing every
-        status by default.
         """
-        result = cmd.helm(
-            "list",
-            "--namespace",
+        releases = list_helm_releases(
+            cmd,
             namespace,
-            "--deployed",
-            "--failed",
-            "--pending",
-            "--uninstalled",
-            "--uninstalling",
-            "--superseded",
-            "-o",
-            "json",
+            [
+                "deployed",
+                "failed",
+                "pending",
+                "uninstalled",
+                "uninstalling",
+                "superseded",
+            ],
         )
-        if not result.success:
+        if releases is None:
             return
-
-        try:
-            releases = json.loads(result.stdout) or []
-        except ValueError:
-            releases = []
 
         # Full-scenario teardowns (no --stack filter) are allowed to match
         # releases by chart identity alone -- see _release_matches. A

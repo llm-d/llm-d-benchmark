@@ -100,7 +100,10 @@ scenario file; commas inside `[]`, `{}` or quotes belong to the value.
 The same value can be supplied via `LLMDBENCH_SET`. Pass `--set` to every
 lifecycle phase (`plan`/`standup`/`smoketest`/`run`/`teardown`) so each one
 renders the same plan -- these phases re-render templates, and a phase that
-misses the flag will disagree with what was deployed.
+misses the flag will disagree with what was deployed. `update` is the one
+exception: it reads the standup's `--set` back from the cluster, so pass it
+only what changes (see [llmdbenchmark/update/README.md](../llmdbenchmark/update/README.md)).
+The phases after an `update` do not read it back: pass them the changed value too.
 
 ### Scoping overrides in multi-stack scenarios
 
@@ -331,8 +334,8 @@ decode replica and does not support P/D disaggregation.
 
 ### Overriding `gateway.className` from the CLI
 
-Every subcommand that renders templates (`plan`, `standup`, `experiment`,
-and the `run`/`smoketest`/`teardown` paths that re-render for setup
+Every subcommand that renders templates (`plan`, `standup`, `update`,
+`experiment`, and the `run`/`smoketest`/`teardown` paths that re-render for setup
 overrides) accepts a `--gateway-class` flag that overrides the
 scenario's `gateway.className` for that invocation. The same value can
 be supplied via the `LLMDBENCH_GATEWAY_CLASS` environment variable.

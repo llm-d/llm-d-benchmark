@@ -24,31 +24,43 @@ def add_subcommands(
         "--step",
         help="Step list (comma-separated values or ranges, e.g. 0,1,5 or 1-7).",
     )
-    standup_parser.add_argument(
+    add_deploy_arguments(standup_parser)
+
+
+def add_deploy_arguments(parser: argparse.ArgumentParser, *, unset_by_default=False):
+    """Add the flags that ``standup`` and ``update`` share.
+
+    ``update`` must tell an on/off flag that is not given apart from one
+    that is turned off, because only the first is taken from the standup.
+    """
+    bool_action = argparse.BooleanOptionalAction if unset_by_default else "store_true"
+    bool_default = None if unset_by_default else False
+
+    parser.add_argument(
         "-c",
         "--scenario",
         default=env("LLMDBENCH_SCENARIO"),
         help="Scenario file to source environment variables from.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-m",
         "--models",
         default=env("LLMDBENCH_MODELS"),
         help="List of models to be stood up.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-p",
         "--namespace",
         default=env("LLMDBENCH_NAMESPACE"),
         help="Namespaces to use (deploy_namespace, benchmark_namespace).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-t",
         "--methods",
         default=env("LLMDBENCH_METHODS"),
         help="Standup methods (standalone, modelservice, fma, kustomize, nok8s).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--gateway-class",
         default=env("LLMDBENCH_GATEWAY_CLASS"),
         help=(
@@ -59,44 +71,44 @@ def add_subcommands(
             "by kustomize/standalone/fma."
         ),
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-a",
         "--affinity",
         default=env("LLMDBENCH_AFFINITY"),
         help="Kubernetes node affinity configuration.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-b",
         "--annotations",
         default=env("LLMDBENCH_ANNOTATIONS"),
         help="Kubernetes pod annotations.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-r",
         "--release",
         default=env("LLMDBENCH_RELEASE"),
         help="Modelservice Helm chart release name.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "-u",
         "--wva",
-        action="store_true",
-        default=False,
-        help="Enable Workload Variant Autoscaler (WVA) for this standup.",
+        action=bool_action,
+        default=bool_default,
+        help="Enable Workload Variant Autoscaler (WVA) for this deployment.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--epp-keda-saturation",
-        action="store_true",
-        default=False,
+        action=bool_action,
+        default=bool_default,
         help="Enable EPP+KEDA saturation autoscaling (controller-free alternative to WVA).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--monitoring",
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Enable or disable monitoring. --monitoring creates PodMonitors and enables metrics scraping. --no-monitoring disables PodMonitor and GAIE ServiceMonitor creation (use when cluster lacks Prometheus CRDs). Omit to use scenario defaults.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--prism",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -105,13 +117,13 @@ def add_subcommands(
         "scenario/defaults (deployed by default). Survives normal and "
         "--stack teardown; removed only with -d/--deep.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--parallel",
         type=int,
         default=env_int("LLMDBENCH_PARALLEL", 4),
         help="Max number of stacks to deploy in parallel (default: 4).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--stack",
         default=env("LLMDBENCH_STACK"),
         help=(
@@ -121,43 +133,43 @@ def add_subcommands(
             "without tearing down siblings."
         ),
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--kubeconfig",
         "-k",
         default=env("LLMDBENCH_KUBECONFIG") or env("KUBECONFIG"),
         help="Path to kubeconfig file for kubectl/helm/helmfile commands.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--skip-smoketest",
         action="store_true",
         default=False,
-        help="Skip automatic smoketest after standup completes.",
+        help="Skip automatic smoketest at the end.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--standalone-deploy-timeout",
         type=int,
         default=env_int("LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT"),
-        help="Seconds to wait for the vLLM pods to deploy during standup in standalone mode.",
+        help="Seconds to wait for the vLLM pods to deploy in standalone mode.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--nok8s-deploy-timeout",
         type=int,
         default=env_int("LLMDBENCH_NOK8S_DEPLOY_TIMEOUT"),
         help="Seconds to wait for the vLLM/EPP/Envoy containers to become ready in nok8s mode.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--gateway-deploy-timeout",
         type=int,
         default=env_int("LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT"),
-        help="Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice.",
+        help="Seconds to wait for gateway infrastructure pods to deploy with modelservice.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--modelservice-deploy-timeout",
         type=int,
         default=env_int("LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT"),
-        help="Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice.",
+        help="Seconds to wait for decode, prefill and inference pool pods to deploy with modelservice.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--pvc-bind-timeout",
         type=int,
         default=env_int("LLMDBENCH_PVC_BIND_TIMEOUT"),
@@ -167,10 +179,10 @@ def add_subcommands(
         "masquerading as a downstream pod/job timeout. Default: 240 "
         "(some dynamic provisioners take 1-3 minutes per volume).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--no-pvc",
         action="store_true",
-        default=env_bool("LLMDBENCH_NO_PVC"),
+        default=env_bool("LLMDBENCH_NO_PVC") or bool_default,
         help="Stand up without creating any PVCs, for clusters where users "
         "cannot provision them. Model weights are fetched at runtime "
         "(modelservice.uriProtocol is forced to 'hf'; standalone model-PVC "
@@ -179,7 +191,15 @@ def add_subcommands(
         "Scenarios with storage.hostPath.enabled fail fast (explicit "
         "conflict) (env: LLMDBENCH_NO_PVC). Default: off.",
     )
-    standup_parser.add_argument(
+    if unset_by_default:
+        parser.add_argument(
+            "--pvc",
+            dest="no_pvc",
+            action="store_false",
+            default=env_bool("LLMDBENCH_NO_PVC") or None,
+            help="Use PVCs again after a --no-pvc standup.",
+        )
+    parser.add_argument(
         "--pod-restart-budget",
         type=int,
         default=env_int("LLMDBENCH_POD_RESTART_BUDGET"),
@@ -196,7 +216,7 @@ def add_subcommands(
         "<workspace>/setup/logs/pod-restarts/ before deletion. "
         "Default: 0 (disabled).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--pod-restart-grace",
         type=int,
         default=env_int("LLMDBENCH_POD_RESTART_GRACE"),
@@ -206,7 +226,7 @@ def add_subcommands(
         "time to become Ready. Only used when --pod-restart-budget > 0. "
         "Default: 300.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--data-access-timeout",
         type=int,
         default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
@@ -217,21 +237,21 @@ def add_subcommands(
         "budget, because the volume is only provisioned once that pod "
         "schedules. Default: 120.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--llmd-repo-path",
         default=env("LLMDBENCH_LLMD_REPO_PATH"),
         help="Path to a local llm-d repository clone (used by the kustomize method).",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--kustomize-deploy-timeout",
         type=int,
         default=env_int("LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT"),
-        help="Seconds to wait for pods to deploy during standup in kustomize mode.",
+        help="Seconds to wait for pods to deploy in kustomize mode.",
     )
-    standup_parser.add_argument(
+    parser.add_argument(
         "--full-infra",
-        action="store_true",
-        default=False,
+        action=bool_action,
+        default=bool_default,
         help=(
             "Run the full infrastructure setup (steps 2-4: admin prerequisites, "
             "monitoring validation, model namespace) even when "

@@ -35,6 +35,7 @@ from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.interface import results
+from llmdbenchmark.interface import update as update_interface
 from llmdbenchmark.parser.cli_overrides import (
     GLOBAL_SELECTOR,
     REDACTED,
@@ -52,12 +53,18 @@ from llmdbenchmark.executor.step import Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.standup.steps import get_standup_steps
+from llmdbenchmark.update import runner as update_runner
 from llmdbenchmark.smoketests.steps import get_smoketest_steps
 from llmdbenchmark.teardown.steps import get_teardown_steps
 
 from llmdbenchmark.run.steps import get_run_steps
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.archive import DEFAULT_LEVEL as DEFAULT_COMPRESS_LEVEL
+from llmdbenchmark.utilities.standup_parameters import (
+    invocation_params,
+    merge_invocation as merge_standup_invocation,
+    reuse_invocation,
+)
 
 
 class PhaseError(Exception):
@@ -184,6 +191,11 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         _resolve_data_collect(args, logger)
         _validate_data_collect(args, logger)
 
+    # Before the render, so a refused update does not first render a plan.
+    update_components = None
+    if args.command == Command.UPDATE.value:
+        update_components = update_runner.resolve_scope(args, logger)
+
     # Experiment command manages its own rendering per setup treatment
     if args.command == Command.EXPERIMENT.value:
         _execute_experiment(args, logger)
@@ -192,6 +204,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     if args.command in (
         Command.PLAN.value,
         Command.STANDUP.value,
+        Command.UPDATE.value,
         Command.SMOKETEST.value,
         Command.TEARDOWN.value,
         Command.RUN.value,
@@ -280,6 +293,9 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     if args.command == Command.STANDUP.value:
         _execute_standup(args, logger, render_plan_errors)
+
+    if args.command == Command.UPDATE.value:
+        _execute_update(args, logger, render_plan_errors, update_components)
 
     if args.command == Command.SMOKETEST.value:
         _execute_smoketest(args, logger, render_plan_errors)
@@ -475,6 +491,8 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                     plan_config.get("nok8s", {}).get("clientHost", "localhost")
                 ),
                 "harness": plan_config.get("harness", {}),
+                "model_id_label": plan_config.get("model_id_label"),
+                "kustomize_guide": (plan_config.get("kustomize", {}).get("guideName")),
             }
     except (OSError, _yaml.YAMLError):
         pass
@@ -637,8 +655,11 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
     return ["modelservice"]
 
 
-def _do_standup(args, logger, render_plan_errors):
-    """Core standup logic. Returns (context, result). Raises PhaseError on failure."""
+def _build_standup_context(args, logger, render_plan_errors, phase=Phase.STANDUP):
+    """Build the ExecutionContext shared by the standup and update phases.
+
+    Returns (context, all_stacks_info).
+    """
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
     plan_info = all_stacks_info[0] if all_stacks_info else {}
@@ -666,7 +687,7 @@ def _do_standup(args, logger, render_plan_errors):
         non_admin=getattr(args, "non_admin", False),
         compress_output=_compress_enabled(args),
         compress_level=_compress_level(args),
-        current_phase=Phase.STANDUP,
+        current_phase=phase,
         kubeconfig=getattr(args, "kubeconfig", None),
         deployed_methods=deployed_methods,
         namespace=namespace,
@@ -697,7 +718,20 @@ def _do_standup(args, logger, render_plan_errors):
         kustomize_skip_infra=not getattr(args, "full_infra", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
         no_pvc=getattr(args, "no_pvc", False),
+        # An update that is not recorded keeps the stored flags as they are.
+        invocation_params=(
+            invocation_params(args)
+            if getattr(args, "record_invocation", True)
+            else dict(getattr(args, "stored_invocation", {}))
+        ),
     )
+
+    return context, all_stacks_info
+
+
+def _do_standup(args, logger, render_plan_errors):
+    """Core standup logic. Returns (context, result). Raises PhaseError on failure."""
+    context, all_stacks_info = _build_standup_context(args, logger, render_plan_errors)
 
     # Announce PVC-less standup up front, mirroring the run phase.
     if context.no_pvc:
@@ -781,8 +815,11 @@ def _execute_standup(args, logger, render_plan_errors):
         sys.exit(1)
 
     _print_standup_summary(context, result, logger)
+    _chain_smoketest(args, logger, render_plan_errors, context)
 
-    # Auto-chain smoketest after standup unless --skip-smoketest.
+
+def _chain_smoketest(args, logger, render_plan_errors, context):
+    """Run the smoketest after a deploy, unless --skip-smoketest."""
     # nok8s stays opt-out here: its deploy step already curls /v1/models for
     # readiness, so the chained run would only add the inference probe. Run
     # `llmdbenchmark ... smoketest` (or `experiment`, which chains it) to get
@@ -790,21 +827,104 @@ def _execute_standup(args, logger, render_plan_errors):
     skip_smoketest = getattr(args, "skip_smoketest", False) or (
         "nok8s" in (context.deployed_methods or [])
     )
-    if not skip_smoketest:
-        logger.log_info("")
+    if skip_smoketest:
+        return
+    logger.log_info("")
+    logger.log_info("Running smoketests...", emoji="🔍")
+    try:
+        # The caller's -s numbers its own steps, not the smoketest's.
+        _do_smoketest(args, logger, render_plan_errors, step_spec=None)
+    except PhaseError as e:
+        logger.log_error(str(e))
+        _log_failure_artifacts(logger)
+        sys.exit(1)
+
+
+def _do_update(args, logger, render_plan_errors, components):
+    """Core update logic. Returns (context, result). Raises PhaseError on failure."""
+    context, all_stacks_info = _build_standup_context(
+        args, logger, render_plan_errors, phase=Phase.UPDATE
+    )
+
+    step_spec = update_runner.step_spec(args, context, components, logger)
+    if not step_spec:
         logger.log_info(
-            "Running smoketests...",
-            emoji="🔍",
+            "Nothing to re-apply: the change(s) given do not map to any "
+            "deployed component.",
+            emoji="\u2705",
         )
-        try:
-            _do_smoketest(args, logger, render_plan_errors)
-        except PhaseError as e:
-            logger.log_error(str(e))
-            _log_failure_artifacts(logger)
-            sys.exit(1)
+        _record_update(args, context, logger)
+        return context, None
+
+    try:
+        missing = update_runner.missing_stacks(context, all_stacks_info, logger)
+    except RuntimeError as e:
+        raise PhaseError(f"Could not check the deployed stacks: {e}") from e
+    if missing:
+        raise PhaseError(
+            "No deployed release found for stack(s): "
+            + ", ".join(missing)
+            + ". Run `standup` first, or pass --stack to update only the stacks "
+            "that are up."
+        )
+    update_runner.warn_sibling_stacks(args, context, logger)
+
+    logger.log_info(
+        update_runner.scope_summary(args, context, components, step_spec),
+        emoji="\U0001f504",
+    )
+
+    executor = StepExecutor(
+        steps=get_standup_steps(),
+        context=context,
+        logger=logger,
+        max_parallel_stacks=getattr(args, "parallel", 4),
+    )
+    result = executor.execute(step_spec=step_spec)
+
+    _report_pod_restarts(context, logger)
+
+    if result.has_errors:
+        raise PhaseError(f"Update failed:\n{result.summary()}")
+
+    _record_update(args, context, logger)
+    return context, result
 
 
-def _do_smoketest(args, logger, render_plan_errors):
+def _record_update(args, context, logger):
+    """Store this update's flags, or the next update reverts them.
+
+    Done here and not by a step: the steps that write the ConfigMap may not
+    be in scope.
+    """
+    if context.dry_run or context.container_only:
+        return
+    if not getattr(args, "record_invocation", True):
+        return
+    if not merge_standup_invocation(context.require_cmd(), context, args):
+        logger.log_warning(
+            "Could not record this update's flags -- the next `update` "
+            "would revert them. Pass them again, or re-run `standup`."
+        )
+
+
+def _execute_update(args, logger, render_plan_errors, components):
+    """Run the scoped re-apply, then chain the smoketest."""
+    try:
+        context, result = _do_update(args, logger, render_plan_errors, components)
+    except PhaseError as e:
+        logger.log_error(str(e))
+        _log_failure_artifacts(logger)
+        sys.exit(1)
+
+    if result is None:
+        return
+
+    _print_standup_summary(context, result, logger)
+    _chain_smoketest(args, logger, render_plan_errors, context)
+
+
+def _do_smoketest(args, logger, render_plan_errors, step_spec=None):
     """Core smoketest logic. Returns (context, result). Raises PhaseError on failure."""
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
@@ -860,7 +980,6 @@ def _do_smoketest(args, logger, render_plan_errors):
         max_parallel_stacks=1,
     )
 
-    step_spec = getattr(args, "step", None)
     result = executor.execute(step_spec=step_spec)
 
     if result.has_errors:
@@ -873,7 +992,9 @@ def _do_smoketest(args, logger, render_plan_errors):
 def _execute_smoketest(args, logger, render_plan_errors):
     """Build execution context and run smoketest steps."""
     try:
-        _do_smoketest(args, logger, render_plan_errors)
+        _do_smoketest(
+            args, logger, render_plan_errors, step_spec=getattr(args, "step", None)
+        )
     except PhaseError as e:
         logger.log_error(str(e))
         _log_failure_artifacts(logger)
@@ -2176,6 +2297,27 @@ def _extract_workspace_from_scenario(
     return None
 
 
+def _merge_env_on_off_flag(args, dest: str, env_name: str, off_flag: str) -> None:
+    """Take an on/off flag from the env when it is not given.
+
+    On update None means "not given", so the standup's value is reused.
+    """
+    if not hasattr(args, dest):
+        return
+    value = getattr(args, dest)
+    from_env = env_bool(env_name)
+    # Only update has the off flag: on standup False is just the default.
+    if value is False and from_env and args.command == Command.UPDATE.value:
+        print(
+            f"WARNING: {env_name}=true and {off_flag} contradict each other. "
+            "Nothing was done: drop one of them.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not value:
+        setattr(args, dest, from_env or value)
+
+
 def _resolve_quiet_plan(args: argparse.Namespace) -> bool:
     """Decide whether to quiet the plan-rendering narration on the console.
 
@@ -2202,9 +2344,8 @@ def _resolve_quiet_plan(args: argparse.Namespace) -> bool:
     return getattr(args, "command", None) != Command.PLAN.value
 
 
-def cli() -> None:
-    """Parse arguments, set up workspace and logging, and dispatch the subcommand."""
-
+def build_parser() -> argparse.ArgumentParser:
+    """The full command-line parser, with every subcommand."""
     parser = argparse.ArgumentParser(
         prog="llmdbenchmark",
         description="Provision and drive experiments for LLM workloads focused on analyzing "
@@ -2444,11 +2585,19 @@ def cli() -> None:
 
     plan.add_subcommands(subparsers, parents=[benchmark_parser])
     standup.add_subcommands(subparsers, parents=[benchmark_parser])
+    update_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     smoketest_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     teardown.add_subcommands(subparsers, parents=[benchmark_parser])
     run.add_subcommands(subparsers, parents=[benchmark_parser])
     experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
     results.add_subcommands(subparsers, parents=[])
+    return parser
+
+
+def cli() -> None:
+    """Parse arguments, set up workspace and logging, and dispatch the subcommand."""
+
+    parser = build_parser()
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)
@@ -2479,10 +2628,13 @@ def cli() -> None:
         args.skip = env_bool("LLMDBENCH_SKIP")
     if hasattr(args, "debug") and not args.debug:
         args.debug = env_bool("LLMDBENCH_DEBUG")
-    if hasattr(args, "wva") and not args.wva:
-        args.wva = env_bool("LLMDBENCH_WVA")
-    if hasattr(args, "epp_keda_saturation") and not args.epp_keda_saturation:
-        args.epp_keda_saturation = env_bool("LLMDBENCH_EPP_KEDA_SATURATION")
+    _merge_env_on_off_flag(args, "wva", "LLMDBENCH_WVA", "--no-wva")
+    _merge_env_on_off_flag(
+        args,
+        "epp_keda_saturation",
+        "LLMDBENCH_EPP_KEDA_SATURATION",
+        "--no-epp-keda-saturation",
+    )
     args.quiet_plan = _resolve_quiet_plan(args)
     if not args.specification_file:
         parser.error(
@@ -2609,6 +2761,22 @@ def cli() -> None:
         }
         telemetry.push(telemetry_data)
 
+    _prepare_overrides(args, logger)
+
+    dispatch_cli(args, logger)
+
+
+def _prepare_overrides(args, logger):
+    """Resolve --set, the reused standup flags and --cluster-config into args."""
+    # The env var stands in for --set, so it is stored and reused like one.
+    if not getattr(args, "set_overrides", None) and env("LLMDBENCH_SET"):
+        args.set_overrides = [env("LLMDBENCH_SET")]
+
+    # Before the cluster-config file is read: reuse may supply its path.
+    if args.command == Command.UPDATE.value:
+        if not reuse_invocation(args, _reuse_cmd(args, logger), logger):
+            sys.exit(1)
+
     # Load --cluster-config file into args so dispatch_cli can pass it through
     args.cluster_config_overrides = _load_cluster_config(
         getattr(args, "cluster_config", None), logger
@@ -2619,7 +2787,16 @@ def cli() -> None:
     # whole precedence chain lives in one structure.
     args.setup_overrides_by_stack = _build_setup_overrides_by_stack(args, logger)
 
-    dispatch_cli(args, logger)
+
+def _reuse_cmd(args, logger):
+    """CommandExecutor for reading the stored flags, before any context exists."""
+    return CommandExecutor(
+        work_dir=config.workspace,
+        dry_run=False,
+        verbose=config.verbose,
+        logger=logger,
+        kubeconfig=getattr(args, "kubeconfig", None),
+    )
 
 
 def _deep_merge_dicts(base: dict, override: dict) -> dict:
@@ -2638,7 +2815,7 @@ def _deep_merge_dicts(base: dict, override: dict) -> dict:
 
 
 def _no_pvc_standup_overrides(args) -> dict:
-    """Synthetic global overrides for ``standup --no-pvc``.
+    """Synthetic global overrides for ``standup``/``update`` ``--no-pvc``.
 
     Redirects model-weight storage away from PVCs pre-render, so step 04
     and every template do the right thing with no special-casing: the
@@ -2646,11 +2823,16 @@ def _no_pvc_standup_overrides(args) -> dict:
     standalone deployment omits its model-cache PVC volume (the template
     already gates that volume on standalone.mountModelVolume).
 
-    Standup-only: run --no-pvc deploys no serving pods, so redirecting
-    model storage there would be pure noise. An explicit user --set of
-    the same path wins (merge-order contract at the call site).
+    Deploy-time only: run --no-pvc deploys no serving pods, so redirecting
+    model storage there would be pure noise. update re-renders the serving
+    pods, so it needs the same redirect -- without it the pods would mount a
+    PVC that --no-pvc never created. An explicit user --set of the same path
+    wins (merge-order contract at the call site).
     """
-    if getattr(args, "command", "") != Command.STANDUP.value:
+    if getattr(args, "command", "") not in (
+        Command.STANDUP.value,
+        Command.UPDATE.value,
+    ):
         return {}
     if not getattr(args, "no_pvc", False):
         return {}
@@ -2683,6 +2865,12 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
 
     for warning in warnings:
         logger.log_warning(warning)
+
+    # `update` is scoped by what this invocation changes, not by what the
+    # standup set or by the synthetic overrides added below.
+    changed = getattr(args, "changed_set_overrides", None)
+    if changed is not None:
+        args.user_set_overrides_by_stack, _ = parse_cli_overrides(changed or None)
 
     # Scenario-wide, so global-only; an explicit --set of the same path wins.
     description_overrides = {}

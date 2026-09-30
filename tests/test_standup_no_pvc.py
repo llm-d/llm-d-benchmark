@@ -46,6 +46,20 @@ def test_no_pvc_overrides_empty_without_flag() -> None:
     )
 
 
+def test_no_pvc_overrides_for_update() -> None:
+    """update re-renders the serving pods, so it needs the same redirect.
+
+    Without it the pods mount a PVC that --no-pvc never created.
+    """
+    from llmdbenchmark.cli import _no_pvc_standup_overrides
+
+    args = argparse.Namespace(command="update", no_pvc=True)
+    assert _no_pvc_standup_overrides(args) == {
+        "modelservice": {"uriProtocol": "hf"},
+        "standalone": {"mountModelVolume": False},
+    }
+
+
 def test_no_pvc_overrides_empty_for_run() -> None:
     """run --no-pvc must NOT redirect model storage -- run deploys nothing."""
     from llmdbenchmark.cli import _no_pvc_standup_overrides

@@ -9,6 +9,10 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
+from llmdbenchmark.utilities.kube_helpers import wait_for_epp
+from llmdbenchmark.utilities.standup_parameters import (
+    write as write_standup_parameters,
+)
 
 
 class DeployModelserviceStep(Step):
@@ -223,64 +227,10 @@ class DeployModelserviceStep(Step):
                 if not prefill_wait.success:
                     errors.append(f"Prefill pods not ready: {prefill_wait.stderr}")
 
-            # The llm-d-router chart migration renamed the EPP chart and
-            # dropped the legacy `inferencepool=<release>-epp` label the
-            # old GAIE chart added. The new
-            # llm-d-router-{standalone,gateway}-dev charts apply only
-            # `selectorLabels` + `modeLabels` to the Pod template; the
-            # common `app.kubernetes.io/*` labels are on the Deployment,
-            # not the Pod (see `charts/router/templates/_deployment.yaml`).
-            #
-            # The Pod's release-specific selector is gated on the chart's
-            # `router.inferencePool.create` value
-            # (`charts/router/templates/_helpers.tpl::selectorLabels`):
-            #   - create=true  (default in BOTH chart variants)
-            #                                  -> llm-d-router-gateway=<release>-epp
-            #   - create=false (user opt-in)   -> llm-d-router-standalone=<release>-epp
-            # Counter-intuitively, this is independent of which *chart*
-            # (`-standalone-dev` vs `-gateway-dev`) is installed. The
-            # chart variant only controls the outer wrapper (Envoy
-            # sidecar, K8s Gateway resource), not the EPP Pod labels.
-            #
-            # Probe both candidate labels once each so we discover which
-            # the chart actually applied, then wait on that one.
             if not direct_service_mode:
-                release_epp = f"{model_id_label}-router-epp"
-                chosen_label = f"llm-d-router-gateway={release_epp}"  # default
-                for candidate_key in (
-                    "llm-d-router-gateway",
-                    "llm-d-router-standalone",
-                ):
-                    probe_label = f"{candidate_key}={release_epp}"
-                    probe = cmd.kube(
-                        "get",
-                        "pods",
-                        "-l",
-                        probe_label,
-                        "--namespace",
-                        namespace,
-                        "-o",
-                        "jsonpath={.items[*].metadata.name}",
-                        check=False,
-                    )
-                    if probe.success and probe.stdout.strip():
-                        chosen_label = probe_label
-                        break
-
-                pool_wait = cmd.wait_for_pods(
-                    label=chosen_label,
-                    namespace=namespace,
-                    timeout=timeout,
-                    poll_interval=10,
-                    description="inference pool",
-                )
-                if not pool_wait.success:
-                    stderr_lower = pool_wait.stderr.lower()
-                    if (
-                        "no matching resources found" not in stderr_lower
-                        and "no pods found" not in stderr_lower
-                    ):
-                        errors.append(f"Inference pool not ready: {pool_wait.stderr}")
+                pool_wait = wait_for_epp(cmd, namespace, model_id_label, timeout)
+                if pool_wait is not None and not pool_wait.success:
+                    errors.append(f"Inference pool not ready: {pool_wait.stderr}")
 
         if not errors and not context.dry_run:
             self._collect_logs(cmd, context, namespace)
@@ -855,7 +805,6 @@ class DeployModelserviceStep(Step):
         from llmdbenchmark import __version__
 
         harness_ns = context.harness_namespace or context.require_namespace()
-        cm_name = "llm-d-benchmark-standup-parameters"
 
         params = {
             "tool_name": "llm-d-benchmark",
@@ -938,32 +887,4 @@ class DeployModelserviceStep(Step):
                     f"{decode_img['repository']}:{decode_img.get('tag', 'latest')}"
                 )
 
-        literal_args = []
-        for key, value in params.items():
-            literal_args.append(f"--from-literal={key}={value}")
-
-        create_args = (
-            [
-                "create",
-                "configmap",
-                cm_name,
-                "--namespace",
-                harness_ns,
-            ]
-            + literal_args
-            + ["--dry-run=client", "-o", "yaml"]
-        )
-
-        result = cmd.kube(*create_args)
-        if result.success:
-            yaml_path = context.setup_yamls_dir() / "standup-parameters.yaml"
-            yaml_path.write_text(result.stdout, encoding="utf-8")
-            apply_result = cmd.kube("apply", "-f", str(yaml_path))
-            if apply_result.success:
-                context.logger.log_info(
-                    f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
-                )
-                context.logger.log_info(
-                    f"   {cmd._kube_bin} get configmap {cm_name} "
-                    f"-n {harness_ns} -o yaml"
-                )
+        write_standup_parameters(cmd, context, params)

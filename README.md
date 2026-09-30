@@ -126,6 +126,9 @@ llmdbenchmark --spec gpu standup
 # Run a sanity benchmark against the deployed endpoint
 llmdbenchmark --spec gpu run -l inference-perf -w sanity_random.yaml
 
+# Change a knob without a full teardown + standup
+llmdbenchmark --spec gpu update -p my-namespace --set decode.replicas=4
+
 # Tear down when done
 llmdbenchmark --spec gpu teardown
 ```
@@ -287,6 +290,30 @@ top-level `shared:` block and is inherited by every stack. See the
 developer guide's
 [Multi-Stack Scenarios](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
 section for the merge semantics.
+
+### Change a knob on a running stack (`update`)
+
+Changing one vLLM flag or one EPP plugin parameter does not need a `teardown` +
+`standup`. `update` re-renders the plan and re-applies only the standup steps
+that own the changed config, so a vLLM knob rolls the serving pods without
+re-downloading weights or touching PVCs and CRDs:
+
+```bash
+# Restart the serving pods with a new replica count
+llmdbenchmark --spec gpu update -p my-namespace --set decode.replicas=4
+
+# Restart only the endpoint picker
+llmdbenchmark --spec gpu update -p my-namespace --set router.epp.replicas=2
+
+# Preview the re-apply without touching the cluster
+llmdbenchmark --spec gpu update -p my-namespace --set decode.replicas=4 --dry-run
+```
+
+A change that cannot be applied in place (`model`, `storage`, `namespace`,
+`downloadJob`, ...) is refused, naming the key and why; `--force` applies it
+anyway. The flags of the original standup are read back from an in-cluster
+ConfigMap and reused, so they need not be repeated. See
+[llmdbenchmark/update/README.md](llmdbenchmark/update/README.md).
 
 ### Benchmark an existing endpoint (run-only mode)
 
@@ -749,13 +776,16 @@ llmdbenchmark/                Python package
     config.py                 Plan-phase workspace configuration singleton
 
     interface/                CLI subcommand definitions (argparse)
-        commands.py           Command enum (plan, standup, teardown, run, experiment)
+        commands.py           Command enum (plan, standup, update, smoketest, run, teardown, experiment, results)
         env.py                Environment variable helpers for CLI defaults
         plan.py               Plan subcommand
         standup.py            Standup subcommand
+        update.py             Update subcommand
+        smoketest.py          Smoketest subcommand
         teardown.py           Teardown subcommand
         run.py                Run subcommand
         experiment.py         Experiment subcommand (DoE orchestration)
+        results.py            Results subcommand
 
     parser/                   Plan-phase template rendering (see parser/README.md)
         render_specification.py   Specification file parsing and validation
