@@ -99,7 +99,11 @@ def test_inference_pool_pin_stays_in_sync_with_defaults_and_doc():
 
 def test_router_endpoint_picker_pin_stays_in_sync_with_defaults_doc_and_nok8s():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
-    nok8s_scenario = yaml.safe_load((PROJECT_ROOT / "config" / "scenarios" / "guides" / "nok8s.yaml").read_text(encoding="utf-8"))
+    nok8s_scenario = yaml.safe_load(
+        (PROJECT_ROOT / "config" / "scenarios" / "guides" / "nok8s.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
 
     epp_pin = defaults["_anchors"]["llm-d-router-endpoint-picker_version"]
 
