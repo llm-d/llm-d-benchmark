@@ -32,14 +32,6 @@ scenario:
         cacheBase: /model-cache
 
       # -------------------------------------------------------------------------
-      # Image. The EPP tag defaults.yaml pins has no program-aware-fairness
-      # plugin.
-      # -------------------------------------------------------------------------
-      images:
-        routerEndpointPicker:
-          tag: v0.11.0-rc.2
-
-      # -------------------------------------------------------------------------
       # Storage Configuration
       # -------------------------------------------------------------------------
       storage:
@@ -69,7 +61,7 @@ scenario:
             type: emptyDir
             emptyDir:
               medium: Memory
-              sizeLimit: 16Gi
+              sizeLimit: 516Gi
 
         volumeMounts:
           - name: dshm
