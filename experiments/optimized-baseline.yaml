@@ -1,5 +1,5 @@
 # =====================================================================
-# Experiment: Inference Scheduling Workload Matrix
+# Experiment: Optimized Baseline Workload Matrix
 # =====================================================================
 #
 # Evaluates how different prompt and output token lengths affect
@@ -10,7 +10,7 @@
 #
 # Usage (full DoE — automatic standup/run/teardown per setup treatment):
 #   llmdbenchmark --spec optimized-baseline experiment \
-#     --experiments workload/experiments/optimized-baseline.yaml
+#     --experiments experiments/optimized-baseline.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
 #   llmdbenchmark --spec optimized-baseline run \
@@ -19,7 +19,7 @@
 #     --namespace <NAMESPACE> \
 #     --harness inference-perf \
 #     --workload shared_prefix_synthetic.yaml \
-#     --experiments workload/experiments/optimized-baseline.yaml
+#     --experiments experiments/optimized-baseline.yaml
 #
 # The experiment form auto-detects the endpoint from stood-up stacks
 # and reads harness/profile defaults from the plan config.

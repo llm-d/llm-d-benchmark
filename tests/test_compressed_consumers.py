@@ -10,64 +10,16 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from _toolchain import GNU_TAR, ZSTD, requires_compress_tools
 
 from llmdbenchmark.utilities.archive import remote_compress_script
 
-# Skipping locally is fine; skipping in CI would mean this whole file -- every guard
-# on the only copy of a result set -- passes vacuously, which is how it went unnoticed
-# that CI had no zstd at all.
-if shutil.which("zstd") is None and os.environ.get("CI"):
-    raise RuntimeError("zstd missing in CI: these tests would skip silently")
-
-
-def _find_gnu_tar() -> str | None:
-    """Absolute path to a GNU tar, or None.
-
-    The compress script's delete-safety flags (--anchored, --no-wildcards) are
-    GNU-only; macOS ships bsdtar. Homebrew's gnu-tar installs it as ``gtar``."""
-    for name in ("tar", "gtar", "gnutar"):
-        path = shutil.which(name)
-        if path is None:
-            continue
-        try:
-            probe = subprocess.run(
-                [path, "--version"], capture_output=True, text=True, check=False
-            )
-        except OSError:
-            continue
-        if "GNU tar" in probe.stdout:
-            return path
-    return None
-
-
-_GNU_TAR = _find_gnu_tar()
-if _GNU_TAR is None and os.environ.get("CI"):
-    raise RuntimeError("GNU tar missing in CI: these tests would skip silently")
-
-# When GNU tar exists but is not the PATH's ``tar`` (macOS with gnu-tar installed),
-# expose it as ``tar`` through a PATH shim so the script under test picks it up.
-# Prepended to os.environ here, at import: the per-test shims below build their PATH
-# from os.environ too, so their overrides still land in front of this one.
-if _GNU_TAR is not None and os.path.basename(_GNU_TAR) != "tar":
-    import tempfile
-
-    _gnu_shim = Path(tempfile.mkdtemp(prefix="llmdbench-gnutar-"))
-    (_gnu_shim / "tar").symlink_to(_GNU_TAR)
-    os.environ["PATH"] = f"{_gnu_shim}:{os.environ['PATH']}"
-
-pytestmark = [
-    pytest.mark.skipif(shutil.which("zstd") is None, reason="needs the zstd CLI"),
-    pytest.mark.skipif(
-        _GNU_TAR is None,
-        reason="needs GNU tar (macOS: brew install gnu-tar)",
-    ),
-]
+pytestmark = requires_compress_tools
 
 
 def _compress(directory: Path, expect_ok: bool = True, env: dict | None = None):
@@ -352,16 +304,15 @@ def _listing_shims(tmp_path: Path, decompress_rc: int, listing: str) -> dict:
     shim = tmp_path / "bin"
     shim.mkdir(exist_ok=True)
     # Resolved paths, not /usr/bin/…: on macOS /usr/bin/tar is bsdtar (no
-    # --anchored) and zstd lives under homebrew. _GNU_TAR and which() were
-    # captured after the module-level PATH shim, so they point at GNU tar.
+    # --anchored) and zstd lives under homebrew.
     (shim / "zstd").write_text(
         f'#!/bin/bash\nif [ "$1" = "-dc" ]; then exit {decompress_rc}; fi\n'
-        f'exec {shutil.which("zstd")} "$@"\n',
+        f'exec {ZSTD} "$@"\n',
         encoding="utf-8",
     )
     (shim / "tar").write_text(
         f'#!/bin/bash\nif [ "$1" = "tf" ]; then printf %s {listing!r}; exit 0; fi\n'
-        f'exec {_GNU_TAR} "$@"\n',
+        f'exec {GNU_TAR} "$@"\n',
         encoding="utf-8",
     )
     for name in ("zstd", "tar"):
@@ -522,9 +473,8 @@ def test_a_converter_exiting_does_not_kill_the_analysis_phase(tmp_path):
     assert isinstance(run_analysis("guidellm", results, None), str)
 
 
-def test_the_remote_dir_is_quoted_and_the_fallback_backend_reads():
-    """Two holes with no other cover: the script interpolates a path straight into
-    `cd`, and the pure-Python backend is never chosen while the zstd CLI is present."""
+def test_the_remote_dir_is_quoted():
+    """A hole with no other cover: the script interpolates a path straight into `cd`."""
     from llmdbenchmark.utilities.archive import remote_compress_script
 
     script = remote_compress_script("/requests/exp 1; rm -rf /tmp/PWNED")
@@ -546,7 +496,7 @@ def test_the_archive_never_becomes_a_member_of_itself(tmp_path):
     (shim / "tar").write_text(
         "#!/bin/bash\n"
         f'if [ "$1" = "cf" ]; then : > {results / "workspace.tar.zst"}; fi\n'
-        f'exec {_GNU_TAR} "$@"\n',
+        f'exec {GNU_TAR} "$@"\n',
         encoding="utf-8",
     )
     (shim / "tar").chmod(0o755)
@@ -584,20 +534,59 @@ def test_a_glob_matches_the_same_set_plain_or_archived(tmp_path):
     assert set(read_members(plain, pattern)) == {"metrics/raw/a_metrics.log"}
 
 
+def _dump(*args: str) -> str:
+    script = Path(__file__).resolve().parent.parent / "util" / "dump_result_file.sh"
+    result = subprocess.run(
+        [str(script), *args], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_the_dumper_reads_a_result_set_the_same_way_compressed_or_not(tmp_path):
+    """CI's only window into a failed run. A miss has to stay exit 0 with a spoken
+    reason, or the dump steps paint a red X over whatever actually failed."""
+
+    def build(root: Path) -> None:
+        (root / "analysis").mkdir(parents=True)
+        (root / "analysis" / "result.txt").write_text(
+            "line1\nline2\nline3\n", encoding="utf-8"
+        )
+        (root / "pod-launcher-populator-xy.log").write_text("POD\n", encoding="utf-8")
+
+    plain = tmp_path / "plain"
+    archived = tmp_path / "archived"
+    build(plain)
+    build(archived)
+    _compress(archived)
+
+    for args in (
+        ("analysis/result.txt",),
+        ("--tail", "1", "analysis/result.txt"),
+        ("--glob", "*launcher-populator*.log"),
+    ):
+        head, tail = args[:-1], args[-1]
+        assert _dump(*head, str(archived), tail) == _dump(*head, str(plain), tail)
+
+    assert _dump(str(archived), "analysis/result.txt") == "line1\nline2\nline3\n"
+    assert _dump(str(archived), "nope.txt") == "no nope.txt for archived\n"
+    # A `*` must not cross a `/`, so a bare pattern never reaches a nested file.
+    assert _dump("--glob", str(archived), "*result.txt").startswith("no ")
+
+
 @pytest.mark.parametrize(
-    ("settled", "driver_zstd", "pod_zstd", "expected", "probes"),
+    ("settled", "pod_zstd", "expected", "probes"),
     [
-        (True, True, True, True, 1),
-        (False, True, True, False, 0),
-        (True, False, True, False, 0),
-        (True, True, False, False, 1),
+        (True, True, True, 1),
+        (False, True, False, 0),
+        (True, False, False, 1),
     ],
 )
 def test_pvc_compression_needs_every_gate(
-    monkeypatch, settled, driver_zstd, pod_zstd, expected, probes
+    monkeypatch, settled, pod_zstd, expected, probes
 ):
-    """Guards an irreversible delete, so all four gates must hold -- and the pod
-    probe (a live `kubectl exec`) must not run once a cheaper gate has said no."""
+    """Guards an irreversible delete, so every gate must hold -- and the pod probe
+    (a live `kubectl exec`) must not run once a cheaper gate has said no."""
     from llmdbenchmark.executor.context import ExecutionContext
     from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
 
@@ -606,10 +595,6 @@ def test_pvc_compression_needs_every_gate(
         DeployHarnessStep,
         "_pvc_has_zstd",
         staticmethod(lambda *a: calls.append(a) or pod_zstd),
-    )
-    monkeypatch.setattr(
-        "llmdbenchmark.run.steps.step_07_deploy_harness.shutil.which",
-        lambda name: "/usr/bin/zstd" if driver_zstd else None,
     )
 
     warnings = []

@@ -10,7 +10,6 @@ dependencies = [
     "packaging",
     "kubernetes==35.0.0",
     "pykube-ng",
-    "kubernetes-asyncio",
     "GitPython",
     "huggingface_hub",
     "transformers",
@@ -18,6 +17,7 @@ dependencies = [
     "google-auth",
     "google-cloud-storage>=2.10.0",
     "llmd-benchmark-report>=0.2.1,<0.3",
+    "zstandard",
 ]
 
 #

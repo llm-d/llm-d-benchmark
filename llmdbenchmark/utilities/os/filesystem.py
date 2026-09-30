@@ -122,7 +122,7 @@ def resolve_specification_file(
     if pkg_spec.is_dir() and pkg_spec not in search_roots:
         search_roots.append(pkg_spec)
 
-    # Try category/name match first (e.g. "guides/inference-scheduling")
+    # Try category/name match first (e.g. "guides/optimized-baseline")
     for root in search_roots:
         candidate = root / f"{stem}{_SPEC_SUFFIX}"
         if candidate.is_file():
@@ -165,7 +165,7 @@ def resolve_specification_file(
         f"Available specifications:\n{listing}\n\n"
         f"Usage:\n"
         f"  --spec gpu                           # bare name\n"
-        f"  --spec guides/inference-scheduling   # category/name\n"
+        f"  --spec guides/optimized-baseline     # category/name\n"
         f"  --spec /full/path/to/spec.yaml.j2    # full path"
     )
 

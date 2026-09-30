@@ -14,15 +14,11 @@ MIN_HELM_MAJOR = 3
 MIN_HELMFILE_VERSION = (1, 5, 0)
 
 
-REQUIRED_TOOLS = ["kubectl", "helm", "helmfile", "jq", "yq"]
-# zstd reads a compressed result set back; without it the run phase collects
-# uncompressed instead of failing, so it is reported, not enforced.
-OPTIONAL_TOOLS = ["oc", "kustomize", "skopeo", "crane", "rsync", "make", "zstd"]
+REQUIRED_TOOLS = ["kubectl", "helm", "helmfile"]
+OPTIONAL_TOOLS = ["oc"]
 
 # What the absence actually costs, so "optional tool not found" is actionable.
-OPTIONAL_TOOL_CONSEQUENCE = {
-    "zstd": "results will be collected uncompressed (--no-compress behaviour)",
-}
+OPTIONAL_TOOL_CONSEQUENCE: dict[str, str] = {}
 
 
 @dataclass

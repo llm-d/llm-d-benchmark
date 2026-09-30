@@ -21,9 +21,6 @@ from llmdbenchmark.smoketests.validators.tiered_prefix_cache import (
     TieredPrefixCacheValidator,
 )
 from llmdbenchmark.smoketests.validators.wide_ep import WideEpValidator
-from llmdbenchmark.smoketests.validators.simulated_accelerators import (
-    SimulatedAcceleratorsValidator,
-)
 from llmdbenchmark.smoketests.validators.wva import WvaValidator
 
 # Examples
@@ -36,7 +33,7 @@ from llmdbenchmark.smoketests.validators.fma import FmaValidator
 VALIDATORS: dict[str, type] = {
     # Guides (well-lit paths)
     "pd-disaggregation": PdDisaggregationValidator,
-    "precise-prefix-cache-aware": PrecisePrefixCacheAwareValidator,
+    "precise-prefix-cache-routing": PrecisePrefixCacheAwareValidator,
     "optimized-baseline": OptimizedBaselineValidator,
     # All FMA standup paths resolve here:
     # 1. guide path (standup_method: kustomize) has the
@@ -46,16 +43,16 @@ VALIDATORS: dict[str, type] = {
     "fast-model-actuation": FmaValidator,
     "fast-model-actuation-base": FmaValidator,
     "fast-model-actuation-keda": FmaValidator,
-    # inference-scheduling-wva reuses the inference-scheduling validator;
-    # the WvaSmoketestMixin auto-activates its extra checks when the
-    # stack's config has wva.enabled: true.
-    "workload-autoscaling": OptimizedBaselineValidator,
+    # The workload-autoscaling guide names its stack inference-scheduling-wva.
+    # It reuses the optimized-baseline validator; the WvaSmoketestMixin
+    # auto-activates its extra checks when the stack's config has
+    # wva.enabled: true.
+    "inference-scheduling-wva": OptimizedBaselineValidator,
     "tiered-prefix-cache": TieredPrefixCacheValidator,
     "wide-ep": WideEpValidator,
-    "simulated-accelerators": SimulatedAcceleratorsValidator,
     "wva": WvaValidator,
     # Examples
-    "cpu-example-ms": CpuValidator,
+    "cpu-example": CpuValidator,
     "gpu-example": GpuValidator,
     "spyre-example": SpyreValidator,
 }

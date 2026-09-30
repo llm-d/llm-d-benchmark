@@ -8,8 +8,8 @@
 # Python packages on top.
 #
 # Why delegate to install.sh?
-#   - It installs the system tools (helm, helmfile, kubectl, skopeo,
-#     crane, helm-diff, ...) that the render-validation hooks need.
+#   - It installs the system tools (helm, helmfile, kubectl, helm-diff, ...)
+#     that the render-validation hooks need.
 #   - It creates + reuses .venv/ and installs llmdbenchmark + planner,
 #     and it caches its work in ~/.llmdbench_dependencies_checked
 #     so repeat runs skip already-verified dependencies.

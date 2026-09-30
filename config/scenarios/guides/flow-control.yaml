@@ -1,10 +1,10 @@
-# OPTIMIZED BASELINE WELL LIT PATH for LLM-D Deployment
+# FLOW CONTROL WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/flow-control
 
 scenario:
   # ============================================================================
-  # Optimized Baseline - Qwen3-32B with 2 decode pods
+  # Flow Control - Qwen3-32B with 2 decode pods
   # ============================================================================
   - name: "flow-control"
     common:

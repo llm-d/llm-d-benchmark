@@ -538,38 +538,6 @@ results:
           p99: 2322.0
           p99p9: 2326.503
           units: count
-        multimodal:
-          audio:
-            count:
-              mean: 1.0
-              units: count
-            duration:
-              mean: 10.0
-              units: s
-          image:
-            aspect_ratio:
-              mean: 1.78
-              units: ratio
-            filesize:
-              mean: 40000.0
-              units: bytes
-            count:
-              max: 4.0
-              mean: 2.0
-              units: count
-            pixels:
-              mean: 2073600.0
-              units: pixels
-          video:
-            filesize:
-              mean: 800000.0
-              units: bytes
-            count:
-              mean: 1.0
-              units: count
-            frames:
-              mean: 16.0
-              units: count
         output_length:
           max: 2328.0
           mean: 2262.448
@@ -586,19 +554,8 @@ results:
           p99: 2322.0
           p99p9: 2326.503
           units: count
-        request_size:
-          max: 120000.0
-          mean: 51234.0
-          p50: 48000.0
-          units: bytes
         total: 500
       throughput:
-        audio_rate:
-          mean: 2.0
-          units: audios/s
-        image_rate:
-          mean: 24.0
-          units: images/s
         input_token_rate:
           max: 2328.0
           mean: 2262.448
@@ -663,9 +620,6 @@ results:
           p99: 2322.0
           p99p9: 2326.503
           units: tokens/s
-        video_rate:
-          mean: 3.0
-          units: videos/s
     time_series:
       latency:
         time_to_first_token:
@@ -791,12 +745,8 @@ scenario:
   load:
     metadata:
       cfg_id: a4e18f265cc33786a42b8a3f7ac2edcb
-      concurrent_with:
-      - agentic_mixed
       description: Optional description of workload
       schema_version: 0.0.1
-      treatment: weka_mixed
-      treatment_group: mixed
     native:
       config:
         api:
@@ -854,7 +804,7 @@ scenario:
         storage:
           google_cloud_storage: null
           local_storage:
-            path: /requests/inference-perf_1759339259-cache_tracking-run_100_1000_llm-d-0p6b-base #pragma: allowlist secret
+            path: /requests/inference-perf_1759339259-cache_tracking-run_100_1000_llm-d-0p6b-base
             report_file_prefix: null
           simple_storage_service: null
         tokenizer:
@@ -980,4 +930,4 @@ scenario:
       some_config_param: 93
       tool: llm-d-inference-scheduler
       tool_version: ghcr.io/llm-d/llm-d-inference-scheduler:0.3.2
-version: 0.2.1
+version: '0.2'

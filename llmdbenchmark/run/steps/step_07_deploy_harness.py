@@ -1686,16 +1686,6 @@ class DeployHarnessStep(Step):
             )
             return False
 
-        # Both ends need zstd: the pod to write the archive, the driver to read it
-        # back. Compressing without it here would leave a result set only the pod
-        # could open.
-        if shutil.which("zstd") is None:
-            context.logger.log_warning(
-                "zstd not found on this machine -- collecting results uncompressed, "
-                "since nothing here could read the archive back"
-            )
-            return False
-
         if not DeployHarnessStep._pvc_has_zstd(cmd, data_pod, namespace):
             context.logger.log_warning(
                 "zstd not found in the data-access pod -- collecting results "

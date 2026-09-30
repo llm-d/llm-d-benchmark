@@ -6,11 +6,11 @@ These tests stub the registry resolution so they don't hit the network.
 
 from __future__ import annotations
 
-import json
 from subprocess import CompletedProcess
 from typing import Any
 
 import pytest
+import requests
 
 from llmdbenchmark.parser.version_resolver import (
     ImageOverrideConfigError,
@@ -43,7 +43,7 @@ def _make_resolver(
     """Build a resolver whose registry lookups are stubbed.
 
     ``fail=True`` makes ``resolve_image_tag`` raise, simulating an offline
-    environment where skopeo/crane/podman are unreachable.
+    environment where the registry and podman are unreachable.
     """
     logger = _StubLogger()
     resolver = VersionResolver(logger)
@@ -82,21 +82,181 @@ def _images() -> dict:
 # ---------------------------------------------------------------------------
 
 
+class _StubResponse:
+    """Enough of a ``requests`` response for the two-step registry handshake."""
+
+    def __init__(
+        self,
+        payload: Any = None,
+        status_code: int = 200,
+        headers: dict | None = None,
+        next_url: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.headers = requests.structures.CaseInsensitiveDict(headers or {})
+        self.links = {"next": {"url": next_url}} if next_url else {}
+        self._payload = payload
+
+    def json(self) -> Any:
+        if self._payload is None:
+            raise ValueError("no json")
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise requests.HTTPError(str(self.status_code))
+
+
+class _StubSession:
+    """Answers each GET from *routes*, recording the calls for assertions."""
+
+    def __init__(self, routes: list[_StubResponse]) -> None:
+        self.routes = routes
+        self.calls: list[tuple[str, dict]] = []
+
+    def get(self, url: str, **kwargs: Any) -> _StubResponse:
+        self.calls.append((url, kwargs))
+        index = len(self.calls) - 1
+        assert index < len(self.routes), f"unexpected extra GET: {url}"
+        return self.routes[index]
+
+    def __enter__(self) -> "_StubSession":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        return None
+
+
+def _stub_session(monkeypatch: pytest.MonkeyPatch, *routes: _StubResponse):
+    session = _StubSession(list(routes))
+    monkeypatch.setattr(
+        "llmdbenchmark.parser.version_resolver.requests.Session", lambda: session
+    )
+    return session
+
+
+class TestRegistryEndpoint:
+    @pytest.mark.parametrize(
+        ("image_ref", "expected"),
+        [
+            ("quay.io/aruocco/bench", ("quay.io", "aruocco/bench")),
+            ("ghcr.io/llm-d/router", ("ghcr.io", "llm-d/router")),
+            # A bare name is Docker Hub, and its official images live under library/.
+            ("redis", ("registry-1.docker.io", "library/redis")),
+            ("vllm/vllm-openai", ("registry-1.docker.io", "vllm/vllm-openai")),
+            # The pull alias is not the API host.
+            (
+                "docker.io/vllm/vllm-openai",
+                ("registry-1.docker.io", "vllm/vllm-openai"),
+            ),
+            ("localhost:5000/bench", ("localhost:5000", "bench")),
+            ("registry:5000/bench", ("registry:5000", "bench")),
+        ],
+    )
+    def test_host_and_repo_split(self, image_ref: str, expected: tuple) -> None:
+        assert VersionResolver._registry_endpoint(image_ref) == expected
+
+
 class TestRegistryTagOrdering:
-    def test_skopeo_selects_latest_tag_by_version(
+    def test_selects_latest_tag_by_version(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        tags = ["v0.20.1", "v0.9.2", "v0.10.0"]
+        _stub_session(
+            monkeypatch,
+            _StubResponse({"tags": ["v0.20.1", "v0.9.2", "v0.10.0"]}),
+        )
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver._resolve_via_registry("quay.io/vllm/vllm-openai") == "v0.20.1"
+
+    def test_a_token_is_reused_across_pages(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _stub_session(
+            monkeypatch,
+            _StubResponse(
+                status_code=401,
+                headers={"WWW-Authenticate": 'Bearer realm="https://ghcr.io/token"'},
+            ),
+            _StubResponse({"token": "t0ken"}),
+            _StubResponse({"tags": ["v0.1.0"]}, next_url="/v2/a/b/tags/list"),
+            _StubResponse({"tags": ["v0.3.0"]}),
+        )
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver._resolve_via_registry("ghcr.io/a/b") == "v0.3.0"
+        assert session.calls[-1][1]["headers"]["Authorization"] == "Bearer t0ken"
+
+    def test_a_challenge_is_answered_with_a_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        session = _stub_session(
+            monkeypatch,
+            _StubResponse(
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": 'Bearer realm="https://ghcr.io/token",'
+                    'service="ghcr.io"'
+                },
+            ),
+            _StubResponse({"token": "t0ken"}),
+            _StubResponse({"tags": ["v1.0.0", "v2.0.0"]}),
+        )
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver._resolve_via_registry("ghcr.io/llm-d/router") == "v2.0.0"
+        token_url, token_kwargs = session.calls[1]
+        assert token_url == "https://ghcr.io/token"
+        assert token_kwargs["params"]["scope"] == "repository:llm-d/router:pull"
+        assert session.calls[2][1]["headers"]["Authorization"] == "Bearer t0ken"
+
+    @pytest.mark.parametrize(
+        "routes",
+        [
+            (_StubResponse(status_code=404),),
+            (_StubResponse(None),),
+            (_StubResponse(status_code=401, headers={"www-authenticate": "Bearer"}),),
+        ],
+    )
+    def test_an_unreadable_registry_resolves_to_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, routes: tuple
+    ) -> None:
+        _stub_session(monkeypatch, *routes)
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver._resolve_via_registry("quay.io/x/y") is None
+
+    def test_a_network_error_resolves_to_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        class _Boom(_StubSession):
+            def get(self, url: str, **kwargs: Any) -> _StubResponse:
+                raise requests.ConnectionError("offline")
+
+        monkeypatch.setattr(
+            "llmdbenchmark.parser.version_resolver.requests.Session",
+            lambda: _Boom([]),
+        )
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver._resolve_via_registry("quay.io/x/y") is None
+
+    def test_podman_covers_a_registry_that_cannot_be_queried(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _stub_session(monkeypatch, _StubResponse(status_code=404))
 
         def _run(*args: Any, **kwargs: Any) -> CompletedProcess[str]:
-            return CompletedProcess(args[0], 0, stdout=json.dumps({"Tags": tags}))
+            return CompletedProcess(
+                args[0], 0, stdout="NAME TAG\nquay.io/x/y v0.1.0\nquay.io/x/y v0.2.0\n"
+            )
 
         monkeypatch.setattr(
             "llmdbenchmark.parser.version_resolver.subprocess.run", _run
         )
         resolver = VersionResolver(_StubLogger())
 
-        assert resolver._resolve_via_skopeo("docker.io/vllm/vllm-openai") == ("v0.20.1")
+        assert resolver.resolve_image_tag("", "quay.io/x/y") == "v0.2.0"
 
 
 # ---------------------------------------------------------------------------

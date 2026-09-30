@@ -10,17 +10,17 @@
 # strategy exploits prefix cache locality.
 #
 # Usage (full DoE — automatic standup/run/teardown per setup treatment):
-#   llmdbenchmark --spec precise-prefix-cache-aware experiment \
-#     --experiments workload/experiments/precise-prefix-cache-aware.yaml
+#   llmdbenchmark --spec guides/precise-prefix-cache-routing experiment \
+#     --experiments experiments/precise-prefix-cache-aware.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
-#   llmdbenchmark --spec precise-prefix-cache-aware run \
+#   llmdbenchmark --spec guides/precise-prefix-cache-routing run \
 #     --endpoint-url http://<HOST>:<PORT> \
 #     --model <MODEL_NAME> \
 #     --namespace <NAMESPACE> \
 #     --harness inference-perf \
 #     --workload shared_prefix_synthetic.yaml \
-#     --experiments workload/experiments/precise-prefix-cache-aware.yaml
+#     --experiments experiments/precise-prefix-cache-aware.yaml
 #
 # The experiment form auto-detects the endpoint from stood-up stacks
 # and reads harness/profile defaults from the plan config.

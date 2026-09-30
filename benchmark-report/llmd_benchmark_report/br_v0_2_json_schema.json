@@ -173,6 +173,30 @@
           ],
           "default": null,
           "description": "Output sequence length."
+        },
+        "request_size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total encoded request size, including all media payloads."
+        },
+        "multimodal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MultiModalRequests"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-modality payload statistics."
         }
       },
       "required": [
@@ -232,9 +256,89 @@
           ],
           "default": null,
           "description": "Request (query) processing rate."
+        },
+        "image_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image delivery rate."
+        },
+        "video_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Video delivery rate."
+        },
+        "audio_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Audio delivery rate."
         }
       },
       "title": "AggregateThroughput",
+      "type": "object"
+    },
+    "AudioPayloadStats": {
+      "additionalProperties": false,
+      "description": "Audio payload statistics.",
+      "properties": {
+        "count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of media instances of this modality per request."
+        },
+        "filesize": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encoded size per media instance."
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Duration per audio instance."
+        }
+      },
+      "title": "AudioPayloadStats",
       "type": "object"
     },
     "Component": {
@@ -635,6 +739,62 @@
       "title": "HostType",
       "type": "string"
     },
+    "ImagePayloadStats": {
+      "additionalProperties": false,
+      "description": "Image payload statistics.",
+      "properties": {
+        "count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of media instances of this modality per request."
+        },
+        "filesize": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encoded size per media instance."
+        },
+        "pixels": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pixel count per media instance (height x width, summed over frames)."
+        },
+        "aspect_ratio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aspect ratio (width / height) per media instance."
+        }
+      },
+      "title": "ImagePayloadStats",
+      "type": "object"
+    },
     "InferenceEngine": {
       "additionalProperties": false,
       "description": "Component configuration for an inference engine.",
@@ -835,6 +995,48 @@
           "default": null,
           "description": "Descriptin of workload.",
           "title": "Description"
+        },
+        "treatment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the experiment treatment that produced this result set.",
+          "title": "Treatment"
+        },
+        "treatment_group": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Group the treatment ran in; members of a group run concurrently.",
+          "title": "Treatment Group"
+        },
+        "concurrent_with": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Treatments that ran at the same time, against the same endpoint.\n\nNon-empty means the metrics here reflect the combined load of those\ntreatments rather than this workload in isolation.",
+          "title": "Concurrent With"
         }
       },
       "title": "LoadMetadata",
@@ -1048,6 +1250,50 @@
         "input_seq_len"
       ],
       "title": "LoadStandardized",
+      "type": "object"
+    },
+    "MultiModalRequests": {
+      "additionalProperties": false,
+      "description": "Per-modality request payload statistics for multi-modal workloads.",
+      "properties": {
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImagePayloadStats"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image payload statistics."
+        },
+        "video": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoPayloadStats"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Video payload statistics."
+        },
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioPayloadStats"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Audio payload statistics."
+        }
+      },
+      "title": "MultiModalRequests",
       "type": "object"
     },
     "MultiTurn": {
@@ -2968,6 +3214,234 @@
           ],
           "default": null,
           "description": "Power consumption over time."
+        },
+        "num_requests_running": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests actively decoding on the engine over time."
+        },
+        "num_requests_waiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests queued ahead of the engine over time."
+        },
+        "num_preemptions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative scheduler preemptions over time."
+        },
+        "prefix_cache_queries": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens looked up in the local prefix cache."
+        },
+        "prefix_cache_hits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens served from the local prefix cache."
+        },
+        "prefix_cache_hit_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local prefix cache hit rate over time."
+        },
+        "external_prefix_cache_queries": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens looked up in the external (offloaded) prefix cache."
+        },
+        "external_prefix_cache_hits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative tokens served from the external prefix cache."
+        },
+        "external_prefix_cache_hit_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "External prefix cache hit rate over time."
+        },
+        "prompt_tokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative prompt tokens processed over time."
+        },
+        "generation_tokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative generated tokens over time."
+        },
+        "kv_offload_store_bytes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative bytes written from GPU to the offload tier."
+        },
+        "kv_offload_load_bytes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative bytes read back from the offload tier to GPU."
+        },
+        "kv_offload_store_time": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative time spent on GPU-to-offload transfers."
+        },
+        "kv_offload_load_time": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative time spent on offload-to-GPU transfers."
+        },
+        "pool_avg_kv_cache_utilization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router view of mean KV cache utilization across the pool."
+        },
+        "pool_avg_queue_size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router view of mean queue depth across the pool."
+        },
+        "pool_avg_running_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router view of mean running requests across the pool."
+        },
+        "pool_ready_pods": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Endpoints the router considers ready over time."
         }
       },
       "title": "TimeSeriesResourceMetrics",
@@ -3068,13 +3542,81 @@
       ],
       "title": "Units",
       "type": "string"
+    },
+    "VideoPayloadStats": {
+      "additionalProperties": false,
+      "description": "Video payload statistics.",
+      "properties": {
+        "count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of media instances of this modality per request."
+        },
+        "filesize": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encoded size per media instance."
+        },
+        "pixels": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pixel count per media instance (height x width, summed over frames)."
+        },
+        "aspect_ratio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aspect ratio (width / height) per media instance."
+        },
+        "frames": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of frames per video instance."
+        }
+      },
+      "title": "VideoPayloadStats",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "description": "Base class for a benchmark report.",
   "properties": {
     "version": {
-      "default": "0.2",
+      "default": "0.2.1",
       "description": "Version of the schema.",
       "title": "Version",
       "type": "string"
@@ -3103,6 +3645,6 @@
     "run",
     "results"
   ],
-  "title": "Benchmark Report v0.2",
+  "title": "Benchmark Report v0.2.1",
   "type": "object"
 }

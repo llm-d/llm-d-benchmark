@@ -8,9 +8,9 @@ from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
 
 NORMAL_RESOURCE_LIST = (
-    "daemonset,leaderworkerset,deployment,statefulset,httproute,service,"
+    "daemonset,disaggregatedset,leaderworkerset,deployment,statefulset,httproute,service,"
     "gateway,gatewayparameters,"
-    "inferencepool,inferencemodel,configmap,ingress,pod,job"
+    "inferencepool,inferencemodel,resourceclaimtemplate,configmap,ingress,pod,job"
 )
 
 FMA_RESOURCE_LIST = (
@@ -59,6 +59,7 @@ MODELSERVICE_PATTERNS = [
 ]
 
 DEEP_RESOURCE_KINDS = [
+    "disaggregatedset",
     "leaderworkerset",
     "deployment",
     "statefulset",
@@ -68,6 +69,7 @@ DEEP_RESOURCE_KINDS = [
     "inferencemodel",
     "inferencepool",
     "httproute",
+    "resourceclaimtemplate",
     "configmap",
     "daemonset",
     "job",

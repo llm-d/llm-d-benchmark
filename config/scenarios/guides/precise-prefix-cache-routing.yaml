@@ -1,7 +1,7 @@
 # ============================================================================
 # PRECISE PREFIX CACHE AWARE ROUTING WELL LIT PATH
 # Converted from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-aware/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-routing/README.md
 #
 # Notes:
 # - Removed pod monitoring; can be added using decode.extraContainerConfig
@@ -59,6 +59,7 @@ scenario:
       vllmCommon:
 #        ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
 #        ucxTls: "cuda,rc,sm"
+#        ucxNetDevices: "eth0"   # pin KV transfer when secondary NICs are attached
         networkResource: "auto"   # auto-detect from cluster nodes
         networkNr: "1"            # number of network devices
 
@@ -78,7 +79,14 @@ scenario:
           - name: dshm
             mountPath: /dev/shm
 
-# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode..pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
+# Attaching a secondary network also gives UCX more interfaces to choose from
+# for the NIXL KV-transfer data plane, and it chooses independently of
+# VLLM_NIXL_SIDE_CHANNEL_HOST (which is pinned to the pod IP). If a rail cannot
+# carry that traffic the handshake fails (NIXL_ERR_REMOTE_DISCONNECT /
+# NIXL_ERR_NOT_FOUND) and requests hang instead of erroring, so pin
+# vllmCommon.ucxNetDevices when enabling this -- "eth0" keeps KV transfer on the
+# pod network.
+# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
       annotations:
         prefill:
           pod:
