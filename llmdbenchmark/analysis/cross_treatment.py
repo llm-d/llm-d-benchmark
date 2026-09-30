@@ -83,6 +83,21 @@ METRICS_OF_INTEREST = [
     ("results.request_performance.aggregate.requests.failures", "failures"),
 ]
 
+# Seconds per unit for the "*_s" columns. Reports keep each statistic in its
+# harness's own unit: vLLM and InferenceMAX use ms, aiperf and inference-perf s.
+_SECONDS_PER_UNIT = {"s": 1.0, "ms": 0.001, "s/token": 1.0, "ms/token": 0.001}
+
+
+def _column_value(report: dict, dotted_path: str, col_name: str):
+    """Read a statistic for a column, converting "*_s" columns to seconds."""
+    value = deep_get(report, dotted_path)
+    if value is None or not col_name.endswith("_s"):
+        return value
+    units = deep_get(report, dotted_path.rsplit(".", 1)[0] + ".units")
+    factor = _SECONDS_PER_UNIT.get(units)
+    return value * factor if factor is not None else None
+
+
 # Only used when the caller has no harness name to hand: a results directory
 # name alone cannot be split into harness and treatment, since both may contain
 # a hyphen. Pass harness_name instead wherever it is known.
@@ -187,12 +202,10 @@ def generate_cross_treatment_summary(
             row: dict = {"treatment": subdir.name, "source_file": br_file.name}
 
             for dotted_path, col_name in METRICS_OF_INTEREST:
-                value = deep_get(report, dotted_path)
-                row[col_name] = value
+                row[col_name] = _column_value(report, dotted_path, col_name)
 
             for dotted_path, col_name in SESSION_METRICS_OF_INTEREST:
-                value = deep_get(report, dotted_path)
-                row[col_name] = value
+                row[col_name] = _column_value(report, dotted_path, col_name)
 
             # Extract workload metadata
             row["input_len_mean"] = deep_get(
