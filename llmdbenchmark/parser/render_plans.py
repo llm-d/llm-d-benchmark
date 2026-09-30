@@ -11,7 +11,7 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 from jinja2 import Environment, TemplateSyntaxError, UndefinedError
@@ -44,6 +44,11 @@ class RenderPlans:
     rendered directly. All others are rendered per stack with merged values.
     """
 
+    # Shared by all instances: compiling a template costs far more than
+    # rendering it, and every instance builds the same ones.
+    _SHARED_JINJA_ENV: ClassVar["Environment | None"] = None
+    _COMPILED_TEMPLATES: ClassVar[dict] = {}
+
     # Prefix for partial/macro files (not rendered directly)
     PARTIAL_PREFIX = "_"
 
@@ -52,7 +57,7 @@ class RenderPlans:
     # and step_06_nok8s_teardown.py): everything else is a Kubernetes manifest --
     # PVCs, RBAC, the harness pod, helmfiles, HTTPRoute, PodMonitor -- that nok8s
     # never applies. Rendering them anyway produced 30+ dead files per stack and
-    # version-resolver warnings for tools (helm, skopeo) the nok8s path itself
+    # version-resolver warnings for tools (helm) the nok8s path itself
     # tells users are unnecessary (docs/nok8s.md) (#1704).
     NOK8S_TEMPLATE_INFIX = "nok8s"
 
@@ -146,6 +151,10 @@ class RenderPlans:
         if self._jinja_env is not None:
             return self._jinja_env
 
+        if RenderPlans._SHARED_JINJA_ENV is not None:
+            self._jinja_env = RenderPlans._SHARED_JINJA_ENV
+            return self._jinja_env
+
         env = Environment(
             autoescape=False,
             trim_blocks=True,
@@ -169,7 +178,21 @@ class RenderPlans:
         env.globals["raise"] = self._raise_helper
 
         self._jinja_env = env
+        RenderPlans._SHARED_JINJA_ENV = env
         return env
+
+    @classmethod
+    def _compile_template(cls, env: Environment, template_content: str):
+        """Compile a template source, reusing the result across instances.
+
+        Keyed on the source itself, so two templates never share an entry;
+        filters and globals resolve at render time, not compile time.
+        """
+        cached = cls._COMPILED_TEMPLATES.get(template_content)
+        if cached is None:
+            cached = env.from_string(template_content)
+            cls._COMPILED_TEMPLATES[template_content] = cached
+        return cached
 
     @staticmethod
     def _raise_helper(message: str) -> str:
@@ -1903,7 +1926,7 @@ class RenderPlans:
     def _render_template(self, template_content: str, values: dict) -> str:
         """Render a Jinja2 template string with the given values dict."""
         env = self._get_jinja_env()
-        template = env.from_string(template_content)
+        template = self._compile_template(env, template_content)
         return template.render(**values)
 
     def _validate_yaml_files(self, directory: Path) -> list[str]:
@@ -2209,14 +2232,23 @@ class RenderPlans:
             merged_values = self.deep_merge(merged_values, stack_overrides)
 
         # Raises RuntimeError if "auto" values are present but cluster is
-        # unreachable. Skipped for the no-Kubernetes (nok8s) method: there is no
-        # cluster to scan, and the accelerator auto-detection fields belong to
-        # the (disabled) k8s methods.
+        # unreachable. Skipped for the no-Kubernetes (nok8s) and kustomize
+        # methods: nok8s has no cluster to scan, and kustomize applies static
+        # guide manifests directly (so the Helm accelerator auto-detection
+        # fields belong to the disabled modelservice/standalone methods and
+        # would fail when GPU node pools are scaled to zero before standup or
+        # during teardown).
         cli_nok8s = bool(self.cli_methods) and "nok8s" in [
             m.strip() for m in self.cli_methods.split(",")
         ]
         is_nok8s = cli_nok8s or merged_values.get("nok8s", {}).get("enabled", False)
-        if self.cluster_resource_resolver and not is_nok8s:
+        cli_kustomize = bool(self.cli_methods) and "kustomize" in [
+            m.strip() for m in self.cli_methods.split(",")
+        ]
+        is_kustomize = cli_kustomize or merged_values.get("kustomize", {}).get(
+            "enabled", False
+        )
+        if self.cluster_resource_resolver and not is_nok8s and not is_kustomize:
             merged_values = self.cluster_resource_resolver.resolve_all(merged_values)
 
         merged_values = self._apply_accelerator_profile(merged_values)

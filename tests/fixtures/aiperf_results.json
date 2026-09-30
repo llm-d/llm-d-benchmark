@@ -1,0 +1,140 @@
+{
+  "request_throughput": {
+    "unit": "requests/sec",
+    "avg": 6.381
+  },
+  "request_latency": {
+    "unit": "ms",
+    "avg": 2458.2684,
+    "p1": 2046.2616,
+    "p5": 2168.5266,
+    "p10": 2227.8667,
+    "p25": 2327.4112,
+    "p50": 2459.8133,
+    "p75": 2584.3353,
+    "p90": 2704.8271,
+    "p95": 2763.1964,
+    "p99": 2936.0886,
+    "min": 1977.8899,
+    "max": 3006.8901,
+    "std": 187.2301
+  },
+  "request_count": {
+    "unit": "requests",
+    "avg": 500
+  },
+  "time_to_first_token": {
+    "unit": "ms",
+    "avg": 120.9825,
+    "p1": 64.4124,
+    "p5": 74.3983,
+    "p10": 78.7056,
+    "p25": 92.7094,
+    "p50": 115.4416,
+    "p75": 142.9544,
+    "p90": 169.0824,
+    "p95": 185.7087,
+    "p99": 224.5952,
+    "min": 49.552,
+    "max": 267.1831,
+    "std": 36.2645
+  },
+  "inter_token_latency": {
+    "unit": "ms",
+    "avg": 11.7452,
+    "p1": 9.6571,
+    "p5": 10.2102,
+    "p10": 10.6124,
+    "p25": 11.1052,
+    "p50": 11.7458,
+    "p75": 12.345,
+    "p90": 12.9413,
+    "p95": 13.243,
+    "p99": 13.7627,
+    "min": 9.4798,
+    "max": 14.5869,
+    "std": 0.913
+  },
+  "output_token_throughput": {
+    "unit": "tokens/sec",
+    "avg": 1276.2052
+  },
+  "total_token_throughput": {
+    "unit": "tokens/sec",
+    "avg": 7720.6841
+  },
+  "output_sequence_length": {
+    "unit": "tokens",
+    "avg": 200.0,
+    "p1": 200.0,
+    "p5": 200.0,
+    "p10": 200.0,
+    "p25": 200.0,
+    "p50": 200.0,
+    "p75": 200.0,
+    "p90": 200.0,
+    "p95": 200.0,
+    "p99": 200.0,
+    "min": 200.0,
+    "max": 200.0,
+    "std": 0.0
+  },
+  "input_sequence_length": {
+    "unit": "tokens",
+    "avg": 1009.944,
+    "p1": 1008.0,
+    "p5": 1008.0,
+    "p10": 1008.0,
+    "p25": 1009.0,
+    "p50": 1010.0,
+    "p75": 1011.0,
+    "p90": 1012.0,
+    "p95": 1012.0,
+    "p99": 1012.0,
+    "min": 1008.0,
+    "max": 1012.0,
+    "std": 1.37
+  },
+  "benchmark_duration": {
+    "unit": "sec",
+    "avg": 78.3573
+  },
+  "input_config": {
+    "endpoint": {
+      "model_names": [
+        "Qwen/Qwen3-8B"
+      ],
+      "type": "chat",
+      "streaming": true,
+      "url": "http://infra-llmdbench-inference-gateway.llmdbench.svc.cluster.local:80",
+      "use_server_token_count": true
+    },
+    "input": {
+      "extra": [
+        [
+          "ignore_eos",
+          true
+        ]
+      ],
+      "prompt": {
+        "input_tokens": {
+          "mean": 1000
+        },
+        "output_tokens": {
+          "mean": 200
+        }
+      }
+    },
+    "loadgen": {
+      "concurrency": 16,
+      "request_count": 500
+    },
+    "tokenizer": {
+      "trust_remote_code": true
+    }
+  },
+  "was_cancelled": false,
+  "error_summary": [],
+  "start_time": "2026-09-12T20:03:11.482915",
+  "end_time": "2026-09-12T20:04:58.117204"
+}

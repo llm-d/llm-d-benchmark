@@ -72,6 +72,21 @@ def test_lws_pin_stays_in_sync_with_defaults_and_doc():
     assert _doc_pin_for("lws") == lws_pin
 
 
+def test_llm_d_router_pins_stay_in_sync_with_defaults_and_doc():
+    defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+
+    router_chart_pin = defaults["_anchors"]["router_chart_version"]
+    endpoint_picker_pin = defaults["_anchors"]["llm-d-router-endpoint-picker_version"]
+    routing_sidecar_pin = defaults["_anchors"]["llm-d-routing-sidecar_version"]
+
+    assert defaults["chartVersions"]["llmDRouter"] == router_chart_pin
+    assert defaults["images"]["routerEndpointPicker"]["tag"] == endpoint_picker_pin
+    assert defaults["images"]["routingSidecar"]["tag"] == routing_sidecar_pin
+    assert _doc_pin_for("llmDRouter") == router_chart_pin
+    assert _doc_pin_for("routerEndpointPicker") == endpoint_picker_pin
+    assert _doc_pin_for("routingSidecar") == routing_sidecar_pin
+
+
 def test_inference_pool_pin_stays_in_sync_with_defaults_and_doc():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
 
@@ -82,10 +97,16 @@ def test_inference_pool_pin_stays_in_sync_with_defaults_and_doc():
     assert _doc_pin_for("inferencePool") == gaie_pin
 
 
-def test_routing_sidecar_pin_stays_in_sync_with_defaults_and_doc():
     defaults = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+    nok8s_scenario = yaml.safe_load((PROJECT_ROOT / "config" / "scenarios" / "guides" / "nok8s.yaml").read_text(encoding="utf-8"))
 
-    routing_sidecar_pin = defaults["_anchors"]["llm-d-routing-sidecar_version"]
+    epp_pin = defaults["_anchors"]["llm-d-router-endpoint-picker_version"]
 
-    assert defaults["images"]["routingSidecar"]["tag"] == routing_sidecar_pin
-    assert _doc_pin_for("routingSidecar") == routing_sidecar_pin
+    assert defaults["images"]["routerEndpointPicker"]["tag"] == epp_pin
+    assert defaults["nok8s"]["epp"]["tag"] == epp_pin
+    assert _doc_pin_for("routerEndpointPicker") == epp_pin
+
+    scenarios = nok8s_scenario["scenario"]
+    assert scenarios, "No scenarios defined in nok8s.yaml"
+    for scenario in scenarios:
+        assert scenario["nok8s"]["epp"]["tag"] == epp_pin

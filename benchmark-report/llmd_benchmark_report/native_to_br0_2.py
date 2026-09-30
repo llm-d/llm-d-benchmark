@@ -28,7 +28,13 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
+from .schema_v0_2 import (
+    VERSION,
+    BenchmarkReportV02,
+    Component,
+    Distribution,
+    LoadSource,
+)
 from .schema_v0_2_components import HostType
 
 
@@ -125,9 +131,56 @@ def _resolve_experiment_id() -> str:
     return experiment_id
 
 
+_KNOWN_HARNESS_PREFIXES = (
+    "inference-perf",
+    "guidellm",
+    "vllm-benchmark",
+    "inferencemax",
+    "nop",
+    "priority-mix",
+    "eval-containers",
+    "aiperf",
+    "lm-eval",
+)
+
+
+def _treatment_label(experiment_id: str, harness_name: str = "") -> str:
+    """Extract the treatment segment of an ID, or "" when it has none.
+
+    Duplicated from ``llmdbenchmark.analysis.cross_treatment``: this package
+    ships flat into the harness pod, with no llmdbenchmark package to import.
+    """
+    # Without the full tail, the last segment could be either the treatment or
+    # the random suffix.
+    if not re.search(r"-\d{10,}-[a-z0-9]{6,8}$", experiment_id):
+        return ""
+    name = re.sub(r"-[a-z0-9]{6,8}$", "", experiment_id)
+    name = re.sub(r"-\d{10,}$", "", name)
+
+    prefixes = (harness_name,) if harness_name else _KNOWN_HARNESS_PREFIXES
+    for prefix in prefixes:
+        if prefix and name.startswith(f"{prefix}-"):
+            return name[len(prefix) + 1 :]
+    return "" if name == harness_name or name in _KNOWN_HARNESS_PREFIXES else name
+
+
 def _user_description() -> str:
-    """Return the submitter-supplied description, or "" when none was given."""
-    return _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+    """Return the submitter-supplied description, or "" when none was given.
+
+    The recorded text is scenario-wide, so every treatment of a sweep reports
+    the same one. Prefixing the treatment keeps them apart.
+    """
+    text = _get_harness_meta("description_text", "LLMDBENCH_DESCRIPTION_TEXT").strip()
+    if not text:
+        # Falls back to the experiment ID, already unique.
+        return text
+    treatment = _treatment_label(
+        _resolve_experiment_id(),
+        _get_harness_meta("harness_name", "LLMDBENCH_HARNESS_NAME"),
+    )
+    if not treatment or treatment in text.split("-"):
+        return text
+    return f"{treatment}-{text}"
 
 
 def _user_keywords() -> list[str]:
@@ -940,7 +993,7 @@ def _populate_benchmark_report_from_envars() -> dict:
     """
     # Start benchmark report
     br_dict = {
-        "version": "0.2",
+        "version": VERSION,
         "run": {
             "uid": str(uuid.uuid4()),  # Initial UID, may be updated
         },
@@ -1803,6 +1856,191 @@ def import_eval_containers(results_file: str) -> BenchmarkReportV02:
     return load_benchmark_report(br_dict)
 
 
+def _find_inference_perf_partial(results_file: str, stage: int) -> dict | None:
+    """Return the sibling BR0.2 partial for this stage, if inference-perf wrote one.
+
+    inference-perf >= v0.7.0 (kubernetes-sigs/inference-perf#461) drops
+    ``inference-perf.partial.stage_<N>.yaml`` next to each
+    ``stage_<N>_lifecycle_metrics.json``, carrying ``results.request_performance
+    .aggregate`` and ``run.{uid,eid,time}`` computed from the same request
+    lifecycle metrics this module otherwise re-derives by hand. Preferring the
+    partial when present retires that duplicate ~700-line mapping (llm-d/
+    llm-d-benchmark#1891); older harness images with no partial fall back to
+    the native derivation below unchanged.
+    """
+    partial_path = os.path.join(
+        os.path.dirname(results_file), f"inference-perf.partial.stage_{stage}.yaml"
+    )
+    if not os.path.isfile(partial_path):
+        return None
+    try:
+        return import_yaml(partial_path)
+    except (OSError, yaml.YAMLError) as e:
+        sys.stderr.write(f"Failed to read inference-perf partial {partial_path}: {e}\n")
+        return None
+
+
+# Native (inference-perf) field name -> (schema field name, units) for each
+# modality. The native report nests these under successes.{image,video,audio};
+# see inference_perf/payloads/{image,video,audio}/metrics.py and
+# tests/required/reportgen/test_lifecycle_report_shape.py upstream. The schema
+# names properties rather than units, hence bytes->filesize, seconds->duration.
+_MODALITY_FIELDS = {
+    "image": [
+        ("count", "count", Units.COUNT),
+        ("pixels", "pixels", Units.PIXELS),
+        ("bytes", "filesize", Units.BYTES),
+        ("aspect_ratio", "aspect_ratio", Units.RATIO),
+    ],
+    "video": [
+        ("count", "count", Units.COUNT),
+        ("frames", "frames", Units.COUNT),
+        ("pixels", "pixels", Units.PIXELS),
+        ("bytes", "filesize", Units.BYTES),
+        ("aspect_ratio", "aspect_ratio", Units.RATIO),
+    ],
+    "audio": [
+        ("count", "count", Units.COUNT),
+        ("seconds", "duration", Units.S),
+        ("bytes", "filesize", Units.BYTES),
+    ],
+}
+
+# Native throughput scalar -> (schema field name, units).
+_MEDIA_RATE_FIELDS = [
+    ("images_per_sec", "image_rate", Units.IMAGE_PER_S),
+    ("videos_per_sec", "video_rate", Units.VIDEO_PER_S),
+    ("audios_per_sec", "audio_rate", Units.AUDIO_PER_S),
+]
+
+
+def _payload_stats(raw: dict | None, units: Units) -> dict | None:
+    """Map an inference-perf summary dict to a schema Statistics dict.
+
+    inference-perf reports percentiles as ``median``/``p0.1``/``p99.9``; the
+    schema names them ``p50``/``p0p1``/``p99p9``. Returns None when the source
+    summary is absent so the (Optional) schema field is simply omitted.
+    """
+    if not isinstance(raw, dict):
+        return None
+    return {
+        "units": units,
+        "mean": raw.get("mean"),
+        "min": raw.get("min"),
+        "p0p1": raw.get("p0.1"),
+        "p1": raw.get("p1"),
+        "p5": raw.get("p5"),
+        "p10": raw.get("p10"),
+        "p25": raw.get("p25"),
+        "p50": raw.get("median"),
+        "p75": raw.get("p75"),
+        "p90": raw.get("p90"),
+        "p95": raw.get("p95"),
+        "p99": raw.get("p99"),
+        "p99p9": raw.get("p99.9"),
+        "max": raw.get("max"),
+    }
+
+
+def _media_rate(value: float | None, units: Units) -> dict | None:
+    """Wrap a scalar per-second rate as a schema Statistics dict, or None."""
+    if value is None:
+        return None
+    return {"units": units, "mean": value}
+
+
+def _build_multimodal(successes: dict) -> dict:
+    """Build the multimodal block from the successes section of the results.
+
+    Only modalities actually present in the run are included, and within each
+    only the sub-fields the harness reported.
+    """
+    multimodal = {}
+    for modality, fields in _MODALITY_FIELDS.items():
+        native = successes.get(modality)
+        if not isinstance(native, dict):
+            continue
+        stats = {
+            schema_name: _payload_stats(native.get(native_name), units)
+            for native_name, schema_name, units in fields
+            if isinstance(native.get(native_name), dict)
+        }
+        if stats:
+            multimodal[modality] = stats
+    return multimodal
+
+
+def _add_payload_statistics(br_dict: dict, results: dict) -> None:
+    """Fold inference-perf's request size, per-modality payload statistics and
+    media delivery rates into results.request_performance.aggregate.
+
+    They live under successes; when every request failed there are no
+    successes-derived statistics, and nothing is added.
+    """
+    successes = results.get("successes")
+    if not isinstance(successes, dict):
+        return
+
+    requests_add = {}
+
+    request_size = _payload_stats(successes.get("request_size_bytes"), Units.BYTES)
+    if request_size:
+        requests_add["request_size"] = request_size
+
+    multimodal = _build_multimodal(successes)
+    if multimodal:
+        requests_add["multimodal"] = multimodal
+
+    throughput = successes.get("throughput", {})
+    rates = {
+        schema_name: _media_rate(throughput.get(native_name), units)
+        for native_name, schema_name, units in _MEDIA_RATE_FIELDS
+        if throughput.get(native_name) is not None
+    }
+
+    aggregate = {}
+    if requests_add:
+        aggregate["requests"] = requests_add
+    if rates:
+        aggregate["throughput"] = rates
+
+    if aggregate:
+        update_dict(
+            br_dict,
+            {"results": {"request_performance": {"aggregate": aggregate}}},
+        )
+
+
+def _treatment_metadata() -> dict:
+    """Treatment grouping from the harness environment.
+
+    Concurrent treatments share a stack, so a reader needs to know what else
+    was running.
+    """
+    concurrent_with = [
+        name.strip()
+        for name in os.environ.get("LLMDBENCH_TREATMENT_CONCURRENT_WITH", "").split(",")
+        if name.strip()
+    ]
+    metadata: dict = {}
+    if os.environ.get("LLMDBENCH_TREATMENT_NAME"):
+        metadata["treatment"] = os.environ["LLMDBENCH_TREATMENT_NAME"]
+    if os.environ.get("LLMDBENCH_TREATMENT_GROUP"):
+        metadata["treatment_group"] = os.environ["LLMDBENCH_TREATMENT_GROUP"]
+    if concurrent_with:
+        metadata["concurrent_with"] = concurrent_with
+    return metadata
+
+
+def _add_treatment_metadata(br_dict: dict) -> None:
+    """Merge the harness treatment grouping into scenario.load.metadata."""
+    metadata = _treatment_metadata()
+    if metadata:
+        br_dict.setdefault("scenario", {}).setdefault("load", {}).setdefault(
+            "metadata", {}
+        ).update(metadata)
+
+
 def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     """Import data from a Inference Perf run as a BenchmarkReportV02.
 
@@ -1943,6 +2181,51 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
         },
     )
 
+    partial = _find_inference_perf_partial(results_file, stage)
+    if partial is not None:
+        # Only uid/eid/time: version and results are this function's own
+        # concern (the report declares VERSION, whatever the partial itself
+        # declares), and nothing else in `run` (cid/pid/user/description/
+        # keywords) is inference-perf's to set. Present partial fields win
+        # over the envelope's placeholders
+        # (run.uid is explicitly "Initial UID, may be updated"; run.time
+        # here is this stage's own wall-clock window, more precise than the
+        # overall-harness window every stage would otherwise share).
+        run_from_partial = {
+            k: v
+            for k, v in (get_nested(partial, ["run"], {}) or {}).items()
+            if k in ("uid", "eid", "time")
+        }
+        if run_from_partial:
+            update_dict(br_dict, {"run": run_from_partial})
+        aggregate = get_nested(partial, ["results", "request_performance", "aggregate"])
+    else:
+        aggregate = _build_inference_perf_aggregate_native(results)
+
+    update_dict(
+        br_dict,
+        {
+            "results": {
+                "request_performance": {"aggregate": aggregate},
+            },
+        },
+    )
+
+    _add_treatment_metadata(br_dict)
+    _add_payload_statistics(br_dict, results)
+
+    return load_benchmark_report(br_dict)
+
+
+def _build_inference_perf_aggregate_native(results: dict) -> dict:
+    """Derive results.request_performance.aggregate from native inference-perf
+    lifecycle metrics.
+
+    Fallback path for harness images built from an inference-perf release
+    that predates the BR0.2 partial (kubernetes-sigs/inference-perf#461,
+    llm-d/llm-d-benchmark#1891) -- import_inference_perf prefers the partial
+    when a sibling one is found next to ``results_file``.
+    """
     total_reqs = get_nested(results, ["load_summary", "count"])
     failures = get_nested(results, ["failures", "count"])
     if total_reqs == failures:
@@ -2629,16 +2912,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
             if aggregate["requests"].get(opt, {}).get("mean") is None:
                 aggregate["requests"].pop(opt, None)
 
-    update_dict(
-        br_dict,
-        {
-            "results": {
-                "request_performance": {"aggregate": aggregate},
-            },
-        },
-    )
-
-    return load_benchmark_report(br_dict)
+    return aggregate
 
 
 def import_inference_perf_session(results_file: str) -> BenchmarkReportV02:
@@ -2752,6 +3026,10 @@ def import_inference_perf_session(results_file: str) -> BenchmarkReportV02:
             },
         },
     )
+
+    # Trace-replay workloads produce only a session report, so it has to carry
+    # the grouping itself.
+    _add_treatment_metadata(br_dict)
 
     return load_benchmark_report(br_dict)
 

@@ -112,10 +112,10 @@ _anchors:
   # `inferencepool` / `standalone` charts onto the llm-d-owned
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
   # Used for both the standalone and gateway router charts.
-  router_chart_version:              &router_chart_version              v0.10.0
+  router_chart_version:              &router_chart_version              v0.11.0
   modelservice_chart_version:        &modelservice_chart_version        v0.4.16
   vllm-openai_version:               &vllm-openai_version               v0.30.0
-  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.10.0
+  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.11.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.11.0
   # Just use vllm-openai image for tokenizer
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.30.0
@@ -905,6 +905,15 @@ vllmCommon:
   # UCX socket address transport priority.
   ucxSockaddrTlsPriority: "tcp"
 
+  # Network device(s) UCX may use for the NIXL KV-transfer data plane, e.g.
+  # "eth0" or "mlx5_1:1". Empty means UCX auto-selects, which is right on a
+  # pod with one interface. Pin it when secondary networks are attached (a
+  # k8s.v1.cni.cncf.io/networks annotation): UCX then picks among every
+  # attached interface independently of VLLM_NIXL_SIDE_CHANNEL_HOST (the pod
+  # IP), and a rail that cannot carry the traffic makes the NIXL handshake
+  # time out -- which surfaces as a request that hangs, not as an error.
+  ucxNetDevices: ""
+
   # Network resource (RDMA/InfiniBand) for pod limits/requests (optional)
   # Only added to pod specs when both networkResource and networkNr are non-empty.
   # Equivalent to bash LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE / _NR.
@@ -1497,7 +1506,7 @@ nok8s:
   # Endpoint Picker (router brain), file-discovery mode
   epp:
     image: ghcr.io/llm-d/llm-d-router-endpoint-picker
-    tag: v0.10.0
+    tag: v0.11.0
     grpcPort: 9002
     grpcHealthPort: 9003
     metricsPort: 9090
@@ -1719,7 +1728,7 @@ extraObjects: []
 # ============================================================================
 wva:
   enabled: false
-  wellLitPath: inference-scheduling
+  wellLitPath: optimized-baseline
   # When blank, resolves to namespace.name at render time. Overridable via
   # the third component of `--namespace deploy,harness,wva`.
   namespace: ""

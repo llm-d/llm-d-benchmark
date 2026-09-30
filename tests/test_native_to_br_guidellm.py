@@ -36,9 +36,6 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import (
 from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
     import_guidellm as import_guidellm_v02,
 )
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_2_1 import (
-    import_guidellm as import_guidellm_v021,
-)
 from llmdbenchmark.analysis.benchmark_report.schema_v0_1 import BenchmarkReportV01
 from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
     BenchmarkReportV02,
@@ -81,7 +78,7 @@ def test_fixture_is_report_schema_v2(native):
 
 def test_returns_v0_2_report(report):
     assert isinstance(report, BenchmarkReportV02)
-    assert report.version == "0.2"
+    assert report.version == "0.2.1"
 
 
 def test_native_config_captures_run_wide_config(report, native):
@@ -212,14 +209,6 @@ def test_v0_1_latency_units_match_the_native_scale():
     assert latency.time_to_first_token.units == Units.MS
     assert latency.inter_token_latency.units == Units.MS_PER_TOKEN
     assert latency.time_per_output_token.units == Units.MS_PER_TOKEN
-
-
-def test_v0_2_1_shares_the_fix():
-    """native_to_br0_2_1 re-exports the v0.2 guidellm converter unchanged, so
-    the same fix has to cover it. It reports version 0.2 because it is
-    literally the same function object."""
-    assert import_guidellm_v021 is import_guidellm_v02
-    assert import_guidellm_v021(str(FIXTURE)).version == "0.2"
 
 
 # ---------------------------------------------------------------------------

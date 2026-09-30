@@ -82,8 +82,17 @@ scenario:
           # storageClassName: ocs-storagecluster-cephfs
 
       vllmCommon:
-#        ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
-#        ucxTls: "cuda,rc,sm"
+        # ---- RDMA / RoCE data plane ---------------------------------------------
+        # Transports UCX may use for the KV transfer. "rc" (reliable connection)
+        # is the RDMA transport; the others serve as fallbacks on nodes with no
+        # RDMA device.
+        ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+        # Rails to pin the KV transfer to, in HCA form <device>:<port>. Device
+        # numbers are a property of the nodes -- list yours with `ibstat -l` /
+        # `show_gids.sh`. Empty lets the preprocess init container select the
+        # devices; pin a subset per run with
+        #   --set 'vllmCommon.ucxNetDevices="mlx5_1:1,mlx5_3:1"'
+        ucxNetDevices: ""
         networkResource: "auto"   # auto-detect from cluster nodes
         networkNr: "1"            # number of network devices
 
@@ -103,14 +112,55 @@ scenario:
           - name: dshm
             mountPath: /dev/shm
 
-# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode..pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
+# Attaching a secondary network gives UCX more interfaces to choose from for the
+# NIXL KV-transfer data plane, and it chooses independently of
+# VLLM_NIXL_SIDE_CHANNEL_HOST (which is pinned to the pod IP). If a rail cannot
+# carry that traffic the handshake fails (NIXL_ERR_REMOTE_DISCONNECT /
+# NIXL_ERR_NOT_FOUND) and requests hang or 500 rather than erroring cleanly, so
+# vllmCommon.ucxNetDevices above narrows the choice. The right value depends on
+# which transport you want, and the device names are a property of your cluster's
+# hardware -- there is no portable default:
+#
+#   * TCP over the pod network (simplest): leave ucxTls as shipped and set
+#     ucxNetDevices: "eth0". KV transfer ignores the secondary rails.
+#   * TCP over the secondary rails: netdev names, e.g. "net1-0,net1-1,...".
+#   * RDMA/RoCE: add "rc" to ucxTls AND give ucxNetDevices HCA names in
+#     <device>:<port> form, e.g. "mlx5_1:1,mlx5_3:1". "eth0" is NOT an RDMA
+#     device, so pinning it silently keeps you on TCP.
+#
+# ucxNetDevices ships empty, which lets the preprocess init container auto-detect
+# the RoCE devices. That works when every rail exposes its GID at the same index;
+# pin the list explicitly if you see "HCA IDs selected: []" in the init
+# container log, or to hold the KV transfer to a subset of the rails.
+#
+# Rails sharing one subnet additionally need source-based routing rules, which
+# the preprocess init container installs. The device names and the attachment name
+# are per-cluster facts: override them with --set or a --cluster-config/--cc
+# overlay where this guide's values do not match your nodes.
+# Alternatively, --set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute,'annotations.decode.pod."k8s.v1.cni.cncf.io/networks"'=multi-nic-compute
       annotations:
         prefill:
           pod:
-#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+            k8s.v1.cni.cncf.io/networks: multi-nic-inference
         decode:
           pod:
-#            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+            k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      # ---- OpenTelemetry tracing ----------------------------------------------
+      # Emits OTEL_* env vars on prefill, decode and the routing proxy; vLLM
+      # receives the endpoint through --otlp-traces-endpoint in the customCommand
+      # blocks below. Deploy a collector reachable at otlpEndpoint -- the
+      # benchmark configures tracing but ships no backend of its own.
+      tracing:
+        enabled: true
+        otlpEndpoint: "http://otel-collector.observability.svc.cluster.local:4317"
+        sampling:
+          sampler: "parentbased_traceidratio"
+          samplerArg: "1.0"       # 1.0 = sample everything; lower for long runs
+        serviceNames:
+          vllmPrefill: "vllm-prefill"
+          vllmDecode: "vllm-decode"
+          routingProxy: "routing-proxy"
 
       timeouts:
         controlWait: 900000
@@ -331,16 +381,21 @@ scenario:
             --no-enable-prefix-caching \
             ${accelerator.dtypeArgs} \
             ${accelerator.executionArgs} \
-            --no-disable-hybrid-kv-cache-manager
+            --no-disable-hybrid-kv-cache-manager \
+            ${OTEL_EXPORTER_OTLP_ENDPOINT:+--otlp-traces-endpoint $OTEL_EXPORTER_OTLP_ENDPOINT}
 
         initContainers:
           - name: preprocess
             imageKey: benchmark
             imagePullPolicy: Always
-            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            # Runs the scripts mounted from the llm-d-benchmark-preprocesses
+            # ConfigMap, which standup builds from the local checkout.
+            command: ["python3", "/setup/preprocess/set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
             volumeMounts:
               - name: shared-config
                 mountPath: /shared-config
+              - name: preprocesses
+                mountPath: /setup/preprocess
 
         parallelism:
           tensor: 1
@@ -362,7 +417,7 @@ scenario:
         # -----------------------------------------------------------------------
         extraEnvVars:
           - name: NCCL_EXCLUDE_IB_HCA
-            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlx5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+            value: ""
           - name: NVSHMEM_DEBUG
             value: "none"
           - name: NCCL_DEBUG
@@ -371,6 +426,10 @@ scenario:
             value: debug
           - name: UCX_MAX_RMA_RAILS
             value: "1"
+          # Disables NVLink SHARP (NVLS) collectives, which require an
+          # initialized Fabric Manager.
+          - name: NCCL_NVLS_ENABLE
+            value: "0"
 
         # -----------------------------------------------------------------------
         # Extra Container Configuration
@@ -395,7 +454,12 @@ scenario:
         # -----------------------------------------------------------------------
         # Additional Volumes
         # -----------------------------------------------------------------------
-        additionalVolumes: []
+        additionalVolumes:
+          - name: preprocesses
+            type: configMap
+            configMap:
+              name: llm-d-benchmark-preprocesses
+              defaultMode: 493        # 0755, so the scripts are executable
 
       # -------------------------------------------------------------------------
       # Decode Configuration
@@ -422,16 +486,21 @@ scenario:
             --no-enable-prefix-caching \
             ${accelerator.dtypeArgs} \
             ${accelerator.executionArgs} \
-            --no-disable-hybrid-kv-cache-manager
+            --no-disable-hybrid-kv-cache-manager \
+            ${OTEL_EXPORTER_OTLP_ENDPOINT:+--otlp-traces-endpoint $OTEL_EXPORTER_OTLP_ENDPOINT}
 
         initContainers:
           - name: preprocess
             imageKey: benchmark
             imagePullPolicy: Always
-            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            # Runs the scripts mounted from the llm-d-benchmark-preprocesses
+            # ConfigMap, which standup builds from the local checkout.
+            command: ["python3", "/setup/preprocess/set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
             volumeMounts:
               - name: shared-config
                 mountPath: /shared-config
+              - name: preprocesses
+                mountPath: /setup/preprocess
 
         parallelism:
           tensor: 2
@@ -453,7 +522,7 @@ scenario:
         # -----------------------------------------------------------------------
         extraEnvVars:
           - name: NCCL_EXCLUDE_IB_HCA
-            value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlx5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+            value: ""
           - name: NVSHMEM_DEBUG
             value: "none"
           - name: NCCL_DEBUG
@@ -462,6 +531,10 @@ scenario:
             value: debug
           - name: UCX_MAX_RMA_RAILS
             value: "1"
+          # Disables NVLink SHARP (NVLS) collectives, which require an
+          # initialized Fabric Manager.
+          - name: NCCL_NVLS_ENABLE
+            value: "0"
 
         # -----------------------------------------------------------------------
         # Extra Container Configuration
@@ -486,7 +559,12 @@ scenario:
         # -----------------------------------------------------------------------
         # Additional Volumes
         # -----------------------------------------------------------------------
-        additionalVolumes: []
+        additionalVolumes:
+          - name: preprocesses
+            type: configMap
+            configMap:
+              name: llm-d-benchmark-preprocesses
+              defaultMode: 493        # 0755, so the scripts are executable
 
     harness:
       name: vllm-benchmark

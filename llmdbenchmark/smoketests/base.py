@@ -210,7 +210,7 @@ class BaseSmoketest:
 
         # 1. Check pods running for each configured role
         if is_kustomize:
-            if guide_name == "pd-disaggregation":
+            if guide_name in ("pd-disaggregation", "wide-ep"):
                 roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
             elif guide_name == "fast-model-actuation" or guide_name.startswith(
                 "fast-model-actuation-"

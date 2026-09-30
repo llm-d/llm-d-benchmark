@@ -26,10 +26,13 @@ import glob
 import io
 import json
 import os
-import shutil
-import subprocess
 import sys
 import tarfile
+
+try:
+    import zstandard
+except ImportError:
+    zstandard = None
 
 # Reuse the dual-pods-controller log parser (workload/harnesses) so hit-rate
 # classification matches the authoritative FMA actuation logic. The script runs
@@ -85,25 +88,22 @@ def _read_from_archives(run_root, filename):
     ``_find_one``. Self-contained on purpose: this script runs in CI from a
     GCS download, with no llmdbenchmark package importable.
     """
+    if zstandard is None:
+        return None
     want = os.path.basename(filename)
     for archive in reversed(_archives(run_root)):
         try:
-            zstd = shutil.which("zstd")
-            if not zstd:
-                continue
-            proc = subprocess.Popen([zstd, "-dc", archive], stdout=subprocess.PIPE)
-            try:
-                with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
-                    for member in tar:
-                        if member.isfile() and os.path.basename(member.name) == want:
-                            handle = tar.extractfile(member)
-                            if handle is not None:
-                                return handle.read()
-            finally:
-                if proc.stdout is not None:
-                    proc.stdout.close()
-                proc.wait()
-        except (tarfile.TarError, OSError, subprocess.SubprocessError):
+            with open(archive, "rb") as raw:
+                with zstandard.ZstdDecompressor().stream_reader(raw) as stream:
+                    with tarfile.open(fileobj=stream, mode="r|") as tar:
+                        for member in tar:
+                            if member.isfile() and (
+                                os.path.basename(member.name) == want
+                            ):
+                                handle = tar.extractfile(member)
+                                if handle is not None:
+                                    return handle.read()
+        except (tarfile.TarError, OSError, zstandard.ZstdError):
             continue
     return None
 

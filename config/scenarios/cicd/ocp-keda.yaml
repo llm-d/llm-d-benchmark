@@ -128,7 +128,7 @@ scenario:
                     weight: 2
 
     # =========================================================================
-    # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+    # PREFILL / DECODE CONFIGURATION (same as optimized-baseline.yaml)
     # =========================================================================
     prefill:
       enabled: false

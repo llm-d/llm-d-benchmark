@@ -1254,8 +1254,8 @@ Experiments define a Design of Experiments (DoE) matrix with setup treatments
 
 ### Experiment YAML Format
 
-Create a file in `workload/experiments/`, e.g.,
-`workload/experiments/my-experiment.yaml`:
+Create a file in `experiments/`, e.g.,
+`experiments/my-experiment.yaml`:
 
 ```yaml
 experiment:
@@ -1346,7 +1346,7 @@ setup:
 
 ```bash
 llmdbenchmark --spec my-scenario experiment \
-  --experiments workload/experiments/my-experiment.yaml
+  --experiments experiments/my-experiment.yaml
 ```
 
 The experiment orchestrator (`_execute_experiment` in `llmdbenchmark/cli.py`):

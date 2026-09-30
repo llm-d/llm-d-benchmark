@@ -104,12 +104,14 @@ The base class (`validate_role_pods`) handles the common checks that apply to ev
 | Stack name | Validator | Scenario-specific checks |
 |------------|-----------|--------------------------|
 | `pd-disaggregation` | `PdDisaggregationValidator` | Both prefill + decode pods, KV transfer with NixlConnector, role markers |
-| `precise-prefix-cache-aware` | `PrecisePrefixCacheAwareValidator` | No routing proxy, EPP pod running, `--prefix-caching-hash-algo sha256_cbor`, KV events port 5557 |
-| `inference-scheduling` | `InferenceSchedulingValidator` | Decode-only, metrics port exposed, routing proxy present |
+| `precise-prefix-cache-routing` | `PrecisePrefixCacheAwareValidator` | No routing proxy, EPP pod running, `--prefix-caching-hash-algo sha256_cbor`, KV events port 5557 |
+| `optimized-baseline` | `OptimizedBaselineValidator` | Decode-only, metrics port exposed, routing proxy present |
 | `tiered-prefix-cache` | `TieredPrefixCacheValidator` | KV transfer with OffloadingConnector, LMCACHE env vars, `--max-num-seq`, EPP pod |
 | `wide-ep` | `WideEpValidator` | LWS env vars (LWS_GROUP_SIZE, DP_SIZE_LOCAL), expert parallelism flags, RDMA network resource |
-| `simulated-accelerators` | `SimulatedAcceleratorsValidator` | No GPU resources on pods, works for both standalone and modelservice |
-| `cpu-example-ms` | `CpuValidator` | No GPU resources, CPU vLLM image, kubeconfig + preprocesses volumes |
+| `inference-scheduling-wva` | `OptimizedBaselineValidator` | Optimized-baseline checks; the WVA mixin adds its own when `wva.enabled` is true |
+| `fast-model-actuation`, `fast-model-actuation-base`, `fast-model-actuation-keda` | `FmaValidator` | Launcher pods bound and not crashing, signature annotation, model ready, inference endpoint |
+| `wva` | `WvaValidator` | Controller deployment up, HPA targets resolved and converged, KEDA CRDs present |
+| `cpu-example` | `CpuValidator` | No GPU resources, CPU vLLM image, kubeconfig + preprocesses volumes |
 | `gpu-example` | `GpuValidator` | GPU accelerator resource present, supports both modelservice and standalone |
 | `spyre-example` | `SpyreValidator` | Spyre accelerator (`ibm.com/spyre_vf`), Spyre env vars (FLEX_COMPUTE, FLEX_DEVICE, etc.), precompiled model PVC, AIU image |
 
@@ -137,7 +139,7 @@ Results are aggregated into a `SmoketestReport` that provides a summary (`passed
 llmdbenchmark --spec gpu smoketest -p my-namespace
 
 # Just the config validation step
-llmdbenchmark --spec inference-scheduling smoketest -p my-namespace -s 2
+llmdbenchmark --spec optimized-baseline smoketest -p my-namespace -s 2
 
 # Just the health check
 llmdbenchmark --spec pd-disaggregation smoketest -p my-namespace -s 0
@@ -152,7 +154,7 @@ Smoketests use the rendered plan directory from the workspace to find `config.ya
 3. Call `self.validate_role_pods()` for the standard checks, then add scenario-specific checks via `CheckResult`
 4. Register in `validators/__init__.py` -- add the import and map the stack name to your class in `VALIDATORS`
 
-The stack name is the `-name` field from the scenario YAML (e.g., `pd-disaggregation`, `cpu-example-ms`). When no validator is registered for a stack name, step 02 falls back to `BaseSmoketest` which skips config validation.
+The stack name is the `-name` field from the scenario YAML (e.g., `pd-disaggregation`, `cpu-example`). When no validator is registered for a stack name, step 02 falls back to `BaseSmoketest` which skips config validation.
 
 ## Module structure
 
@@ -170,12 +172,14 @@ smoketests/
 +-- validators/
     +-- __init__.py         -- VALIDATORS dict (stack name to validator class)
     +-- cpu.py
+    +-- fma.py
     +-- gpu.py
-    +-- spyre.py
-    +-- inference_scheduling.py
+    +-- keda_saturation.py
+    +-- optimized_baseline.py
     +-- pd_disaggregation.py
     +-- precise_prefix_cache_aware.py
-    +-- simulated_accelerators.py
+    +-- spyre.py
     +-- tiered_prefix_cache.py
     +-- wide_ep.py
+    +-- wva.py
 ```

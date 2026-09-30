@@ -6,6 +6,7 @@ expanded on the driver. Level 10 is the speed/size knee (see --compress-level in
 README.md for the measured tradeoff).
 """
 
+import io
 import posixpath
 import re
 import shlex
@@ -14,6 +15,8 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
+
+import zstandard
 
 DEFAULT_LEVEL = 10
 
@@ -189,12 +192,26 @@ class RemoteReadError(Exception):
     dropped tunnel to the "file absent" this exists to prevent."""
 
 
-def _local_zstd_source(archive: Path) -> subprocess.Popen:
-    return subprocess.Popen(
-        ["zstd", "-dc", str(archive)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+class _ZstdSource:
+    """Shaped like a ``Popen`` so local and remote archives stay one code path."""
+
+    def __init__(self, stdout, stderr=b"", upstream=None, closefd=True):
+        self._raw = stdout
+        self._closefd = closefd
+        self.stdout = zstandard.ZstdDecompressor().stream_reader(stdout)
+        self.stderr = io.BytesIO(stderr)
+        if upstream is not None:
+            self.upstream = upstream
+
+    def wait(self) -> int:
+        self.stdout.close()
+        if self._closefd:
+            self._raw.close()
+        return 0
+
+
+def _local_zstd_source(archive: Path) -> _ZstdSource:
+    return _ZstdSource(open(archive, "rb"))
 
 
 def _read_archive(archive, consume, partial: bool = False, source=None) -> None:
@@ -210,12 +227,11 @@ def _read_archive(archive, consume, partial: bool = False, source=None) -> None:
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
             consume(tar)
     finally:
-        # Close first, or zstd blocks writing into a pipe nobody drains and
-        # wait() deadlocks. An early-stopping consumer makes that the norm.
+        # Close first or wait() deadlocks on a pipe nobody reads.
         proc.stdout.close()
         stderr = proc.stderr.read().decode("utf-8", errors="replace")
         code = proc.wait()
-        # Before zstd's verdict: it reports the truncation, not the cause.
+        # Reports the cause, not the truncation.
         if upstream is not None:
             up_stderr = upstream.stderr.read().decode("utf-8", errors="replace")
             upstream.stderr.close()
@@ -225,10 +241,9 @@ def _read_archive(archive, consume, partial: bool = False, source=None) -> None:
                     f"reading {archive} failed (exit={up_code}): {up_stderr[:300]}"
                 )
         # Only SIGPIPE is forgiven -- and it cannot be told apart from a truncation
-        # the consumer stopped before reaching. Deletion is gated on `zstd -t`, so a
-        # bad archive reaching here is already rare.
+        # the consumer stopped before reaching.
         if code != 0 and not (partial and code == -signal.SIGPIPE):
-            raise RuntimeError(f"zstd -dc exited {code}: {stderr}")
+            raise RuntimeError(f"decompressing {archive} failed: {stderr}")
 
 
 def read_member(root: Path, name: str) -> bytes | None:
@@ -336,7 +351,8 @@ def _archives_covering(root: Path) -> list[tuple[Path, str]]:
     return [(archive, "")] if archive.is_file() else []
 
 
-_UNREADABLE = (RuntimeError, tarfile.TarError, OSError)
+# ZstdError is not a RuntimeError, so it needs listing here.
+_UNREADABLE = (RuntimeError, tarfile.TarError, OSError, zstandard.ZstdError)
 
 
 def _warn_unreadable(archive: Path, exc: BaseException) -> None:
@@ -456,23 +472,14 @@ class RemoteReader:
             )
         return proc.stdout
 
-    def _exec_source(self, path) -> subprocess.Popen:
+    def _exec_source(self, path) -> "_ZstdSource":
         cat = subprocess.Popen(
             self._exec_argv("cat", str(path)),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        zstd = subprocess.Popen(
-            ["zstd", "-dc"],
-            stdin=cat.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        # Ours is closed so zstd owns the only read end and cat sees EOF/SIGPIPE.
-        cat.stdout.close()
-        # Checked by _read_archive; unwatched it would read as a short archive.
-        zstd.upstream = cat
-        return zstd
+        # cat owns the pipe, closing it here gives EOF too early.
+        return _ZstdSource(cat.stdout, upstream=cat, closefd=False)
 
     def archive_source(self):
         return self._source

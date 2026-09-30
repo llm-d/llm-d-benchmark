@@ -189,6 +189,10 @@ spec:
           value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
         - name: UCX_SOCKADDR_TLS_PRIORITY
           value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+{% if vllmCommon.ucxNetDevices is defined and vllmCommon.ucxNetDevices %}
+        - name: UCX_NET_DEVICES
+          value: "{{ vllmCommon.ucxNetDevices }}"
+{% endif %}
         - name: DP_SIZE
           value: "{{ (standalone.parallelism.data if standalone.parallelism is defined and standalone.parallelism.data is defined else '1') }}"
         - name: TP_SIZE
@@ -335,6 +339,10 @@ spec:
           value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
         - name: UCX_SOCKADDR_TLS_PRIORITY
           value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+{% if vllmCommon.ucxNetDevices is defined and vllmCommon.ucxNetDevices %}
+        - name: UCX_NET_DEVICES
+          value: "{{ vllmCommon.ucxNetDevices }}"
+{% endif %}
         - name: POD_IP
           valueFrom:
             fieldRef:
@@ -556,6 +564,10 @@ spec:
           value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
         - name: UCX_SOCKADDR_TLS_PRIORITY
           value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+{% if vllmCommon.ucxNetDevices is defined and vllmCommon.ucxNetDevices %}
+        - name: UCX_NET_DEVICES
+          value: "{{ vllmCommon.ucxNetDevices }}"
+{% endif %}
         - name: POD_IP
           valueFrom:
             fieldRef:

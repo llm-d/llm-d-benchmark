@@ -25,7 +25,7 @@ from llmdbenchmark.experiment.summary import (
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-EXPERIMENTS_DIR = PROJECT_ROOT / "workload" / "experiments"
+EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 
 
 # ===========================================================================
@@ -477,14 +477,13 @@ class TestParseRealExperimentFiles:
         params=[
             "tiered-prefix-cache.yaml",
             "precise-prefix-cache-aware.yaml",
-            "inference-scheduling.yaml",
+            "optimized-baseline.yaml",
             "pd-disaggregation.yaml",
         ]
     )
     def experiment_file(self, request) -> Path:
         path = EXPERIMENTS_DIR / request.param
-        if not path.exists():
-            pytest.skip(f"Experiment file not found: {path}")
+        assert path.exists(), f"Experiment file not found: {path}"
         return path
 
     def test_parses_without_error(self, experiment_file: Path):
@@ -511,8 +510,7 @@ class TestTieredPrefixCacheExperiment:
     @pytest.fixture
     def plan(self) -> ExperimentPlan:
         path = EXPERIMENTS_DIR / "tiered-prefix-cache.yaml"
-        if not path.exists():
-            pytest.skip("tiered-prefix-cache.yaml not found")
+        assert path.exists(), f"Experiment file not found: {path}"
         return parse_experiment(path)
 
     def test_setup_treatments(self, plan: ExperimentPlan):
@@ -534,9 +532,11 @@ class TestTieredPrefixCacheExperiment:
             assert t.overrides["model"]["blockSize"] == 64
 
     def test_setup_treatment_overrides(self, plan: ExperimentPlan):
+        # No template reads the old key, so a wrong one here passes silently.
         expected_blocks = [500, 1000, 2000, 5000]
         for t, expected in zip(plan.setup_treatments, expected_blocks):
-            assert t.overrides["vllmCommon"]["flags"]["numCpuBlocks"] == expected
+            extra = t.overrides["vllmCommon"]["kvTransfer"]["extraConfig"]
+            assert extra["num_cpu_blocks"] == expected
 
     def test_run_treatment_count(self, plan: ExperimentPlan):
         assert plan.run_treatments_count == 6
@@ -552,8 +552,7 @@ class TestPrecisePrefixCacheAwareExperiment:
     @pytest.fixture
     def plan(self) -> ExperimentPlan:
         path = EXPERIMENTS_DIR / "precise-prefix-cache-aware.yaml"
-        if not path.exists():
-            pytest.skip("precise-prefix-cache-aware.yaml not found")
+        assert path.exists(), f"Experiment file not found: {path}"
         return parse_experiment(path)
 
     def test_setup_treatments(self, plan: ExperimentPlan):
@@ -582,8 +581,7 @@ class TestPdDisaggregationExperiment:
     @pytest.fixture
     def plan(self) -> ExperimentPlan:
         path = EXPERIMENTS_DIR / "pd-disaggregation.yaml"
-        if not path.exists():
-            pytest.skip("pd-disaggregation.yaml not found")
+        assert path.exists(), f"Experiment file not found: {path}"
         return parse_experiment(path)
 
     def test_setup_treatments(self, plan: ExperimentPlan):
@@ -913,11 +911,3 @@ class TestReadResetCaches:
 
         assert read_reset_caches(None) is False
         assert read_reset_caches(str(tmp_path / "nope.yaml")) is False
-
-    def test_real_input_length_sweep_defaults_false(self):
-        """The shipped experiment file keeps the key commented out."""
-        from llmdbenchmark.experiment.parser import read_reset_caches
-
-        f = PROJECT_ROOT / "experiments" / "input-length-sweep.yaml"
-        if f.exists():
-            assert read_reset_caches(str(f)) is False
