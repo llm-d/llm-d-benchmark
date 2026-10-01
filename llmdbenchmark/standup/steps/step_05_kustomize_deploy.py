@@ -664,7 +664,7 @@ class KustomizeDeployStep(Step):
             i -= 1
         return "/".join(parts)
 
-    _KNOWN_ACCEL_TYPES = ("gpu", "xpu", "tpu", "spyre", "cpu", "gh200")
+    _KNOWN_ACCEL_TYPES = ("gpu", "amd", "xpu", "tpu", "spyre", "cpu", "gh200")
 
     @classmethod
     def _select_router_commands(cls, commands, accel_backend: str):
