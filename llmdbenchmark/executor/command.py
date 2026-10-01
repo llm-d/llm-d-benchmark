@@ -21,6 +21,10 @@ from llmdbenchmark.utilities.podstate import (
     parse_pod_list,
 )
 
+#: A rollout query that keeps failing (e.g. no right to list Deployments) is
+#: given up, or every wait would run to its timeout.
+ROLLOUT_QUERY_ATTEMPTS = 3
+
 
 @dataclass
 class CommandResult:
@@ -72,6 +76,30 @@ class _MinimalLogger:
     def log_error(self, msg, **_kwargs):
         """Log an error message."""
         self._log.error(msg)
+
+
+def _selector_terms(label: str) -> dict[str, str] | None:
+    """``k=v[,k=v]`` as a dict, or None for any other selector form."""
+    terms = {}
+    for part in label.split(","):
+        key, sep, value = part.partition("=")
+        key = key.strip()
+        if not sep or not key or key.endswith("!") or " " in key:
+            return None
+        terms[key] = value.lstrip("=").strip()
+    return terms
+
+
+def _unschedulable_note(live: list) -> str:
+    """Hint for a timeout where a new pod waits for room the old one holds."""
+    stuck = [p.name for p in live if p.scheduling_reason]
+    if not stuck or not any(p.ready for p in live):
+        return ""
+    return (
+        f" -- {', '.join(stuck)} cannot be scheduled while the old pod(s) "
+        "still hold their resources; a rolling update needs room for one "
+        "more pod"
+    )
 
 
 class CommandExecutor:
@@ -373,11 +401,20 @@ class CommandExecutor:
         timeout: int = 300,
         poll_interval: int = 10,
         description: str = "",
+        expected: int | None = None,
     ) -> CommandResult:
         """Poll pods matching a label selector until all are Ready, showing live progress.
 
         ``timeout`` resets once, the first time a pod starts, so a long wait
         for cluster capacity doesn't consume the pod's own startup budget.
+
+        Pods being torn down are ignored, and a Deployment behind *label* must
+        also finish its rollout: mid-rollout the old pod is still Ready, and
+        it can stand in for a replacement that does not exist yet.
+
+        ``expected`` is how many pods should end up Ready. Without it any single
+        Ready pod satisfies the wait, which on a scale-up returns while the rest
+        are still starting.
 
         When a restart budget is configured (``--pod-restart-budget``), pods
         that fail in a way a restart may clear are deleted and given another
@@ -397,12 +434,14 @@ class CommandExecutor:
         start = time.time()
         last_status_line = ""
         ever_found_pods = False
+        live: list = []
         # Extended by the restart policy: a replacement pod re-pulls its image
         # and reloads the model from zero, so it needs budget of its own.
         deadline = float(timeout)
         # Reset once a pod starts, so a long wait on cluster capacity doesn't
         # eat into the pod's own startup budget.
         deadline_reset = False
+        rollout_failures = 0
 
         while True:
             elapsed = time.time() - start
@@ -428,7 +467,10 @@ class CommandExecutor:
                 return CommandResult(
                     command=cmd_repr,
                     exit_code=1,
-                    stderr=f"Timed out after {int(deadline)}s waiting for {desc}{budget_note}",
+                    stderr=(
+                        f"Timed out after {int(deadline)}s waiting for {desc}"
+                        f"{_unschedulable_note(live)}{budget_note}"
+                    ),
                 )
 
             pods = self._observe_pods(label, namespace)
@@ -437,12 +479,16 @@ class CommandExecutor:
                 time.sleep(poll_interval)
                 continue
 
-            if len(pods) == 0:
+            # The full list still goes to the policies below: they must see a
+            # pod that is going away, so they do not delete it again.
+            live = [p for p in pods if not p.deleting]
+
+            if not live:
                 status_line = self._format_progress(
                     desc,
                     elapsed,
                     deadline,
-                    "no pods found yet",
+                    "only terminating pods" if pods else "no pods found yet",
                     0,
                     0,
                 )
@@ -453,7 +499,9 @@ class CommandExecutor:
 
             ever_found_pods = True
 
-            if not deadline_reset and any(p.has_started for p in pods):
+            # Not Ready, so an old pod that already serves does not use up
+            # the reset before its replacement starts.
+            if not deadline_reset and any(p.has_started and not p.ready for p in live):
                 deadline_reset = True
                 start = time.time()
                 elapsed = 0.0
@@ -461,8 +509,8 @@ class CommandExecutor:
                     f"   {desc}: pod(s) started -- resetting the {int(timeout)}s timeout"
                 )
 
-            ready_count = sum(1 for p in pods if p.ready)
-            total = len(pods)
+            ready_count = sum(1 for p in live if p.ready)
+            total = len(live)
             pod_summaries = [f"{p.name[:30]}:{p.summary}" for p in pods]
 
             status_line = self._format_progress(
@@ -504,7 +552,7 @@ class CommandExecutor:
                 time.sleep(poll_interval)
                 continue
 
-            crashing = [p for p in pods if p.crashing]
+            crashing = [p for p in live if p.crashing]
             if crashing:
                 self._clear_progress_line(last_status_line)
                 crash_details = ", ".join(
@@ -522,7 +570,32 @@ class CommandExecutor:
                     ),
                 )
 
-            if ready_count == total and total > 0:
+            enough = ready_count >= expected if expected else total > 0
+            if ready_count == total and enough:
+                pending = self._pending_rollouts(label, namespace)
+                if pending is None:
+                    rollout_failures += 1
+                    if rollout_failures >= ROLLOUT_QUERY_ATTEMPTS:
+                        self._clear_progress_line(last_status_line)
+                        last_status_line = ""
+                        self.logger.log_warning(
+                            f"{desc}: cannot list Deployments in {namespace}, "
+                            "so the rollout is not checked."
+                        )
+                        pending = []
+                if pending is None or pending:
+                    status_line = self._format_progress(
+                        desc,
+                        elapsed,
+                        deadline,
+                        f"rollout not done: {', '.join(pending or ['?'])}",
+                        ready_count,
+                        total,
+                    )
+                    self._print_progress(status_line, last_status_line)
+                    last_status_line = status_line
+                    time.sleep(poll_interval)
+                    continue
                 self._clear_progress_line(last_status_line)
                 self.logger.log_info(
                     f"✅ {desc}: {total}/{total} Ready ({self._fmt_elapsed(elapsed)})"
@@ -999,6 +1072,53 @@ class CommandExecutor:
             return parse_pod_list(result.stdout, namespace=namespace)
         except OSError:
             return None
+
+    def _pending_rollouts(self, label: str, namespace: str) -> list[str] | None:
+        """Deployments behind *label* whose rollout is not done yet.
+
+        Returns ``None`` when the query failed.
+        """
+        terms = _selector_terms(label)
+        if not terms:
+            return []
+        parts = [self._kube_bin]
+        parts.extend(self._kubeconfig_args())
+        parts.extend(["get", "deployments", "--namespace", namespace, "-o", "json"])
+        try:
+            result = subprocess.run(
+                " ".join(parts),
+                shell=True,
+                capture_output=True,
+                text=True,
+                check=False,
+                executable="/bin/bash",
+            )
+            if result.returncode != 0:
+                return None
+            items = json.loads(result.stdout).get("items") or []
+        except (json.JSONDecodeError, AttributeError, OSError):
+            return None
+
+        pending = []
+        for item in items:
+            spec = item.get("spec") or {}
+            labels = ((spec.get("template") or {}).get("metadata") or {}).get(
+                "labels"
+            ) or {}
+            if any(labels.get(key) != value for key, value in terms.items()):
+                continue
+            status = item.get("status") or {}
+            wanted = spec.get("replicas", 1)
+            updated = status.get("updatedReplicas", 0)
+            if (
+                (item.get("metadata") or {}).get("generation", 0)
+                > status.get("observedGeneration", 0)
+                or updated < wanted
+                or status.get("replicas", 0) > updated
+                or status.get("availableReplicas", 0) < wanted
+            ):
+                pending.append((item.get("metadata") or {}).get("name", "?"))
+        return pending
 
     def _get_pod_statuses(self, label: str, namespace: str) -> list[dict] | None:
         """Query pod statuses as plain dicts (name/status/ready/phase)."""

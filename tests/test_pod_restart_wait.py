@@ -78,6 +78,7 @@ def _executor(tmp_path, monkeypatch, polls, budget=None):
             return polls[-1]
 
     monkeypatch.setattr(cmd, "_observe_pods", _observe)
+    monkeypatch.setattr(cmd, "_pending_rollouts", lambda _label, _namespace: [])
 
     calls: list[tuple[str, ...]] = []
 

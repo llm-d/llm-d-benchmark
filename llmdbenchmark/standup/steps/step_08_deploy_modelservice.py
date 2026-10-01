@@ -1,6 +1,7 @@
 """Step 08 -- Deploy the model via the llm-d modelservice Helm chart."""
 
 import hashlib
+import json
 import time
 from datetime import UTC
 from pathlib import Path
@@ -10,9 +11,21 @@ from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
 from llmdbenchmark.utilities.kube_helpers import wait_for_epp
+from llmdbenchmark.utilities.podstate import observe_pods
 from llmdbenchmark.utilities.standup_parameters import (
     write as write_standup_parameters,
 )
+
+
+def decode_autoscaled(plan_config: dict) -> bool:
+    """Whether an autoscaler owns the decode replica count."""
+    if plan_config.get("multinode", {}).get("enabled", False):
+        return False
+    return bool(
+        plan_config.get("wva", {}).get("enabled", False)
+        or plan_config.get("eppKedaSaturation", {}).get("enabled", False)
+        or plan_config.get("keda", {}).get("scaledObjects")
+    )
 
 
 class DeployModelserviceStep(Step):
@@ -154,6 +167,9 @@ class DeployModelserviceStep(Step):
                     namespace,
                 )
 
+        if not errors and context.current_phase is Phase.UPDATE:
+            self._restore_replicas(cmd, context, plan_config, namespace, errors)
+
         if not errors:
             decode_cfg = plan_config.get("decode", {})  # noqa: F841
             expected_replicas = int(
@@ -168,14 +184,22 @@ class DeployModelserviceStep(Step):
                 )
                 expected_replicas = expected_replicas * workers
 
+            # Sibling stacks share the namespace, so their pods must not count.
+            decode_label = f"llm-d.ai/model={model_id_label},llm-d.ai/role=decode"
+
             # When decode.replicas == 0 there are no decode pods to wait for.
             if expected_replicas > 0:
                 decode_wait = cmd.wait_for_pods(
-                    label="llm-d.ai/role=decode",
+                    label=decode_label,
                     namespace=namespace,
                     timeout=timeout,
                     poll_interval=10,
                     description="decode pods",
+                    # An autoscaler that already exists owns the count; the
+                    # rollout check still waits for every replica it asks for.
+                    expected=(
+                        None if decode_autoscaled(plan_config) else expected_replicas
+                    ),
                 )
                 if not decode_wait.success:
                     errors.append(f"Decode pods not ready: {decode_wait.stderr}")
@@ -185,22 +209,9 @@ class DeployModelserviceStep(Step):
                     "(FMA owns model server lifecycle when fma.enabled=true)"
                 )
             if expected_replicas > 1 and not context.dry_run:
-                pod_count_result = cmd.kube(
-                    "get",
-                    "pods",
-                    "-l",
-                    "llm-d.ai/role=decode",
-                    "--namespace",
-                    namespace,
-                    "-o",
-                    "jsonpath={.items[*].metadata.name}",
-                )
-                if pod_count_result.success:
-                    actual_count = (
-                        len(pod_count_result.stdout.strip().split())
-                        if pod_count_result.stdout.strip()
-                        else 0
-                    )
+                decode_pods = observe_pods(cmd, namespace, label=decode_label)
+                if decode_pods is not None:
+                    actual_count = sum(1 for pod in decode_pods if not pod.deleting)
                     if actual_count < expected_replicas:
                         context.logger.log_warning(
                             f"⚠️  Expected {expected_replicas} decode pods "
@@ -218,11 +229,12 @@ class DeployModelserviceStep(Step):
 
             if prefill_enabled and prefill_replicas > 0:
                 prefill_wait = cmd.wait_for_pods(
-                    label="llm-d.ai/role=prefill",
+                    label=f"llm-d.ai/model={model_id_label},llm-d.ai/role=prefill",
                     namespace=namespace,
                     timeout=timeout,
                     poll_interval=10,
                     description="prefill pods",
+                    expected=prefill_replicas,
                 )
                 if not prefill_wait.success:
                     errors.append(f"Prefill pods not ready: {prefill_wait.stderr}")
@@ -795,6 +807,77 @@ class DeployModelserviceStep(Step):
                         f"Could not query {label}/{resource_name} for state log: "
                         f"{result.stderr.strip()[:200] or '(empty)'}"
                     )
+
+    def _restore_replicas(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+        namespace: str,
+        errors: list,
+    ):
+        """Scale decode/prefill back to the configured count.
+
+        Helm keeps a replica count changed by hand when the chart value did
+        not change, and the pod wait would then never end.
+        """
+        if plan_config.get("multinode", {}).get("enabled", False):
+            return
+        if plan_config.get("fma", {}).get("enabled", False):
+            return
+        model_id_label = self._require_config(plan_config, "model_id_label")
+        wanted = {}
+        if not decode_autoscaled(plan_config):
+            wanted["decode"] = int(
+                self._require_config(plan_config, "decode", "replicas")
+            )
+        if self._require_config(plan_config, "prefill", "enabled"):
+            wanted["prefill"] = int(
+                self._require_config(plan_config, "prefill", "replicas")
+            )
+
+        if not wanted:
+            return
+        # The chart sets these labels on the pod template only, not on the
+        # Deployment, so `get -l` would find nothing.
+        result = cmd.kube(
+            "get", "deployment", "--namespace", namespace, "-o", "json", check=False
+        )
+        if not result.success or not (result.stdout or "").strip():
+            return
+        try:
+            items = json.loads(result.stdout).get("items") or []
+        except (json.JSONDecodeError, AttributeError):
+            return
+
+        for item in items:
+            spec = item.get("spec") or {}
+            labels = ((spec.get("template") or {}).get("metadata") or {}).get(
+                "labels"
+            ) or {}
+            if labels.get("llm-d.ai/model") != model_id_label:
+                continue
+            replicas = wanted.get(labels.get("llm-d.ai/role"))
+            if replicas is None:
+                continue
+            name = (item.get("metadata") or {}).get("name", "")
+            live = spec.get("replicas", 1)
+            if not name or live == replicas:
+                continue
+            context.logger.log_warning(
+                f"⚠️  deployment/{name} has {live} replica(s), the config "
+                f"asks for {replicas} -- scaling it back."
+            )
+            scaled = cmd.kube(
+                "scale",
+                "deployment",
+                name,
+                f"--replicas={replicas}",
+                "--namespace",
+                namespace,
+            )
+            if not scaled.success:
+                errors.append(f"Could not scale {name}: {scaled.stderr}")
 
     def _propagate_standup_parameters(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
