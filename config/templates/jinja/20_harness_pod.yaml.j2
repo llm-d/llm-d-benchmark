@@ -9,9 +9,9 @@ metadata:
   name: {{ pod_name }}
   namespace: {{ harness.namespace | default(namespace.name) }}
   labels:
-    app: {{ harness.podLabel }}
+    app: "{{ harness.podLabel }}"
     function: load_generator
-    llmdbench.ai/treatment: {{ treatment_label_value | default('default') }}
+    llmdbench.ai/treatment: "{{ treatment_label_value | default('default') }}"
 spec:
   containers:
   - name: harness

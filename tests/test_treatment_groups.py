@@ -640,3 +640,33 @@ class TestHarnessMemory:
     )
     def test_request_and_limit(self, resources, expected) -> None:
         assert self._memory(resources) == expected
+
+
+# ---------------------------------------------------------------------------
+# Label values must survive YAML decoding as strings
+# ---------------------------------------------------------------------------
+
+
+def test_rand_suffix_starts_with_a_letter():
+    """A suffix that starts with a digit can be read as a YAML number."""
+    for length in (1, 6, 8):
+        for _ in range(500):
+            suffix = DeployHarnessStep._rand_suffix(length)
+            assert len(suffix) == length
+            assert suffix[0].isalpha(), suffix
+            assert re.fullmatch(r"[a-z][a-z0-9]*", suffix), suffix
+
+
+@pytest.mark.parametrize("suffix", ["123456", "12e345", "0x1abc", "1_0000"])
+def test_treatment_label_without_name_is_the_suffix(suffix):
+    assert DeployHarnessStep._treatment_label_value(None, suffix) == suffix
+    assert DeployHarnessStep._treatment_label_value("", suffix) == suffix
+
+
+@pytest.mark.parametrize("value", ["123456", "12e345", "0x1abc", "default-9"])
+def test_harness_pod_labels_render_as_strings(value):
+    """Numeric-looking label values are quoted, so kubectl's decoder accepts them."""
+    labels = render_pod(treatment_label_value=value)["metadata"]["labels"]
+    assert labels["llmdbench.ai/treatment"] == value
+    assert isinstance(labels["llmdbench.ai/treatment"], str)
+    assert labels["app"] == "llmdbench-harness-launcher"

@@ -1803,8 +1803,19 @@ class DeployHarnessStep(Step):
 
     @staticmethod
     def _rand_suffix(length: int = 8) -> str:
-        """Generate a random lowercase alphanumeric suffix."""
-        return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
+        """Generate a random lowercase alphanumeric suffix.
+
+        The first character is always a letter. The suffix is used on its own as
+        the ``llmdbench.ai/treatment`` label value when there is no named
+        treatment, and a value such as ``123456``, ``12e345`` or ``0x1abc``
+        is read by the YAML decoder as a number, which kubectl then rejects
+        with "cannot unmarshal number into ... metadata.labels".
+        """
+        first = random.choice(string.ascii_lowercase)
+        rest = random.choices(
+            string.ascii_lowercase + string.digits, k=max(length - 1, 0)
+        )
+        return first + "".join(rest)
 
     @staticmethod
     def _profile_mounts(context: ExecutionContext, harness_name: str) -> list[str]:
