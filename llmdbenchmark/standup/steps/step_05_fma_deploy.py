@@ -199,6 +199,7 @@ class FMADeployStep(Step):
                     timeout=bound_launcher_timeout,
                     poll_interval=10,
                     description=f"FMA bound launcher (model={model_id_label})",
+                    expected=int(requester_replicas),
                 )
                 if not wait_result.success:
                     errors.append(
@@ -567,6 +568,7 @@ class FMADeployStep(Step):
             timeout=900,
             poll_interval=10,
             description=f"FMA launchers ({gpu_count} expected, one per GPU)",
+            expected=gpu_count,
         )
         if not launcher_wait.success:
             errors.append(

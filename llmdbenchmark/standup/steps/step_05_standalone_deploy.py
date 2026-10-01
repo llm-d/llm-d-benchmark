@@ -133,9 +133,7 @@ class StandaloneDeployStep(Step):
             pass
 
         if deploy_name and not errors:
-            replicas = int(  # noqa: F841
-                self._require_config(plan_config, "standalone", "replicas")
-            )
+            replicas = int(self._require_config(plan_config, "standalone", "replicas"))
 
             timeout = context.standalone_deploy_timeout
             wait_result = cmd.wait_for_pods(
@@ -144,6 +142,7 @@ class StandaloneDeployStep(Step):
                 timeout=timeout,
                 poll_interval=10,
                 description=f"standalone {deploy_name}",
+                expected=replicas,
             )
             if not wait_result.success:
                 errors.append(

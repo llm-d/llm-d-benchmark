@@ -193,7 +193,7 @@ def read(cmd, namespace: str) -> dict[str, str] | None:
             key: base64.b64decode(value, validate=True).decode()
             for key, value in data.items()
         }
-    except (json.JSONDecodeError, AttributeError, ValueError):
+    except json.JSONDecodeError, AttributeError, ValueError:
         return None
 
 

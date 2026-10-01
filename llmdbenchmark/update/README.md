@@ -191,4 +191,5 @@ keep it readable from wherever the next update runs.
 
 - `-s/--step` overrides the inferred steps entirely, for when you know exactly which step you want. It may be given alone.
 - `update` refuses to run when a stack in scope is not deployed: updating a stack that was never stood up would half-create it. When the deployed stacks cannot be listed at all, it warns and goes on.
+- A decode or prefill Deployment scaled by hand is scaled back to the configured count in step 08: helm keeps a hand-made change when the chart value did not change, and the pod wait would never end. Autoscaled, multinode and FMA stacks are left alone.
 - An update that changes the EPP waits for the new EPP pod in step 07, because step 08, which waits for it on a standup, may not be in scope.
