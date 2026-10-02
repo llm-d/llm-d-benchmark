@@ -284,6 +284,7 @@ class CommandExecutor:
         pod: str,
         *remote_argv: str,
         namespace: str | None = None,
+        container: str | None = None,
         check: bool = True,
         timeout: int | None = None,
     ) -> CommandResult:
@@ -299,7 +300,10 @@ class CommandExecutor:
         argv = [self._kube_bin, *self._kubeconfig_args()]
         if namespace:
             argv.extend(["--namespace", namespace])
-        argv.extend(["exec", pod, "--", *remote_argv])
+        argv.extend(["exec", pod])
+        if container:
+            argv.extend(["--container", container])
+        argv.extend(["--", *remote_argv])
 
         cmd_str = shlex.join(argv)
         timestamp = int(time.time() * 1e9)
