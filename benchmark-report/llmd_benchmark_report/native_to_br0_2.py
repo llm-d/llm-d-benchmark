@@ -1310,6 +1310,9 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
     check_file(results_file)
 
     results = import_yaml(results_file)
+    # error_summary has one entry per distinct error with its count, and
+    # request_count counts only the requests that succeeded.
+    failures = sum(e.get("count", 0) for e in results.get("error_summary") or [])
 
     br_dict = _populate_benchmark_report_from_envars()
 
@@ -1378,8 +1381,8 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
 
     aggregate = {
         "requests": {
-            "total": int(get_nested(results, ["request_count", "avg"], 0)),
-            "failures": len(results.get("error_summary", [])),
+            "total": int(get_nested(results, ["request_count", "avg"], 0)) + failures,
+            "failures": failures,
             "input_length": {
                 "units": Units.COUNT,
                 **_aiperf_percentiles(isl),
