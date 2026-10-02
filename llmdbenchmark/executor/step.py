@@ -16,6 +16,7 @@ class Phase(Enum):
     """Benchmark lifecycle phases."""
 
     STANDUP = "standup"
+    UPDATE = "update"
     SMOKETEST = "smoketest"
     RUN = "run"
     TEARDOWN = "teardown"

@@ -12,13 +12,16 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 02 | `AdminPrerequisitesStep` | global | Install cluster-level admin prerequisites (CRDs, gateways, LeaderWorkerSet, SCCs) |
 | 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors). Installs WVA controller once per `wva.namespace` across all rendered stacks. |
 | 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ~ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. |
-| 05 | `FMADeployStep` | global | Deploy FMA controllers |
-| 05 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
-| 06 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
-| 07 | `DeployRouterStep` | global | Deploy the llm-d router (EPP + provider resources) |
-| 08 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
+| 05 | `FMADeployStep` | per-stack | Deploy FMA controllers |
+| 05 | `StandaloneDeployStep` | per-stack | Deploy vLLM as standalone Kubernetes Deployments and Services |
+| 05 | `KustomizeDeployStep` | per-stack | Replay an llm-d guide's README commands (kustomize method) |
+| 05 | `NoK8sDeployStep` | per-stack | Run vLLM/EPP/Envoy as plain containers (no Kubernetes) |
+| 06 | `DeploySetupStep` | per-stack | Set up Helm repos, stage the helmfile values files, and deploy gateway infrastructure for modelservice mode |
+| 07 | `DeployRouterStep` | per-stack | Deploy the llm-d router (EPP + provider resources) |
+| 08 | `DeployModelserviceStep` | per-stack | Deploy the model via the llm-d modelservice Helm chart |
+| 09 | `DeployPrismStep` | global | Deploy the in-cluster llm-d-prism dashboard |
 
-Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and inference test) were moved to the `llmdbenchmark.smoketests` module and now run as a separate phase after standup.
+Note: Step 01 is intentionally absent (reserved). Smoketest and inference test run as a separate phase after standup, from the `llmdbenchmark.smoketests` module; `get_standup_steps()` no longer registers them. `step_10_smoketest.py` and `step_11_inference_test.py` are still on disk but unregistered -- only their helpers are still imported.
 
 Harness preparation (namespace, HF secret copy, preprocess ConfigMap, workload PVC, data-access pod) moved to the run phase (run step 02) — standup ends with the model endpoint serving and no benchmark-side resources. **Breaking:** step numbers 6–9 shifted down to 5–8; update any `-s` step selections.
 
@@ -48,12 +51,22 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
   overrides apply at standup render time only), so a plan preview may show
   `uriProtocol: pvc` even when the standup will force `hf`.
 
+## Updating a live stack
+
+To change a knob on a stack that is already up, use `llmdbenchmark update --set ...`
+instead of a teardown + standup. It re-runs only the standup steps that own the
+changed config, so a vLLM knob restarts the serving pods without re-downloading
+weights or touching PVCs and CRDs. See
+[../update/README.md](../update/README.md).
+
 ## Deployment Methods
 
-Steps 05-08 handle two mutually exclusive deployment methods:
+Steps 05-08 handle mutually exclusive deployment methods:
 
 - **FMA** (step 05) -- Deploys Fast Model Actuation controllers. For more information on FMA: https://github.com/llm-d-incubation/llm-d-fast-model-actuation
 - **Standalone** (step 05) -- Deploys vLLM directly as Kubernetes Deployments and Services. OpenShift routes use the naming pattern `sa-{model_id_label}-route` to stay within the 63-character DNS label limit. Step 05 is skipped when modelservice is the active method.
+- **Kustomize** (step 05) -- Replays an llm-d guide's README commands.
+- **NoK8s** (step 05) -- Runs vLLM/EPP/Envoy as plain containers, with no Kubernetes.
 - **Modelservice** (steps 06-08) -- Deploys via the llm-d modelservice Helm chart with gateway infrastructure and GAIE. Steps 06-08 are skipped when standalone is the active method.
 
 The `should_skip()` method on each step checks `context.deployed_methods` to determine which path to take.

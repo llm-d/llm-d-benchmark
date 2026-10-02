@@ -11,6 +11,9 @@ from llmdbenchmark import __version__
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
+from llmdbenchmark.utilities.standup_parameters import (
+    write as write_standup_parameters,
+)
 
 
 class FMADeployStep(Step):
@@ -196,6 +199,7 @@ class FMADeployStep(Step):
                     timeout=bound_launcher_timeout,
                     poll_interval=10,
                     description=f"FMA bound launcher (model={model_id_label})",
+                    expected=int(requester_replicas),
                 )
                 if not wait_result.success:
                     errors.append(
@@ -564,6 +568,7 @@ class FMADeployStep(Step):
             timeout=900,
             poll_interval=10,
             description=f"FMA launchers ({gpu_count} expected, one per GPU)",
+            expected=gpu_count,
         )
         if not launcher_wait.success:
             errors.append(
@@ -814,7 +819,6 @@ class FMADeployStep(Step):
         """Persist deploy metadata as a ConfigMap so run-phase steps can read it."""
 
         harness_ns = context.harness_namespace or context.require_namespace()
-        cm_name = "llm-d-benchmark-standup-parameters"
 
         params = {
             "tool_name": "llm-d-benchmark",
@@ -844,31 +848,4 @@ class FMADeployStep(Step):
                 self._require_config(plan_config, "standalone", "replicas")
             )
 
-        literal_args = []
-        for key, value in params.items():
-            literal_args.append(f"--from-literal={key}={value}")
-
-        create_args = (
-            [
-                "create",
-                "configmap",
-                cm_name,
-                "--namespace",
-                harness_ns,
-            ]
-            + literal_args
-            + ["--dry-run=client", "-o", "yaml"]
-        )
-
-        result = cmd.kube(*create_args)
-        if result.success:
-            yaml_path = context.setup_yamls_dir() / "standup-parameters.yaml"
-            yaml_path.write_text(result.stdout, encoding="utf-8")
-            apply_result = cmd.kube("apply", "-f", str(yaml_path))
-            if apply_result.success:
-                context.logger.log_info(
-                    f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
-                )
-                context.logger.log_info(
-                    f"   oc get configmap {cm_name} -n {harness_ns} -o yaml"
-                )
+        write_standup_parameters(cmd, context, params)

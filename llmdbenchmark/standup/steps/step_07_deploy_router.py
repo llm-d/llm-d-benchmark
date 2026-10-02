@@ -7,6 +7,7 @@ import yaml
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.utilities.kube_helpers import wait_for_epp
 
 
 class DeployRouterStep(Step):
@@ -153,6 +154,15 @@ class DeployRouterStep(Step):
                         "Router deployed -- EPP pod will become Ready after "
                         "model servers are deployed in step 09"
                     )
+
+        # A standup waits for the EPP in step 08, once the model servers are
+        # up. On an update they are up already, and step 08 may not run.
+        if not errors and context.current_phase is Phase.UPDATE:
+            epp_wait = wait_for_epp(
+                cmd, namespace, model_id_label, context.modelservice_deploy_timeout
+            )
+            if epp_wait is not None and not epp_wait.success:
+                errors.append(f"EPP pod not ready: {epp_wait.stderr}")
 
         if errors:
             for err in errors:

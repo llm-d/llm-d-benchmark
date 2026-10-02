@@ -28,7 +28,8 @@ class StepExecutor:
         self.logger = logger
         self.max_parallel_stacks = max_parallel_stacks
 
-    def parse_step_list(self, step_spec: str) -> list[int]:
+    @staticmethod
+    def parse_step_list(step_spec: str) -> list[int]:
         """Parse ``"0,3-5,9"`` into a sorted list of step numbers."""
         result = set()
         for part in step_spec.split(","):

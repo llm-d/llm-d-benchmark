@@ -1,6 +1,7 @@
 """Step 08 -- Deploy the model via the llm-d modelservice Helm chart."""
 
 import hashlib
+import json
 import time
 from datetime import UTC
 from pathlib import Path
@@ -9,6 +10,22 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
+from llmdbenchmark.utilities.kube_helpers import wait_for_epp
+from llmdbenchmark.utilities.podstate import observe_pods
+from llmdbenchmark.utilities.standup_parameters import (
+    write as write_standup_parameters,
+)
+
+
+def decode_autoscaled(plan_config: dict) -> bool:
+    """Whether an autoscaler owns the decode replica count."""
+    if plan_config.get("multinode", {}).get("enabled", False):
+        return False
+    return bool(
+        plan_config.get("wva", {}).get("enabled", False)
+        or plan_config.get("eppKedaSaturation", {}).get("enabled", False)
+        or plan_config.get("keda", {}).get("scaledObjects")
+    )
 
 
 class DeployModelserviceStep(Step):
@@ -150,6 +167,9 @@ class DeployModelserviceStep(Step):
                     namespace,
                 )
 
+        if not errors and context.current_phase is Phase.UPDATE:
+            self._restore_replicas(cmd, context, plan_config, namespace, errors)
+
         if not errors:
             decode_cfg = plan_config.get("decode", {})  # noqa: F841
             expected_replicas = int(
@@ -164,14 +184,22 @@ class DeployModelserviceStep(Step):
                 )
                 expected_replicas = expected_replicas * workers
 
+            # Sibling stacks share the namespace, so their pods must not count.
+            decode_label = f"llm-d.ai/model={model_id_label},llm-d.ai/role=decode"
+
             # When decode.replicas == 0 there are no decode pods to wait for.
             if expected_replicas > 0:
                 decode_wait = cmd.wait_for_pods(
-                    label="llm-d.ai/role=decode",
+                    label=decode_label,
                     namespace=namespace,
                     timeout=timeout,
                     poll_interval=10,
                     description="decode pods",
+                    # An autoscaler that already exists owns the count; the
+                    # rollout check still waits for every replica it asks for.
+                    expected=(
+                        None if decode_autoscaled(plan_config) else expected_replicas
+                    ),
                 )
                 if not decode_wait.success:
                     errors.append(f"Decode pods not ready: {decode_wait.stderr}")
@@ -181,22 +209,9 @@ class DeployModelserviceStep(Step):
                     "(FMA owns model server lifecycle when fma.enabled=true)"
                 )
             if expected_replicas > 1 and not context.dry_run:
-                pod_count_result = cmd.kube(
-                    "get",
-                    "pods",
-                    "-l",
-                    "llm-d.ai/role=decode",
-                    "--namespace",
-                    namespace,
-                    "-o",
-                    "jsonpath={.items[*].metadata.name}",
-                )
-                if pod_count_result.success:
-                    actual_count = (
-                        len(pod_count_result.stdout.strip().split())
-                        if pod_count_result.stdout.strip()
-                        else 0
-                    )
+                decode_pods = observe_pods(cmd, namespace, label=decode_label)
+                if decode_pods is not None:
+                    actual_count = sum(1 for pod in decode_pods if not pod.deleting)
                     if actual_count < expected_replicas:
                         context.logger.log_warning(
                             f"⚠️  Expected {expected_replicas} decode pods "
@@ -214,73 +229,20 @@ class DeployModelserviceStep(Step):
 
             if prefill_enabled and prefill_replicas > 0:
                 prefill_wait = cmd.wait_for_pods(
-                    label="llm-d.ai/role=prefill",
+                    label=f"llm-d.ai/model={model_id_label},llm-d.ai/role=prefill",
                     namespace=namespace,
                     timeout=timeout,
                     poll_interval=10,
                     description="prefill pods",
+                    expected=prefill_replicas,
                 )
                 if not prefill_wait.success:
                     errors.append(f"Prefill pods not ready: {prefill_wait.stderr}")
 
-            # The llm-d-router chart migration renamed the EPP chart and
-            # dropped the legacy `inferencepool=<release>-epp` label the
-            # old GAIE chart added. The new
-            # llm-d-router-{standalone,gateway}-dev charts apply only
-            # `selectorLabels` + `modeLabels` to the Pod template; the
-            # common `app.kubernetes.io/*` labels are on the Deployment,
-            # not the Pod (see `charts/router/templates/_deployment.yaml`).
-            #
-            # The Pod's release-specific selector is gated on the chart's
-            # `router.inferencePool.create` value
-            # (`charts/router/templates/_helpers.tpl::selectorLabels`):
-            #   - create=true  (default in BOTH chart variants)
-            #                                  -> llm-d-router-gateway=<release>-epp
-            #   - create=false (user opt-in)   -> llm-d-router-standalone=<release>-epp
-            # Counter-intuitively, this is independent of which *chart*
-            # (`-standalone-dev` vs `-gateway-dev`) is installed. The
-            # chart variant only controls the outer wrapper (Envoy
-            # sidecar, K8s Gateway resource), not the EPP Pod labels.
-            #
-            # Probe both candidate labels once each so we discover which
-            # the chart actually applied, then wait on that one.
             if not direct_service_mode:
-                release_epp = f"{model_id_label}-router-epp"
-                chosen_label = f"llm-d-router-gateway={release_epp}"  # default
-                for candidate_key in (
-                    "llm-d-router-gateway",
-                    "llm-d-router-standalone",
-                ):
-                    probe_label = f"{candidate_key}={release_epp}"
-                    probe = cmd.kube(
-                        "get",
-                        "pods",
-                        "-l",
-                        probe_label,
-                        "--namespace",
-                        namespace,
-                        "-o",
-                        "jsonpath={.items[*].metadata.name}",
-                        check=False,
-                    )
-                    if probe.success and probe.stdout.strip():
-                        chosen_label = probe_label
-                        break
-
-                pool_wait = cmd.wait_for_pods(
-                    label=chosen_label,
-                    namespace=namespace,
-                    timeout=timeout,
-                    poll_interval=10,
-                    description="inference pool",
-                )
-                if not pool_wait.success:
-                    stderr_lower = pool_wait.stderr.lower()
-                    if (
-                        "no matching resources found" not in stderr_lower
-                        and "no pods found" not in stderr_lower
-                    ):
-                        errors.append(f"Inference pool not ready: {pool_wait.stderr}")
+                pool_wait = wait_for_epp(cmd, namespace, model_id_label, timeout)
+                if pool_wait is not None and not pool_wait.success:
+                    errors.append(f"Inference pool not ready: {pool_wait.stderr}")
 
         if not errors and not context.dry_run:
             self._collect_logs(cmd, context, namespace)
@@ -846,6 +808,77 @@ class DeployModelserviceStep(Step):
                         f"{result.stderr.strip()[:200] or '(empty)'}"
                     )
 
+    def _restore_replicas(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+        namespace: str,
+        errors: list,
+    ):
+        """Scale decode/prefill back to the configured count.
+
+        Helm keeps a replica count changed by hand when the chart value did
+        not change, and the pod wait would then never end.
+        """
+        if plan_config.get("multinode", {}).get("enabled", False):
+            return
+        if plan_config.get("fma", {}).get("enabled", False):
+            return
+        model_id_label = self._require_config(plan_config, "model_id_label")
+        wanted = {}
+        if not decode_autoscaled(plan_config):
+            wanted["decode"] = int(
+                self._require_config(plan_config, "decode", "replicas")
+            )
+        if self._require_config(plan_config, "prefill", "enabled"):
+            wanted["prefill"] = int(
+                self._require_config(plan_config, "prefill", "replicas")
+            )
+
+        if not wanted:
+            return
+        # The chart sets these labels on the pod template only, not on the
+        # Deployment, so `get -l` would find nothing.
+        result = cmd.kube(
+            "get", "deployment", "--namespace", namespace, "-o", "json", check=False
+        )
+        if not result.success or not (result.stdout or "").strip():
+            return
+        try:
+            items = json.loads(result.stdout).get("items") or []
+        except (json.JSONDecodeError, AttributeError):
+            return
+
+        for item in items:
+            spec = item.get("spec") or {}
+            labels = ((spec.get("template") or {}).get("metadata") or {}).get(
+                "labels"
+            ) or {}
+            if labels.get("llm-d.ai/model") != model_id_label:
+                continue
+            replicas = wanted.get(labels.get("llm-d.ai/role"))
+            if replicas is None:
+                continue
+            name = (item.get("metadata") or {}).get("name", "")
+            live = spec.get("replicas", 1)
+            if not name or live == replicas:
+                continue
+            context.logger.log_warning(
+                f"⚠️  deployment/{name} has {live} replica(s), the config "
+                f"asks for {replicas} -- scaling it back."
+            )
+            scaled = cmd.kube(
+                "scale",
+                "deployment",
+                name,
+                f"--replicas={replicas}",
+                "--namespace",
+                namespace,
+            )
+            if not scaled.success:
+                errors.append(f"Could not scale {name}: {scaled.stderr}")
+
     def _propagate_standup_parameters(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
     ):
@@ -855,7 +888,6 @@ class DeployModelserviceStep(Step):
         from llmdbenchmark import __version__
 
         harness_ns = context.harness_namespace or context.require_namespace()
-        cm_name = "llm-d-benchmark-standup-parameters"
 
         params = {
             "tool_name": "llm-d-benchmark",
@@ -938,32 +970,4 @@ class DeployModelserviceStep(Step):
                     f"{decode_img['repository']}:{decode_img.get('tag', 'latest')}"
                 )
 
-        literal_args = []
-        for key, value in params.items():
-            literal_args.append(f"--from-literal={key}={value}")
-
-        create_args = (
-            [
-                "create",
-                "configmap",
-                cm_name,
-                "--namespace",
-                harness_ns,
-            ]
-            + literal_args
-            + ["--dry-run=client", "-o", "yaml"]
-        )
-
-        result = cmd.kube(*create_args)
-        if result.success:
-            yaml_path = context.setup_yamls_dir() / "standup-parameters.yaml"
-            yaml_path.write_text(result.stdout, encoding="utf-8")
-            apply_result = cmd.kube("apply", "-f", str(yaml_path))
-            if apply_result.success:
-                context.logger.log_info(
-                    f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
-                )
-                context.logger.log_info(
-                    f"   {cmd._kube_bin} get configmap {cm_name} "
-                    f"-n {harness_ns} -o yaml"
-                )
+        write_standup_parameters(cmd, context, params)

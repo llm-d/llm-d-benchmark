@@ -39,6 +39,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     current_phase: Any = None  # Phase enum, set at runtime to avoid circular import
     deep_clean: bool = False  # teardown: wipe all resources in namespaces
     release: str = "llmdbench"  # Helm release name prefix
+    # Stored in the cluster for `update` to reuse. Runtime only, never a
+    # config knob.
+    invocation_params: dict[str, str] = field(default_factory=dict)
 
     # Kubernetes connection info (resolved at runtime by step 00)
     cluster_url: str | None = None
