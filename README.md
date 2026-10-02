@@ -68,8 +68,8 @@ llmdbenchmark --version
 **Install a specific branch:**
 
 ```bash
-LLMDBENCH_BRANCH=main \
-  curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | \
+  LLMDBENCH_BRANCH=main bash
 ```
 
 The install script auto-detects if the repo is present -- if not, it clones it first. It creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
