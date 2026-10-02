@@ -11,7 +11,7 @@
 #      curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
 #
 #      To clone a specific branch:
-#      LLMDBENCH_BRANCH=my-branch curl -sSL ... | bash
+#      curl -sSL ... | LLMDBENCH_BRANCH=my-branch bash
 #
 # Installs the llmdbenchmark CLI, planner, and validates
 # that required system tools are available.

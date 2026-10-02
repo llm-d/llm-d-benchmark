@@ -31,8 +31,8 @@ cd llm-d-benchmark
 ./install.sh
 
 # Or one-shot via curl, optionally pinning a branch:
-#   LLMDBENCH_BRANCH=<BRANCH_HERE> \
-#     curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | \
+#     LLMDBENCH_BRANCH=<BRANCH_HERE> bash
 # (the curl form clones into ./llm-d-benchmark/ for you)
 
 # 3. Activate the venv created by install.sh
