@@ -193,7 +193,7 @@ def test_latency_units_match_the_native_scale():
     assert latency.request_latency.units == Units.S
     assert latency.time_to_first_token.units == Units.MS
     assert latency.inter_token_latency.units == Units.MS_PER_TOKEN
-    assert latency.time_per_output_token.units == Units.MS_PER_TOKEN
+    assert latency.normalized_time_per_output_token.units == Units.MS_PER_TOKEN
 
     # request_latency is the only one holding seconds, so it is the only one
     # whose magnitude should be ~1000x smaller than a TTFT measured in ms.
@@ -208,7 +208,23 @@ def test_v0_1_latency_units_match_the_native_scale():
     assert latency.request_latency.units == Units.S
     assert latency.time_to_first_token.units == Units.MS
     assert latency.inter_token_latency.units == Units.MS_PER_TOKEN
-    assert latency.time_per_output_token.units == Units.MS_PER_TOKEN
+    assert latency.normalized_time_per_output_token.units == Units.MS_PER_TOKEN
+
+
+def test_tpot_including_first_token_goes_to_ntpot(native):
+    """guidellm's time_per_output_token_ms includes the first token
+    (docs/guides/metrics.md: "The average time taken to generate each output
+    token, including the first token"), which is the report's NTPOT. TPOT is
+    defined as excluding the first token, so it must not get this value."""
+    raw = native["benchmarks"][0]["metrics"]["time_per_output_token_ms"]
+    for latency in (
+        import_guidellm_v02(str(FIXTURE)).results.request_performance.aggregate.latency,
+        import_guidellm_v01(str(FIXTURE)).metrics.latency,
+    ):
+        assert latency.time_per_output_token is None
+        assert (
+            latency.normalized_time_per_output_token.mean == raw["successful"]["mean"]
+        )
 
 
 # ---------------------------------------------------------------------------

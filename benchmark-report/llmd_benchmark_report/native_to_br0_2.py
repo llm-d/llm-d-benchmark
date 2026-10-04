@@ -3630,7 +3630,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                                     ],
                                 ),
                             },
-                            "time_per_output_token": {
+                            "normalized_time_per_output_token": {
                                 "units": Units.MS_PER_TOKEN,
                                 "mean": get_nested(
                                     results,

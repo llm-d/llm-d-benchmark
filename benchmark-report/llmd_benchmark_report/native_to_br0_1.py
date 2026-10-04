@@ -936,7 +936,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV01:
                             ["metrics", "time_to_first_token_ms", "successful", "max"],
                         ),
                     },
-                    "time_per_output_token": {
+                    "normalized_time_per_output_token": {
                         "units": Units.MS_PER_TOKEN,
                         "mean": get_nested(
                             results,
