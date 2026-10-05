@@ -975,15 +975,20 @@ def _cache_trim_to_active(
 
 def _cache_load_series(results_dir: Path) -> list[tuple[float, dict[str, float]]]:
     """Return [(elapsed_sec, {metric: value}), ...] for one treatment, trimmed to its active window and re-based to t=0."""
-    samples: list[tuple[float, dict[str, float]]] = []
+    # collect_metrics.sh writes one file per pod per scrape, all named with the
+    # scrape's timestamp, so a deployment snapshot is every file of that epoch.
+    texts: dict[float, list[str]] = {}
     for relative, payload in sorted(read_members(results_dir, _CACHE_RAW_GLOB).items()):
         epoch = _cache_epoch_from_name(Path(relative))
         if epoch is None:
             continue
         try:
-            values = _cache_parse_snapshot(payload.decode("utf-8"))
+            texts.setdefault(epoch, []).append(payload.decode("utf-8"))
         except UnicodeDecodeError:
             continue
+    samples: list[tuple[float, dict[str, float]]] = []
+    for epoch, parts in texts.items():
+        values = _cache_parse_snapshot("\n".join(parts))
         if values:
             samples.append((epoch, values))
     if not samples:
