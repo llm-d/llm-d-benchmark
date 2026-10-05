@@ -1534,13 +1534,13 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                             - results.get("completed"),
                             "input_length": {
                                 "units": Units.COUNT,
-                                "mean": np.array(results.get("input_lens", [0])).mean(),
+                                "mean": results.get("total_input_tokens", 0)
+                                / (results.get("completed", 0) or 1),
                             },
                             "output_length": {
                                 "units": Units.COUNT,
-                                "mean": np.array(
-                                    results.get("output_lens", [0])
-                                ).mean(),
+                                "mean": results.get("total_output_tokens", 0)
+                                / (results.get("completed", 0) or 1),
                             },
                         },
                         "latency": {
@@ -1585,6 +1585,8 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                                 "p5": results.get("p5_itl_ms"),
                                 "p10": results.get("p10_itl_ms"),
                                 "p25": results.get("p25_itl_ms"),
+                                "p50": results.get("median_itl_ms"),
+                                "p75": results.get("p75_itl_ms"),
                                 "p90": results.get("p90_itl_ms"),
                                 "p95": results.get("p95_itl_ms"),
                                 "p99": results.get("p99_itl_ms"),
@@ -1599,6 +1601,8 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                                 "p5": results.get("p5_e2el_ms"),
                                 "p10": results.get("p10_e2el_ms"),
                                 "p25": results.get("p25_e2el_ms"),
+                                "p50": results.get("median_e2el_ms"),
+                                "p75": results.get("p75_e2el_ms"),
                                 "p90": results.get("p90_e2el_ms"),
                                 "p95": results.get("p95_e2el_ms"),
                                 "p99": results.get("p99_e2el_ms"),
