@@ -55,12 +55,12 @@ data:
     min: 2048
     max: 2048
     mean: 2048
-    std: 0
+    std_dev: 0
   output_distribution:
     min: 2048
     max: 2048
     mean: 2048
-    std: 0
+    std_dev: 0
 report:
   request_lifecycle:
     summary: true

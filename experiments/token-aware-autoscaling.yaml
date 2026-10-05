@@ -17,16 +17,22 @@
 # wrong (EPP replicas > 1, a shared-prefix dataset, or closed-loop load) -- that
 # is not a finding about token-awareness. See docs/token-aware-autoscaling.md.
 #
-# Usage (full DoE -- standup/run/teardown per setup treatment):
-#   llmdbenchmark --spec guides/keda-epp-token-aware experiment \
+# Usage (against a stood-up, calibrated stack -- see docs/token-aware-autoscaling.md):
+#   llmdbenchmark --spec guides/keda-epp-token-aware run \
+#     --harness inference-perf \
 #     --experiments experiments/token-aware-autoscaling.yaml \
-#     --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
+#     --monitoring --analyze
 #
 # Shared across topologies -- swap --spec to run the same DoE against the
 # P/D-disaggregated scenario instead:
-#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation experiment \
+#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation run \
+#     --harness inference-perf \
 #     --experiments experiments/token-aware-autoscaling.yaml \
-#     --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
+#     --monitoring --analyze
+#
+# `experiment` (standup/run/teardown per setup treatment) also works, but it
+# serves with the scenario's placeholder peakPrefillThroughput, because
+# calibration can only run against a standing stack.
 #
 # Usage (run-only -- against an already-standing endpoint):
 #   llmdbenchmark --spec guides/keda-epp-token-aware run \

@@ -387,7 +387,10 @@ calibrate-peak-prefill: check-kubectl check-envsubst ## Measure peakPrefillThrou
 	if [ "$$CM_PATCHED" -eq 1 ]; then \
 	  for d in $$(kubectl get deploy -n "$$NS" -o name | cut -d/ -f2 | grep -- '-epp$$' || true); do \
 	    kubectl rollout restart -n "$$NS" "deployment/$$d" >/dev/null; \
-	    echo "   restarted deployment/$$d (the EPP reads its plugin config at startup only)"; done; fi
+	    echo "   restarted deployment/$$d (the EPP reads its plugin config at startup only)"; \
+	    kubectl rollout status -n "$$NS" "deployment/$$d" --timeout=300s >/dev/null \
+	      || { echo "❌ deployment/$$d did not become ready after the restart"; exit 7; }; \
+	    echo "   deployment/$$d ready"; done; fi
 
 .PHONY: check-envsubst
 check-envsubst:
