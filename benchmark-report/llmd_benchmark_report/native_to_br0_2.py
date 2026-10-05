@@ -1177,7 +1177,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                             "input_length": {
                                 "units": Units.COUNT,
                                 "mean": results.get("total_input_tokens", 0)
-                                / results.get("num_prompts", -1),
+                                / (results.get("completed", 0) or 1),
                             },
                             "output_length": {
                                 "units": Units.COUNT,
