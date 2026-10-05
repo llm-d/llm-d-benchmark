@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from llmdbenchmark.analysis.metrics_embed import REPORT_STAGE_RE
 from llmdbenchmark.analysis.session_metrics import (
     SESSION_METRICS_OF_INTEREST,
     deep_get,
@@ -186,7 +187,14 @@ def generate_cross_treatment_summary(
             continue
 
         # Find benchmark report v0.2 files
-        br_files = sorted(subdir.glob("benchmark_report_v0.2*yaml"))
+        # Stage order, not name order: stage_10 sorts before stage_2 as text.
+        br_files = sorted(
+            subdir.glob("benchmark_report_v0.2*yaml"),
+            key=lambda p: (
+                int(m.group(1)) if (m := REPORT_STAGE_RE.match(p.name)) else -1,
+                p.name,
+            ),
+        )
         if not br_files:
             continue
 
