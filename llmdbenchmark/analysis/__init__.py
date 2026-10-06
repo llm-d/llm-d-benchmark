@@ -120,7 +120,7 @@ def _recorded_for(results_dir: Path, key: str) -> str:
     try:
         with (results_dir / "run_metadata.yaml").open(encoding="utf-8") as meta_file:
             metadata = yaml.safe_load(meta_file) or {}
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return ""
     return str(metadata.get(key) or "").strip()
 

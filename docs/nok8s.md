@@ -42,7 +42,7 @@ broken container runtime is fatal, the rest are warnings.
 | Hugging Face token | `export HUGGING_FACE_HUB_TOKEN=hf_...` (only for gated models) |
 | Free host ports | 8000 (vLLM), 8081 (Envoy), 9002/9003/9090 (EPP), 19000 (Envoy admin) |
 | Outbound network | to pull images (docker.io, ghcr.io) and model weights (Hugging Face) |
-| `llmdbenchmark` CLI | `./install.sh` (Python 3.11+) |
+| `llmdbenchmark` CLI | `./install.sh` (Python 3.14+) |
 
 Every requirement above applies to the host that runs the containers. For a
 remote `nok8s.connection` the split is:

@@ -96,7 +96,7 @@ def _convert_accelerator_memory(gpu_name: str, raw_value: str) -> int:
     """Determine GPU memory in GB from an explicit value or GPU product name. Returns 0 if unknown."""
     try:
         return int(raw_value)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         pass
 
     if not gpu_name:

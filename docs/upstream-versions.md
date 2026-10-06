@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-10-06 09:10:46` (UTC)
-- Generated against git ref: `d6f7fddbfc44ed783e51f42fb3add4078fd373c3`
+- Generated at: `2026-10-06 17:42:21` (UTC)
+- Generated against git ref: `b0fb44791acce64fcd7ca0c1330bbb6fd6038c6e`
 
 ## System Tool Dependencies
 
@@ -85,7 +85,6 @@ captured in the snapshot table below.
 | **PyYAML** | `(unpinned)` | (unpinned) | `pyproject.toml` line 7 | [PyYAML (PyPI)](https://pypi.org/project/pyyaml/) |
 | **requests** | `(unpinned)` | (unpinned) | `pyproject.toml` line 9 | [requests (PyPI)](https://pypi.org/project/requests/) |
 | **transformers** | `(unpinned)` | (unpinned) | `pyproject.toml` line 15 | [transformers (PyPI)](https://pypi.org/project/transformers/) |
-| **zstandard** | `(unpinned)` | (unpinned) | `pyproject.toml` line 20 | [zstandard (PyPI)](https://pypi.org/project/zstandard/) |
 
 
 ## Python Package Dependencies (installed snapshot)
@@ -218,6 +217,5 @@ annotated with their `pyproject.toml` line.
 | **websocket-client** | `1.9.0` | version | (transitive in `.venv`) | [websocket-client (PyPI)](https://pypi.org/project/websocket-client/) |
 | **websockets** | `17.0.1` | version | (transitive in `.venv`) | [websockets (PyPI)](https://pypi.org/project/websockets/) |
 | **yarl** | `1.24.5` | version | (transitive in `.venv`) | [yarl (PyPI)](https://pypi.org/project/yarl/) |
-| **zstandard** | `0.25.0` | version | `pyproject.toml` line 20 (direct) | [zstandard (PyPI)](https://pypi.org/project/zstandard/) |
 
 </details>

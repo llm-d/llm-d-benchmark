@@ -151,7 +151,7 @@ USAGE
 DESCRIPTION
     Sets up the complete development / runtime environment for llm-d-benchmark.
 
-    1. Validates Python 3.11+ and pip
+    1. Validates Python 3.14+ and pip
     2. Checks for required system tools  (curl, git, kubectl, helm, helmfile)
     3. Checks optional system tools       (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
@@ -164,11 +164,11 @@ DESCRIPTION
     create one at .venv/ and activate it for the install. You will be
     prompted whether to use uv (https://docs.astral.sh/uv/) or the
     standard python3 -m venv. uv can automatically download the correct
-    Python version if your system Python is missing or older than 3.11.
+    Python version if your system Python is missing or older than 3.14.
     Use --uv or --no-uv to skip the prompt.
 
     When run non-interactively (e.g. curl pipe), the script auto-selects:
-    uv if system Python is missing or < 3.11, otherwise python3 -m venv.
+    uv if system Python is missing or < 3.14, otherwise python3 -m venv.
 
     After the script finishes, run "source .venv/bin/activate" in your shell.
 
@@ -178,7 +178,7 @@ OPTIONS
     -h, --help      Show this help message and exit.
     --uv            Use uv to create the virtual environment (skips prompt).
     --no-uv         Use python3 -m venv instead of uv (skips prompt).
-                    Requires Python 3.11+ to be available on the system.
+                    Requires Python 3.14+ to be available on the system.
     -y              Non-interactive mode — use system Python directly
                     instead of creating a virtual environment.
     noreset         Reuse the dependency cache (~/.llmdbench_dependencies_checked)
@@ -260,14 +260,14 @@ fi
 # ---------------------------------------------------------------------------
 # Python / pip detection — auto-creates a .venv if none is active
 #
-# If the system Python is missing or < 3.11, the script uses `uv` to create
+# If the system Python is missing or < 3.14, the script uses `uv` to create
 # a virtual environment with the correct Python version (similar to conda).
 # uv is installed automatically if not already present.
 # ---------------------------------------------------------------------------
 LLMDBENCH_VENV_DIR=${LLMDBENCH_VENV_DIR:-"${SCRIPT_DIR}/.venv"}
 LLMDBENCH_SYSTEM_PYTHON=${LLMDBENCH_SYSTEM_PYTHON:-python3}
 CREATED_VENV=false
-MIN_PYTHON="3.11"
+MIN_PYTHON="3.14"
 
 # Helper — check whether a python command meets the minimum version requirement
 _python_meets_min() {
@@ -387,7 +387,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Validate Python 3.11+
+# Validate Python 3.14+
 # ---------------------------------------------------------------------------
 if ! command -v ${PYTHON_CMD} &>/dev/null; then
     if [[ "$PYTHON_CMD" == "python" ]] && command -v python3 &>/dev/null; then
@@ -406,8 +406,8 @@ python_version=$(${PYTHON_CMD} -c 'import sys; print(".".join(map(str, sys.versi
 python_major=$(echo "${python_version}" | cut -d. -f1)
 python_minor=$(echo "${python_version}" | cut -d. -f2)
 
-if ! (( python_major > 3 || (python_major == 3 && python_minor >= 11) )); then
-    echo "ERROR: Python 3.11+ required, but ${PYTHON_CMD} is version ${python_version}"
+if ! (( python_major > 3 || (python_major == 3 && python_minor >= 14) )); then
+    echo "ERROR: Python 3.14+ required, but ${PYTHON_CMD} is version ${python_version}"
     exit 1
 fi
 echo "Python ${python_version} — OK  [arch: ${ARCH_UNAME} → ${ARCH_GO}]"
@@ -921,7 +921,7 @@ fi
 # 3. Show key dependencies
 echo ""
 echo "  Dependencies:"
-for pkg in PyYAML Jinja2 requests kubernetes pykube-ng zstandard \
+for pkg in PyYAML Jinja2 requests kubernetes pykube-ng \
            GitPython huggingface_hub transformers packaging \
            pydantic scipy pandas numpy; do
     ver=$(_pip_isolated show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')

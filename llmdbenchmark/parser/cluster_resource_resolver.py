@@ -37,14 +37,14 @@ def effective_accelerator_count(method_config: dict) -> tuple[int, str]:
     if isinstance(accel, dict) and "count" in accel:
         try:
             return int(accel["count"]), "accelerator.count (explicit)"
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0, "parse-error"
 
     parallelism = method_config.get("parallelism")
     if isinstance(parallelism, dict) and "tensor" in parallelism:
         try:
             return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return 0, "parse-error"
 
     return 0, "unset"

@@ -2,7 +2,7 @@
 name = "llmdbenchmark"
 version = "0.8.0"
 description = "A library for configuration discovery and performance benchmarking for llm-d."
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "PyYAML",
     "Jinja2",
@@ -17,7 +17,6 @@ dependencies = [
     "google-auth",
     "google-cloud-storage>=2.10.0",
     "llmd-benchmark-report>=0.2.1,<0.3",
-    "zstandard",
 ]
 
 #
@@ -45,3 +44,7 @@ Repository = "https://github.com/llm-d/llm-d-benchmark"
 
 [project.scripts]
 llmdbenchmark = "llmdbenchmark.cli:cli"
+
+# These files run inside the harness images, which are on older Python versions.
+[tool.ruff]
+per-file-target-version = { "workload/harnesses/**" = "py312", "llmdbenchmark/analysis/scripts/**" = "py312", "llmdbenchmark/standup/preprocess/**" = "py312", "llmdbenchmark/analysis/summary.py" = "py312", "llmdbenchmark/analysis/metrics_embed.py" = "py312" }

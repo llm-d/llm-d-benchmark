@@ -476,7 +476,7 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 ),
                 "harness": plan_config.get("harness", {}),
             }
-    except (OSError, _yaml.YAMLError):
+    except OSError, _yaml.YAMLError:
         pass
     return {}
 
@@ -1335,7 +1335,7 @@ def _collect_stack_models(context) -> list[tuple[str, str]]:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = _yaml.safe_load(fh) or {}
                 model_name = (cfg.get("model") or {}).get("name", "?") or "?"
-            except (OSError, _yaml.YAMLError):
+            except OSError, _yaml.YAMLError:
                 pass
         rows.append((stack_name, model_name))
     return rows
@@ -1375,7 +1375,7 @@ def _print_endpoints_table(context, logger, args) -> None:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = _yaml.safe_load(fh) or {}
                 model_name = (cfg.get("model") or {}).get("name", "?") or "?"
-            except (OSError, _yaml.YAMLError):
+            except OSError, _yaml.YAMLError:
                 pass
         url = endpoints.get(stack_name, "<not detected>")
         rows.append((stack_name, model_name, url))
@@ -1603,7 +1603,7 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
         if get_result.success and get_result.stdout.strip():
             try:
                 existing_data = json.loads(get_result.stdout)
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 pass
 
         # Add this run keyed by timestamp (also update "latest")

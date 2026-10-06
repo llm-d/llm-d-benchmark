@@ -182,7 +182,7 @@ def read_reset_caches(experiments_file: str | Path | None) -> bool:
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return False
     if not isinstance(data, dict):
         return False
@@ -219,7 +219,7 @@ def read_run_controls(experiments_file: str | Path | None) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return controls
     if not isinstance(data, dict):
         return controls
@@ -229,7 +229,7 @@ def read_run_controls(experiments_file: str | Path | None) -> dict:
             controls["treatment_max_attempts"] = max(
                 1, int(data["treatment_max_attempts"])
             )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
     if "treatment_stop_on_error" in data:
         controls["treatment_stop_on_error"] = bool(data["treatment_stop_on_error"])
@@ -243,7 +243,7 @@ def read_run_controls(experiments_file: str | Path | None) -> dict:
                 1,
                 min(MAX_PARALLEL_TREATMENTS_CAP, int(data["max_parallel_treatments"])),
             )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
     return controls
 
@@ -268,7 +268,7 @@ def read_treatment_groups(
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return []
     if not isinstance(data, dict) or "groups" not in data:
         return []

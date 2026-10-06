@@ -49,7 +49,7 @@ You need these installed before starting:
 | Tool | Minimum | Check |
 |---|---|---|
 | Docker or Podman | any recent version | `docker info` or `podman info` |
-| Python | 3.11+ | `python3 --version` |
+| Python | 3.14+ | `python3 --version` |
 | `git` | any | `git --version` |
 | Container runtime resources | **4 CPUs / 8 GiB RAM** | `docker info \| grep -E "CPUs\|Total Memory"` |
 

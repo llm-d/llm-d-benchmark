@@ -44,7 +44,7 @@ However, the scripts can be executed by **namespace-level admin** users, as long
 
 ### Install
 
-The install script supports both [uv](https://docs.astral.sh/uv/) and the standard `python3 -m venv` for virtual environment creation. When run interactively, it will prompt you to choose; in non-interactive mode (e.g. curl pipe), it auto-selects uv if your system Python is missing or older than 3.11. You can also pass `--uv` or `--no-uv` to skip the prompt.
+The install script supports both [uv](https://docs.astral.sh/uv/) and the standard `python3 -m venv` for virtual environment creation. When run interactively, it will prompt you to choose; in non-interactive mode (e.g. curl pipe), it auto-selects uv if your system Python is missing or older than 3.14. You can also pass `--uv` or `--no-uv` to skip the prompt.
 
 **Quick install (one-liner):**
 
@@ -72,7 +72,7 @@ LLMDBENCH_BRANCH=main \
   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
 ```
 
-The install script auto-detects if the repo is present -- if not, it clones it first. It creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
+The install script auto-detects if the repo is present -- if not, it clones it first. It creates a virtualenv, validates system tools (kubectl, helm, Python 3.14+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
 
 > [!TIP]
 > The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
@@ -85,7 +85,7 @@ Two supported entry points depending on what you have access to:
 
 Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind` scenario that CI runs on every PR, so if it works locally it works in CI.
 
-- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
+- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.14+
 - **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md) (or try the simpler [EPP+KEDA Saturation Autoscaling](docs/workload-variant-autoscaler.md) guide)
 
 **🚀 Access to Compute cluster with Accelerators - full pipeline**
@@ -333,7 +333,7 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 
 ### System Requirements
 
-- **Python 3.11+**
+- **Python 3.14+**
 - **kubectl** -- Kubernetes CLI
 - **helm** (>= 4.x) -- Helm package manager
 - **curl**, **git** -- Standard system tools
@@ -373,7 +373,7 @@ source .venv/bin/activate
 The install script:
 
 1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
-2. Validates Python 3.11+ and pip
+2. Validates Python 3.14+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile)
 4. Installs the `helm-diff` plugin (required by helmfile)
 5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))

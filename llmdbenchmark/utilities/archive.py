@@ -16,7 +16,7 @@ import sys
 import tarfile
 from pathlib import Path
 
-import zstandard
+from compression import zstd
 
 DEFAULT_LEVEL = 10
 
@@ -181,7 +181,7 @@ class _ZstdSource:
     def __init__(self, stdout, stderr=b"", upstream=None, closefd=True):
         self._raw = stdout
         self._closefd = closefd
-        self.stdout = zstandard.ZstdDecompressor().stream_reader(stdout)
+        self.stdout = zstd.ZstdFile(stdout, mode="rb")
         self.stderr = io.BytesIO(stderr)
         if upstream is not None:
             self.upstream = upstream
@@ -307,8 +307,7 @@ def _glob_match(relative: str, pattern: str) -> bool:
 
     fnmatch's ``*`` crosses ``/``, so it would fold a nested file into a match the
     plain-filesystem side excludes -- the same glob answering differently depending
-    on whether the tree happens to be compressed. (``PurePath.full_match`` is 3.13+;
-    the floor here is 3.11.)
+    on whether the tree happens to be compressed.
     """
     segments = pattern.split("**/")
     expr = "(?:[^/]+/)*".join(
@@ -335,7 +334,7 @@ def _archives_covering(root: Path) -> list[tuple[Path, str]]:
 
 
 # ZstdError is not a RuntimeError, so it needs listing here.
-_UNREADABLE = (RuntimeError, tarfile.TarError, OSError, zstandard.ZstdError)
+_UNREADABLE = (RuntimeError, tarfile.TarError, OSError, zstd.ZstdError)
 
 
 def _warn_unreadable(archive: Path, exc: BaseException) -> None:

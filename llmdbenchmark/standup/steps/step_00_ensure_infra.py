@@ -265,7 +265,7 @@ class EnsureInfraStep(Step):
 
         py_ok, py_version = check_python_version()
         if not py_ok:
-            errors.append(f"Python >= 3.11 required, found {py_version}")
+            errors.append(f"Python >= 3.14 required, found {py_version}")
 
         dep_result = check_system_dependencies()
         if dep_result.has_missing_required:

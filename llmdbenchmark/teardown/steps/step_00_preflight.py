@@ -86,6 +86,6 @@ class TeardownPreflightStep(Step):
                     cfg = yaml.safe_load(f)
                 if cfg:
                     return cfg
-            except (OSError, yaml.YAMLError):
+            except OSError, yaml.YAMLError:
                 continue
         return None

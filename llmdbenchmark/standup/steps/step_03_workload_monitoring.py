@@ -104,7 +104,7 @@ class WorkloadMonitoringStep(Step):
             try:
                 if int(count) > 0:
                     return True
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
         return False
 
@@ -129,7 +129,7 @@ class WorkloadMonitoringStep(Step):
 
         try:
             data = json.loads(result.stdout)
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError, ValueError:
             return
 
         not_ready: list[str] = []
@@ -196,7 +196,7 @@ class WorkloadMonitoringStep(Step):
 
         try:
             data = json.loads(result.stdout)
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError, ValueError:
             return 0, 0
 
         total = 0
@@ -210,7 +210,7 @@ class WorkloadMonitoringStep(Step):
                 try:
                     total += WorkloadMonitoringStep._parse_k8s_quantity(val)
                     node_count += 1
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
 
         return total, node_count
@@ -415,7 +415,7 @@ class WorkloadMonitoringStep(Step):
                 for node in data.get("items", [])
                 if self._is_node_ready(node)
             ]
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError, ValueError:
             return None
 
     @staticmethod

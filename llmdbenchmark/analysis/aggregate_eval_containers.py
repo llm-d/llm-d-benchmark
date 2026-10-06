@@ -105,7 +105,7 @@ def _read_text(task_dir: Path, relative: str) -> str | None:
         # on a compressed one.
         try:
             return plain.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except OSError, UnicodeDecodeError:
             return None
 
     payload = read_member(task_dir, relative)
@@ -172,7 +172,7 @@ def _read_reward(task_dir: Path) -> tuple[float | None, bool | None, str, int | 
         task_id = _read_yaml(task_dir, "run_metadata.yaml").get("task_id")
     try:
         task_id_int = int(task_id)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         task_id_int = None
 
     if "reward" in result:
@@ -180,7 +180,7 @@ def _read_reward(task_dir: Path) -> tuple[float | None, bool | None, str, int | 
         passed = result.get("passed")
         try:
             reward_f = float(reward)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             reward_f = None
         if passed is None and reward_f is not None:
             passed = reward_f >= 1.0
@@ -343,7 +343,7 @@ def _iso_to_unix_ns(value: Any) -> int | None:
         from datetime import datetime
 
         dt = datetime.fromisoformat(text)
-    except (ValueError, ImportError):
+    except ValueError, ImportError:
         return None
     if dt.tzinfo is None:
         # The harness writes an offset; a naive value would silently be read as

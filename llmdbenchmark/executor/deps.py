@@ -81,11 +81,11 @@ def check_system_dependencies(
 
 
 def check_python_version() -> tuple[bool, str]:
-    """Return (meets_requirement, version_string) for Python >= 3.11."""
+    """Return (meets_requirement, version_string) for Python >= 3.14."""
     version = (
         f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     )
-    meets = sys.version_info >= (3, 11)
+    meets = sys.version_info >= (3, 14)
     return meets, version
 
 
@@ -98,7 +98,7 @@ def _tool_version_output(cmd: list[str]) -> str | None:
     """
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return None
     if out.returncode != 0:
         return None

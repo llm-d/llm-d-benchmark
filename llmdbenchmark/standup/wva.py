@@ -146,7 +146,7 @@ def stacks_enabling_wva(rendered_stacks: list[Path]) -> list[tuple[Path, dict]]:
         try:
             with open(cfg_file, encoding="utf-8") as fh:
                 cfg = yaml.safe_load(fh) or {}
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             continue
         if cfg.get("wva", {}).get("enabled", False):
             pairs.append((stack_path, cfg))

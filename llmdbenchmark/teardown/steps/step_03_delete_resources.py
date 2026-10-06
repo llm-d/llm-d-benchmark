@@ -317,7 +317,7 @@ class DeleteResourcesStep(Step):
                         if resource and resource not in existing:
                             filtered.append(resource)
                             existing.add(resource)
-                except (json.JSONDecodeError, KeyError):
+                except json.JSONDecodeError, KeyError:
                     pass
 
             # Preserve persistent llm-d-prism resources (skipped on deep clean).

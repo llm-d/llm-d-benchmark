@@ -149,7 +149,7 @@ class DeploySetupStep(Step):
         try:
             content = helmfile_path.read_text(encoding="utf-8")
             docs = list(yaml.safe_load_all(content))
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             return False
         for doc in docs:
             if not isinstance(doc, dict):

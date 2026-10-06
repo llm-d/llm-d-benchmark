@@ -310,7 +310,7 @@ def wait_for_pods_by_selector(
     if check_result.success and check_result.stdout:
         try:
             pods = json.loads(check_result.stdout).get("items", [])
-        except (json.JSONDecodeError, AttributeError):
+        except json.JSONDecodeError, AttributeError:
             pods = []
         crash_details = [detail for pod in pods for detail in _pod_crash_details(pod)]
         if crash_details:

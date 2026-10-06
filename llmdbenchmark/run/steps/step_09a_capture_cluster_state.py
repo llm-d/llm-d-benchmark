@@ -57,7 +57,7 @@ def _prometheus_api_status(stdout: str) -> tuple[str, str]:
         return "", ""
     try:
         body = json.loads(stdout)
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError, ValueError:
         return "", ""
     if not isinstance(body, dict):
         return "", ""

@@ -23,7 +23,7 @@ def parse_pod_list(payload: str, namespace: str = "") -> list[PodState] | None:
         return None
     try:
         data = json.loads(payload)
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except json.JSONDecodeError, TypeError, ValueError:
         return None
     if not isinstance(data, dict):
         return None

@@ -320,7 +320,7 @@ class ModelNamespaceStep(Step):
                 if doc and doc.get("kind") == "Namespace":
                     context.namespace = doc["metadata"]["name"]
                     break
-        except (yaml.YAMLError, OSError):
+        except yaml.YAMLError, OSError:
             pass
 
     def _create_model_pvc(
@@ -719,7 +719,7 @@ class ModelNamespaceStep(Step):
                     job_ns,
                     "--ignore-not-found",
                 )
-        except (yaml.YAMLError, OSError):
+        except yaml.YAMLError, OSError:
             pass
 
     def _validate_storage_class(
@@ -837,7 +837,7 @@ class ModelNamespaceStep(Step):
                 f"🔑 OpenShift proxy UID: {context.proxy_uid} "
                 f"(from uid-range {uid_range})"
             )
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             context.logger.log_warning(f"⚠️  Could not parse uid-range '{uid_range}'")
 
     def _create_model_preprocess_configmap(self, cmd, context) -> None:

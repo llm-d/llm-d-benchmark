@@ -895,7 +895,7 @@ class CommandExecutor:
                     0,
                     1,
                 )
-            except (OSError, KeyError, ValueError):
+            except OSError, KeyError, ValueError:
                 status_line = self._format_progress(
                     desc,
                     elapsed,
@@ -1037,7 +1037,7 @@ class CommandExecutor:
                 return None
             data = json.loads(result.stdout)
             return data.get("status", {})
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             return None
 
     def _get_daemonset_status(self, ds_name: str, namespace: str) -> dict | None:
@@ -1068,7 +1068,7 @@ class CommandExecutor:
                 return None
             data = json.loads(result.stdout)
             return data.get("status", {})
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             return None
 
     @staticmethod
