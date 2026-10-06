@@ -192,7 +192,7 @@ GRAPHED_METRICS: dict[str, tuple[str, str, str]] = {
     # Cache
     "vllm:kv_cache_usage_perc": (
         "vllm_kv_cache_usage_perc",
-        "percent",
+        "fraction",
         "vllm_kv_cache_usage_perc.png",
     ),
     # Queue / scheduling
@@ -267,7 +267,7 @@ GRAPHED_METRICS: dict[str, tuple[str, str, str]] = {
     # EPP (inference scheduler) Prometheus metrics — pool-level gauges
     "inference_pool_average_kv_cache_utilization": (
         "epp_pool_avg_kv_cache_utilization",
-        "percent",
+        "fraction",
         "epp_pool_avg_kv_cache_utilization.png",
     ),
     "inference_pool_average_queue_size": (

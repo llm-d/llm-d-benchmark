@@ -65,7 +65,7 @@ results:
       requests:
         failures: 2
         input_length:
-          mean: 233.93
+          mean: 236.2929292929293
           units: count
         output_length:
           mean: 1024.0

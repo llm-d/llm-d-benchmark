@@ -59,11 +59,21 @@ llmdbenchmark --spec guides/keda-epp-token-aware run \
   --harness inference-perf --workload random_prefill_heavy.yaml \
   --monitoring --analyze
 
-# all three, sequentially
-llmdbenchmark --spec guides/keda-epp-token-aware experiment \
-  --experiments experiments/token-aware-autoscaling.yaml \
-  --monitoring -g METRICS_COLLECTION_INTERVAL --analyze
+# all three, sequentially, against the same calibrated stack
+llmdbenchmark --spec guides/keda-epp-token-aware run \
+  --harness inference-perf --experiments experiments/token-aware-autoscaling.yaml \
+  --monitoring --analyze
 ```
+
+Use `run --experiments` here, not `experiment`. The `experiment` command stands up its own
+stack from the scenario and tears it down afterwards, so it serves with the scenario's
+**placeholder** `peakPrefillThroughput` and discards what step 2 wrote. It also does not accept
+`-g` or `--analyze`.
+
+The three shapes share one autoscaled pool, so a shape can start above `minReplicas` while the
+previous shape's replicas drain (the `scaleDown` policy removes one pod per 300s). For a
+clean-start comparison, run each shape with `--workload` on a freshly stood-up and calibrated
+stack.
 
 ### P/D-disaggregated variant
 

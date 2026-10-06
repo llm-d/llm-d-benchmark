@@ -1,0 +1,78 @@
+# Test-only scenario, owned by tests/test_kv_offload_shm_sizing.py. Scenarios
+# under config/scenarios/ ship to users and get retuned freely, so a suite that
+# asserts on their literals fails for reasons unrelated to the code.
+scenario:
+  - name: shm-too-small
+    vllmCommon:
+      kvTransfer:
+        extraConfig:
+          cpu_bytes_to_use: 2Gi
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+
+  - name: shm-exact
+    vllmCommon:
+      kvTransfer:
+        extraConfig:
+          cpu_bytes_to_use: 2Gi
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+
+  - name: shm-buffer-too-thin
+    vllmCommon:
+      kvTransfer:
+        extraConfig:
+          cpu_bytes_to_use: 2Gi
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 3Gi
+
+  - name: shm-buffer-exact
+    vllmCommon:
+      kvTransfer:
+        extraConfig:
+          cpu_bytes_to_use: 2Gi
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+
+  - name: shm-ample
+    vllmCommon:
+      kvTransfer:
+        extraConfig:
+          cpu_bytes_to_use: 2Gi
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+
+  - name: no-offload
+    vllmCommon:
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+
+  - name: nested-under-modelservice
+    modelservice:
+      vllmCommon:
+        kvTransfer:
+          extraConfig:
+            cpu_bytes_to_use: 2Gi
+        volumes:
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 4Gi

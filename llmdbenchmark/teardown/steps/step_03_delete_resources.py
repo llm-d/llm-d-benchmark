@@ -204,17 +204,7 @@ class DeleteResourcesStep(Step):
                         f"  Deleted {len(existing)} {kind}(s) in {ns}"
                     )
 
-        # Clean up cluster-scoped hostPath PVs created by the benchmark.
-        pv_result = cmd.kube(
-            "delete",
-            "pv",
-            "-l",
-            "usage=model-cache",
-            "--ignore-not-found",
-            check=False,
-        )
-        if pv_result.success and pv_result.stdout.strip():
-            context.logger.log_info("  Deleted hostPath PV(s)")
+        self._delete_host_path_pvs(cmd, context, namespaces)
 
     def _normal_clean(
         self,
@@ -382,17 +372,63 @@ class DeleteResourcesStep(Step):
                 f"  Deleted {deleted_count}/{len(filtered)} resources in {ns}"
             )
 
-        # Clean up cluster-scoped hostPath PVs created by the benchmark.
-        pv_result = cmd.kube(
-            "delete",
+        self._delete_host_path_pvs(cmd, context, namespaces)
+
+    @staticmethod
+    def _delete_host_path_pvs(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespaces: list[str],
+    ) -> None:
+        """Delete the hostPath PVs bound to our own namespaces.
+
+        PVs are cluster-scoped and `usage=model-cache` carries no namespace, so
+        on a shared cluster the label alone also matches other tenants' PVs. One
+        of those left Terminating behind a pv-protection finalizer never goes
+        away, and a plain delete waits for it forever. Match on claimRef instead
+        and bound the wait.
+        """
+        mine = set(filter(None, namespaces))
+        if not mine:
+            return
+
+        result = cmd.kube(
+            "get",
             "pv",
             "-l",
             "usage=model-cache",
-            "--ignore-not-found",
+            "-o",
+            'jsonpath={range .items[*]}{.metadata.name}{" "}'
+            '{.spec.claimRef.namespace}{"\\n"}{end}',
             check=False,
         )
-        if pv_result.success and pv_result.stdout.strip():
-            context.logger.log_info("  Deleted hostPath PV(s)")
+        if not result.success or not result.stdout.strip():
+            return
+
+        for line in result.stdout.strip().splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            name = parts[0]
+            claim_ns = parts[1] if len(parts) > 1 else ""
+            if claim_ns not in mine:
+                context.logger.log_info(
+                    f"  Keeping pv/{name}: bound to {claim_ns or '<unbound>'}, not ours"
+                )
+                continue
+            context.logger.log_info(f"  Deleting pv/{name}", emoji="🗑️")
+            del_result = cmd.kube(
+                "delete",
+                f"pv/{name}",
+                "--ignore-not-found",
+                # A finalizer that never clears would otherwise hang teardown.
+                "--timeout=60s",
+                check=False,
+            )
+            if not del_result.success:
+                context.logger.log_warning(
+                    f"  Could not delete pv/{name}: {del_result.stderr.strip()}"
+                )
 
     def _prune_unsupported(
         self, cmd: CommandExecutor, resource_list: str, namespace: str

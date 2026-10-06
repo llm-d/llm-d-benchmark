@@ -71,7 +71,10 @@ class DeployModelserviceStep(Step):
                     stack_name=stack_name,
                 )
 
-        if context.is_openshift and not context.non_admin:
+        if context.is_openshift:
+            # Called in non-admin mode too -- it cannot grant anything there,
+            # but it is the only place that knows the scenario needs an SCC
+            # the run will not get, and silence costs a failed standup.
             self._manage_sccs(cmd, context, plan_config, namespace)
 
         ms_values = self._find_yaml(stack_path, "13_ms-values")
@@ -628,6 +631,37 @@ class DeployModelserviceStep(Step):
             sa_name = sa_override
         else:
             sa_name = plan_config.get("model_id_label", "")
+
+        if context.non_admin:
+            # No cluster-admin, so the grant below is not ours to make. Say so
+            # now: the only other symptom is a Deployment stuck at
+            # ReplicaFailure/FailedCreate with no pod events, minutes later,
+            # which points at nothing.
+            context.logger.log_warning(
+                f"Non-admin: this scenario requests runAsUser/runAsGroup 0 "
+                f"(and may add capabilities), which no default OpenShift SCC "
+                f"allows. --non-admin skips the SCC grant, so pod creation "
+                f"will be rejected with 'unable to validate against any "
+                f"security context constraint' unless SA '{sa_name}' in "
+                f"namespace {namespace} was already granted a suitable SCC.\n"
+                f"    Either have a cluster-admin grant it:\n"
+                f"      oc adm policy add-scc-to-user privileged "
+                f"-z {sa_name} -n {namespace}\n"
+                f"    or drop the request and run under restricted-v2 by "
+                f"re-running standup with:\n"
+                f"      --set 'decode.extraContainerConfig.securityContext."
+                f"capabilities.add=[]'\n"
+                f"      --set 'decode.extraContainerConfig.securityContext."
+                f"runAsUser=<uid>'\n"
+                f"    <uid> must fall inside this namespace's range, which is "
+                f"the first field of its openshift.io/sa.scc.uid-range "
+                f"annotation (runAsUser can be re-pointed but not removed: "
+                f"null is ignored by the config merge and '' renders an empty "
+                f"string where an int is required). Read it with: "
+                f"oc get ns {namespace} -o jsonpath=" + "'"
+                "{.metadata.annotations.openshift\\.io/sa\\.scc\\.uid-range}'"
+            )
+            return
 
         context.logger.log_info(
             f"Assigning anyuid/privileged SCCs to SA '{sa_name}' "

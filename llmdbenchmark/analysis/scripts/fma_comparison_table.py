@@ -321,44 +321,16 @@ ROWS = [
     ("ITL p95 (ms)", "successes", "latency", "inter_token_latency", "p95", 1000, ""),
 ]
 
-# Rows that are additive across inference-perf workers (each worker's summary
-# reports only its own share), so they are multiplied by the worker count.
-_PER_WORKER_ROWS = {
-    "Total requests",
-    "Successes",
-    "Failures",
-    "Throughput (req/s)",
-    "Throughput input (tok/s)",
-    "Throughput output (tok/s)",
-}
 
-
-def _num_workers(rdir, workload):
-    if not workload:
-        return 1
-    name = os.path.basename(workload)
-    text = load_text(_find_one(rdir, name), rdir, name)
-    if text is None:
-        return 1
-    for line in text.splitlines():
-        s = line.strip()
-        if s.startswith("num_workers:"):
-            try:
-                return int(s.split(":", 1)[1].strip())
-            except ValueError:
-                return 1
-    return 1
-
-
-def render_run_info(args, summaries, workers):
+def render_run_info(args, summaries):
     """Emit a Run Info block above the table."""
     duration = next((get(s, "benchmark_time_seconds") for s in summaries if s), None)
-    # Total requests summed across the inference-perf workers (per-worker count
-    # x worker count), matching the per-arm Total requests row.
+    # inference-perf writes one summary covering all of its workers, so this
+    # count is already the total.
     total = next(
         (
-            get(s, "load_summary", "count") * w
-            for s, w in zip(summaries, workers)
+            get(s, "load_summary", "count")
+            for s in summaries
             if s and get(s, "load_summary", "count") is not None
         ),
         None,
@@ -429,8 +401,7 @@ def main():
     bl, fw_ws, fw_hs = (load_json(p, r, _sum_name) for p, r in zip(sums, rdirs))
     summaries = [bl, fw_ws, fw_hs]
 
-    workers = [_num_workers(r, args.workload) for r in rdirs]
-    out = [render_run_info(args, summaries, workers)]
+    out = [render_run_info(args, summaries)]
 
     out.append(
         f"| Metric | {args.col_baseline} | {args.col_warmstart} | {args.col_hotstart} |"
@@ -450,8 +421,6 @@ def main():
             else 1
         )
         vals = [get(s, *keys, scale=scale) for s in summaries]
-        if label in _PER_WORKER_ROWS:
-            vals = [v * w if v is not None else None for v, w in zip(vals, workers)]
         out.append(
             f"| {label} | " + " | ".join(fmt(v, unit, prec) for v in vals) + " |"
         )

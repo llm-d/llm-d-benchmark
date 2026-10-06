@@ -55,12 +55,12 @@ data:
     min: 8192
     max: 8192
     mean: 8192
-    std: 0
+    std_dev: 0
   output_distribution:
     min: 256
     max: 256
     mean: 256
-    std: 0
+    std_dev: 0
 report:
   request_lifecycle:
     summary: true

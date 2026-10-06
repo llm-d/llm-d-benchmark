@@ -1177,7 +1177,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                             "input_length": {
                                 "units": Units.COUNT,
                                 "mean": results.get("total_input_tokens", 0)
-                                / results.get("num_prompts", -1),
+                                / (results.get("completed", 0) or 1),
                             },
                             "output_length": {
                                 "units": Units.COUNT,
@@ -1310,6 +1310,9 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
     check_file(results_file)
 
     results = import_yaml(results_file)
+    # error_summary has one entry per distinct error with its count, and
+    # request_count counts only the requests that succeeded.
+    failures = sum(e.get("count", 0) for e in results.get("error_summary") or [])
 
     br_dict = _populate_benchmark_report_from_envars()
 
@@ -1378,8 +1381,8 @@ def import_aiperf(results_file: str) -> BenchmarkReportV02:
 
     aggregate = {
         "requests": {
-            "total": int(get_nested(results, ["request_count", "avg"], 0)),
-            "failures": len(results.get("error_summary", [])),
+            "total": int(get_nested(results, ["request_count", "avg"], 0)) + failures,
+            "failures": failures,
             "input_length": {
                 "units": Units.COUNT,
                 **_aiperf_percentiles(isl),
@@ -1531,13 +1534,13 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                             - results.get("completed"),
                             "input_length": {
                                 "units": Units.COUNT,
-                                "mean": np.array(results.get("input_lens", [0])).mean(),
+                                "mean": results.get("total_input_tokens", 0)
+                                / (results.get("completed", 0) or 1),
                             },
                             "output_length": {
                                 "units": Units.COUNT,
-                                "mean": np.array(
-                                    results.get("output_lens", [0])
-                                ).mean(),
+                                "mean": results.get("total_output_tokens", 0)
+                                / (results.get("completed", 0) or 1),
                             },
                         },
                         "latency": {
@@ -1582,6 +1585,8 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                                 "p5": results.get("p5_itl_ms"),
                                 "p10": results.get("p10_itl_ms"),
                                 "p25": results.get("p25_itl_ms"),
+                                "p50": results.get("median_itl_ms"),
+                                "p75": results.get("p75_itl_ms"),
                                 "p90": results.get("p90_itl_ms"),
                                 "p95": results.get("p95_itl_ms"),
                                 "p99": results.get("p99_itl_ms"),
@@ -1596,6 +1601,8 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                                 "p5": results.get("p5_e2el_ms"),
                                 "p10": results.get("p10_e2el_ms"),
                                 "p25": results.get("p25_e2el_ms"),
+                                "p50": results.get("median_e2el_ms"),
+                                "p75": results.get("p75_e2el_ms"),
                                 "p90": results.get("p90_e2el_ms"),
                                 "p95": results.get("p95_e2el_ms"),
                                 "p99": results.get("p99_e2el_ms"),
@@ -3630,7 +3637,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                                     ],
                                 ),
                             },
-                            "time_per_output_token": {
+                            "normalized_time_per_output_token": {
                                 "units": Units.MS_PER_TOKEN,
                                 "mean": get_nested(
                                     results,
