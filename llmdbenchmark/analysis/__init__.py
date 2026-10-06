@@ -12,7 +12,6 @@ from __future__ import annotations
 import glob
 import logging
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -145,9 +144,6 @@ def run_analysis(
     For the ``nop`` harness, delegates to the original Python analysis
     script which uses the ``benchmark_report`` library directly.
 
-    For ``inference-perf``, additionally runs ``inference-perf --analyze``
-    if the binary is available on ``$PATH``.
-
     Returns:
         ``None`` on success, or an error string.
     """
@@ -234,22 +230,10 @@ def run_analysis(
     if marker:
         _extract_summary(results_dir, marker, context)
 
-    # --- 3. Harness-specific post-processing ---
-    if harness_name == "inference-perf":
-        _run_inference_perf_analyze(results_dir, context)
-
-    # --- 4. Embed metrics + generate plots (if metrics were collected) ---
+    # --- 3. Embed metrics (if metrics were collected) ---
     metrics_dir = results_dir / "metrics"
     if metrics_dir.exists():
         _embed_metrics_in_reports(metrics_dir, results_dir, context)
-        _run_metric_visualizations(metrics_dir, results_dir, context)
-
-    # --- 5. Generate per-request distribution plots ---
-    _run_per_request_plots(results_dir, context)
-
-    # --- 6. Generate session lifecycle plots (inference-perf only) ---
-    if harness_name == "inference-perf":
-        _run_session_plots(results_dir, context)
 
     if errors:
         return f"Conversion errors: {'; '.join(errors)}"
@@ -411,58 +395,7 @@ def _extract_summary(
 
 
 # ---------------------------------------------------------------------------
-# inference-perf specific post-processing
-# ---------------------------------------------------------------------------
-
-
-def _run_inference_perf_analyze(
-    results_dir: Path,
-    context: ExecutionContext | None,
-) -> None:
-    """Run ``inference-perf --analyze`` if available (matches bash script)."""
-    if not shutil.which("inference-perf"):
-        _log(context, "inference-perf CLI not on PATH -- skipping --analyze")
-        return
-
-    analysis_dir = results_dir / "analysis"
-    analysis_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        result = subprocess.run(
-            ["inference-perf", "--analyze", str(results_dir)],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            cwd=str(results_dir),
-        )
-        if result.returncode != 0:
-            _log(
-                context,
-                f"inference-perf --analyze exited {result.returncode}",
-                warning=True,
-            )
-            return
-
-        # Move newly created analysis files into analysis/ dir
-        for item in results_dir.iterdir():
-            if (
-                item.is_file()
-                and item.parent == results_dir
-                and item.suffix in (".txt", ".csv", ".html", ".png", ".json")
-            ):
-                dest = analysis_dir / item.name
-                if not dest.exists():
-                    shutil.move(str(item), str(dest))
-
-        _log(context, "inference-perf --analyze complete")
-    except FileNotFoundError:
-        pass
-    except subprocess.TimeoutExpired:
-        _log(context, "inference-perf --analyze timed out (>300s)", warning=True)
-
-
-# ---------------------------------------------------------------------------
-# Metric visualization (Prometheus time series to PNG plots)
+# Metric embedding
 # ---------------------------------------------------------------------------
 
 
@@ -485,98 +418,6 @@ def _embed_metrics_in_reports(
         results_dir,
         log=lambda message, warning=False: _log(context, message, warning=warning),
     )
-
-
-def _run_metric_visualizations(
-    metrics_dir: Path,
-    results_dir: Path,
-    context: ExecutionContext | None,
-) -> None:
-    """Generate PNG plots for collected Prometheus metrics.
-
-    Reads ``metrics/raw/*.log`` files and writes PNG graphs to
-    ``analysis/graphs/``.  Requires ``matplotlib`` (optional dependency).
-    """
-    try:
-        from llmdbenchmark.analysis.visualize_metrics import (
-            generate_all_visualizations,
-        )
-    except ImportError:
-        _log(context, "matplotlib not available -- skipping metric plots")
-        return
-
-    analysis_dir = results_dir / "analysis"
-    graphs_dir = analysis_dir / "graphs"
-    graphs_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        count = generate_all_visualizations(
-            str(metrics_dir),
-            output_dir=str(graphs_dir),
-            context=context,
-        )
-        if count:
-            _log(context, f"Generated {count} metric plot(s)")
-    except Exception as exc:
-        _log(context, f"Metric visualization failed: {exc}", warning=True)
-
-
-# ---------------------------------------------------------------------------
-# Per-request distribution plots
-# ---------------------------------------------------------------------------
-
-
-def _run_per_request_plots(
-    results_dir: Path,
-    context: ExecutionContext | None,
-) -> None:
-    """Generate per-request distribution plots (histograms, CDFs, scatter).
-
-    Reads ``per_request_lifecycle_metrics.json`` and writes plots to
-    ``analysis/distributions/``.  Requires ``matplotlib``.
-    """
-    # Plain files only, and the in-pod pass runs before compression: on the driver
-    # this is a fallback that no-ops on an already-compressed result set.
-    try:
-        from llmdbenchmark.analysis.per_request_plots import (
-            generate_per_request_plots,
-        )
-    except ImportError:
-        _log(context, "matplotlib not available -- skipping per-request plots")
-        return
-
-    try:
-        dist_dir = results_dir / "analysis" / "distributions"
-        count = generate_per_request_plots(
-            results_dir,
-            output_dir=dist_dir,
-            context=context,
-        )
-        if count:
-            _log(context, f"Generated {count} per-request distribution plot(s)")
-    except Exception as exc:
-        _log(context, f"Per-request plot generation failed: {exc}", warning=True)
-
-
-# ---------------------------------------------------------------------------
-# Session lifecycle plot generation
-# ---------------------------------------------------------------------------
-
-
-def _run_session_plots(
-    results_dir: Path,
-    context: ExecutionContext | None,
-) -> None:
-    """Generate bar charts for session lifecycle metrics from benchmark report v0.2 files."""
-    from llmdbenchmark.analysis.session_plots import generate_session_plots
-
-    try:
-        out_dir = results_dir / "analysis" / "session"
-        count = generate_session_plots(results_dir, output_dir=out_dir)
-        if count:
-            _log(context, f"Generated {count} session plot(s) in {out_dir}")
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        _log(context, f"Session plot generation failed: {exc}", warning=True)
 
 
 # ---------------------------------------------------------------------------

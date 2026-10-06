@@ -154,14 +154,11 @@ def test_no_compress_leaves_the_same_artifacts_as_compress(tmp_path):
     from llmdbenchmark.utilities.archive import read_member
 
     def build(results: Path) -> None:
-        (results / "analysis" / "distributions").mkdir(parents=True)
-        (results / "metrics" / "graphs").mkdir(parents=True)
+        (results / "analysis").mkdir(parents=True)
         (results / "benchmark_report_v0.2,_stage_0.json.yaml").write_text(
             "run: {}\n", encoding="utf-8"
         )
         (results / "run_metadata.yaml").write_text("model: m\n", encoding="utf-8")
-        (results / "analysis" / "distributions" / "dist_ttft.png").write_bytes(b"PNG\n")
-        (results / "metrics" / "graphs" / "kv.png").write_bytes(b"PNG\n")
         (results / "analysis" / "summary.txt").write_text("sum\n", encoding="utf-8")
         (results / "stdout.log").write_text("log\n", encoding="utf-8")
         (results / "per_request_lifecycle_metrics.json").write_text(
@@ -175,14 +172,12 @@ def test_no_compress_leaves_the_same_artifacts_as_compress(tmp_path):
     _compress(compressed)
 
     # Hardcoded, not derived from KEEP_PLAIN: deriving it would make the test agree
-    # with whatever that constant says, including a change that moves a plot or a
-    # report into the archive. Globbed with '*' rather than the patterns, so the
-    # shell's idea of what stays plain is checked against nothing but this literal.
+    # with whatever that constant says, including a change that moves a report into
+    # the archive. Globbed with '*' rather than the patterns, so the shell's idea of
+    # what stays plain is checked against nothing but this literal.
     expected = {
         "benchmark_report_v0.2,_stage_0.json.yaml",
         "run_metadata.yaml",
-        "analysis/distributions/dist_ttft.png",
-        "metrics/graphs/kv.png",
     }
     assert expected == {
         str(f.relative_to(compressed))
@@ -267,38 +262,6 @@ def test_a_corrupt_leftover_archive_is_rebuilt(tmp_path):
     assert read_member(results, "logs/stdout.log") is None
 
 
-def test_a_failing_keeper_probe_spares_the_directory(tmp_path):
-    """The probe authorises the only ``rm -rf`` here. A find that fails prints
-    nothing, and treating that as "no keepers" deletes files deliberately left out
-    of the archive -- the one direction with no recovery."""
-    results = tmp_path / "exp_1"
-    (results / "plots").mkdir(parents=True)
-    (results / "plots" / "latency.png").write_bytes(b"KEEPER")
-    (results / "plots" / "bulk.log").write_text("BULK", encoding="utf-8")
-    (results / "run_metadata.yaml").write_text("x: 1\n", encoding="utf-8")
-
-    # Fail only the probe, which is the sole find called with a './<top>' argument.
-    shim = tmp_path / "bin"
-    shim.mkdir()
-    (shim / "find").write_text(
-        "#!/bin/bash\n"
-        "# Only the keeper probe passes a subdirectory as $1; every other call\n"
-        '# passes ".", and failing those would abort before anything is packed.\n'
-        'case "$1" in ./?*) exit 3 ;; esac\n'
-        'exec /usr/bin/find "$@"\n',
-        encoding="utf-8",
-    )
-    (shim / "find").chmod(0o755)
-    env = dict(os.environ, PATH=f"{shim}:{os.environ['PATH']}")
-
-    _compress(results, env=env)
-
-    # The archive must exist, or the keeper survived because the script aborted
-    # before packing rather than because the probe failed safe.
-    assert (results / "workspace.tar.zst").is_file()
-    assert (results / "plots" / "latency.png").read_bytes() == b"KEEPER"
-
-
 def _listing_shims(tmp_path: Path, decompress_rc: int, listing: str) -> dict:
     """PATH shims that break the listing pipeline (``zstd -dc | tar tf -``) while
     leaving compression itself working."""
@@ -371,20 +334,21 @@ def test_only_a_settled_pvc_is_compressed(harness_settled, wait_timeout, expecte
 
 def test_awkwardly_named_keepers_are_not_deleted(tmp_path):
     """Two name-identity traps that each deleted a keeper: ``--exclude-from`` read
-    ``plot[1].png`` as a glob so it did not match itself, and the delete loop's
-    ``read`` stripped a trailing space onto the neighbouring keeper's name."""
+    ``benchmark_report[1].yaml`` as a glob so it did not match itself, and the
+    delete loop's ``read`` stripped a trailing space onto the neighbouring keeper's
+    name."""
     results = tmp_path / "exp_1"
     results.mkdir()
-    (results / "plot[1].png").write_bytes(b"BRACKET")
-    (results / "latency.png").write_bytes(b"KEEPER")
-    (results / "latency.png ").write_text("BULK", encoding="utf-8")
+    (results / "benchmark_report[1].yaml").write_bytes(b"BRACKET")
+    (results / "benchmark_report.yaml").write_bytes(b"KEEPER")
+    (results / "benchmark_report.yaml ").write_text("BULK", encoding="utf-8")
     (results / "run_metadata.yaml").write_text("x: 1\n", encoding="utf-8")
 
     _compress(results)
 
     assert (results / "workspace.tar.zst").is_file()
-    assert (results / "plot[1].png").read_bytes() == b"BRACKET"
-    assert (results / "latency.png").read_bytes() == b"KEEPER"
+    assert (results / "benchmark_report[1].yaml").read_bytes() == b"BRACKET"
+    assert (results / "benchmark_report.yaml").read_bytes() == b"KEEPER"
 
 
 def test_a_linked_member_reads_through_to_its_target(tmp_path):
@@ -444,15 +408,16 @@ def test_a_newline_in_a_name_refuses_instead_of_deleting(tmp_path):
     Refusing costs disk; compressing costs the only copy."""
     results = tmp_path / "exp_1"
     results.mkdir()
-    (results / "x\\nb.png").write_bytes(b"KEEPER")  # literal backslash-n
-    (results / "x\nb.png").write_bytes(b"other")  # real newline
+    # A literal backslash-n, then a real newline.
+    (results / "benchmark_report\\nb.yaml").write_bytes(b"KEEPER")
+    (results / "benchmark_report\nb.yaml").write_bytes(b"other")
     (results / "bulk.log").write_text("BULK", encoding="utf-8")
     (results / "run_metadata.yaml").write_text("x: 1\n", encoding="utf-8")
 
     assert _compress(results, expect_ok=False).returncode != 0
 
     assert not (results / "workspace.tar.zst").exists()
-    assert (results / "x\\nb.png").read_bytes() == b"KEEPER"
+    assert (results / "benchmark_report\\nb.yaml").read_bytes() == b"KEEPER"
     assert (results / "bulk.log").read_text() == "BULK"
 
 

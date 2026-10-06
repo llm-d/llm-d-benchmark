@@ -53,7 +53,7 @@ For tracing backend setup and instrumentation details, refer to the upstream doc
 
 ### Examples
 
-These plots, automatically generated, were used to showcase the difference between a baseline `vLLM` deployment and `llm-d` (for models Llama 4 Scout and Llama 3.1 70B):
+These plots were used to showcase the difference between a baseline `vLLM` deployment and `llm-d` (for models Llama 4 Scout and Llama 3.1 70B):
 
 <p align="center">
   <picture>

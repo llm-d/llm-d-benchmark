@@ -9,7 +9,7 @@ llmdbenchmark/
 ├── __init__.py              -- Package metadata (name, version, homepage)
 ├── cli.py                   -- CLI entry point: argument parsing, workspace setup, phase dispatch
 ├── config.py                -- Package-wide WorkspaceConfig singleton (paths, flags)
-├── analysis/                -- Post-benchmark result processing and visualization
+├── analysis/                -- Post-benchmark result processing
 ├── executor/                -- Execution engine: step orchestration, command execution
 ├── experiment/              -- DoE experiment orchestrator (setup + run treatment lifecycle)
 ├── interface/               -- CLI subcommand definitions and environment variable helpers
@@ -75,6 +75,6 @@ if telemetry := get_telemetry():
 - **standup/run/teardown** each register ordered steps that the executor runs sequentially (global) or in parallel (per-stack).
 - **smoketests** provides post-deployment validation with per-scenario validators that check deployed pods against rendered config. Runs after standup or independently.
 - **experiment** wraps the standup/run/teardown cycle, iterating over setup treatments with config overrides.
-- **analysis** is invoked at the end of the run phase to convert raw harness output into standardized benchmark reports and plots.
+- **analysis** is invoked at the end of the run phase to convert raw harness output into standardized benchmark reports.
 - **utilities** provides shared Kubernetes, endpoint, and filesystem helpers used across all phases.
 - **logging** and **exceptions** are cross-cutting infrastructure used throughout.

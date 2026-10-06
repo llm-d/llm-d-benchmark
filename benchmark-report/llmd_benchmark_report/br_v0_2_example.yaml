@@ -620,7 +620,6 @@ results:
         p90: 93.0
         p99: 94.8
         max: 95.0
-      graph_path: metrics/graphs/pod_startup_times.png
 
     # Replica status — polled every 15s during experiment
     replica_status:
@@ -688,7 +687,6 @@ results:
         p90: 3
         p99: 3
         max: 3
-      graph_path: metrics/graphs/replica_status.png
 
     # -----------------------------------------------------------------------
     # Ad-hoc per-metric entries (produced by metrics_processor.py)
@@ -708,7 +706,6 @@ results:
             p99: 85.6
             stddev: 15.2
             units: percent
-            graph_path: metrics/graphs/vllm_kv_cache_usage_perc.png
       # Aggregated across all pods
       aggregated:
         mean: 40.3
@@ -727,7 +724,6 @@ results:
             p99: 56.0
             stddev: 12.1
             units: count
-            graph_path: metrics/graphs/vllm_num_requests_running.png
       # Aggregated across all pods (present when multiple pods exist)
       aggregated:
         mean: 23.8
@@ -746,7 +742,6 @@ results:
             p99: 18.0
             stddev: 4.5
             units: count
-            graph_path: metrics/graphs/vllm_num_requests_waiting.png
     vllm_num_preemptions_total:
       components:
         - component_id: decode-engine
@@ -758,7 +753,6 @@ results:
             p99: 3.0
             stddev: 0.8
             units: count
-            graph_path: metrics/graphs/vllm_num_preemptions_total.png
 
     # vLLM metrics — Prefix cache
     vllm_prefix_cache_hits_total:
@@ -772,7 +766,6 @@ results:
             p99: 14200.0
             stddev: 850.0
             units: tokens
-            graph_path: metrics/graphs/vllm_prefix_cache_hits_total.png
     vllm_prefix_cache_queries_total:
       components:
         - component_id: decode-engine
@@ -784,7 +777,6 @@ results:
             p99: 21500.0
             stddev: 1200.0
             units: tokens
-            graph_path: metrics/graphs/vllm_prefix_cache_queries_total.png
     vllm_prefix_cache_hit_rate:
       components:
         - component_id: decode-engine
@@ -796,7 +788,6 @@ results:
             p99: 92.4
             stddev: 18.7
             units: percent
-            graph_path: metrics/graphs/vllm_prefix_cache_hit_rate.png
 
     # vLLM metrics — External prefix cache
     vllm_external_prefix_cache_hits_total:
@@ -810,7 +801,6 @@ results:
             p99: 9500.0
             stddev: 620.0
             units: tokens
-            graph_path: metrics/graphs/vllm_external_prefix_cache_hits_total.png
     vllm_external_prefix_cache_queries_total:
       components:
         - component_id: decode-engine
@@ -822,7 +812,6 @@ results:
             p99: 21500.0
             stddev: 1200.0
             units: tokens
-            graph_path: metrics/graphs/vllm_external_prefix_cache_queries_total.png
     vllm_external_prefix_cache_hit_rate:
       components:
         - component_id: decode-engine
@@ -834,7 +823,6 @@ results:
             p99: 68.5
             stddev: 14.3
             units: percent
-            graph_path: metrics/graphs/vllm_external_prefix_cache_hit_rate.png
 
     # vLLM metrics — NIXL KV transfer
     vllm_nixl_xfer_time_seconds_sum:
@@ -848,7 +836,6 @@ results:
             p99: 0.0098
             stddev: 0.0015
             units: seconds
-            graph_path: metrics/graphs/vllm_nixl_xfer_time_seconds_sum.png
     vllm_nixl_xfer_time_seconds_count:
       components:
         - component_id: decode-engine
@@ -860,7 +847,6 @@ results:
             p99: 520.0
             stddev: 35.0
             units: count
-            graph_path: metrics/graphs/vllm_nixl_xfer_time_seconds_count.png
     vllm_nixl_bytes_transferred_sum:
       components:
         - component_id: decode-engine
@@ -872,7 +858,6 @@ results:
             p99: 1.48e+09
             stddev: 8.5e+07
             units: bytes
-            graph_path: metrics/graphs/vllm_nixl_bytes_transferred_sum.png
     vllm_nixl_bytes_transferred_count:
       components:
         - component_id: decode-engine
@@ -884,7 +869,6 @@ results:
             p99: 520.0
             stddev: 35.0
             units: count
-            graph_path: metrics/graphs/vllm_nixl_bytes_transferred_count.png
 
     # EPP (inference scheduler) Prometheus metrics — pool-level gauges
     # These are pre-aggregated by the EPP across all endpoints.
@@ -900,7 +884,6 @@ results:
             p99: 82.1
             stddev: 14.8
             units: percent
-            graph_path: metrics/graphs/epp_pool_avg_kv_cache_utilization.png
     epp_pool_avg_queue_size:
       components:
         - component_id: epp-0
@@ -912,7 +895,6 @@ results:
             p99: 22.0
             stddev: 5.8
             units: count
-            graph_path: metrics/graphs/epp_pool_avg_queue_size.png
     epp_pool_avg_running_requests:
       components:
         - component_id: epp-0
@@ -924,7 +906,6 @@ results:
             p99: 68.0
             stddev: 16.2
             units: count
-            graph_path: metrics/graphs/epp_pool_avg_running_requests.png
     epp_pool_ready_pods:
       components:
         - component_id: epp-0
@@ -936,7 +917,6 @@ results:
             p99: 3.0
             stddev: 0.5
             units: count
-            graph_path: metrics/graphs/epp_pool_ready_pods.png
 
     # EPP (inference scheduler) log-derived metrics
     epp_dispatch_latency:
@@ -946,7 +926,6 @@ results:
         p99: 0.0035
         stddev: 0.0008
         units: seconds
-        graph_path: metrics/graphs/epp_dispatch_latency.png
     epp_endpoint_scores:
       components:
         - component_id: qwen3-0p6b-decode-pod-1
@@ -956,19 +935,16 @@ results:
             p99: 0.95
             stddev: 0.08
             units: score
-            graph_path: metrics/graphs/epp_endpoint_scores.png
     epp_request_distribution:
       components:
         - component_id: qwen3-0p6b-decode-pod-1
           statistics:
             count: 245
             units: count
-            graph_path: metrics/graphs/epp_request_distribution.png
         - component_id: qwen3-0p6b-decode-pod-2
           statistics:
             count: 255
             units: count
-            graph_path: metrics/graphs/epp_request_distribution.png
 
   profiling:
     anything_goes: 5 # The schema under profiling is currently open-ended

@@ -561,9 +561,8 @@ scenario:
     harness:
       # inference-perf, for per-request records. Its
       # report.request_lifecycle.per_request block emits
-      # per_request_lifecycle_metrics.json, which analysis/per_request_plots.py
-      # and cross_treatment.py consume -- that per-request detail is what makes
-      # a PP pipeline legible, since the interesting quantity is the ITL
+      # per_request_lifecycle_metrics.json. That detail is what makes a PP
+      # pipeline legible, since the interesting quantity is the ITL
       # distribution's shape (stage bubbles) and not its mean.
       name: inference-perf
       experimentProfile: guide_kimi-k3-h100_1.yaml

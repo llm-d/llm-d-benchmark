@@ -175,8 +175,8 @@ def add_subcommands(
         default=None,
         help="How much result data to copy to this machine: 'default' via "
         "'oc cp'; 'fast' via a gzip'd 'oc exec | tar' stream (same files, much "
-        "faster for large trees); 'results' only the small reports, metadata "
-        "and plots; 'skip' nothing at all, leaving everything on the PVC. "
+        "faster for large trees); 'results' only the small reports and "
+        "metadata; 'skip' nothing at all, leaving everything on the PVC. "
         "Under 'results' and 'skip', --validate-failures reads the PVC "
         "directly (env: LLMDBENCH_DATA_COLLECT). Default: default.",
     )

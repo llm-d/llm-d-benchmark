@@ -188,9 +188,9 @@ What to expect:
 - A harness pod is launched in `$NS`.
 - It fires a burst of requests against the gateway.
 - Per-request metrics are collected into a results directory printed at the end of the run.
-- The analysis phase generates summary CSVs and plots in that same directory.
+- The analysis phase generates benchmark reports and summary CSVs in that same directory.
 
-The results directory path is printed in the final log line - something like `/tmp/<user>-<timestamp>/<phase>/<stack>/results/`. You can open the plots with any image viewer or the CSVs with any spreadsheet.
+The results directory path is printed in the final log line - something like `/tmp/<user>-<timestamp>/<phase>/<stack>/results/`. You can open the CSVs with any spreadsheet, or view the reports with [llm-d-prism](https://github.com/llm-d/llm-d-prism).
 
 ## 5. Alternate path: standalone deployment
 

@@ -7,7 +7,6 @@ import runpy
 from datetime import datetime, timezone
 from pathlib import Path
 
-from llmdbenchmark.analysis import visualize_metrics
 from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
     add_metrics_to_benchmark_report,
 )
@@ -44,55 +43,6 @@ def test_process_metrics_uses_configured_metric_list(
     ) == ["vllm:custom_metric"]
 
 
-def test_visualization_loads_persisted_metric_list(tmp_path: Path) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
-    (processed_dir / "time_series_metrics.json").write_text(
-        '["vllm:custom_metric"]', encoding="utf-8"
-    )
-
-    assert visualize_metrics._load_time_series_metrics(str(tmp_path)) == [
-        "vllm:custom_metric"
-    ]
-
-
-def test_visualization_plots_configured_custom_metric(
-    tmp_path: Path, monkeypatch
-) -> None:
-    processed_dir = tmp_path / "processed"
-    processed_dir.mkdir()
-    (processed_dir / "time_series_metrics.json").write_text(
-        '["vllm:custom_metric"]', encoding="utf-8"
-    )
-    plotted: list[str] = []
-    monkeypatch.setattr(visualize_metrics, "MATPLOTLIB_AVAILABLE", True)
-    monkeypatch.setattr(
-        visualize_metrics,
-        "collect_time_series_data",
-        lambda _metrics_dir: {
-            "pod-1": {
-                "vllm:custom_metric": [
-                    (datetime(2026, 7, 14, tzinfo=timezone.utc), 42.0)
-                ]
-            }
-        },
-    )
-    monkeypatch.setattr(
-        visualize_metrics,
-        "plot_metric_time_series",
-        lambda _pod_data, metric_name, *_args, **_kwargs: plotted.append(metric_name),
-    )
-    monkeypatch.setattr(
-        visualize_metrics, "plot_pod_startup_times", lambda *_args: None
-    )
-    monkeypatch.setattr(visualize_metrics, "plot_replica_status", lambda *_args: None)
-
-    count = visualize_metrics.generate_all_visualizations(str(tmp_path))
-
-    assert plotted == ["vllm:custom_metric"]
-    assert count == 3
-
-
 def test_report_includes_configured_custom_metric(tmp_path: Path) -> None:
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir()
@@ -123,9 +73,6 @@ def test_report_includes_configured_custom_metric(tmp_path: Path) -> None:
 
     assert metric["components"][0]["statistics"]["mean"] == 42.0
     assert metric["components"][0]["statistics"]["units"] == "requests"
-    assert metric["components"][0]["statistics"]["graph_path"].endswith(
-        "vllm_custom_metric.png"
-    )
 
 
 def _write_scrape(raw_dir: Path, pod: str, ts: str, lines: list[str]) -> None:

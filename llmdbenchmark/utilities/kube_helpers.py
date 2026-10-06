@@ -801,7 +801,7 @@ def capture_infrastructure_logs(
                 # not always contain logs/, so it would silently exit 0.
                 epp_target = log_dir.parent if log_dir.name == "logs" else results_dir
                 result = subprocess.run(
-                    ["python3", str(script), str(epp_target), "--visualize"],
+                    ["python3", str(script), str(epp_target)],
                     capture_output=True,
                     text=True,
                     timeout=120,

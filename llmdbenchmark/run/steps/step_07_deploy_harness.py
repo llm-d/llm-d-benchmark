@@ -140,7 +140,7 @@ def _remote_select_script(
     quoted_dir = shlex.quote(remote_dir)
     return (
         f"cd {quoted_dir} && "
-        f"find . -type f \\( {tests} \\) -print "
+        f"find . -maxdepth 1 -type f \\( {tests} \\) -print "
         f"| tar {tar_flags}f - --no-recursion -T -"
     )
 

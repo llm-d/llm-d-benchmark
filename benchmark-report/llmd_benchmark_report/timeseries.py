@@ -1,8 +1,4 @@
-"""Reconstruct per-pod metric time series from raw Prometheus scrapes.
-
-Duplicates the parsing in visualize_metrics.py rather than importing it: the image
-copies that module to /usr/local/bin, outside this package.
-"""
+"""Reconstruct per-pod metric time series from raw Prometheus scrapes."""
 
 import glob
 import os

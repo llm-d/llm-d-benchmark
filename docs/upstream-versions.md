@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-10-06 08:19:18` (UTC)
-- Generated against git ref: `ab24b7d97071dca8cb710709f592326022fa9318`
+- Generated at: `2026-10-06 09:10:46` (UTC)
+- Generated against git ref: `d6f7fddbfc44ed783e51f42fb3add4078fd373c3`
 
 ## System Tool Dependencies
 
@@ -114,9 +114,7 @@ annotated with their `pyproject.toml` line.
 | **chardet** | `6.0.0.post1` | version | (transitive in `.venv`) | [chardet (PyPI)](https://pypi.org/project/chardet/) |
 | **charset-normalizer** | `3.4.9` | version | (transitive in `.venv`) | [charset-normalizer (PyPI)](https://pypi.org/project/charset-normalizer/) |
 | **click** | `8.4.2` | version | (transitive in `.venv`) | [click (PyPI)](https://pypi.org/project/click/) |
-| **contourpy** | `1.3.3` | version | (transitive in `.venv`) | [contourpy (PyPI)](https://pypi.org/project/contourpy/) |
 | **cryptography** | `50.0.0` | version | (transitive in `.venv`) | [cryptography (PyPI)](https://pypi.org/project/cryptography/) |
-| **cycler** | `0.12.1` | version | (transitive in `.venv`) | [cycler (PyPI)](https://pypi.org/project/cycler/) |
 | **defusedxml** | `0.7.1` | version | (transitive in `.venv`) | [defusedxml (PyPI)](https://pypi.org/project/defusedxml/) |
 | **detect_secrets** | `38ba7e335083e0a4db8c53e9be414795b27891e9` | commit SHA | (transitive in `.venv`) | [detect_secrets (PyPI)](https://pypi.org/project/detect-secrets/) |
 | **distlib** | `0.4.3` | version | (transitive in `.venv`) | [distlib (PyPI)](https://pypi.org/project/distlib/) |
@@ -125,7 +123,6 @@ annotated with their `pyproject.toml` line.
 | **execnet** | `2.1.2` | version | (transitive in `.venv`) | [execnet (PyPI)](https://pypi.org/project/execnet/) |
 | **fastapi** | `0.141.1` | version | (transitive in `.venv`) | [fastapi (PyPI)](https://pypi.org/project/fastapi/) |
 | **filelock** | `3.32.2` | version | (transitive in `.venv`) | [filelock (PyPI)](https://pypi.org/project/filelock/) |
-| **fonttools** | `4.63.0` | version | (transitive in `.venv`) | [fonttools (PyPI)](https://pypi.org/project/fonttools/) |
 | **frozenlist** | `1.8.0` | version | (transitive in `.venv`) | [frozenlist (PyPI)](https://pypi.org/project/frozenlist/) |
 | **fsspec** | `2026.7.0` | version | (transitive in `.venv`) | [fsspec (PyPI)](https://pypi.org/project/fsspec/) |
 | **gitdb** | `4.0.12` | version | (transitive in `.venv`) | [gitdb (PyPI)](https://pypi.org/project/gitdb/) |
@@ -149,7 +146,6 @@ annotated with their `pyproject.toml` line.
 | **iniconfig** | `2.3.0` | version | (transitive in `.venv`) | [iniconfig (PyPI)](https://pypi.org/project/iniconfig/) |
 | **Jinja2** | `3.1.6` | version | `pyproject.toml` line 8 (direct) | [Jinja2 (PyPI)](https://pypi.org/project/jinja2/) |
 | **jiter** | `0.16.0` | version | (transitive in `.venv`) | [jiter (PyPI)](https://pypi.org/project/jiter/) |
-| **kiwisolver** | `1.5.0` | version | (transitive in `.venv`) | [kiwisolver (PyPI)](https://pypi.org/project/kiwisolver/) |
 | **kubernetes** | `35.0.0` | version | `pyproject.toml` line 11 (direct) | [kubernetes (PyPI)](https://pypi.org/project/kubernetes/) |
 | **kubernetes_asyncio** | `36.1.0` | version | (transitive in `.venv`) | [kubernetes_asyncio (PyPI)](https://pypi.org/project/kubernetes-asyncio/) |
 | **llm-optimizer** | `bb82d22e8863b762e856be66e831d551d27576b1` | commit SHA | (transitive in `.venv`) | [llm-optimizer (PyPI)](https://pypi.org/project/llm-optimizer/) |
@@ -157,7 +153,6 @@ annotated with their `pyproject.toml` line.
 | **llmdbenchmark** | `editable` | editable | (transitive in `.venv`) | [llmdbenchmark (PyPI)](https://pypi.org/project/llmdbenchmark/) |
 | **markdown-it-py** | `4.2.0` | version | (transitive in `.venv`) | [markdown-it-py (PyPI)](https://pypi.org/project/markdown-it-py/) |
 | **MarkupSafe** | `3.0.3` | version | (transitive in `.venv`) | [MarkupSafe (PyPI)](https://pypi.org/project/markupsafe/) |
-| **matplotlib** | `3.11.1` | version | (transitive in `.venv`) | [matplotlib (PyPI)](https://pypi.org/project/matplotlib/) |
 | **mdurl** | `0.1.2` | version | (transitive in `.venv`) | [mdurl (PyPI)](https://pypi.org/project/mdurl/) |
 | **multidict** | `6.7.1` | version | (transitive in `.venv`) | [multidict (PyPI)](https://pypi.org/project/multidict/) |
 | **nodeenv** | `1.10.0` | version | (transitive in `.venv`) | [nodeenv (PyPI)](https://pypi.org/project/nodeenv/) |
@@ -169,7 +164,6 @@ annotated with their `pyproject.toml` line.
 | **openai** | `2.53.0` | version | (transitive in `.venv`) | [openai (PyPI)](https://pypi.org/project/openai/) |
 | **packaging** | `26.3` | version | `pyproject.toml` line 10 (direct) | [packaging (PyPI)](https://pypi.org/project/packaging/) |
 | **pandas** | `3.0.3` | version | (transitive in `.venv`) | [pandas (PyPI)](https://pypi.org/project/pandas/) |
-| **pillow** | `12.3.0` | version | (transitive in `.venv`) | [pillow (PyPI)](https://pypi.org/project/pillow/) |
 | **planner** | `9def3abea1720bce19823a4b5ae3ff2015ae77f1` | commit SHA | (transitive in `.venv`) | [planner (PyPI)](https://pypi.org/project/planner/) |
 | **platformdirs** | `4.11.1` | version | (transitive in `.venv`) | [platformdirs (PyPI)](https://pypi.org/project/platformdirs/) |
 | **pluggy** | `1.6.0` | version | (transitive in `.venv`) | [pluggy (PyPI)](https://pypi.org/project/pluggy/) |
@@ -189,7 +183,6 @@ annotated with their `pyproject.toml` line.
 | **Pygments** | `2.20.0` | version | (transitive in `.venv`) | [Pygments (PyPI)](https://pypi.org/project/pygments/) |
 | **PyJWT** | `2.13.0` | version | (transitive in `.venv`) | [PyJWT (PyPI)](https://pypi.org/project/pyjwt/) |
 | **pykube-ng** | `23.6.0` | version | `pyproject.toml` line 12 (direct) | [pykube-ng (PyPI)](https://pypi.org/project/pykube-ng/) |
-| **pyparsing** | `3.3.2` | version | (transitive in `.venv`) | [pyparsing (PyPI)](https://pypi.org/project/pyparsing/) |
 | **pytest** | `9.1.1` | version | (transitive in `.venv`) | [pytest (PyPI)](https://pypi.org/project/pytest/) |
 | **pytest-xdist** | `3.8.0` | version | (transitive in `.venv`) | [pytest-xdist (PyPI)](https://pypi.org/project/pytest-xdist/) |
 | **python-dateutil** | `2.9.0.post0` | version | (transitive in `.venv`) | [python-dateutil (PyPI)](https://pypi.org/project/python-dateutil/) |

@@ -1,9 +1,4 @@
-"""Session-lifecycle metric paths and dict traversal, shared by driver and pod.
-
-Split out of ``cross_treatment`` so the in-pod plot scripts can import the same
-table: that module pulls in the driver-only archive reader, which the image does
-not ship.
-"""
+"""Session-lifecycle metric paths and dict traversal."""
 
 from __future__ import annotations
 

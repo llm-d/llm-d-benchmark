@@ -1275,9 +1275,8 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         )
     elif context.collect_results_only:
         logger.log_info(
-            "Running with --data-collect results: only benchmark reports, run "
-            "metadata and plots are copied down; the raw harness output stays on "
-            "the PVC.",
+            "Running with --data-collect results: only benchmark reports and run "
+            "metadata are copied down; the raw harness output stays on the PVC.",
             emoji="\U0001f4e6",
         )
 
@@ -2252,7 +2251,7 @@ def cli() -> None:
         default=None,
         help="Compress output: each result set is compressed on the PVC before "
         "collection, so the archive rather than the raw tree is copied down. "
-        "Benchmark reports, run metadata and plots stay plain "
+        "Benchmark reports and run metadata stay plain "
         "(env: LLMDBENCH_COMPRESS). Default: on; use --no-compress to keep "
         "plain text.",
     )
@@ -2363,7 +2362,7 @@ def cli() -> None:
         default=argparse.SUPPRESS,
         help="Compress output: each result set is compressed on the PVC before "
         "collection, so the archive rather than the raw tree is copied down. "
-        "Benchmark reports, run metadata and plots stay plain "
+        "Benchmark reports and run metadata stay plain "
         "(env: LLMDBENCH_COMPRESS). Default: on; use --no-compress to keep "
         "plain text.",
     )
