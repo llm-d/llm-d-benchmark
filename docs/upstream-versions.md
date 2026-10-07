@@ -22,7 +22,7 @@ whatever the host's package manager provides.
 | **curl** | `8_21_0` | version | `install.sh` line 78 (`tool_version_for`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `v3.19.0` | version | `install.sh` line 80 (`tool_version_for`) | [helm/helm](https://github.com/helm/helm) |
-| **helm-diff** | `v3.13.0` | plugin (version) | `install.sh` line 81 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
+| **helm-diff** | `v3.15.15` | plugin (version) | `install.sh` line 81 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `1.5.1` | version | `install.sh` line 79 (`tool_version_for`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **llm-d-planner (git)** | `v0.1.0` | commit SHA | `install.sh` line 896 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `4.18.0` | version | `install.sh` line 85 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
