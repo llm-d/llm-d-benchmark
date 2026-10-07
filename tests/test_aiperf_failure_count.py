@@ -12,6 +12,9 @@ import pytest
 from llmd_benchmark_report.native_to_br0_1 import import_aiperf as import_aiperf_v01
 from llmd_benchmark_report.native_to_br0_2 import import_aiperf as import_aiperf_v02
 
+# Exercises the Benchmark Report package, so CI runs it against the checkout.
+pytestmark = pytest.mark.benchmark_report
+
 FIXTURE = Path(__file__).parent / "fixtures" / "aiperf_results.json"
 
 

@@ -866,15 +866,21 @@ print_pkg() {
     printf "  %-22s %-14s %s\n" "$name" "$ver" "$status"
 }
 
-# 0. Install the in-repo Benchmark Report library first, so the
-#    llmd-benchmark-report requirement below resolves against the local
-#    checkout rather than PyPI (works pre-publish and for unreleased
-#    schema changes).
-if _pip_isolated install -e "${SCRIPT_DIR}/benchmark-report" --quiet; then
-    print_pkg llmd-benchmark-report "(installed)"
-else
-    echo "ERROR: Failed to install llmd-benchmark-report!"
-    exit 1
+# 0. Install the Benchmark Report library from PyPI at the version pinned in
+#    pyproject.toml. llmdbenchmark refuses a copy installed from this checkout,
+#    so remove one left behind by an earlier install.sh first. Skipped where
+#    there is no checkout (e.g. inside the harness image).
+if [[ -f "${SCRIPT_DIR}/pyproject.toml" ]]; then
+    BR_REQUIREMENT=$(${PYTHON_CMD} -c 'import sys, tomllib; deps = tomllib.load(open(sys.argv[1], "rb"))["project"]["dependencies"]; print(next(d for d in deps if d.startswith("llmd-benchmark-report")))' "${SCRIPT_DIR}/pyproject.toml")
+    if ${PYTHON_CMD} -c 'import sys; from importlib import metadata; sys.exit(0 if metadata.distribution("llmd-benchmark-report").read_text("direct_url.json") else 1)' 2>/dev/null; then
+        _pip_isolated uninstall -y llmd-benchmark-report --quiet
+    fi
+    if _pip_isolated install "${BR_REQUIREMENT}" --quiet; then
+        print_pkg llmd-benchmark-report "(installed)"
+    else
+        echo "ERROR: Failed to install ${BR_REQUIREMENT}!"
+        exit 1
+    fi
 fi
 
 # 1. Install llmdbenchmark (editable)

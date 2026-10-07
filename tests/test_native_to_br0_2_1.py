@@ -22,6 +22,9 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
 )
 from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import BenchmarkReportV021
 
+# Exercises the Benchmark Report package, so CI runs it against the checkout.
+pytestmark = pytest.mark.benchmark_report
+
 FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle.yaml"
 
 

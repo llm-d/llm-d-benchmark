@@ -21,6 +21,9 @@ from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
     VideoPayloadStats,
 )
 
+# Exercises the Benchmark Report package, so CI runs it against the checkout.
+pytestmark = pytest.mark.benchmark_report
+
 # Fields that are required independent of the one under test.
 REQUIRED_FIELDS = {AggregateRequests: {"total": 0}}
 

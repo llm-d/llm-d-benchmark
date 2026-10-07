@@ -27,6 +27,9 @@ import yaml
 
 from llmdbenchmark.analysis.benchmark_report.cli import main
 
+# Exercises the Benchmark Report package, so CI runs it against the checkout.
+pytestmark = pytest.mark.benchmark_report
+
 FIXTURE = Path(__file__).parent / "fixtures" / "guidellm_report_v2.json"
 
 # The fixture is a two-stage constant profile at 2 and 4 req/s. Rate is what
