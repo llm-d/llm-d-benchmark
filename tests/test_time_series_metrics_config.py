@@ -7,6 +7,8 @@ import runpy
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
     add_metrics_to_benchmark_report,
 )
@@ -139,7 +141,10 @@ def test_report_embeds_time_series(tmp_path: Path) -> None:
     assert ts_block["gpu_memory_usage"]["units"] == "bytes"
     assert [p["value"] for p in ts_block["gpu_memory_usage"]["series"]] == [1e9, 2e9]
 
-    assert obs["vllm_kv_cache_usage_perc"]["components"][0]["statistics"]["p99"] == 0.5
+    # Statistics come from the same scrapes as the series: p99 of [0.10, 0.50].
+    stats = obs["vllm_kv_cache_usage_perc"]["components"][0]["statistics"]
+    assert stats["p99"] == pytest.approx(0.496)
+    assert obs["time_series_interval"]["statistics_scope"] == "run"
 
 
 def test_embedded_time_series_validates_under_v0_2(tmp_path: Path) -> None:
@@ -519,3 +524,61 @@ def test_report_version_stable_when_window_clips_everything(tmp_path: Path) -> N
     assert (
         whole_run["results"]["observability"]["time_series_interval"]["scope"] == "run"
     )
+
+
+def test_stage_statistics_cover_the_stage_and_weight_the_hit_rate(
+    tmp_path: Path,
+) -> None:
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+    # Before the stage the pod served 50,000 queries without a hit. In the
+    # stage, a quiet interval (10 queries, 0 hits) is followed by a busy one
+    # (10,000 queries, 9,000 hits).
+    scrapes = (
+        ("2026-07-14T00:00:00Z", 50_000, 0, 7),
+        ("2026-07-14T00:01:00Z", 50_000, 0, 1),
+        ("2026-07-14T00:01:30Z", 50_010, 0, 2),
+        ("2026-07-14T00:02:00Z", 60_010, 9_000, 3),
+    )
+    for ts, queries, hits, running in scrapes:
+        _write_scrape(
+            raw_dir,
+            "pod-1",
+            ts,
+            [
+                f"vllm:prefix_cache_queries_total {queries}",
+                f"vllm:prefix_cache_hits_total {hits}",
+                f"vllm:num_requests_running {running}",
+            ],
+        )
+    (processed_dir / "time_series_metrics.json").write_text(
+        '["vllm:prefix_cache_hit_rate", "vllm:num_requests_running"]',
+        encoding="utf-8",
+    )
+    (processed_dir / "metrics_summary.json").write_text(
+        _summary_with(
+            {
+                "vllm:prefix_cache_hit_rate": {"mean": 4.2, "unit": "%"},
+                "vllm:num_requests_running": {"mean": 3.25, "unit": "requests"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    window = (
+        datetime(2026, 7, 14, 0, 1, tzinfo=timezone.utc),
+        datetime(2026, 7, 14, 0, 3, tzinfo=timezone.utc),
+    )
+
+    report = add_metrics_to_benchmark_report(
+        {}, str(metrics_dir), time_series_window=window
+    )
+    obs = report["results"]["observability"]
+
+    assert obs["time_series_interval"]["statistics_scope"] == "stage"
+    hit_rate = obs["vllm_prefix_cache_hit_rate"]["components"][0]["statistics"]
+    assert hit_rate["mean"] == pytest.approx(9_000 / 10_010 * 100)
+    running = obs["vllm_num_requests_running"]["components"][0]["statistics"]
+    assert running["mean"] == pytest.approx(2.0)

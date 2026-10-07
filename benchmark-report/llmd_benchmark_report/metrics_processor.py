@@ -5,6 +5,7 @@ Process collected metrics and integrate into benchmark report.
 import json
 import os
 import re
+import statistics
 from typing import Any
 
 
@@ -359,6 +360,138 @@ def _metric_metadata(
     return safe_name, units
 
 
+# process_metrics.py converts these to GB/MB and renames them; the raw scrapes
+# carry the original name in bytes.
+_CONVERTED_METRICS: dict[str, tuple[str, int]] = {
+    "container_memory_usage_gb": ("container_memory_usage_bytes", 1024**3),
+    "container_memory_working_set_gb": ("container_memory_working_set_bytes", 1024**3),
+    "container_network_receive_mb_total": (
+        "container_network_receive_bytes_total",
+        1024**2,
+    ),
+    "container_network_transmit_mb_total": (
+        "container_network_transmit_bytes_total",
+        1024**2,
+    ),
+}
+
+# Rates derived from a pair of counters: metric -> (numerator, denominator)
+_RATIO_METRICS: dict[str, tuple[str, str]] = {
+    "vllm:prefix_cache_hit_rate": (
+        "vllm:prefix_cache_hits_total",
+        "vllm:prefix_cache_queries_total",
+    ),
+    "vllm:external_prefix_cache_hit_rate": (
+        "vllm:external_prefix_cache_hits_total",
+        "vllm:external_prefix_cache_queries_total",
+    ),
+}
+
+
+def _percentile(sorted_values: list[float], p: float) -> float:
+    """Linear-interpolation percentile, as process_metrics.py computes it."""
+    n = len(sorted_values)
+    if n == 1:
+        return sorted_values[0]
+    k = (n - 1) * p / 100.0
+    f = int(k)
+    c = min(f + 1, n - 1)
+    return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
+
+
+def _stats_from_values(
+    values: list[float], units: str, mean: float | None = None
+) -> dict[str, Any]:
+    """Statistics over *values*; *mean* overrides the plain average."""
+    sorted_values = sorted(values)
+    return {
+        "mean": statistics.mean(values) if mean is None else mean,
+        "p50": _percentile(sorted_values, 50),
+        "p99": _percentile(sorted_values, 99),
+        "stddev": statistics.stdev(values) if len(values) > 1 else 0.0,
+        "units": units,
+    }
+
+
+def _build_statistics_from_scrapes(
+    metrics_summary: dict[str, Any],
+    metric_names: list[str],
+    metrics_dir: str,
+    window: tuple[Any, Any] | None,
+) -> dict[str, Any] | None:
+    """Per-metric statistics from the raw scrapes, clipped to *window*.
+
+    The same points the embedded time series are built from, so the series and
+    the statistics in one report cover the same interval. A hit rate's mean is
+    the hits gained over the queries gained across the interval, so busy
+    intervals weigh more than quiet ones; its percentiles are over the
+    per-scrape-interval rates. Returns None when there are no raw scrapes.
+    """
+    from .timeseries import (
+        clip_to_window,
+        collect_time_series_data,
+        compute_ratio_series,
+        ratio_totals,
+    )
+
+    pod_data = collect_time_series_data(metrics_dir)
+    if not pod_data:
+        return None
+
+    aggregate_names = set(metrics_summary.get("_aggregated", {}).get("metrics", {}))
+    entries: dict[str, dict] = {}
+    pooled: dict[str, tuple[list[float], list[float]]] = {}
+
+    for pod_name in sorted(pod_data):
+        pod_metrics = pod_data[pod_name]
+        role = _detect_role(pod_name)
+        for prom_name in metric_names:
+            ratio = _RATIO_METRICS.get(prom_name)
+            totals = None
+            if ratio:
+                # clip first, or the first delta includes the stage before
+                clipped = {
+                    name: clip_to_window(pod_metrics.get(name, []), window)
+                    for name in ratio
+                }
+                values = [v for _, v in compute_ratio_series(clipped, *ratio)]
+                totals = ratio_totals(clipped, *ratio)
+            else:
+                raw_name, divisor = _CONVERTED_METRICS.get(prom_name, (prom_name, 1))
+                values = [
+                    v / divisor
+                    for _, v in clip_to_window(pod_metrics.get(raw_name, []), window)
+                ]
+            if not values:
+                continue
+
+            report_key, units = _metric_metadata(prom_name, metrics_summary)
+            mean = totals[0] / totals[1] * 100 if totals and totals[1] > 0 else None
+            entries.setdefault(report_key, {"components": []})["components"].append(
+                {
+                    "component_id": _component_id(role),
+                    "pod": pod_name,
+                    "role": role,
+                    "statistics": _stats_from_values(values, units, mean),
+                }
+            )
+            if prom_name in aggregate_names:
+                pool_values, pool_totals = pooled.setdefault(
+                    prom_name, ([], [0.0, 0.0])
+                )
+                pool_values.extend(values)
+                if totals:
+                    pool_totals[0] += totals[0]
+                    pool_totals[1] += totals[1]
+
+    for prom_name, (values, (num, den)) in pooled.items():
+        report_key, units = _metric_metadata(prom_name, metrics_summary)
+        mean = num / den * 100 if prom_name in _RATIO_METRICS and den > 0 else None
+        entries[report_key]["aggregated"] = _stats_from_values(values, units, mean)
+
+    return entries
+
+
 def _build_embedded_time_series(
     obs: dict[str, Any],
     metrics_dir: str,
@@ -575,11 +708,12 @@ def add_metrics_to_benchmark_report(
     Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
     with per-component statistics, role, and EPP metrics.
 
-    ``time_series_window`` restricts the embedded series to one stage's interval.
-    It applies to the series only -- the scalar statistics come from a whole-run
-    ``metrics_summary.json``, so the two cover different intervals;
-    ``observability.time_series_interval`` records both, and how many points
-    survived the clip so an empty series is never mistaken for a quiet stage.
+    ``time_series_window`` restricts the embedded series and the scalar
+    statistics to one stage's interval; both are computed from the same raw
+    scrapes. Without raw scrapes the statistics fall back to the run-level
+    ``metrics_summary.json``. ``observability.time_series_interval`` records the
+    interval, the statistics' scope, and how many points survived the clip so
+    an empty series is never mistaken for a quiet stage.
     """
     obs = br_dict.setdefault("results", {}).setdefault("observability", {})
 
@@ -603,8 +737,17 @@ def add_metrics_to_benchmark_report(
 
     if metrics_summary:
         metric_names = _load_time_series_metrics(metrics_dir)
-        obs.update(_build_per_metric_entries(metrics_summary, metric_names))
-        _build_aggregated_entries(metrics_summary, obs, metric_names)
+        scraped = _build_statistics_from_scrapes(
+            metrics_summary, metric_names, metrics_dir, time_series_window
+        )
+        if scraped is not None:
+            obs.update(scraped)
+            if time_series_window:
+                interval["statistics_scope"] = "stage"
+        else:
+            # No raw scrapes to clip: fall back to the run-level summary.
+            obs.update(_build_per_metric_entries(metrics_summary, metric_names))
+            _build_aggregated_entries(metrics_summary, obs, metric_names)
         if _embed_time_series_enabled():
             embedded, outcome = _build_embedded_time_series(
                 obs, metrics_dir, _embed_time_series_max_points(), time_series_window

@@ -86,6 +86,29 @@ def collect_time_series_data(
     return pod_data
 
 
+def _ratio_deltas(
+    pod_metrics: dict[str, list], numerator: str, denominator: str
+) -> list[tuple[datetime, float, float]]:
+    """(timestamp, numerator increase, denominator increase) between scrapes.
+
+    Intervals without denominator traffic, and pod restarts (which send the
+    counters backwards), are skipped.
+    """
+    if numerator not in pod_metrics or denominator not in pod_metrics:
+        return []
+    num_by_ts = {ts: val for ts, val in pod_metrics[numerator]}
+    den_by_ts = {ts: val for ts, val in pod_metrics[denominator]}
+    common_ts = sorted(set(num_by_ts) & set(den_by_ts))
+    out: list[tuple[datetime, float, float]] = []
+    for prev, curr in zip(common_ts, common_ts[1:]):
+        d_den = den_by_ts[curr] - den_by_ts[prev]
+        d_num = num_by_ts[curr] - num_by_ts[prev]
+        if d_den <= 0 or d_num < 0:
+            continue
+        out.append((curr, d_num, d_den))
+    return out
+
+
 def compute_ratio_series(
     pod_metrics: dict[str, list], numerator: str, denominator: str
 ) -> list[tuple[datetime, float]]:
@@ -94,20 +117,19 @@ def compute_ratio_series(
     A cache reset does not reset the counters, so raw values would report the
     average since the pod started.
     """
-    if numerator not in pod_metrics or denominator not in pod_metrics:
-        return []
-    num_by_ts = {ts: val for ts, val in pod_metrics[numerator]}
-    den_by_ts = {ts: val for ts, val in pod_metrics[denominator]}
-    common_ts = sorted(set(num_by_ts) & set(den_by_ts))
-    out: list[tuple[datetime, float]] = []
-    for prev, curr in zip(common_ts, common_ts[1:]):
-        d_den = den_by_ts[curr] - den_by_ts[prev]
-        d_num = num_by_ts[curr] - num_by_ts[prev]
-        # a pod restart sends the counter backwards
-        if d_den <= 0 or d_num < 0:
-            continue
-        out.append((curr, max(0.0, min(100.0, d_num / d_den * 100))))
-    return out
+    return [
+        (ts, max(0.0, min(100.0, d_num / d_den * 100)))
+        for ts, d_num, d_den in _ratio_deltas(pod_metrics, numerator, denominator)
+    ]
+
+
+def ratio_totals(
+    pod_metrics: dict[str, list], numerator: str, denominator: str
+) -> tuple[float, float]:
+    """Summed numerator and denominator increases over the same intervals as
+    :func:`compute_ratio_series`, for a rate weighted by traffic."""
+    deltas = _ratio_deltas(pod_metrics, numerator, denominator)
+    return sum(d[1] for d in deltas), sum(d[2] for d in deltas)
 
 
 def clip_to_window(points: list, window: tuple[datetime, datetime] | None) -> list:
