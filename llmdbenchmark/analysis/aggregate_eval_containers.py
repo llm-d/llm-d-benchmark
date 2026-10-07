@@ -405,9 +405,22 @@ def _build_report(tasks: list[_TaskMetrics]) -> dict:
     output_tokens = sum(t.output_tokens for t in tasks)
     llm_calls = sum(t.llm_calls for t in tasks)
 
-    # Prefer real wall-clock for throughput; fall back to the LLM-span proxy so a
-    # run predating the timestamps still reports a rate.
-    wall_s = sum(task_latencies_s) if task_latencies_s else sum(llm_spans_s)
+    # Tasks run in parallel harness pods (-j <#tasks>), so the run's wall clock
+    # spans the earliest start to the latest end, not the sum of task durations.
+    # Fall back to the summed durations, then to the LLM-span proxy, so a run
+    # predating the timestamps still reports a rate.
+    task_windows = [
+        (t.harness_start_ns, t.harness_start_ns + t.task_latency_s * 1e9)
+        for t in tasks
+        if t.harness_start_ns is not None and t.task_latency_s is not None
+    ]
+    if task_windows:
+        wall_s = (
+            max(end for _, end in task_windows)
+            - min(start for start, _ in task_windows)
+        ) / 1e9
+    else:
+        wall_s = sum(task_latencies_s) if task_latencies_s else sum(llm_spans_s)
 
     latency: dict[str, Any] = {}
     request_latency = agentic_stat(latencies_ms, Units.MS)

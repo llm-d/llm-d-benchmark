@@ -249,6 +249,34 @@ def test_task_latency_uses_harness_wall_clock(tmp_path: Path) -> None:
     assert obs["eval_containers_task_llm_span_seconds"]["mean"] == pytest.approx(1.0)
 
 
+def test_rates_use_the_wall_clock_of_parallel_tasks(tmp_path: Path) -> None:
+    # Four tasks run side by side in their own pods, 100 s each, 10 calls of
+    # 1,000 tokens apiece: 40 calls and 40,000 tokens in 100 s of wall clock.
+    call = _span(
+        "chat test-model",
+        1_000_000_000,
+        2_000_000_000,
+        {"gen_ai.usage.input_tokens": 900, "gen_ai.usage.output_tokens": 100},
+    )
+    request = _span("/openai/v1/responses", 1_000_000_000, 2_000_000_000, {})
+    for i in range(4):
+        _write_task(
+            tmp_path,
+            f"run_{i + 1}",
+            task_id=i,
+            spans=[request, call] * 10,
+            delta="PT100S",
+            harness_start="2026-07-14T00:00:00Z",
+        )
+
+    generate_agentic_summary(tmp_path)
+    throughput = yaml.safe_load(
+        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
+    )["results"]["request_performance"]["aggregate"]["throughput"]
+    assert throughput["request_rate"]["mean"] == pytest.approx(0.4)
+    assert throughput["total_token_rate"]["mean"] == pytest.approx(400.0)
+
+
 def test_missing_timestamps_omit_task_latency(tmp_path: Path) -> None:
     """Runs predating the harness timestamps must not fabricate a task latency."""
     spans = [_span("/openai/v1/responses", 1_000_000_000, 2_000_000_000, {})]
