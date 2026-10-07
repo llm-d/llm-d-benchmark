@@ -40,6 +40,11 @@ scenario:
       #multinode:
       #  enabled: true
 
+      # The NVIDIA GPU model servers are a DisaggregatedSet, so standup
+      # installs the LeaderWorkerSet controller.
+      lws:
+        enabled: true
+
       # -------------------------------------------------------------------------
       # Scheduler Configuration
       # (commented out in original -- uncomment to enable)

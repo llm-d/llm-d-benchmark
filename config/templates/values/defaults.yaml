@@ -1887,6 +1887,9 @@ gatewayProviders:
 # LWS (LeaderWorkerSet)
 # ============================================================================
 lws:
+  # Install the LeaderWorkerSet controller (with its DisaggregatedSet API)
+  # during standup. Also implied by multinode.enabled.
+  enabled: false
   # Chart version managed in chartVersions.lws
   namespace: lws-system
   helmRepository: oci://registry.k8s.io/lws/charts/

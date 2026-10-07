@@ -235,16 +235,17 @@ class AdminPrerequisitesStep(Step):
                     errors,
                     existing_crds,
                 )
+            installed_monitoring_crds = self._install_prometheus_crds_if_needed(
+                cmd,
+                plan_config,
+                existing_crds,
+            )
+
+        if modelservice_active or "kustomize" in deploy_methods:
             self._install_lws_if_needed(
                 cmd,
                 plan_config,
                 errors,
-                existing_crds,
-            )
-
-            installed_monitoring_crds = self._install_prometheus_crds_if_needed(
-                cmd,
-                plan_config,
                 existing_crds,
             )
 
@@ -596,16 +597,18 @@ class AdminPrerequisitesStep(Step):
         errors: list,
         existing_crds: list[str],
     ):
-        """Install LWS only when multinode is enabled and CRDs are missing.
+        """Install LWS when lws.enabled or multinode.enabled is set and CRDs are missing.
 
         The bash implementation only installed LWS when
         LLMDBENCH_VLLM_MODELSERVICE_MULTINODE was true (e.g., wide-ep).
+        Single-host guides that deploy a DisaggregatedSet (e.g.,
+        pd-disaggregation) opt in with lws.enabled instead.
         """
         multinode = plan_config.get("multinode", {})
-        if not multinode.get("enabled", False):
+        lws_config = plan_config.get("lws", {})
+        if not (multinode.get("enabled", False) or lws_config.get("enabled", False)):
             return
 
-        lws_config = plan_config.get("lws", {})
         if not lws_config:
             return
 
@@ -1067,6 +1070,9 @@ class AdminPrerequisitesStep(Step):
             "--namespace",
             namespace,
             "--create-namespace",
+            # DisaggregatedSet validating webhook and RBAC, as the guides require.
+            "--set",
+            "enableDisaggregatedSet=true",
             "--wait",
             "--timeout",
             "300s",
