@@ -83,7 +83,7 @@ llmdbenchmark --spec config/specification/guides/nok8s.yaml.j2 --base-dir . --dr
 
 | What | Without a GPU |
 |------|---------------|
-| `pytest tests/ -q -n2` | **Works** (1389 passed, 32 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
+| `pytest tests/ -q -n4` | **Works** (1919 passed, 2 skipped). `tests/test_nok8s_plan.py` covers template rendering, per-accelerator device flags, per-replica pinning, and the preflight |
 | `plan` | **Works** -- renders all 36 artifacts, including `31/32/33/34_nok8s-*` |
 | `--dry-run standup --methods nok8s` | **Works** (11/11 steps) -- step 05 logs each `docker run` it *would* execute, and records `http://localhost:8081` |
 | `--dry-run run` | **Works** -- endpoint resolves locally with no cluster query, profiles render, the harness `docker run` is logged |
