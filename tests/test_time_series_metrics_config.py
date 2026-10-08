@@ -582,3 +582,39 @@ def test_stage_statistics_cover_the_stage_and_weight_the_hit_rate(
     assert hit_rate["mean"] == pytest.approx(9_000 / 10_010 * 100)
     running = obs["vllm_num_requests_running"]["components"][0]["statistics"]
     assert running["mean"] == pytest.approx(2.0)
+
+
+def test_stage_reports_parse_the_scrapes_once(tmp_path: Path, monkeypatch) -> None:
+    from llmdbenchmark.analysis.benchmark_report import timeseries
+    from llmdbenchmark.analysis.metrics_embed import embed_metrics
+
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (metrics_dir / "processed").mkdir()
+    for ts in ("2026-08-18T10:00:30Z", "2026-08-18T10:02:30Z"):
+        _write_scrape(raw_dir, "pod-1", ts, ["vllm:num_requests_running 1"])
+    (metrics_dir / "processed" / "metrics_summary.json").write_text(
+        _summary_with({"vllm:num_requests_running": {"mean": 1.0}}), encoding="utf-8"
+    )
+    (tmp_path / "stdout.log").write_text(
+        "2026-08-18 10:00:00,1 INFO Stage 0 - run started\n"
+        "2026-08-18 10:01:00,1 INFO Stage 0 - run completed\n"
+        "2026-08-18 10:02:00,1 INFO Stage 1 - run started\n"
+        "2026-08-18 10:03:00,1 INFO Stage 1 - run completed\n",
+        encoding="utf-8",
+    )
+    for stage in (0, 1):
+        (tmp_path / f"benchmark_report_v0.2,_stage_{stage}.json.yaml").write_text(
+            "run:\n  uid: x\nresults: {}\n", encoding="utf-8"
+        )
+    calls = []
+    original = timeseries.collect_time_series_data
+    monkeypatch.setattr(
+        timeseries,
+        "collect_time_series_data",
+        lambda *args, **kwargs: calls.append(args) or original(*args, **kwargs),
+    )
+
+    assert embed_metrics(metrics_dir, tmp_path, log=None) == 2
+    assert len(calls) == 1

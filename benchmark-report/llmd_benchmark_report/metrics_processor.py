@@ -416,7 +416,7 @@ def _stats_from_values(
 def _build_statistics_from_scrapes(
     metrics_summary: dict[str, Any],
     metric_names: list[str],
-    metrics_dir: str,
+    pod_data: dict[str, dict[str, list]],
     window: tuple[Any, Any] | None,
 ) -> dict[str, Any] | None:
     """Per-metric statistics from the raw scrapes, clipped to *window*.
@@ -427,14 +427,8 @@ def _build_statistics_from_scrapes(
     intervals weigh more than quiet ones; its percentiles are over the
     per-scrape-interval rates. Returns None when there are no raw scrapes.
     """
-    from .timeseries import (
-        clip_to_window,
-        collect_time_series_data,
-        compute_ratio_series,
-        ratio_totals,
-    )
+    from .timeseries import clip_to_window, compute_ratio_series, ratio_totals
 
-    pod_data = collect_time_series_data(metrics_dir)
     if not pod_data:
         return None
 
@@ -494,7 +488,7 @@ def _build_statistics_from_scrapes(
 
 def _build_embedded_time_series(
     obs: dict[str, Any],
-    metrics_dir: str,
+    pod_data: dict[str, dict[str, list]],
     max_points: int,
     window: tuple[Any, Any] | None = None,
 ) -> tuple[set[str], dict[str, Any]]:
@@ -507,17 +501,12 @@ def _build_embedded_time_series(
     """
     from .timeseries import (
         clip_to_window,
-        collect_time_series_data,
         compute_ratio_series,
         series_key,
         series_points,
     )
 
     specs = _embed_time_series_specs()
-    label_names = frozenset(
-        name for spec in specs.values() for name in (spec.get("labels") or {})
-    )
-    pod_data = collect_time_series_data(metrics_dir, label_names)
     if not pod_data:
         return set(), {"datapoints": 0, "datapoints_available": 0}
 
@@ -697,11 +686,28 @@ def _build_epp_entries(
 # ---------------------------------------------------------------------------
 
 
+def load_scraped_time_series(metrics_dir: str) -> dict[str, dict[str, list]]:
+    """Parse the raw scrapes once, with the label series the embedded specs select.
+
+    Pass the result to every ``add_metrics_to_benchmark_report`` call of a run so
+    the (possibly large) scrapes are not re-read for each stage report.
+    """
+    from .timeseries import collect_time_series_data
+
+    label_names = frozenset(
+        name
+        for spec in _embed_time_series_specs().values()
+        for name in (spec.get("labels") or {})
+    )
+    return collect_time_series_data(metrics_dir, label_names)
+
+
 def add_metrics_to_benchmark_report(
     br_dict: dict[str, Any],
     metrics_dir: str,
     component_label: str = "vllm-service",
     time_series_window: tuple[Any, Any] | None = None,
+    scraped_series: dict[str, dict[str, list]] | None = None,
 ) -> dict[str, Any]:
     """Add metrics to an existing benchmark report dictionary.
 
@@ -713,7 +719,8 @@ def add_metrics_to_benchmark_report(
     scrapes. Without raw scrapes the statistics fall back to the run-level
     ``metrics_summary.json``. ``observability.time_series_interval`` records the
     interval, the statistics' scope, and how many points survived the clip so
-    an empty series is never mistaken for a quiet stage.
+    an empty series is never mistaken for a quiet stage. ``scraped_series`` is
+    the output of :func:`load_scraped_time_series`; it is parsed here if omitted.
     """
     obs = br_dict.setdefault("results", {}).setdefault("observability", {})
 
@@ -737,8 +744,10 @@ def add_metrics_to_benchmark_report(
 
     if metrics_summary:
         metric_names = _load_time_series_metrics(metrics_dir)
+        if scraped_series is None:
+            scraped_series = load_scraped_time_series(metrics_dir)
         scraped = _build_statistics_from_scrapes(
-            metrics_summary, metric_names, metrics_dir, time_series_window
+            metrics_summary, metric_names, scraped_series, time_series_window
         )
         if scraped is not None:
             obs.update(scraped)
@@ -750,7 +759,7 @@ def add_metrics_to_benchmark_report(
             _build_aggregated_entries(metrics_summary, obs, metric_names)
         if _embed_time_series_enabled():
             embedded, outcome = _build_embedded_time_series(
-                obs, metrics_dir, _embed_time_series_max_points(), time_series_window
+                obs, scraped_series, _embed_time_series_max_points(), time_series_window
             )
             if embedded - _V0_2_TIME_SERIES_FIELDS and br_dict.get("version") == "0.2":
                 br_dict["version"] = "0.2.1"

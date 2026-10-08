@@ -76,10 +76,12 @@ def embed_metrics(
     try:
         from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
             add_metrics_to_benchmark_report,
+            load_scraped_time_series,
         )
     except ImportError:  # in-pod: the library is installed, the package is not
         from benchmark_report.metrics_processor import (  # type: ignore[no-redef]
             add_metrics_to_benchmark_report,
+            load_scraped_time_series,
         )
 
     if not (metrics_dir / "processed" / "metrics_summary.json").is_file():
@@ -102,6 +104,8 @@ def embed_metrics(
             True,
         )
 
+    # Parsed once for every report: the scrapes can be large.
+    scraped_series = load_scraped_time_series(str(metrics_dir))
     written = 0
     for report in reports:
         try:
@@ -117,7 +121,10 @@ def embed_metrics(
 
             br_dict = yaml.safe_load(report.read_text()) or {}
             br_dict = add_metrics_to_benchmark_report(
-                br_dict, str(metrics_dir), time_series_window=window
+                br_dict,
+                str(metrics_dir),
+                time_series_window=window,
+                scraped_series=scraped_series,
             )
 
             interval = br_dict.get("results", {}).get("observability", {})
