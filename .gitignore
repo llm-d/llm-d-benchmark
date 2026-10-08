@@ -43,6 +43,7 @@ data/**/logs/
 
 # Python
 __pycache__/
+.testmondata
 
 # Jupyter Notebook
 .ipynb_checkpoints

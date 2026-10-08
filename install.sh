@@ -953,8 +953,7 @@ fi
 # Pre-commit hook setup -- only when git is available AND we're inside
 # a working tree AND the repo ships a .pre-commit-config.yaml. This is
 # best-effort: a failure here logs a warning but does NOT abort the
-# install. Hooks are wired for the pre-commit stage only -- CI is the
-# gate before push, no need to duplicate the local hooks at push time.
+# install.
 # ===================================================================
 echo ""
 echo "=== Pre-commit hooks ==="
@@ -974,10 +973,13 @@ fi
 # Without `noreset`, this section runs every time -- but `pip install`
 # and `pre-commit install` are both idempotent, so re-running is safe
 # (just adds a few seconds).
+#
+# The cache hits only when both hook stages registered.
 precommit_cache_hit=false
 if [[ -z "$precommit_skip_reason" ]] && \
    [[ -f "$dependencies_checked_file" ]] && \
-   grep -Fq "pre-commit hooks installed." "$dependencies_checked_file"; then
+   grep -Fq "pre-commit hooks installed." "$dependencies_checked_file" && \
+   grep -Fq "pre-push hook installed." "$dependencies_checked_file"; then
     precommit_cache_hit=true
 fi
 
@@ -1016,7 +1018,12 @@ else
                 "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1) && {
                 echo "  registered: pre-commit (run 'pre-commit run --all-files' to exercise)"
                 echo "pre-commit hooks installed." >> "$dependencies_checked_file"
-            } || echo "  WARNING: pre-commit binary found but 'install' failed -- hooks NOT registered"
+            } || echo "  WARNING: pre-commit binary found but 'install' failed -- pre-commit hook NOT registered"
+            (cd "${SCRIPT_DIR}" && \
+                "$precommit_bin" install --hook-type pre-push >/dev/null 2>&1) && {
+                echo "  registered: pre-push (unit tests run there)"
+                echo "pre-push hook installed." >> "$dependencies_checked_file"
+            } || echo "  WARNING: could not register pre-push hook -- unit tests won't run on push"
         else
             echo "  WARNING: pre-commit binary not found after install -- hooks NOT registered"
         fi

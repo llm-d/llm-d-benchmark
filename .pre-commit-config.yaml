@@ -1,3 +1,5 @@
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
   - repo: local
     hooks:
@@ -14,16 +16,14 @@ repos:
         files: ^llmdbenchmark/.*\.py$
         stages: [pre-commit]
 
-      # ----------------------------------------------------------------
-      # Unit tests -- mirrors the `unit-tests` job in
-      # .github/workflows/ci-pr-benchmark.yaml.
-      # ----------------------------------------------------------------
       - id: pytest
-        name: Unit tests (pytest tests/ -x -q -n4)
-        entry: python -m pytest tests/ -x -q -n4
+        name: Unit tests (affected by push)
+        entry: python util/prepush_unit_tests.py
         language: system
+        always_run: true
         pass_filenames: false
-        stages: [pre-commit]
+        require_serial: true
+        stages: [pre-push]
 
       # ----------------------------------------------------------------
       # Render-validation smart check -- detects which scenarios the
@@ -103,6 +103,7 @@ repos:
     rev: 0.13.1+ibm.64.dss
     hooks:
       - id: detect-secrets # pragma: whitelist secret
+        stages: [pre-commit]
         # Add options for detect-secrets-hook binary. You can run `detect-secrets-hook --help` to list out all possible options.
         # You may also run `pre-commit run detect-secrets` to preview the scan result.
         # when "--baseline" without "--use-all-plugins", pre-commit scan with just plugins in baseline file

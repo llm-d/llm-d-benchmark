@@ -68,6 +68,8 @@ def test_zero_when_no_running_container(monkeypatch):
     )
 
     assert info.get_container_start() == 0.0
+    # the poll loop actually ran
+    assert clock.t > 0
 
 
 def test_falls_back_to_sole_container_when_name_mismatch():
