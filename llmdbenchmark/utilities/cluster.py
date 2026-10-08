@@ -210,7 +210,7 @@ def load_stacks_info(context: ExecutionContext) -> list[dict]:
                     ),
                 }
             )
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             continue
     return stacks
 
@@ -260,7 +260,7 @@ def resolve_phase_gateway_label(context: ExecutionContext) -> str | None:
                 method,
                 (cfg.get("gateway") or {}).get("className", ""),
             )
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             continue
     return None
 

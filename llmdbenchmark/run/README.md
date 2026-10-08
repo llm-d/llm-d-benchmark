@@ -129,7 +129,7 @@ llmdbenchmark --spec guides/optimized-baseline run -p <NS> -z
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
 | `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 | `--pvc-bind-timeout N` | `LLMDBENCH_PVC_BIND_TIMEOUT` | Seconds to wait for the workload PVC to reach the Bound phase during run step 02 (default: 240). |
-| `--data-collect MODE` | `LLMDBENCH_DATA_COLLECT` | How much result data reaches this machine: `default` (`oc cp`), `fast` (a gzip'd `oc exec \| tar` stream -- same files, far quicker for large trees), `results` (only the benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots) or `skip` (nothing; everything stays on the PVC). Under `results` and `skip`, `--validate-failures` reads the PVC over `exec`. `skip` refuses `--analyze`, `--no-pvc` and `-z`, and warns that `-r` uploads nothing. Replaces the deprecated `--fast-collect` |
+| `--data-collect MODE` | `LLMDBENCH_DATA_COLLECT` | How much result data reaches this machine: `default` (`oc cp`), `fast` (a gzip'd `oc exec \| tar` stream -- same files, far quicker for large trees), `results` (only the benchmark reports, `run_metadata.yaml` and `experiment-summary.yaml`) or `skip` (nothing; everything stays on the PVC). Under `results` and `skip`, `--validate-failures` reads the PVC over `exec`. `skip` refuses `--analyze`, `--no-pvc` and `-z`, and warns that `-r` uploads nothing. Replaces the deprecated `--fast-collect` |
 | `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
 | `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
@@ -158,7 +158,7 @@ upload. Compression happens inside step 07, on the PVC, before the results are c
 nothing is compressed on the driver.
 
 Step 12 defers per-result-set analysis to the harness pod: where a harness ships an
-analyzer, the pod builds its reports, summary and plots before the results are collected,
+analyzer, the pod builds its reports and summary before the results are collected,
 so collection is a pure transfer. The driver pass remains the fallback for a result set
 the pod did not analyse -- an older image, a harness with no analyzer, or one that failed.
 
@@ -282,7 +282,7 @@ of it the driver actually takes (env: `LLMDBENCH_DATA_COLLECT`):
 |------|-------------------------|
 | `default` | Everything, via `oc cp`. |
 | `fast` | Everything, via a gzip'd `oc exec \| tar` stream. The same files; far quicker on large trees, on the flakier exec stream (retried 5x). |
-| `results` | Only the benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots -- the `KEEP_PLAIN` set that on-PVC compression already leaves as real files, so `results_store` can still index the workspace. |
+| `results` | Only the benchmark reports, `run_metadata.yaml` and `experiment-summary.yaml` -- the `KEEP_PLAIN` set that on-PVC compression already leaves as real files, so `results_store` can still index the workspace. |
 | `skip` | Nothing. Results stay on the PVC. |
 
 On-PVC zstd compression is unchanged in every mode, `skip` included: the set is still

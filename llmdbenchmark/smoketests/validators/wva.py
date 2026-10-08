@@ -268,7 +268,7 @@ class WvaSmoketestMixin:
             if result.success:
                 try:
                     dep = json.loads(result.stdout) if result.stdout else {}
-                except (json.JSONDecodeError, ValueError):
+                except json.JSONDecodeError, ValueError:
                     dep = {}
 
                 available = _deployment_is_available(dep)
@@ -432,7 +432,7 @@ class WvaSmoketestMixin:
 
         try:
             so = json.loads(result.stdout) if result.stdout else {}
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError, ValueError:
             so = {}
 
         scale_target = so.get("spec", {}).get("scaleTargetRef", {}).get("name", "")
@@ -565,7 +565,7 @@ class WvaSmoketestMixin:
             if result.success:
                 try:
                     hpa = json.loads(result.stdout) if result.stdout else {}
-                except (json.JSONDecodeError, ValueError):
+                except json.JSONDecodeError, ValueError:
                     hpa = {}
 
                 value = _hpa_first_external_metric_value(hpa)
@@ -665,7 +665,7 @@ class WvaSmoketestMixin:
             if result.success:
                 try:
                     hpa = json.loads(result.stdout) if result.stdout else {}
-                except (json.JSONDecodeError, ValueError):
+                except json.JSONDecodeError, ValueError:
                     hpa = {}
 
                 spec_min = int(hpa.get("spec", {}).get("minReplicas", 1) or 1)
@@ -819,7 +819,7 @@ def _wva_controller_restart_count(cmd: CommandExecutor, wva_ns: str) -> int | No
         return None
     try:
         data = json.loads(result.stdout) if result.stdout else {}
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError, ValueError:
         return None
 
     total = 0

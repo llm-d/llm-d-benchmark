@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 
 """
-EPP (Endpoint Picker Plugin) log parser and visualization for llm-d-benchmark.
-Parses structured JSON logs from EPP pods, extracts scheduling metrics,
-and optionally generates visualization plots.
+EPP (Endpoint Picker Plugin) log parser for llm-d-benchmark.
+Parses structured JSON logs from EPP pods and extracts scheduling metrics.
 
 Usage:
-    python3 process_epp_logs.py <results_dir>                    # parse only
-    python3 process_epp_logs.py <results_dir> --visualize        # parse + generate plots
+    python3 process_epp_logs.py <results_dir>
     python3 process_epp_logs.py <results_dir> -o <output_dir>    # custom output location
 """
 
@@ -21,18 +19,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-
-# Optional matplotlib for visualization
-try:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
-
-    HAS_MATPLOTLIB = True
-except ImportError:
-    HAS_MATPLOTLIB = False
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -461,151 +447,6 @@ def aggregate_and_output(
 
 
 # ---------------------------------------------------------------------------
-# Visualization
-# ---------------------------------------------------------------------------
-
-
-def generate_visualizations(output_dir: str) -> None:
-    """Generate PNG plots from the timeseries data."""
-    if not HAS_MATPLOTLIB:
-        print("  matplotlib not available, skipping visualization")
-        return
-
-    ts_path = os.path.join(output_dir, "epp_timeseries.json")
-    summary_path = os.path.join(output_dir, "epp_metrics_summary.json")
-    if not os.path.exists(ts_path):
-        print("  No timeseries data found, skipping visualization")
-        return
-
-    with open(ts_path, "r") as f:
-        ts_data = json.load(f)
-    with open(summary_path, "r") as f:
-        summary = json.load(f)
-
-    graphs_dir = os.path.join(output_dir, "graphs")
-    os.makedirs(graphs_dir, exist_ok=True)
-
-    _plot_dispatch_latency(ts_data, summary, graphs_dir)
-    _plot_endpoint_scores(ts_data, graphs_dir)
-    _plot_request_distribution(summary, graphs_dir)
-
-    print(f"  Plots written to {graphs_dir}/")
-
-
-def _parse_iso_timestamps(ts_list: List[str]) -> List[datetime]:
-    """Parse a list of ISO timestamp strings into datetime objects."""
-    result = []
-    for t in ts_list:
-        t = t.rstrip("Z")
-        t = re.sub(r"(\.\d{6})\d+", r"\1", t)
-        try:
-            result.append(datetime.fromisoformat(t))
-        except ValueError:
-            pass
-    return result
-
-
-def _plot_dispatch_latency(ts_data: dict, summary: dict, graphs_dir: str) -> None:
-    """Scatter plot of dispatch latency with p50/p95 lines."""
-    dl = ts_data.get("dispatch_latency_timeseries", {})
-    timestamps = _parse_iso_timestamps(dl.get("timestamps", []))
-    latencies = dl.get("latencies_seconds", [])
-    if not timestamps or not latencies:
-        return
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.scatter(timestamps, latencies, alpha=0.5, s=10, label="Dispatch latency")
-
-    stats = summary.get("dispatch_latency", {})
-    if stats.get("p50"):
-        ax.axhline(
-            y=stats["p50"],
-            color="orange",
-            linestyle="--",
-            linewidth=1,
-            label=f"p50 = {stats['p50']:.4f}s",
-        )
-    if stats.get("p95"):
-        ax.axhline(
-            y=stats["p95"],
-            color="red",
-            linestyle="--",
-            linewidth=1,
-            label=f"p95 = {stats['p95']:.4f}s",
-        )
-
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Dispatch Latency (s)")
-    ax.set_title("EPP Dispatch Latency")
-    ax.legend(fontsize="small")
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(os.path.join(graphs_dir, "epp_dispatch_latency.png"), dpi=150)
-    plt.close(fig)
-
-
-def _plot_endpoint_scores(ts_data: dict, graphs_dir: str) -> None:
-    """Scatter plot of endpoint scores over time."""
-    scoring = ts_data.get("scoring_timeseries", {})
-    if not scoring:
-        return
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    for addr, data in scoring.items():
-        timestamps = _parse_iso_timestamps(data.get("timestamps", []))
-        scores = data.get("scores", [])
-        if not timestamps or not scores:
-            continue
-        ax.scatter(timestamps, scores, s=10, alpha=0.6, label=addr)
-
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Score")
-    ax.set_title("EPP Endpoint Scores")
-    ax.legend(fontsize="small")
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    fig.savefig(os.path.join(graphs_dir, "epp_endpoint_scores.png"), dpi=150)
-    plt.close(fig)
-
-
-def _plot_request_distribution(summary: dict, graphs_dir: str) -> None:
-    """Bar chart of request count per endpoint."""
-    dist = summary.get("request_distribution", {})
-    if not dist:
-        return
-
-    labels = []
-    counts = []
-    for addr, info in sorted(dist.items()):
-        pod = info.get("pod_name", "")
-        labels.append(pod if pod else addr)
-        counts.append(info.get("count", 0))
-
-    fig, ax = plt.subplots(figsize=(max(8, len(labels) * 1.5), 5))
-    bars = ax.bar(range(len(labels)), counts, color="steelblue")
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize="small")
-    ax.set_ylabel("Request Count")
-    ax.set_title("EPP Request Distribution per Endpoint")
-
-    for bar, count in zip(bars, counts):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height(),
-            str(count),
-            ha="center",
-            va="bottom",
-            fontsize="small",
-        )
-
-    fig.tight_layout()
-    fig.savefig(os.path.join(graphs_dir, "epp_request_distribution.png"), dpi=150)
-    plt.close(fig)
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -616,11 +457,6 @@ def main():
     )
     parser.add_argument(
         "results_dir", help="Results directory containing logs/epp_pods.log"
-    )
-    parser.add_argument(
-        "--visualize",
-        action="store_true",
-        help="Generate PNG plots (requires matplotlib)",
     )
     parser.add_argument(
         "-o",
@@ -660,10 +496,6 @@ def main():
 
     print("Aggregating metrics ...")
     aggregate_and_output(entries, output_dir, log_path)
-
-    if args.visualize:
-        print("Generating visualizations ...")
-        generate_visualizations(output_dir)
 
     print("Done.")
 

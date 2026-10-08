@@ -310,7 +310,7 @@ def wait_for_pods_by_selector(
     if check_result.success and check_result.stdout:
         try:
             pods = json.loads(check_result.stdout).get("items", [])
-        except (json.JSONDecodeError, AttributeError):
+        except json.JSONDecodeError, AttributeError:
             pods = []
         crash_details = [detail for pod in pods for detail in _pod_crash_details(pod)]
         if crash_details:
@@ -801,7 +801,7 @@ def capture_infrastructure_logs(
                 # not always contain logs/, so it would silently exit 0.
                 epp_target = log_dir.parent if log_dir.name == "logs" else results_dir
                 result = subprocess.run(
-                    ["python3", str(script), str(epp_target), "--visualize"],
+                    ["python3", str(script), str(epp_target)],
                     capture_output=True,
                     text=True,
                     timeout=120,

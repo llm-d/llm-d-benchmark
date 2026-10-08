@@ -476,7 +476,7 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 ),
                 "harness": plan_config.get("harness", {}),
             }
-    except (OSError, _yaml.YAMLError):
+    except OSError, _yaml.YAMLError:
         pass
     return {}
 
@@ -1275,9 +1275,8 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         )
     elif context.collect_results_only:
         logger.log_info(
-            "Running with --data-collect results: only benchmark reports, run "
-            "metadata and plots are copied down; the raw harness output stays on "
-            "the PVC.",
+            "Running with --data-collect results: only benchmark reports and run "
+            "metadata are copied down; the raw harness output stays on the PVC.",
             emoji="\U0001f4e6",
         )
 
@@ -1336,7 +1335,7 @@ def _collect_stack_models(context) -> list[tuple[str, str]]:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = _yaml.safe_load(fh) or {}
                 model_name = (cfg.get("model") or {}).get("name", "?") or "?"
-            except (OSError, _yaml.YAMLError):
+            except OSError, _yaml.YAMLError:
                 pass
         rows.append((stack_name, model_name))
     return rows
@@ -1376,7 +1375,7 @@ def _print_endpoints_table(context, logger, args) -> None:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = _yaml.safe_load(fh) or {}
                 model_name = (cfg.get("model") or {}).get("name", "?") or "?"
-            except (OSError, _yaml.YAMLError):
+            except OSError, _yaml.YAMLError:
                 pass
         url = endpoints.get(stack_name, "<not detected>")
         rows.append((stack_name, model_name, url))
@@ -1604,7 +1603,7 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
         if get_result.success and get_result.stdout.strip():
             try:
                 existing_data = json.loads(get_result.stdout)
-            except (json.JSONDecodeError, ValueError):
+            except json.JSONDecodeError, ValueError:
                 pass
 
         # Add this run keyed by timestamp (also update "latest")
@@ -2252,7 +2251,7 @@ def cli() -> None:
         default=None,
         help="Compress output: each result set is compressed on the PVC before "
         "collection, so the archive rather than the raw tree is copied down. "
-        "Benchmark reports, run metadata and plots stay plain "
+        "Benchmark reports and run metadata stay plain "
         "(env: LLMDBENCH_COMPRESS). Default: on; use --no-compress to keep "
         "plain text.",
     )
@@ -2363,7 +2362,7 @@ def cli() -> None:
         default=argparse.SUPPRESS,
         help="Compress output: each result set is compressed on the PVC before "
         "collection, so the archive rather than the raw tree is copied down. "
-        "Benchmark reports, run metadata and plots stay plain "
+        "Benchmark reports and run metadata stay plain "
         "(env: LLMDBENCH_COMPRESS). Default: on; use --no-compress to keep "
         "plain text.",
     )

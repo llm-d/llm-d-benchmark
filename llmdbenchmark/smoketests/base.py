@@ -1871,7 +1871,7 @@ class BaseSmoketest:
                     cfg_int = int(cfg)
                     if cfg_int > 0:
                         return cfg_int
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
         return default
 

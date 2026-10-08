@@ -315,7 +315,7 @@ class AdminPrerequisitesStep(Step):
         # for ~600 CRDs), which used to dominate this step's runtime.
         try:
             items = json.loads(result.stdout).get("items", [])
-        except (json.JSONDecodeError, AttributeError):
+        except json.JSONDecodeError, AttributeError:
             return {}
         inventory: dict[str, str | None] = {}
         for item in items:

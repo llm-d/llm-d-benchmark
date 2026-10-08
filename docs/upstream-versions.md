@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-10-06 08:19:18` (UTC)
-- Generated against git ref: `ab24b7d97071dca8cb710709f592326022fa9318`
+- Generated at: `2026-10-08 01:43:58` (UTC)
+- Generated against git ref: `a64de796bb483b12381dc525127994fafbfc9c1c`
 
 ## System Tool Dependencies
 
@@ -85,7 +85,6 @@ captured in the snapshot table below.
 | **PyYAML** | `(unpinned)` | (unpinned) | `pyproject.toml` line 7 | [PyYAML (PyPI)](https://pypi.org/project/pyyaml/) |
 | **requests** | `(unpinned)` | (unpinned) | `pyproject.toml` line 9 | [requests (PyPI)](https://pypi.org/project/requests/) |
 | **transformers** | `(unpinned)` | (unpinned) | `pyproject.toml` line 15 | [transformers (PyPI)](https://pypi.org/project/transformers/) |
-| **zstandard** | `(unpinned)` | (unpinned) | `pyproject.toml` line 20 | [zstandard (PyPI)](https://pypi.org/project/zstandard/) |
 
 
 ## Python Package Dependencies (installed snapshot)
@@ -99,76 +98,88 @@ annotated with their `pyproject.toml` line.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
+| **aiohappyeyeballs** | `2.7.1` | version | (transitive in `.venv`) | [aiohappyeyeballs (PyPI)](https://pypi.org/project/aiohappyeyeballs/) |
+| **aiohttp** | `3.14.4` | version | (transitive in `.venv`) | [aiohttp (PyPI)](https://pypi.org/project/aiohttp/) |
+| **aiosignal** | `1.4.0` | version | (transitive in `.venv`) | [aiosignal (PyPI)](https://pypi.org/project/aiosignal/) |
 | **annotated-doc** | `0.0.5` | version | (transitive in `.venv`) | [annotated-doc (PyPI)](https://pypi.org/project/annotated-doc/) |
 | **annotated-types** | `0.8.0` | version | (transitive in `.venv`) | [annotated-types (PyPI)](https://pypi.org/project/annotated-types/) |
 | **anyio** | `4.15.1` | version | (transitive in `.venv`) | [anyio (PyPI)](https://pypi.org/project/anyio/) |
+| **attrs** | `26.1.0` | version | (transitive in `.venv`) | [attrs (PyPI)](https://pypi.org/project/attrs/) |
 | **certifi** | `2026.7.22` | version | (transitive in `.venv`) | [certifi (PyPI)](https://pypi.org/project/certifi/) |
 | **cffi** | `2.1.1` | version | (transitive in `.venv`) | [cffi (PyPI)](https://pypi.org/project/cffi/) |
 | **cfgv** | `3.5.0` | version | (transitive in `.venv`) | [cfgv (PyPI)](https://pypi.org/project/cfgv/) |
 | **charset-normalizer** | `3.5.2` | version | (transitive in `.venv`) | [charset-normalizer (PyPI)](https://pypi.org/project/charset-normalizer/) |
 | **click** | `8.5.0` | version | (transitive in `.venv`) | [click (PyPI)](https://pypi.org/project/click/) |
-| **contourpy** | `1.4.0` | version | (transitive in `.venv`) | [contourpy (PyPI)](https://pypi.org/project/contourpy/) |
 | **cryptography** | `50.0.2` | version | (transitive in `.venv`) | [cryptography (PyPI)](https://pypi.org/project/cryptography/) |
-| **cycler** | `0.12.1` | version | (transitive in `.venv`) | [cycler (PyPI)](https://pypi.org/project/cycler/) |
 | **distlib** | `0.4.3` | version | (transitive in `.venv`) | [distlib (PyPI)](https://pypi.org/project/distlib/) |
 | **durationpy** | `0.11` | version | (transitive in `.venv`) | [durationpy (PyPI)](https://pypi.org/project/durationpy/) |
 | **execnet** | `2.1.2` | version | (transitive in `.venv`) | [execnet (PyPI)](https://pypi.org/project/execnet/) |
-| **filelock** | `4.0.9` | version | (transitive in `.venv`) | [filelock (PyPI)](https://pypi.org/project/filelock/) |
-| **fonttools** | `4.66.1` | version | (transitive in `.venv`) | [fonttools (PyPI)](https://pypi.org/project/fonttools/) |
+| **fastapi** | `0.142.4` | version | (transitive in `.venv`) | [fastapi (PyPI)](https://pypi.org/project/fastapi/) |
+| **filelock** | `4.0.12` | version | (transitive in `.venv`) | [filelock (PyPI)](https://pypi.org/project/filelock/) |
+| **frozenlist** | `1.8.0` | version | (transitive in `.venv`) | [frozenlist (PyPI)](https://pypi.org/project/frozenlist/) |
 | **fsspec** | `2026.9.0` | version | (transitive in `.venv`) | [fsspec (PyPI)](https://pypi.org/project/fsspec/) |
 | **gitdb** | `4.0.12` | version | (transitive in `.venv`) | [gitdb (PyPI)](https://pypi.org/project/gitdb/) |
 | **GitPython** | `3.2.0` | version | `pyproject.toml` line 13 (direct) | [GitPython (PyPI)](https://pypi.org/project/gitpython/) |
-| **google-api-core** | `2.40.0` | version | (transitive in `.venv`) | [google-api-core (PyPI)](https://pypi.org/project/google-api-core/) |
-| **google-auth** | `2.59.1` | version | `pyproject.toml` line 17 (direct) | [google-auth (PyPI)](https://pypi.org/project/google-auth/) |
+| **google-api-core** | `2.41.0` | version | (transitive in `.venv`) | [google-api-core (PyPI)](https://pypi.org/project/google-api-core/) |
+| **google-auth** | `2.61.0` | version | `pyproject.toml` line 17 (direct) | [google-auth (PyPI)](https://pypi.org/project/google-auth/) |
 | **google-cloud-core** | `2.8.0` | version | (transitive in `.venv`) | [google-cloud-core (PyPI)](https://pypi.org/project/google-cloud-core/) |
 | **google-cloud-storage** | `3.16.0` | version | `pyproject.toml` line 18 (direct) | [google-cloud-storage (PyPI)](https://pypi.org/project/google-cloud-storage/) |
 | **google-crc32c** | `1.9.0` | version | (transitive in `.venv`) | [google-crc32c (PyPI)](https://pypi.org/project/google-crc32c/) |
 | **google-resumable-media** | `2.11.0` | version | (transitive in `.venv`) | [google-resumable-media (PyPI)](https://pypi.org/project/google-resumable-media/) |
 | **googleapis-common-protos** | `1.75.5` | version | (transitive in `.venv`) | [googleapis-common-protos (PyPI)](https://pypi.org/project/googleapis-common-protos/) |
 | **h11** | `0.16.0` | version | (transitive in `.venv`) | [h11 (PyPI)](https://pypi.org/project/h11/) |
-| **hf-xet** | `1.6.0` | version | (transitive in `.venv`) | [hf-xet (PyPI)](https://pypi.org/project/hf-xet/) |
+| **hf-xet** | `1.7.0` | version | (transitive in `.venv`) | [hf-xet (PyPI)](https://pypi.org/project/hf-xet/) |
 | **httpcore** | `1.0.9` | version | (transitive in `.venv`) | [httpcore (PyPI)](https://pypi.org/project/httpcore/) |
+| **httpcore2** | `2.13.1` | version | (transitive in `.venv`) | [httpcore2 (PyPI)](https://pypi.org/project/httpcore2/) |
+| **httptools** | `0.8.0` | version | (transitive in `.venv`) | [httptools (PyPI)](https://pypi.org/project/httptools/) |
 | **httpx** | `0.28.1` | version | (transitive in `.venv`) | [httpx (PyPI)](https://pypi.org/project/httpx/) |
+| **httpx2** | `2.13.1` | version | (transitive in `.venv`) | [httpx2 (PyPI)](https://pypi.org/project/httpx2/) |
 | **huggingface_hub** | `1.33.0` | version | `pyproject.toml` line 14 (direct) | [huggingface_hub (PyPI)](https://pypi.org/project/huggingface-hub/) |
 | **identify** | `2.6.20` | version | (transitive in `.venv`) | [identify (PyPI)](https://pypi.org/project/identify/) |
 | **idna** | `3.20` | version | (transitive in `.venv`) | [idna (PyPI)](https://pypi.org/project/idna/) |
-| **iniconfig** | `2.3.0` | version | (transitive in `.venv`) | [iniconfig (PyPI)](https://pypi.org/project/iniconfig/) |
+| **iniconfig** | `2.3.1` | version | (transitive in `.venv`) | [iniconfig (PyPI)](https://pypi.org/project/iniconfig/) |
 | **Jinja2** | `3.1.6` | version | `pyproject.toml` line 8 (direct) | [Jinja2 (PyPI)](https://pypi.org/project/jinja2/) |
-| **kiwisolver** | `1.5.1` | version | (transitive in `.venv`) | [kiwisolver (PyPI)](https://pypi.org/project/kiwisolver/) |
+| **jiter** | `0.17.0` | version | (transitive in `.venv`) | [jiter (PyPI)](https://pypi.org/project/jiter/) |
 | **kubernetes** | `35.0.0` | version | `pyproject.toml` line 11 (direct) | [kubernetes (PyPI)](https://pypi.org/project/kubernetes/) |
-| **llm-d-planner** | `89edc1007c4edf2054c59c776ad6b438332ed02c` | commit SHA | (transitive in `.venv`) | [llm-d-planner (PyPI)](https://pypi.org/project/llm-d-planner/) |
+| **llm-optimizer** | `bb82d22e8863b762e856be66e831d551d27576b1` | commit SHA | (transitive in `.venv`) | [llm-optimizer (PyPI)](https://pypi.org/project/llm-optimizer/) |
 | **llmd_benchmark_report** | `editable` | editable | (transitive in `.venv`) | [llmd_benchmark_report (PyPI)](https://pypi.org/project/llmd-benchmark-report/) |
 | **llmdbenchmark** | `editable` | editable | (transitive in `.venv`) | [llmdbenchmark (PyPI)](https://pypi.org/project/llmdbenchmark/) |
 | **markdown-it-py** | `4.2.0` | version | (transitive in `.venv`) | [markdown-it-py (PyPI)](https://pypi.org/project/markdown-it-py/) |
-| **MarkupSafe** | `3.0.3` | version | (transitive in `.venv`) | [MarkupSafe (PyPI)](https://pypi.org/project/markupsafe/) |
-| **matplotlib** | `3.11.2` | version | (transitive in `.venv`) | [matplotlib (PyPI)](https://pypi.org/project/matplotlib/) |
+| **MarkupSafe** | `3.0.4` | version | (transitive in `.venv`) | [MarkupSafe (PyPI)](https://pypi.org/project/markupsafe/) |
 | **mdurl** | `0.1.2` | version | (transitive in `.venv`) | [mdurl (PyPI)](https://pypi.org/project/mdurl/) |
+| **multidict** | `6.9.1` | version | (transitive in `.venv`) | [multidict (PyPI)](https://pypi.org/project/multidict/) |
 | **nodeenv** | `1.11.0` | version | (transitive in `.venv`) | [nodeenv (PyPI)](https://pypi.org/project/nodeenv/) |
 | **numpy** | `2.5.3` | version | (transitive in `.venv`) | [numpy (PyPI)](https://pypi.org/project/numpy/) |
+| **nvidia-ml-py3** | `7.352.0` | version | (transitive in `.venv`) | [nvidia-ml-py3 (PyPI)](https://pypi.org/project/nvidia-ml-py3/) |
 | **oauthlib** | `4.0.0` | version | (transitive in `.venv`) | [oauthlib (PyPI)](https://pypi.org/project/oauthlib/) |
-| **opentelemetry-api** | `1.45.0` | version | (transitive in `.venv`) | [opentelemetry-api (PyPI)](https://pypi.org/project/opentelemetry-api/) |
+| **ollama** | `0.6.2` | version | (transitive in `.venv`) | [ollama (PyPI)](https://pypi.org/project/ollama/) |
+| **openai** | `3.26.0` | version | (transitive in `.venv`) | [openai (PyPI)](https://pypi.org/project/openai/) |
+| **opentelemetry-api** | `1.45.1` | version | (transitive in `.venv`) | [opentelemetry-api (PyPI)](https://pypi.org/project/opentelemetry-api/) |
 | **packaging** | `26.3` | version | `pyproject.toml` line 10 (direct) | [packaging (PyPI)](https://pypi.org/project/packaging/) |
 | **pandas** | `3.0.6` | version | (transitive in `.venv`) | [pandas (PyPI)](https://pypi.org/project/pandas/) |
-| **pillow** | `12.3.0` | version | (transitive in `.venv`) | [pillow (PyPI)](https://pypi.org/project/pillow/) |
-| **platformdirs** | `4.12.2` | version | (transitive in `.venv`) | [platformdirs (PyPI)](https://pypi.org/project/platformdirs/) |
+| **planner** | `9def3abea1720bce19823a4b5ae3ff2015ae77f1` | commit SHA | (transitive in `.venv`) | [planner (PyPI)](https://pypi.org/project/planner/) |
+| **platformdirs** | `4.12.4` | version | (transitive in `.venv`) | [platformdirs (PyPI)](https://pypi.org/project/platformdirs/) |
 | **pluggy** | `1.6.0` | version | (transitive in `.venv`) | [pluggy (PyPI)](https://pypi.org/project/pluggy/) |
 | **pre_commit** | `4.6.2` | version | (transitive in `.venv`) | [pre_commit (PyPI)](https://pypi.org/project/pre-commit/) |
+| **propcache** | `0.5.4` | version | (transitive in `.venv`) | [propcache (PyPI)](https://pypi.org/project/propcache/) |
 | **proto-plus** | `1.29.0` | version | (transitive in `.venv`) | [proto-plus (PyPI)](https://pypi.org/project/proto-plus/) |
 | **protobuf** | `7.36.2` | version | (transitive in `.venv`) | [protobuf (PyPI)](https://pypi.org/project/protobuf/) |
+| **psutil** | `7.2.2` | version | (transitive in `.venv`) | [psutil (PyPI)](https://pypi.org/project/psutil/) |
+| **psycopg2-binary** | `2.9.12` | version | (transitive in `.venv`) | [psycopg2-binary (PyPI)](https://pypi.org/project/psycopg2-binary/) |
 | **pyasn1** | `0.6.4` | version | (transitive in `.venv`) | [pyasn1 (PyPI)](https://pypi.org/project/pyasn1/) |
 | **pyasn1_modules** | `0.4.2` | version | (transitive in `.venv`) | [pyasn1_modules (PyPI)](https://pypi.org/project/pyasn1-modules/) |
 | **pycparser** | `3.0` | version | (transitive in `.venv`) | [pycparser (PyPI)](https://pypi.org/project/pycparser/) |
 | **pydantic** | `2.13.5` | version | `pyproject.toml` line 16 (direct) | [pydantic (PyPI)](https://pypi.org/project/pydantic/) |
-| **pydantic-settings** | `2.15.0` | version | (transitive in `.venv`) | [pydantic-settings (PyPI)](https://pypi.org/project/pydantic-settings/) |
+| **pydantic-settings** | `2.14.1` | version | (transitive in `.venv`) | [pydantic-settings (PyPI)](https://pypi.org/project/pydantic-settings/) |
 | **pydantic_core** | `2.46.5` | version | (transitive in `.venv`) | [pydantic_core (PyPI)](https://pypi.org/project/pydantic-core/) |
 | **Pygments** | `2.21.0` | version | (transitive in `.venv`) | [Pygments (PyPI)](https://pypi.org/project/pygments/) |
 | **pykube-ng** | `23.6.0` | version | `pyproject.toml` line 12 (direct) | [pykube-ng (PyPI)](https://pypi.org/project/pykube-ng/) |
-| **pyparsing** | `3.3.3` | version | (transitive in `.venv`) | [pyparsing (PyPI)](https://pypi.org/project/pyparsing/) |
 | **pytest** | `9.1.1` | version | (transitive in `.venv`) | [pytest (PyPI)](https://pypi.org/project/pytest/) |
 | **pytest-xdist** | `3.8.0` | version | (transitive in `.venv`) | [pytest-xdist (PyPI)](https://pypi.org/project/pytest-xdist/) |
 | **python-dateutil** | `2.9.0.post0` | version | (transitive in `.venv`) | [python-dateutil (PyPI)](https://pypi.org/project/python-dateutil/) |
 | **python-discovery** | `1.6.1` | version | (transitive in `.venv`) | [python-discovery (PyPI)](https://pypi.org/project/python-discovery/) |
 | **python-dotenv** | `1.2.4` | version | (transitive in `.venv`) | [python-dotenv (PyPI)](https://pypi.org/project/python-dotenv/) |
+| **python-multipart** | `0.0.32` | version | (transitive in `.venv`) | [python-multipart (PyPI)](https://pypi.org/project/python-multipart/) |
 | **PyYAML** | `6.0.3` | version | `pyproject.toml` line 7 (direct) | [PyYAML (PyPI)](https://pypi.org/project/pyyaml/) |
 | **regex** | `2026.9.29` | version | (transitive in `.venv`) | [regex (PyPI)](https://pypi.org/project/regex/) |
 | **requests** | `2.34.2` | version | `pyproject.toml` line 9 (direct) | [requests (PyPI)](https://pypi.org/project/requests/) |
@@ -176,19 +187,25 @@ annotated with their `pyproject.toml` line.
 | **rich** | `15.0.0` | version | (transitive in `.venv`) | [rich (PyPI)](https://pypi.org/project/rich/) |
 | **safetensors** | `0.8.0` | version | (transitive in `.venv`) | [safetensors (PyPI)](https://pypi.org/project/safetensors/) |
 | **scipy** | `1.18.1` | version | (transitive in `.venv`) | [scipy (PyPI)](https://pypi.org/project/scipy/) |
-| **seaborn** | `0.13.2` | version | (transitive in `.venv`) | [seaborn (PyPI)](https://pypi.org/project/seaborn/) |
 | **shellingham** | `1.5.4` | version | (transitive in `.venv`) | [shellingham (PyPI)](https://pypi.org/project/shellingham/) |
 | **six** | `1.17.0` | version | (transitive in `.venv`) | [six (PyPI)](https://pypi.org/project/six/) |
 | **smmap** | `5.0.3` | version | (transitive in `.venv`) | [smmap (PyPI)](https://pypi.org/project/smmap/) |
+| **sniffio** | `1.3.1` | version | (transitive in `.venv`) | [sniffio (PyPI)](https://pypi.org/project/sniffio/) |
+| **starlette** | `1.7.0` | version | (transitive in `.venv`) | [starlette (PyPI)](https://pypi.org/project/starlette/) |
 | **tokenizers** | `0.23.2` | version | (transitive in `.venv`) | [tokenizers (PyPI)](https://pypi.org/project/tokenizers/) |
 | **tqdm** | `4.70.1` | version | (transitive in `.venv`) | [tqdm (PyPI)](https://pypi.org/project/tqdm/) |
-| **transformers** | `5.18.0` | version | `pyproject.toml` line 15 (direct) | [transformers (PyPI)](https://pypi.org/project/transformers/) |
-| **typer** | `0.27.2` | version | (transitive in `.venv`) | [typer (PyPI)](https://pypi.org/project/typer/) |
+| **transformers** | `5.19.0` | version | `pyproject.toml` line 15 (direct) | [transformers (PyPI)](https://pypi.org/project/transformers/) |
+| **truststore** | `0.10.4` | version | (transitive in `.venv`) | [truststore (PyPI)](https://pypi.org/project/truststore/) |
+| **typer** | `0.27.3` | version | (transitive in `.venv`) | [typer (PyPI)](https://pypi.org/project/typer/) |
 | **typing-inspection** | `0.4.4` | version | (transitive in `.venv`) | [typing-inspection (PyPI)](https://pypi.org/project/typing-inspection/) |
 | **typing_extensions** | `4.16.0` | version | (transitive in `.venv`) | [typing_extensions (PyPI)](https://pypi.org/project/typing-extensions/) |
 | **urllib3** | `2.8.0` | version | (transitive in `.venv`) | [urllib3 (PyPI)](https://pypi.org/project/urllib3/) |
-| **virtualenv** | `21.14.3` | version | (transitive in `.venv`) | [virtualenv (PyPI)](https://pypi.org/project/virtualenv/) |
+| **uvicorn** | `0.48.0` | version | (transitive in `.venv`) | [uvicorn (PyPI)](https://pypi.org/project/uvicorn/) |
+| **uvloop** | `0.23.0` | version | (transitive in `.venv`) | [uvloop (PyPI)](https://pypi.org/project/uvloop/) |
+| **virtualenv** | `21.14.5` | version | (transitive in `.venv`) | [virtualenv (PyPI)](https://pypi.org/project/virtualenv/) |
+| **watchfiles** | `1.3.0` | version | (transitive in `.venv`) | [watchfiles (PyPI)](https://pypi.org/project/watchfiles/) |
 | **websocket-client** | `1.9.2` | version | (transitive in `.venv`) | [websocket-client (PyPI)](https://pypi.org/project/websocket-client/) |
-| **zstandard** | `0.25.0` | version | `pyproject.toml` line 20 (direct) | [zstandard (PyPI)](https://pypi.org/project/zstandard/) |
+| **websockets** | `17.2` | version | (transitive in `.venv`) | [websockets (PyPI)](https://pypi.org/project/websockets/) |
+| **yarl** | `1.25.1` | version | (transitive in `.venv`) | [yarl (PyPI)](https://pypi.org/project/yarl/) |
 
 </details>

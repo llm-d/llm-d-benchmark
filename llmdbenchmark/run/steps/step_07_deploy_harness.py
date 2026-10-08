@@ -140,7 +140,7 @@ def _remote_select_script(
     quoted_dir = shlex.quote(remote_dir)
     return (
         f"cd {quoted_dir} && "
-        f"find . -type f \\( {tests} \\) -print "
+        f"find . -maxdepth 1 -type f \\( {tests} \\) -print "
         f"| tar {tar_flags}f - --no-recursion -T -"
     )
 
@@ -1033,7 +1033,7 @@ class DeployHarnessStep(Step):
             for path in context.workload_profiles_dir().glob(f"*/{name}"):
                 loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
                 return str(loaded.get("load", {}).get("type") or "")
-        except (OSError, yaml.YAMLError, AttributeError):
+        except OSError, yaml.YAMLError, AttributeError:
             return ""
         return ""
 
@@ -1109,7 +1109,7 @@ class DeployHarnessStep(Step):
                 continue
             try:
                 count = int(json.loads(payload)["failures"]["count"])
-            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            except ValueError, TypeError, KeyError, json.JSONDecodeError:
                 errs.append(
                     f"validate_failures: cannot parse failures.count from "
                     f"{name} under {where}"
@@ -1145,7 +1145,7 @@ class DeployHarnessStep(Step):
             for name, payload in sorted(members.items()):
                 try:
                     meta = json.loads(payload)["stage_metadata"]
-                except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                except ValueError, TypeError, KeyError, json.JSONDecodeError:
                     context.logger.log_warning(
                         f"validate_failures: no stage_metadata in {name} under "
                         f"{pod_dir}; judging on session counts alone"
@@ -1175,7 +1175,7 @@ class DeployHarnessStep(Step):
             try:
                 summary = json.loads(payload)
                 failed = int(summary["num_sessions_failed"])
-            except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            except ValueError, TypeError, KeyError, json.JSONDecodeError:
                 errs.append(
                     f"validate_failures: cannot parse num_sessions_failed from "
                     f"{name} under {pod_dir}"

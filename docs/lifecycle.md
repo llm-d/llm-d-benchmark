@@ -107,7 +107,7 @@ llmdbenchmark run --harness inference-perf --workload chatbot_synthetic.yaml
 ```
 
 > [!IMPORTANT]
-> This command will run an experiment, collect data and perform an initial analysis (generating statistics and plots). One can go straight to the analysis by adding the option `-z`/`--skip` to the above command
+> This command will run an experiment, collect data and perform an initial analysis (generating statistics). One can go straight to the analysis by adding the option `-z`/`--skip` to the above command
 
 > [!NOTE]
 > The scenario can also be indicated as part of the command line options for `llmdbenchmark run` (e.g., `llmdbenchmark run --spec guides/optimized-baseline`)

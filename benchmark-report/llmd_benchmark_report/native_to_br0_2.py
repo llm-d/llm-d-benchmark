@@ -145,11 +145,7 @@ _KNOWN_HARNESS_PREFIXES = (
 
 
 def _treatment_label(experiment_id: str, harness_name: str = "") -> str:
-    """Extract the treatment segment of an ID, or "" when it has none.
-
-    Duplicated from ``llmdbenchmark.analysis.cross_treatment``: this package
-    ships flat into the harness pod, with no llmdbenchmark package to import.
-    """
+    """Extract the treatment segment of an ID, or "" when it has none."""
     # Without the full tail, the last segment could be either the treatment or
     # the random suffix.
     if not re.search(r"-\d{10,}-[a-z0-9]{6,8}$", experiment_id):

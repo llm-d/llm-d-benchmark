@@ -217,7 +217,7 @@ class DeployRouterStep(Step):
         state = ""
         try:
             state = (json.loads(status.stdout).get("info", {}) or {}).get("status", "")
-        except (ValueError, AttributeError):
+        except ValueError, AttributeError:
             state = ""
 
         if state not in self._WEDGED_HELM_STATES:
@@ -265,5 +265,5 @@ class DeployRouterStep(Step):
             with open(router_file, "w", encoding="utf-8") as f:
                 yaml.dump(content, f, default_flow_style=False)
 
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             pass

@@ -36,9 +36,8 @@ _SECONDS_PER_TOKEN_PER_UNIT = {
     "ms/token": 0.001,
 }
 
-# Result-file glob for benchmark-report v0.2 (the comma is load-bearing --
-# analysis/__init__.py:105-108, cross_treatment.py:197). v0.1 siblings are
-# ignored.
+# Result-file glob for benchmark-report v0.2 (the comma is load-bearing).
+# v0.1 siblings are ignored.
 _AGENT_ANALYSIS_INPUT_GLOB = "**/benchmark_report_v0.2,_*.yaml"
 
 

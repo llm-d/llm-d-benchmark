@@ -133,12 +133,8 @@ RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /w
 ADD workload/harnesses/ /usr/local/bin/
 ADD llmdbenchmark/analysis/scripts/ /tmp/analysis/
 ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
-COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
 
-# Plot modules the analyzers import flat: shipped alongside them, not as a package.
-COPY llmdbenchmark/analysis/per_request_plots.py /usr/local/bin/per_request_plots.py
-COPY llmdbenchmark/analysis/session_plots.py /usr/local/bin/session_plots.py
-COPY llmdbenchmark/analysis/session_metrics.py /usr/local/bin/session_metrics.py
+# Modules the analyzers import flat: shipped alongside them, not as a package.
 COPY llmdbenchmark/analysis/summary.py /usr/local/bin/summary.py
 COPY llmdbenchmark/analysis/metrics_embed.py /usr/local/bin/metrics_embed.py
 

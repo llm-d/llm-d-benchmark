@@ -1,6 +1,6 @@
 # llmdbenchmark.analysis
 
-Post-benchmark result processing and visualization. Converts raw harness output into standardized benchmark report formats (v0.1 and v0.2 YAML) and generates plots for latency, throughput, and resource metrics.
+Post-benchmark result processing. Converts raw harness output into standardized benchmark report formats (v0.1 and v0.2 YAML). To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism).
 
 ## Analysis Pipeline
 
@@ -8,9 +8,7 @@ The entry point is `run_analysis()` in `__init__.py`, which performs these stage
 
 1. **Benchmark report conversion** -- Convert harness-native JSON results into standardized YAML reports (v0.1 and v0.2) using the bundled `benchmark_report` library. Falls back to the `benchmark-report` CLI if the Python API is unavailable.
 2. **Summary extraction** -- Extract the tail of `stdout.log` from a harness-specific marker into `analysis/summary.txt`. Markers are defined per harness (e.g. `"Setup complete, starting benchmarks"` for guidellm, `"Result =="` for vllm-benchmark).
-3. **Harness-specific post-processing** -- For `inference-perf`, runs `inference-perf --analyze` if available on `$PATH`. For `nop`, delegates to the `nop-analyze_results.py` script.
-4. **Metric visualization** -- Generate time-series PNG plots from collected Prometheus metrics in `metrics/raw/*.log` (requires `matplotlib`). Output to `analysis/graphs/`.
-5. **Per-request distribution plots** -- Generate histograms, CDFs, and scatter plots from `per_request_lifecycle_metrics.json`. Output to `analysis/distributions/`.
+3. **Metric embedding** -- Merge the collected Prometheus metrics into the v0.2 reports, clipped per stage.
 
 ### `run_analysis(harness_name, results_dir, context=None) -> str | None`
 
@@ -37,54 +35,13 @@ Output files:
 
 ## Cross-Treatment Comparison (`cross_treatment.py`)
 
-Reads benchmark report v0.2 YAML files from multiple result directories and produces comparison artifacts.
+Reads benchmark report v0.2 YAML files from multiple result directories and produces a comparison table.
 
 ### `generate_cross_treatment_summary(results_dir, output_dir=None, context=None) -> int`
 
 Returns the number of treatments compared. Output goes to `results_dir/cross-treatment-comparison/` by default.
 
-Artifacts produced:
-
-1. **CSV summary table** (`treatment_comparison.csv`) -- One row per treatment with columns for TTFT, TPOT, ITL, E2E latency (mean and P99), output/request/total throughput, total requests, failures, input/output lengths, tool, and rate.
-
-2. **Bar charts** -- For each metric, a bar chart comparing treatments. Multi-stage treatments are aggregated (mean with min/max error bars). The best treatment is highlighted in green. Metrics plotted:
-   - TTFT mean, TPOT mean, ITL mean, E2E mean (lower is better)
-   - Output throughput, request throughput (higher is better)
-   - TTFT P99, TPOT P99, request failures (lower is better)
-
-3. **Scatter/line plots** -- Latency vs throughput curves showing performance degradation under load:
-   - TTFT/TPOT/ITL/E2E mean vs request rate (QPS)
-   - TTFT/TPOT mean vs output throughput
-   - TTFT/TPOT P99 vs request rate
-
-4. **Overlaid CDF plots** -- Per-request distribution CDFs across treatments on the same axes (TTFT, TPOT, ITL, E2E). Each treatment gets its own curve. Reference lines at P50 and P99. Requires `per_request_lifecycle_metrics.json` in at least 2 treatment directories.
-
-Treatment labels are shortened by stripping harness prefixes, experiment IDs, timestamp suffixes, and parallelism indices.
-
-## Metric Visualization (`visualize_metrics.py`)
-
-Generates time-series PNG plots from Prometheus metrics collected during benchmark runs.
-
-### `generate_all_visualizations(metrics_dir, output_dir, context=None) -> int`
-
-Reads `metrics/raw/*.log` files containing Prometheus metrics with timestamps and pod names. Produces PNG plots in the output directory.
-
-Parses metric files with `# Timestamp:` and `# Pod:` comment headers, then standard Prometheus text format lines. Collects time-series data across multiple scrape files.
-
-Requires `matplotlib` (optional dependency; gracefully skipped if absent).
-
-## Per-Request Plots (`per_request_plots.py`)
-
-Generates distribution plots from `per_request_lifecycle_metrics.json`.
-
-### `generate_per_request_plots(results_dir, output_dir=None, context=None) -> int`
-
-Reads the per-request lifecycle data and generates:
-- Histograms of TTFT, TPOT, ITL, E2E latency distributions
-- CDF plots for each metric
-- Scatter plots: TTFT vs input token length, TPOT vs output token length
-
-Output to `analysis/distributions/` by default. Requires `matplotlib`.
+It writes `treatment_comparison.csv`: one row per treatment with columns for TTFT, TPOT, ITL, E2E latency (mean and P99), output/request/total throughput, total requests, failures, input/output lengths, tool, and rate.
 
 ## benchmark_report/ Subdirectory
 
@@ -117,5 +74,4 @@ Analysis is invoked by run step 11 (`AnalyzeResultsStep`) after result collectio
 ## Dependencies
 
 - **Required**: `pydantic`, `PyYAML`, `numpy`
-- **Optional**: `matplotlib` (for all plot generation; gracefully skipped if absent)
 - **Optional**: `pandas` (only for `nop` harness analysis script)

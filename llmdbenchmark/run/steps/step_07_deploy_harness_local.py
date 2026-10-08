@@ -353,7 +353,7 @@ class DeployHarnessLocalStep(Step):
         for spec_file in sorted(stack_path.glob("34_nok8s-containers*")):
             try:
                 spec = yaml.safe_load(spec_file.read_text(encoding="utf-8")) or {}
-            except (OSError, yaml.YAMLError):
+            except OSError, yaml.YAMLError:
                 return {}
             return {
                 "endpoint": str(spec.get("endpoint") or "").rstrip("/"),

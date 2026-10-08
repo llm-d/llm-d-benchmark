@@ -126,7 +126,7 @@ class StandaloneDeployStep(Step):
             with open(deploy_yaml, encoding="utf-8") as f:
                 deploy_config = yaml.safe_load(f)
             deploy_name = deploy_config.get("metadata", {}).get("name", "")
-        except (yaml.YAMLError, OSError):
+        except yaml.YAMLError, OSError:
             pass
 
         if deploy_name and not errors:
@@ -157,7 +157,7 @@ class StandaloneDeployStep(Step):
                 svc_name = svc_config.get("metadata", {}).get("name", "")
                 if svc_name:
                     context.deployed_endpoints[stack_path.name] = svc_name
-            except (yaml.YAMLError, OSError):
+            except yaml.YAMLError, OSError:
                 pass
 
         if context.is_openshift and service_yaml:
@@ -272,7 +272,7 @@ class StandaloneDeployStep(Step):
                         "-n",
                         namespace,
                     )
-        except (yaml.YAMLError, OSError):
+        except yaml.YAMLError, OSError:
             pass
 
     def _check_priority_class(

@@ -106,7 +106,7 @@ class VersionResolver:
                         headers=headers,
                         timeout=30,
                     )
-        except (requests.RequestException, ValueError):
+        except requests.RequestException, ValueError:
             return None
         return self._latest_version_tag(
             [tag for tag in tags if isinstance(tag, str) and tag]
@@ -126,7 +126,7 @@ class VersionResolver:
             response = session.get(realm.group(1), params=params, timeout=30)
             response.raise_for_status()
             payload = response.json()
-        except (requests.RequestException, ValueError):
+        except requests.RequestException, ValueError:
             return None
         return payload.get("token") or payload.get("access_token")
 
@@ -191,7 +191,7 @@ class VersionResolver:
                     parts = lines[-1].split()
                     if len(parts) > 1:
                         return parts[1]
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             pass
         return None
 
@@ -255,7 +255,7 @@ class VersionResolver:
                 for line in result.stdout.strip().split("\n"):
                     if line.startswith("version:"):
                         return line.split(":", 1)[1].strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             pass
         return None
 

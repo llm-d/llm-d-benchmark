@@ -30,9 +30,9 @@ import sys
 import tarfile
 
 try:
-    import zstandard
+    from compression import zstd
 except ImportError:
-    zstandard = None
+    zstd = None
 
 # Reuse the dual-pods-controller log parser (workload/harnesses) so hit-rate
 # classification matches the authoritative FMA actuation logic. The script runs
@@ -88,13 +88,13 @@ def _read_from_archives(run_root, filename):
     ``_find_one``. Self-contained on purpose: this script runs in CI from a
     GCS download, with no llmdbenchmark package importable.
     """
-    if zstandard is None:
+    if zstd is None:
         return None
     want = os.path.basename(filename)
     for archive in reversed(_archives(run_root)):
         try:
             with open(archive, "rb") as raw:
-                with zstandard.ZstdDecompressor().stream_reader(raw) as stream:
+                with zstd.ZstdFile(raw, mode="rb") as stream:
                     with tarfile.open(fileobj=stream, mode="r|") as tar:
                         for member in tar:
                             if member.isfile() and (
@@ -103,7 +103,7 @@ def _read_from_archives(run_root, filename):
                                 handle = tar.extractfile(member)
                                 if handle is not None:
                                     return handle.read()
-        except (tarfile.TarError, OSError, zstandard.ZstdError):
+        except (tarfile.TarError, OSError, zstd.ZstdError):
             continue
     return None
 

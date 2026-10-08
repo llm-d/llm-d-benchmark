@@ -116,12 +116,6 @@ repos:
         # new file added alongside these still gets scanned.
         exclude: |
           (?x)^(
-            # Docs notebook: cell outputs contain base64-encoded
-            # matplotlib PNG figures. Can't use inline pragmas (JSON,
-            # no comments) and clearing outputs isn't an option
-            # because the rendered figures are the point.
-            docs/analysis/analysis\.ipynb
-            |
             # BenchmarkReport v0.2 example: the single hit is a
             # synthetic storage path with a unix timestamp and run
             # identifier. Illustrative reference, not a credential.

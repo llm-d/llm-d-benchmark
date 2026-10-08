@@ -44,7 +44,7 @@ However, the scripts can be executed by **namespace-level admin** users, as long
 
 ### Install
 
-The install script supports both [uv](https://docs.astral.sh/uv/) and the standard `python3 -m venv` for virtual environment creation. When run interactively, it will prompt you to choose; in non-interactive mode (e.g. curl pipe), it auto-selects uv if your system Python is missing or older than 3.11. You can also pass `--uv` or `--no-uv` to skip the prompt.
+The install script supports both [uv](https://docs.astral.sh/uv/) and the standard `python3 -m venv` for virtual environment creation. When run interactively, it will prompt you to choose; in non-interactive mode (e.g. curl pipe), it auto-selects uv if your system Python is missing or older than 3.14. You can also pass `--uv` or `--no-uv` to skip the prompt.
 
 **Quick install (one-liner):**
 
@@ -72,7 +72,7 @@ curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.s
   LLMDBENCH_BRANCH=main bash
 ```
 
-The install script auto-detects if the repo is present -- if not, it clones it first. It creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
+The install script auto-detects if the repo is present -- if not, it clones it first. It creates a virtualenv, validates system tools (kubectl, helm, Python 3.14+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
 
 > [!TIP]
 > The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
@@ -85,7 +85,7 @@ Two supported entry points depending on what you have access to:
 
 Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind` scenario that CI runs on every PR, so if it works locally it works in CI.
 
-- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
+- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.14+
 - **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md) (or try the simpler [EPP+KEDA Saturation Autoscaling](docs/workload-variant-autoscaler.md) guide)
 
 **🚀 Access to Compute cluster with Accelerators - full pipeline**
@@ -333,7 +333,7 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 
 ### System Requirements
 
-- **Python 3.11+**
+- **Python 3.14+**
 - **kubectl** -- Kubernetes CLI
 - **helm** (>= 4.x) -- Helm package manager
 - **curl**, **git** -- Standard system tools
@@ -373,7 +373,7 @@ source .venv/bin/activate
 The install script:
 
 1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
-2. Validates Python 3.11+ and pip
+2. Validates Python 3.14+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile)
 4. Installs the `helm-diff` plugin (required by helmfile)
 5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
@@ -411,7 +411,7 @@ llmdbenchmark --version
 | `--quiet-plan` / `--no-quiet-plan` | `LLMDBENCH_QUIET_PLAN` | Suppress the per-file plan-rendering narration on the console -- the `Rendered: <file>` lines, image overrides and per-stack banners -- replacing it with a one-line summary of what was rendered and where. **On by default** for `standup`, `smoketest`, `teardown`, `run` and `experiment`, where the render is an implicit prelude; **off by default** for `plan`, whose output it is. The detail is never lost: it is written to `<workspace>/logs/` at `DEBUG` either way. `--verbose` overrides this and always shows the full narration. See [Quieting the plan-rendering output](#quieting-the-plan-rendering-output). |
 | `--run-description TEXT` | `LLMDBENCH_DESCRIPTION_TEXT` | Human-readable label for the run, recorded as `run.description` in the benchmark report. Defaults to `<model> [<experiment id>]`. Also settable as `description.text` under a scenario's `common:` (or top-level `shared:`) block, or per treatment in an experiment. |
 | `--run-keywords LIST` | `LLMDBENCH_DESCRIPTION_KEYWORDS` | Comma-separated tags recorded as `run.keywords`. Never auto-populated; omitted entirely when unset. Also settable as `description.keywords` in the same places. |
-| `--compress` / `--no-compress` | `LLMDBENCH_COMPRESS` | Compress output (default: on). Each result set is compressed on the PVC before collection, so the archive rather than the raw tree crosses the tunnel; nothing is compressed on the driver. benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and plots stay plain at the paths an uncompressed run writes them to; everything else lives in `workspace.tar.zst`. `--no-compress` keeps a fully plain tree. See [Compressed output](#compressed-output). |
+| `--compress` / `--no-compress` | `LLMDBENCH_COMPRESS` | Compress output (default: on). Each result set is compressed on the PVC before collection, so the archive rather than the raw tree crosses the tunnel; nothing is compressed on the driver. benchmark reports, `run_metadata.yaml` and `experiment-summary.yaml` stay plain at the paths an uncompressed run writes them to; everything else lives in `workspace.tar.zst`. `--no-compress` keeps a fully plain tree. See [Compressed output](#compressed-output). |
 | `--compress-level N` | `LLMDBENCH_COMPRESS_LEVEL` | zstd level (default: 10, the speed/size knee). Raise for archival runs: level 16 costs roughly an order of magnitude more wall clock, for a size gain that measured between 6% and 12% on real result data. |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
 | `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. Available on every subcommand that renders templates. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile — the two can be combined.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set). |
@@ -608,7 +608,7 @@ Output is compressed by default (`--no-compress` opts out). A result set is domi
 native harness JSON -- `per_request_lifecycle_metrics.json` alone reaches ~1.5 GB per run --
 and the pipeline is **generate, compress, copy**:
 
-* the harness pod produces every per-result-set artifact (reports, summaries, plots,
+* the harness pod produces every per-result-set artifact (reports, summaries,
   stage-clipped metrics) *before* anything is compressed;
 * each result set is then compressed in place **on the PVC**, so the archive rather than the
   raw tree crosses the apiserver exec tunnel. This is a transfer speedup as much as a storage
@@ -626,25 +626,21 @@ touching the archive:
 ├── latest -> <user>-<timestamp>/
 └── <user>-<timestamp>/
     ├── plan/<scenario>/                       # teardown reads it live
-    ├── analysis/<experiment_id>/
-    │   └── distributions/*.png                # plain
     └── results/<experiment_id>/
         ├── benchmark_report_v0.2,_*.yaml      # plain
         ├── run_metadata.yaml                  # plain
         └── workspace.tar.zst                  # everything else
 ```
 
-Four keep-plain entries, each earning it: the benchmark reports and `run_metadata.yaml` are
-what `results_store` globs off the live filesystem to resolve a run's uid/model/hardware,
-`experiment-summary.yaml` is a DoE run's only index, and the plots are the artifact people
-open (already-compressed bytes, so archiving them buys nothing).
+Three keep-plain entries, each earning it: the benchmark reports and `run_metadata.yaml` are
+what `results_store` globs off the live filesystem to resolve a run's uid/model/hardware, and
+`experiment-summary.yaml` is a DoE run's only index.
 
 Everything else -- the per-request JSON, logs including the raw Prometheus snapshots, metric
 summaries, CSV, HTML, traces -- lives in `workspace.tar.zst`, and every component that reads
-one of those goes through the archive rather than requiring a plain copy: the cross-treatment
-overlays, summary extraction, the `eval-containers` roll-up and per-task reports, the failure
-validator, and the FMA comparison table. CI's log-dump steps read through
-`util/dump_result_file.sh`.
+one of those goes through the archive rather than requiring a plain copy: summary extraction,
+the `eval-containers` roll-up and per-task reports, the failure validator, and the FMA
+comparison table. CI's log-dump steps read through `util/dump_result_file.sh`.
 
 Inspect an archive without expanding it:
 
@@ -866,7 +862,7 @@ Results are saved in the native format of each harness, as well as a universal B
 
 ### [Analysis](docs/analysis.md)
 
-The analysis pipeline generates per-request distribution plots, cross-treatment comparison tables and charts, and Prometheus metric visualizations. Analysis runs both inside the harness container (automatically) and locally via `--analyze`. For interactive exploration, a Jupyter notebook is also available at [`docs/analysis/README.md`](docs/analysis/README.md).
+The analysis pipeline builds the benchmark reports, embeds the Prometheus metrics into them, and writes a cross-treatment comparison table. Analysis runs both inside the harness container (automatically) and locally via `--analyze`. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which standup can deploy in-cluster.
 
 ## Dependencies
 

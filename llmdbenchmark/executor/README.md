@@ -265,7 +265,7 @@ OPTIONAL_TOOLS = ["oc"]
 def check_system_dependencies(
     required_only=False, extra_required=None
 ) -> DependencyCheckResult: ...
-def check_python_version() -> tuple[bool, str]: ...  # Requires Python >= 3.11
+def check_python_version() -> tuple[bool, str]: ...  # Requires Python >= 3.14
 ```
 
 `DependencyCheckResult` provides `has_missing_required` and a `summary()` method.

@@ -33,9 +33,4 @@ echo "Results data conversion completed successfully."
 
 mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/analysis"
 python3 /usr/local/bin/extract_summary.py "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
-# Outside the metrics guard: these read the harness result files, not the
-# Prometheus snapshots, so they apply whether or not metrics were collected.
-echo "Generating per-request and session plots..."
-python3 /usr/local/bin/generate_plots.py "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" 2>&1 | tee -a "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log" || true
-
 exit $?

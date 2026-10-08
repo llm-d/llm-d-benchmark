@@ -31,7 +31,6 @@ accurate to the current codebase.
   - [How Steps Share State](#how-steps-share-state)
 - [5. How to Add a New Analysis Module](#5-how-to-add-a-new-analysis-module)
   - [Where Analysis Code Lives](#where-analysis-code-lives)
-  - [How to Add a New Plot Type](#how-to-add-a-new-plot-type)
   - [How to Add a New Metric to Cross-Treatment Comparison](#how-to-add-a-new-metric-to-cross-treatment-comparison)
   - [Analysis Pipeline Chain](#analysis-pipeline-chain)
 - [6. How to Add a New Harness](#6-how-to-add-a-new-harness)
@@ -709,67 +708,11 @@ All analysis code is in `llmdbenchmark/analysis/`:
 ```
 llmdbenchmark/analysis/
     __init__.py              # Main run_analysis() entry point
-    cross_treatment.py       # Cross-treatment comparison (CSV + plots)
-    per_request_plots.py     # Per-request distribution plots
-    visualize_metrics.py     # Prometheus metrics visualization
+    cross_treatment.py       # Cross-treatment comparison (CSV)
     benchmark_report/        # Benchmark report format converters
         native_to_br0_1.py   # Convert harness output to BR v0.1
         native_to_br0_2.py   # Convert harness output to BR v0.2
         ...
-```
-
-### How to Add a New Plot Type
-
-The analysis pipeline in `__init__.py` calls plotting functions in sequence.
-To add a new plot:
-
-1. Create a new module, e.g., `llmdbenchmark/analysis/my_custom_plots.py`:
-
-```python
-from __future__ import annotations
-from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from llmdbenchmark.executor.context import ExecutionContext
-
-
-def generate_my_plots(
-    results_dir: Path,
-    output_dir: Path | None = None,
-    context: "ExecutionContext | None" = None,
-) -> int:
-    """Generate custom plots. Returns the number of plots generated."""
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except ImportError:
-        return 0
-
-    if output_dir is None:
-        output_dir = results_dir / "analysis" / "custom"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Load data, generate plots, save PNGs...
-    # Return the count of generated plots
-    return 0
-```
-
-2. Call it from `run_analysis()` in `llmdbenchmark/analysis/__init__.py`. Add a
-   new section after the existing plot generation steps:
-
-```python
-# --- 6. Generate custom plots ---
-from llmdbenchmark.analysis.my_custom_plots import generate_my_plots
-
-try:
-    count = generate_my_plots(results_dir, context=context)
-    if count:
-        _log(context, f"Generated {count} custom plot(s)")
-except Exception as exc:
-    _log(context, f"Custom plot generation failed: {exc}", warning=True)
 ```
 
 ### How to Add a New Metric to Cross-Treatment Comparison
@@ -789,16 +732,6 @@ METRICS_OF_INTEREST = [
 ]
 ```
 
-To also generate a comparison bar chart for it, add an entry to the `plot_specs`
-list in `_generate_comparison_plots()`:
-
-```python
-plot_specs = [
-    # ... existing specs ...
-    ("my_metric_value", "My Custom Metric", "unit", True),  # True = higher is better
-]
-```
-
 ### Analysis Pipeline Chain
 
 The analysis pipeline runs in two stages:
@@ -806,16 +739,12 @@ The analysis pipeline runs in two stages:
 1. **Per-treatment analysis** (`run_analysis()` in `__init__.py`):
    - Converts raw harness output to benchmark report v0.1 and v0.2 YAML
    - Extracts summary from stdout.log
-   - Runs harness-specific post-processing (e.g., `inference-perf --analyze`)
-   - Generates metric time-series plots from Prometheus data
-   - Generates per-request distribution plots (histograms, CDFs, scatter)
+   - Embeds the collected Prometheus metrics into the v0.2 reports
 
 2. **Cross-treatment analysis** (`generate_cross_treatment_summary()` in
    `cross_treatment.py`):
    - Reads benchmark report v0.2 files from all treatment subdirectories
    - Produces a CSV summary table (one row per treatment)
-   - Generates comparison bar charts and scatter/line plots
-   - Generates overlaid CDF plots comparing distributions across treatments
 
 ---
 

@@ -4,7 +4,7 @@ This document describes the metrics collection feature, which captures system an
 
 ## Overview
 
-The metrics collection system automatically gathers performance and resource utilization metrics from deployed pods during benchmark execution. These metrics are integrated into the benchmark report and can be visualized as time series graphs.
+The metrics collection system automatically gathers performance and resource utilization metrics from deployed pods during benchmark execution. These metrics are integrated into the benchmark report, where [llm-d-prism](https://github.com/llm-d/llm-d-prism) can visualize them.
 
 ## Architecture
 
@@ -26,21 +26,19 @@ Harness Pod (in-cluster)
             metrics_summary.json   # aggregated statistics per pod per metric
             replica_status.json    # desired vs ready vs available replicas
             pod_startup_times.json # creation-to-Ready time per pod per node
-          graphs/                  # time-series PNG plots (generated post-run)
 ```
 
 ### Data Flow
 
 1. **Collection** (`collect_metrics.sh`): Discovers vLLM pods via label selectors, scrapes Prometheus `/metrics` endpoints every 15s via direct HTTP to pod IPs. Also collects one-time infrastructure snapshots (replica counts, startup times).
 2. **Processing** (`process_metrics.py`): Parses raw `.log` files, aggregates per-pod statistics (mean, stddev, min, max, p25/p50/p75/p90/p95/p99). Computes ratio metrics (e.g., prefix cache hit rate).
-3. **Visualization** (`visualize_metrics.py`): Generates time-series PNG graphs from raw metric files for each tracked metric.
-4. **Report Integration** (`metrics_processor.py`): Loads processed summaries and feeds them into the benchmark report under `results.observability`.
+3. **Report Integration** (`metrics_processor.py`): Loads processed summaries and feeds them into the benchmark report under `results.observability`.
 
 ## Configuration
 
 Metrics collection can be enabled via CLI (`llmdbenchmark run --monitoring`) or via scenario config. The CLI flag sets `metricsScrapeEnabled: true` at runtime, overriding the scenario default.
 
-The metrics retained for processing, visualization, and benchmark-report
+The metrics retained for processing and benchmark-report
 observability are configured in one place:
 
 ```yaml
@@ -88,15 +86,13 @@ Only pods with `status.phase=Running` are scraped.
 6. **Replica Status** - Desired vs ready vs available replica counts per Deployment/StatefulSet, grouped by model and role
 7. **Pod Startup Times** - Creation-to-Ready duration per pod, per node, grouped by model and role
 8. **EPP Log-Derived Metrics** - Dispatch latency, endpoint scores, request distribution, plugin latencies, saturation config from EPP pod logs
-9. **Time-Series Visualization** - Static PNG graphs generated after benchmark completion
-10. **Benchmark Report Integration** - All metrics surfaced in `results.observability` section
-11. **RBAC Setup** - Automatic ServiceAccount creation with required permissions
-12. **Metrics Storage** - Raw and processed metrics saved to results directory
+9. **Benchmark Report Integration** - All metrics surfaced in `results.observability` section
+10. **RBAC Setup** - Automatic ServiceAccount creation with required permissions
+11. **Metrics Storage** - Raw and processed metrics saved to results directory
 
 ### Not Yet Implemented
 
 1. **Real-time Visualization** - Live metric streaming during benchmark execution
-   - Currently generates static graphs after benchmark completion
 
 2. **Custom Metric Queries** - User-defined Prometheus queries
    - Currently collects predefined set of metrics
@@ -216,5 +212,4 @@ Extracted from EPP pod structured JSON logs by `process_epp_logs.py`:
 | `workload/harnesses/collect_metrics.sh` | Main collection driver (pod discovery, scraping, infrastructure snapshots) |
 | `workload/harnesses/process_metrics.py` | Raw metric aggregation into `metrics_summary.json` |
 | `workload/harnesses/process_epp_logs.py` | EPP log parsing into `epp_metrics_summary.json` |
-| `llmdbenchmark/analysis/visualize_metrics.py` | Time-series PNG graph generation |
 | `benchmark-report/llmd_benchmark_report/metrics_processor.py` | Benchmark report integration |

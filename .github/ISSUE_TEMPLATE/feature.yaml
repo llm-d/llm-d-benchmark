@@ -19,7 +19,7 @@ body:
         - Scenarios
         - Harnesses
         - Profiles
-        - Analysis/Plotting
+        - Analysis
         - Configuration Explorer
       default: 0
     validations:

@@ -80,7 +80,7 @@ class UninstallHelmStep(Step):
             try:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = yaml.safe_load(fh) or {}
-            except (OSError, yaml.YAMLError):
+            except OSError, yaml.YAMLError:
                 continue
             if (cfg.get("wva", {}) or {}).get("enabled", False):
                 return True
@@ -104,7 +104,7 @@ class UninstallHelmStep(Step):
             try:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = yaml.safe_load(fh) or {}
-            except (OSError, yaml.YAMLError):
+            except OSError, yaml.YAMLError:
                 continue
             guide_name = (cfg.get("kustomize", {}) or {}).get("guideName", "")
             if guide_name == "fast-model-actuation" or guide_name.startswith(
@@ -502,7 +502,7 @@ class UninstallHelmStep(Step):
             try:
                 with open(cfg_file, encoding="utf-8") as fh:
                     cfg = yaml.safe_load(fh) or {}
-            except (OSError, yaml.YAMLError):
+            except OSError, yaml.YAMLError:
                 continue
             wva_cfg = cfg.get("wva", {}) or {}
             if not wva_cfg.get("enabled", False):

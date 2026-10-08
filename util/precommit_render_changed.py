@@ -111,7 +111,7 @@ def _get_staged_files(root: Path) -> list[str]:
             text=True,
             check=False,
         )
-    except (OSError, FileNotFoundError):
+    except OSError, FileNotFoundError:
         return []
     if proc.returncode != 0:
         return []

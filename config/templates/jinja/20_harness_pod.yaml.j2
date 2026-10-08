@@ -87,8 +87,6 @@ spec:
       value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache/huggingface"
     - name: XDG_CACHE_HOME
       value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache"
-    - name: MPLCONFIGDIR
-      value: "{{ harness.resultsDirPrefix | default('/requests') }}/.cache/matplotlib"
 {% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"

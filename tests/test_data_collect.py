@@ -219,8 +219,8 @@ def test_remote_reads_match_local_ones(tmp_path, compressed) -> None:
     [
         (False, None, "cz", "r|gz"),
         (True, None, "cf", "r|"),
-        (False, ("*.png",), "cz", "r|gz"),
-        (True, ("*.png",), "cz", "r|gz"),
+        (False, ("benchmark_report*.yaml",), "cz", "r|gz"),
+        (True, ("benchmark_report*.yaml",), "cz", "r|gz"),
     ],
 )
 def test_remote_tar_flags_and_extraction_mode_agree(

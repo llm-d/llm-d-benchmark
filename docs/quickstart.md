@@ -49,7 +49,7 @@ You need these installed before starting:
 | Tool | Minimum | Check |
 |---|---|---|
 | Docker or Podman | any recent version | `docker info` or `podman info` |
-| Python | 3.11+ | `python3 --version` |
+| Python | 3.14+ | `python3 --version` |
 | `git` | any | `git --version` |
 | Container runtime resources | **4 CPUs / 8 GiB RAM** | `docker info \| grep -E "CPUs\|Total Memory"` |
 
@@ -188,9 +188,9 @@ What to expect:
 - A harness pod is launched in `$NS`.
 - It fires a burst of requests against the gateway.
 - Per-request metrics are collected into a results directory printed at the end of the run.
-- The analysis phase generates summary CSVs and plots in that same directory.
+- The analysis phase generates benchmark reports and summary CSVs in that same directory.
 
-The results directory path is printed in the final log line - something like `/tmp/<user>-<timestamp>/<phase>/<stack>/results/`. You can open the plots with any image viewer or the CSVs with any spreadsheet.
+The results directory path is printed in the final log line - something like `/tmp/<user>-<timestamp>/<phase>/<stack>/results/`. You can open the CSVs with any spreadsheet, or view the reports with [llm-d-prism](https://github.com/llm-d/llm-d-prism).
 
 ## 5. Alternate path: standalone deployment
 

@@ -191,7 +191,7 @@ class EppKedaSaturationSmoketestMixin:
                                 )
                             )
                             return
-                except (json.JSONDecodeError, KeyError, AttributeError):
+                except json.JSONDecodeError, KeyError, AttributeError:
                     pass
 
             time.sleep(_HPA_TARGETS_POLL_SECS)

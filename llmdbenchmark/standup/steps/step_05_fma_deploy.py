@@ -321,7 +321,7 @@ class FMADeployStep(Step):
             node_committed = committed.get(name, {"cpu_m": 0, "gpu": 0})
             try:
                 alloc_gpu = int(allocatable.get(gpu_resource, 0))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
             # (a) single GPU type; (b) GPUs actually FREE = allocatable minus
@@ -475,7 +475,7 @@ class FMADeployStep(Step):
                 gpu_val = requests.get(gpu_resource, limits.get(gpu_resource))
                 try:
                     acc["gpu"] += int(gpu_val) if gpu_val is not None else 0
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
         return committed
 

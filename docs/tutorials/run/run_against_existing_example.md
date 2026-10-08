@@ -210,7 +210,7 @@ Wait for test completion... ⏳ ... ⏳ ... ⏳ ...
 
 The results would be stored under the given _Work Directory_.
 * `results` holds the numeric results and logs (each experiment will have a unique sub-directory)
-* `analysis` holds the plots (each experiment will have a unique sub-directory)
+* `analysis` holds the analysis output (each experiment will have a unique sub-directory)
 * Other directories hold detailed information on the last run (e.g., the `.yaml` files used).
 
 The results are not lost if the local `run.sh` times out or the connection to cluster is lost.

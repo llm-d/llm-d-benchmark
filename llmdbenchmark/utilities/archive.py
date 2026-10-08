@@ -16,20 +16,19 @@ import sys
 import tarfile
 from pathlib import Path
 
-import zstandard
+from compression import zstd
 
 DEFAULT_LEVEL = 10
 
-# Left plain at any depth: results_store globs the reports and run_metadata.yaml off
-# the live filesystem, and plots are already-compressed bytes. experiment-summary.yaml
-# is a DoE run's index; it lives above any directory this runs in, so the entry only
-# guards against that changing. Patterns must mean the same to ``find -name`` and to
-# fnmatch/rglob, which disagree on character classes and '**' -- keep to plain '*'.
+# Left plain at the top of a result set: results_store globs the reports and
+# run_metadata.yaml off the live filesystem. experiment-summary.yaml is a DoE run's
+# index; it lives above any directory this runs in, so the entry only guards against
+# that changing. Patterns must mean the same to ``find -name`` and to fnmatch/rglob,
+# which disagree on character classes and '**' -- keep to plain '*'.
 KEEP_PLAIN = (
     "benchmark_report*.yaml",
     "run_metadata.yaml",
     "experiment-summary.yaml",
-    "*.png",
 )
 
 REMOTE_ARCHIVE_NAME = "workspace.tar.zst"
@@ -112,7 +111,6 @@ trap 'rm -f -- "$pack" "$list" "$skip"' EXIT
 # same './name' lines, and -print also works on BSD find (macOS test runs).
 find . -mindepth 1 -maxdepth 1 -type f \( {keep_tests} \
     -o -name '.pack.*' -o -name '.list.*' \) -print > "$skip"
-find . -mindepth 1 -type f \( {nested_finds} \) -print >> "$skip"
 
 # --exclude={archive} as well as the skip list: the list is a snapshot taken above,
 # so a concurrent run creating the archive between then and now would make it a member
@@ -128,32 +126,20 @@ zstd -t {archive}
 zstd -dc {archive} | tar tf - > "$list"
 [ -s "$list" ]
 
-# Individually, not `rm -rf` on the parent, which would take the excluded plots.
-# IFS= : the default strips trailing space, resolving 'latency.png ' to the keeper
-# 'latency.png' and deleting bytes held nowhere else.
+# IFS= : the default strips trailing space, resolving 'run_metadata.yaml ' to the
+# keeper 'run_metadata.yaml' and deleting bytes held nowhere else.
 while IFS= read -r member; do
     if [ -f "$member" ]; then
         rm -f -- "$member"
     fi
 done < "$list"
 
-find . -mindepth 1 -depth -type d -empty -delete
-
 sed -e 's#^\./##' -e 's#/.*##' "$list" | sort -u | while IFS= read -r top; do
     # '..' as well as '.': a member named ../x would resolve $top to the parent,
     # which on a PVC holds every other result set. tar rooted at '.' cannot emit one,
     # so this only closes the gap if that ever stops being true.
     if [ -n "$top" ] && [ "$top" != '.' ] && [ "$top" != '..' ]; then
-        # Exit status, not just output: a failing find prints nothing, and reading
-        # that as "no keepers" deletes what was deliberately left out of the archive.
-        # 2>/dev/null: the empty-dir sweep above already removed fully-archived
-        # dirs, and one benign "No such file" per entry crowds the truncated warning
-        # the caller logs. The exit status still gates the rm -rf.
-        if keepers=$(find "./$top" \( {nested_finds} \) -print -quit 2>/dev/null); then
-            if [ -z "$keepers" ]; then
-                rm -rf -- "./$top"
-            fi
-        fi
+        rm -rf -- "./$top"
     fi
 done
 """
@@ -172,13 +158,10 @@ def remote_compress_script(remote_dir: str, level: int = DEFAULT_LEVEL) -> str:
     keep_tests = " -o ".join(
         f"-name '{pattern}'" for pattern in (*KEEP_PLAIN, REMOTE_ARCHIVE_NAME)
     )
-    # nested_finds omits the archive itself: it only ever exists at depth 1.
-    nested_finds = " -o ".join(f"-name '{pattern}'" for pattern in KEEP_PLAIN)
     return _REMOTE_SCRIPT.format(
         quoted_dir=shlex.quote(remote_dir),
         archive=REMOTE_ARCHIVE_NAME,
         keep_tests=keep_tests,
-        nested_finds=nested_finds,
         level=level,
     )
 
@@ -198,7 +181,7 @@ class _ZstdSource:
     def __init__(self, stdout, stderr=b"", upstream=None, closefd=True):
         self._raw = stdout
         self._closefd = closefd
-        self.stdout = zstandard.ZstdDecompressor().stream_reader(stdout)
+        self.stdout = zstd.ZstdFile(stdout, mode="rb")
         self.stderr = io.BytesIO(stderr)
         if upstream is not None:
             self.upstream = upstream
@@ -324,8 +307,7 @@ def _glob_match(relative: str, pattern: str) -> bool:
 
     fnmatch's ``*`` crosses ``/``, so it would fold a nested file into a match the
     plain-filesystem side excludes -- the same glob answering differently depending
-    on whether the tree happens to be compressed. (``PurePath.full_match`` is 3.13+;
-    the floor here is 3.11.)
+    on whether the tree happens to be compressed.
     """
     segments = pattern.split("**/")
     expr = "(?:[^/]+/)*".join(
@@ -352,7 +334,7 @@ def _archives_covering(root: Path) -> list[tuple[Path, str]]:
 
 
 # ZstdError is not a RuntimeError, so it needs listing here.
-_UNREADABLE = (RuntimeError, tarfile.TarError, OSError, zstandard.ZstdError)
+_UNREADABLE = (RuntimeError, tarfile.TarError, OSError, zstd.ZstdError)
 
 
 def _warn_unreadable(archive: Path, exc: BaseException) -> None:

@@ -28,7 +28,7 @@ def stacks_enabling_keda(
         try:
             with open(cfg_file, encoding="utf-8") as fh:
                 cfg = yaml.safe_load(fh) or {}
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             continue
         if cfg.get("keda", {}).get("scaledObjects"):
             pairs.append((stack_path, cfg))
@@ -54,7 +54,7 @@ def install_keda_for_namespace(
     try:
         with open(cfg_file, encoding="utf-8") as fh:
             cfg = yaml.safe_load(fh) or {}
-    except (OSError, yaml.YAMLError):
+    except OSError, yaml.YAMLError:
         return
 
     prometheus_cfg = cfg.get("keda", {}).get("prometheus", {})

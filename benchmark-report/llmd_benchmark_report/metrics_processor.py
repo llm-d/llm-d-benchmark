@@ -185,126 +185,105 @@ def _embed_time_series_specs() -> dict[str, dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Metrics that have corresponding graphs in metrics/graphs/
-# Maps prometheus metric name -> (report key, units string, graph filename)
+# Known metrics
+# Maps prometheus metric name -> (report key, units string)
 # ---------------------------------------------------------------------------
-GRAPHED_METRICS: dict[str, tuple[str, str, str]] = {
+KNOWN_METRICS: dict[str, tuple[str, str]] = {
     # Cache
     "vllm:kv_cache_usage_perc": (
         "vllm_kv_cache_usage_perc",
         "fraction",
-        "vllm_kv_cache_usage_perc.png",
     ),
     # Queue / scheduling
     "vllm:num_requests_running": (
         "vllm_num_requests_running",
         "count",
-        "vllm_num_requests_running.png",
     ),
     "vllm:num_requests_waiting": (
         "vllm_num_requests_waiting",
         "count",
-        "vllm_num_requests_waiting.png",
     ),
     "vllm:num_preemptions_total": (
         "vllm_num_preemptions_total",
         "count",
-        "vllm_num_preemptions_total.png",
     ),
     # Prefix cache counters
     "vllm:prefix_cache_hits_total": (
         "vllm_prefix_cache_hits_total",
         "tokens",
-        "vllm_prefix_cache_hits_total.png",
     ),
     "vllm:prefix_cache_queries_total": (
         "vllm_prefix_cache_queries_total",
         "tokens",
-        "vllm_prefix_cache_queries_total.png",
     ),
     "vllm:external_prefix_cache_hits_total": (
         "vllm_external_prefix_cache_hits_total",
         "tokens",
-        "vllm_external_prefix_cache_hits_total.png",
     ),
     "vllm:external_prefix_cache_queries_total": (
         "vllm_external_prefix_cache_queries_total",
         "tokens",
-        "vllm_external_prefix_cache_queries_total.png",
     ),
     # Computed ratio metrics (produced by process_metrics.py)
     "vllm:prefix_cache_hit_rate": (
         "vllm_prefix_cache_hit_rate",
         "percent",
-        "vllm_prefix_cache_hit_rate.png",
     ),
     "vllm:external_prefix_cache_hit_rate": (
         "vllm_external_prefix_cache_hit_rate",
         "percent",
-        "vllm_external_prefix_cache_hit_rate.png",
     ),
     # NIXL KV transfer
     "vllm:nixl_xfer_time_seconds_sum": (
         "vllm_nixl_xfer_time_seconds_sum",
         "seconds",
-        "vllm_nixl_xfer_time_seconds_sum.png",
     ),
     "vllm:nixl_xfer_time_seconds_count": (
         "vllm_nixl_xfer_time_seconds_count",
         "count",
-        "vllm_nixl_xfer_time_seconds_count.png",
     ),
     "vllm:nixl_bytes_transferred_sum": (
         "vllm_nixl_bytes_transferred_sum",
         "bytes",
-        "vllm_nixl_bytes_transferred_sum.png",
     ),
     "vllm:nixl_bytes_transferred_count": (
         "vllm_nixl_bytes_transferred_count",
         "count",
-        "vllm_nixl_bytes_transferred_count.png",
     ),
     # EPP (inference scheduler) Prometheus metrics — pool-level gauges
     "inference_pool_average_kv_cache_utilization": (
         "epp_pool_avg_kv_cache_utilization",
         "fraction",
-        "epp_pool_avg_kv_cache_utilization.png",
     ),
     "inference_pool_average_queue_size": (
         "epp_pool_avg_queue_size",
         "count",
-        "epp_pool_avg_queue_size.png",
     ),
     "inference_pool_average_running_requests": (
         "epp_pool_avg_running_requests",
         "count",
-        "epp_pool_avg_running_requests.png",
     ),
     "inference_pool_ready_pods": (
         "epp_pool_ready_pods",
         "count",
-        "epp_pool_ready_pods.png",
     ),
 }
 
-# EPP log-derived metrics: summary_key -> (report_key, default_units, graph_file, per_component)
-_EPP_METRICS: dict[str, tuple[str, str, str, bool]] = {
+# EPP log-derived metrics: summary_key -> (report_key, default_units, per_component)
+_EPP_METRICS: dict[str, tuple[str, str, bool]] = {
     "dispatch_latency": (
         "epp_dispatch_latency",
         "seconds",
-        "epp_dispatch_latency.png",
         False,
     ),
     "endpoint_scores": (
         "epp_endpoint_scores",
         "score",
-        "epp_endpoint_scores.png",
         True,
     ),
     "request_distribution": (
         "epp_request_distribution",
         "count",
-        "epp_request_distribution.png",
         True,
     ),
 }
@@ -340,25 +319,15 @@ def _load_json(filepath: str) -> dict[str, Any]:
         return json.load(f)
 
 
-def _make_stats_dict(
-    metric_data: dict[str, Any], units: str, graph_path: str | None = None
-) -> dict[str, Any]:
+def _make_stats_dict(metric_data: dict[str, Any], units: str) -> dict[str, Any]:
     """Build a statistics dict from a metric_data entry."""
-    stats: dict[str, Any] = {
+    return {
         "mean": metric_data.get("mean", 0.0),
         "p50": metric_data.get("p50", 0.0),
         "p99": metric_data.get("p99", 0.0),
         "stddev": metric_data.get("stddev", 0.0),
         "units": units,
     }
-    if graph_path:
-        stats["graph_path"] = graph_path
-    return stats
-
-
-def _graph_path(graph_file: str) -> str:
-    """Return the relative graph path for a graph filename."""
-    return f"metrics/graphs/{graph_file}"
 
 
 def _load_time_series_metrics(metrics_dir: str) -> list[str]:
@@ -367,16 +336,16 @@ def _load_time_series_metrics(metrics_dir: str) -> list[str]:
         os.path.join(metrics_dir, "processed", "time_series_metrics.json")
     )
     if not isinstance(value, list):
-        return list(GRAPHED_METRICS)
+        return list(KNOWN_METRICS)
     return [name for name in value if isinstance(name, str) and name]
 
 
 def _metric_metadata(
     prom_name: str, metrics_summary: dict[str, Any]
-) -> tuple[str, str, str]:
+) -> tuple[str, str]:
     """Return report metadata, deriving sensible values for custom metrics."""
-    if prom_name in GRAPHED_METRICS:
-        return GRAPHED_METRICS[prom_name]
+    if prom_name in KNOWN_METRICS:
+        return KNOWN_METRICS[prom_name]
 
     safe_name = re.sub(r"[^a-zA-Z0-9_]+", "_", prom_name).strip("_")
     units = ""
@@ -387,7 +356,7 @@ def _metric_metadata(
         if metric_data:
             units = metric_data.get("unit", "")
             break
-    return safe_name, units, f"{safe_name}.png"
+    return safe_name, units
 
 
 def _build_embedded_time_series(
@@ -511,15 +480,13 @@ def _build_per_metric_entries(
         for prom_name in metric_names:
             if prom_name not in metrics:
                 continue
-            report_key, units, graph_file = _metric_metadata(prom_name, metrics_summary)
+            report_key, units = _metric_metadata(prom_name, metrics_summary)
 
             component_entry = {
                 "component_id": comp_id,
                 "pod": pod_name,
                 "role": role,
-                "statistics": _make_stats_dict(
-                    metrics[prom_name], units, _graph_path(graph_file)
-                ),
+                "statistics": _make_stats_dict(metrics[prom_name], units),
             }
 
             if report_key not in entries:
@@ -539,7 +506,7 @@ def _build_aggregated_entries(
     for prom_name in metric_names:
         if prom_name not in aggregated:
             continue
-        report_key, units, _ = _metric_metadata(prom_name, metrics_summary)
+        report_key, units = _metric_metadata(prom_name, metrics_summary)
         entry = obs.setdefault(report_key, {})
         entry["aggregated"] = _make_stats_dict(aggregated[prom_name], units)
 
@@ -553,21 +520,18 @@ def _build_epp_entries(
     for summary_key, (
         report_key,
         default_units,
-        graph_file,
         per_component,
     ) in _EPP_METRICS.items():
         data = epp_summary.get(summary_key)
         if not data:
             continue
 
-        gpath = _graph_path(graph_file)
-
         if per_component and isinstance(data, dict):
             components = [
                 {
                     "component_id": comp_id,
                     "statistics": _make_stats_dict(
-                        comp_data, comp_data.get("unit", default_units), gpath
+                        comp_data, comp_data.get("unit", default_units)
                     ),
                 }
                 for comp_id, comp_data in data.items()
@@ -577,9 +541,7 @@ def _build_epp_entries(
                 entries[report_key] = {"components": components}
         elif isinstance(data, dict):
             entries[report_key] = {
-                "statistics": _make_stats_dict(
-                    data, data.get("unit", default_units), gpath
-                ),
+                "statistics": _make_stats_dict(data, data.get("unit", default_units)),
             }
 
     # Plugin latencies (dynamic keys)
@@ -611,7 +573,7 @@ def add_metrics_to_benchmark_report(
     """Add metrics to an existing benchmark report dictionary.
 
     Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
-    with per-component statistics, role, graph paths, and EPP metrics.
+    with per-component statistics, role, and EPP metrics.
 
     ``time_series_window`` restricts the embedded series to one stage's interval.
     It applies to the series only -- the scalar statistics come from a whole-run
@@ -665,9 +627,8 @@ def add_metrics_to_benchmark_report(
         os.path.join(metrics_dir, "processed", "replica_status.json")
     )
     if replica_status.get("controllers"):
-        # Full time series stays in replica_status_timeseries.json;
-        # only include summary + graph_path in the report.
-        replica_status["graph_path"] = _graph_path("replica_status.png")
+        # Full time series stays in replica_status_timeseries.json, to keep the
+        # report small.
         obs["replica_status"] = replica_status
 
     # Pod startup times
@@ -675,7 +636,6 @@ def add_metrics_to_benchmark_report(
         os.path.join(metrics_dir, "processed", "pod_startup_times.json")
     )
     if startup_times.get("pods"):
-        startup_times["graph_path"] = _graph_path("pod_startup_times.png")
         obs["pod_startup_times"] = startup_times
 
     return br_dict

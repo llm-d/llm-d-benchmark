@@ -233,7 +233,7 @@ def find_epponly_endpoint(
 
     try:
         svc = json.loads(result.stdout)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         return None, svc_name, "80"
 
     spec = svc.get("spec", {}) or {}
@@ -291,7 +291,7 @@ def find_direct_modelservice_endpoint(
 
     try:
         service = json.loads(result.stdout)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         return None, svc_name, default_port
 
     spec = service.get("spec", {}) or {}
@@ -353,7 +353,7 @@ def find_gateway_endpoint(
                 if addr_type == "Hostname" and value:
                     return value, gateway_name, gateway_port
 
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError, KeyError:
             pass
 
     # Fallback: try querying the service directly
@@ -489,7 +489,7 @@ def find_kustomize_endpoint(
 
     try:
         svc = json.loads(result.stdout)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         return None, None, "80"
 
     ports = svc.get("spec", {}).get("ports", [])
@@ -685,7 +685,7 @@ def validate_model_response(
                 f"model '{expected_model}'. "
                 f"Available models: {model_ids}"
             )
-    except (json.JSONDecodeError, KeyError, TypeError):
+    except json.JSONDecodeError, KeyError, TypeError:
         if expected_model not in stdout:
             return (
                 f"Endpoint {host}:{port} did not return expected "

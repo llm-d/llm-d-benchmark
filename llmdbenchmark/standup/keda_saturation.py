@@ -37,7 +37,7 @@ def stacks_enabling_epp_keda_saturation(
         try:
             with open(cfg_file, encoding="utf-8") as fh:
                 cfg = yaml.safe_load(fh) or {}
-        except (OSError, yaml.YAMLError):
+        except OSError, yaml.YAMLError:
             continue
         if cfg.get("eppKedaSaturation", {}).get("enabled", False):
             pairs.append((stack_path, cfg))

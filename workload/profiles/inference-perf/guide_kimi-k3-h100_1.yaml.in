@@ -111,11 +111,10 @@ report:
     summary: true
     per_stage: true
     # The reason this scenario uses inference-perf. per_request emits
-    # per_request_lifecycle_metrics.json, which
-    # analysis/per_request_plots.py and cross_treatment.py consume. For a
-    # pipeline the mean ITL is nearly useless -- stage bubbles show up as
-    # structure (multi-modality, periodicity) in the per-request ITL
-    # distribution, and only the per-request records preserve it.
+    # per_request_lifecycle_metrics.json. For a pipeline the mean ITL is
+    # nearly useless -- stage bubbles show up as structure (multi-modality,
+    # periodicity) in the per-request ITL distribution, and only the
+    # per-request records preserve it.
     #
     # Costs ~1.5 GB for a run this size. Collect with
     # `llmdbenchmark run --spec kimi-k3-h100`.

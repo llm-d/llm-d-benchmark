@@ -110,8 +110,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # (KEEP_PLAIN only) or "skip" (nothing; it stays on the PVC). See step_07.
     harness_data_collect: str = "default"
     # Compress each result set on the PVC before collecting, so the archive crosses
-    # the tunnel. Nothing is compressed on the driver; reports, metadata and plots
-    # stay plain so results_store can still index the collected tree.
+    # the tunnel. Nothing is compressed on the driver; reports and metadata stay
+    # plain so results_store can still index the collected tree.
     compress_output: bool = True
     compress_level: int = DEFAULT_COMPRESS_LEVEL
     # When True, reset the vLLM prefix, multimodal, and encoder caches

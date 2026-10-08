@@ -532,9 +532,8 @@ monitoring:
   # Only metrics in the _EMBED_TIME_SERIES allow-list (metrics_processor.py) qualify.
   embedTimeSeries: true
   timeSeriesMaxPoints: 256
-  # Prometheus time-series metrics retained for processing, visualization,
-  # and benchmark-report observability entries. Add new metrics here without
-  # changing the analysis code.
+  # Prometheus time-series metrics kept for processing and for benchmark-report
+  # observability entries. Add new metrics here without changing the analysis code.
   timeSeriesMetrics:
     - vllm:kv_cache_usage_perc
     - vllm:gpu_cache_usage_perc

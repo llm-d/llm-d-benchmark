@@ -53,7 +53,7 @@ def is_model_gated(model_id: str) -> GatedStatus:
         return GatedStatus.GATED
     except RepositoryNotFoundError:
         return GatedStatus.ERROR
-    except (HfHubHTTPError, Exception):
+    except HfHubHTTPError, Exception:
         return GatedStatus.ERROR
 
 
