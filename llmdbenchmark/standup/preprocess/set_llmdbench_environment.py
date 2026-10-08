@@ -2,6 +2,7 @@
 
 import subprocess
 import ipaddress
+import math
 import os
 import json
 import sys
@@ -471,7 +472,15 @@ if create_multiple_routing_tables:
                 if not new_routing_table_entry_found:
                     with open(f"{rt_tables_path}", "a") as file:
                         file.write(new_routing_table_entry + "\n")
-                    time.sleep(1)
+                    # tests set the env var to 0 to skip the sleep
+                    try:
+                        settle = float(
+                            os.environ.get("LLMDBENCH_RT_TABLES_SETTLE_SECONDS", "1")
+                        )
+                    except ValueError:
+                        settle = 1.0
+                    if settle > 0 and math.isfinite(settle):
+                        time.sleep(settle)
 
                 interface = ip_address_info[entry]["interface_name"]
                 network = device_to_network[interface]

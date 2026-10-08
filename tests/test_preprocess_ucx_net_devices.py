@@ -133,6 +133,8 @@ def _run(
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(home),
         "IPROUTE2_CONF_DIR": str(conf_dir),
+        # each test would sleep 2 seconds without this
+        "LLMDBENCH_RT_TABLES_SETTLE_SECONDS": "0",
     }
     full_env.update(env or {})
     result = subprocess.run(

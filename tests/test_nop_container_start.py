@@ -49,12 +49,24 @@ def test_returns_elapsed_ready_minus_container_start():
     assert info.get_container_start() == 42.0
 
 
-def test_zero_when_no_running_container():
+def test_zero_when_no_running_container(monkeypatch):
     ready = datetime(2026, 1, 1, 0, 0, 42, tzinfo=timezone.utc)
     running = SimpleNamespace(running=None)
     cs = SimpleNamespace(name="vllm-standalone-qwen-qwen3-4b", state=running)
     status = SimpleNamespace(container_statuses=[cs], conditions=[_ready_cond(ready)])
     info = _make_info(SimpleNamespace(status=status))
+
+    # fake clock: real sleeps would make this test take ~6 seconds
+    clock = SimpleNamespace(t=0.0)
+    monkeypatch.setattr(
+        nf,
+        "time",
+        SimpleNamespace(
+            time=lambda: clock.t,
+            sleep=lambda s: setattr(clock, "t", clock.t + s),
+        ),
+    )
+
     assert info.get_container_start() == 0.0
 
 
