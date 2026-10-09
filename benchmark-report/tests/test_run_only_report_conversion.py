@@ -6,14 +6,10 @@ from pathlib import Path
 
 import yaml
 
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+from llmd_benchmark_report.native_to_br0_2 import (
     _get_harness_meta,
     import_inference_perf,
 )
-import pytest
-
-# Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle.yaml"
 

@@ -25,10 +25,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from llmdbenchmark.analysis.benchmark_report.cli import main
-
-# Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.local_benchmark_report
+from llmd_benchmark_report.cli import main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "guidellm_report_v2.json"
 

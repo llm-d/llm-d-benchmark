@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
+from llmd_benchmark_report.schema_v0_2 import (
     AggregateRequests,
     AggregateThroughput,
     AudioPayloadStats,
@@ -20,9 +20,6 @@ from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
     ImagePayloadStats,
     VideoPayloadStats,
 )
-
-# Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.local_benchmark_report
 
 # Fields that are required independent of the one under test.
 REQUIRED_FIELDS = {AggregateRequests: {"total": 0}}

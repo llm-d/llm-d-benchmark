@@ -31,16 +31,13 @@ jobs:
 
       # Runs against the published llmd-benchmark-report that install.sh pins.
       - name: Run unit tests
-        run: python -m pytest tests/ -m "not local_benchmark_report" -x -q -n4
+        run: python -m pytest tests/ -x -q -n4
 
   # -- Benchmark Report package tests, against this checkout (no cluster needed) --
   benchmark-report-tests:
     name: Benchmark Report Tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      # These tests exercise the package source in this PR, not the release.
-      LLMDBENCH_ALLOW_LOCAL_BENCHMARK_REPORT: "1"
 
     steps:
       - name: Checkout Code
@@ -51,18 +48,16 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Install llmdbenchmark with the in-repo Benchmark Report package
-        run: |
-          sudo apt-get update && sudo apt-get install -y zstd
-          ./install.sh -y 2>&1
-          pip install -r build/requirements-analysis.txt
-          pip install -e benchmark-report
-          pip install pytest pytest-xdist
+      # The package alone, without llmdbenchmark, so these tests cannot reach
+      # harness code.
+      - name: Install the in-repo Benchmark Report package
+        run: pip install -e benchmark-report pytest pytest-xdist
 
+      # From benchmark-report/ so the repo root, and llmdbenchmark with it, is
+      # not on sys.path.
       - name: Run Benchmark Report tests
-        run: |
-          python -m pytest benchmark-report/tests/ -x -q
-          python -m pytest tests/ -m local_benchmark_report -x -q -n2
+        working-directory: benchmark-report
+        run: python -m pytest tests/ -x -q -n4
 
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:

@@ -23,9 +23,6 @@ import pytest
 
 from llmd_benchmark_report.native_to_br0_2 import _prompt_stat, import_inference_perf
 
-# Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.local_benchmark_report
-
 FIXTURES = Path(__file__).parent / "fixtures"
 #: Real harness output from a post-rename inference-perf (prompt_tokens only).
 TOKENS_ONLY = FIXTURES / "inference_perf_stage_prompt_tokens_only.json"

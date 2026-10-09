@@ -12,12 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
+from llmd_benchmark_report.metrics_processor import (
     add_metrics_to_benchmark_report,
 )
-
-# Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.local_benchmark_report
 
 
 @pytest.mark.parametrize(

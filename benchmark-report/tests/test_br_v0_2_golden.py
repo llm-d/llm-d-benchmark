@@ -1,8 +1,8 @@
 """Golden-output tests for the Benchmark Report v0.2 converters.
 
-Each case runs one native-to-BR importer on a fixture from ``tests/fixtures/``
+Each case runs one native-to-BR importer on a fixture from ``benchmark-report/tests/fixtures/``
 and compares the report to a committed YAML file in
-``tests/fixtures/br_v0_2_golden/``. There is one golden per case, and both
+``benchmark-report/tests/fixtures/br_v0_2_golden/``. There is one golden per case, and both
 converter modules must reproduce it: ``native_to_br0_2`` (what ``-b 0.2``
 runs) and ``native_to_br0_2_1`` (what ``-b 0.2.1`` runs, now a re-export of
 the former), for every importer each module exports.
@@ -18,7 +18,7 @@ dropping the memoized run metadata, and sorting keys.
 
 Regenerate after an intentional output change with:
 
-    BR_UPDATE_GOLDEN=1 python -m pytest tests/test_br_v0_2_golden.py
+    BR_UPDATE_GOLDEN=1 python -m pytest benchmark-report/tests/test_br_v0_2_golden.py
 """
 
 from __future__ import annotations
@@ -32,9 +32,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
-# Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GOLDEN_DIR = FIXTURES / "br_v0_2_golden"
@@ -164,7 +161,7 @@ def _convert(case: Case, version: str, monkeypatch: pytest.MonkeyPatch) -> str:
 
 
 # Each (case, version) pair, e.g. inference_perf at 0_2 and at 0_2_1, must
-# reproduce tests/fixtures/br_v0_2_golden/inference_perf.yaml byte for byte.
+# reproduce benchmark-report/tests/fixtures/br_v0_2_golden/inference_perf.yaml byte for byte.
 @pytest.mark.parametrize(
     ("case", "version"),
     PARAMS,

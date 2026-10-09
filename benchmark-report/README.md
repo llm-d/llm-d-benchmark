@@ -22,7 +22,7 @@ The canonical import name is `llmd_benchmark_report`. Two aliases exist for back
 
 Releases are published to PyPI by the `br-release` GitHub workflow, triggered by pushing a `br-v*` tag (e.g. `br-v0.2.1`) whose version matches `version` in this directory's `pyproject.toml`; the workflow fails on a mismatch. Publishing uses PyPI [trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC), so no credentials are stored in the repository.
 
-llm-d-benchmark itself runs only against published releases. The root `pyproject.toml`, `build/requirements-analysis.txt` and `llm_d_stack_discovery/requirements.txt` pin one exact version, and `llmdbenchmark` refuses a copy installed from this directory. After a release, bump those three pins in a follow-up PR. To try an unreleased schema change with the harness locally, run `pip install -e benchmark-report` and set `LLMDBENCH_ALLOW_LOCAL_BENCHMARK_REPORT=1`. Tests that exercise this package carry the `local_benchmark_report` pytest marker, and CI runs them against the checkout.
+llm-d-benchmark itself runs only against published releases. The root `pyproject.toml`, `build/requirements-analysis.txt` and `llm_d_stack_discovery/requirements.txt` pin one exact version, and `llmdbenchmark` refuses a copy installed from this directory. After a release, bump those three pins in a follow-up PR. To try an unreleased schema change with the harness locally, run `pip install -e benchmark-report` and set `LLMDBENCH_ALLOW_LOCAL_BENCHMARK_REPORT=1`. Tests for this package live in `benchmark-report/tests/`. CI runs them against the checkout with only this package installed.
 
 ## v0.2.x Format Description
 
