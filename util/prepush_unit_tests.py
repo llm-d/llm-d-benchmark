@@ -106,6 +106,14 @@ def _summarize(files: list[str], max_shown: int = 3) -> str:
 
 def run(cmd: list[str], env: dict[str, str]) -> int:
     proc = subprocess.run(cmd, cwd=repo_root(), env=env, check=False)
+    if proc.returncode != 0:
+        return proc.returncode
+    proc = subprocess.run(
+        _package_cmd(cmd[0]),
+        cwd=repo_root() / "benchmark-report",
+        env=env,
+        check=False,
+    )
     return proc.returncode
 
 
@@ -165,11 +173,16 @@ def _full_cmd(python: str) -> list[str]:
         "-m",
         "pytest",
         "tests/",
-        "benchmark-report/tests/",
         "-x",
         "-q",
         "-n4",
     ]
+
+
+def _package_cmd(python: str) -> list[str]:
+    # Mirrors the `benchmark-report-tests` job. Run from benchmark-report/, the
+    # checkout's package shadows the pinned release installed in this env.
+    return [python, "-m", "pytest", "tests/", "-x", "-q", "-n4"]
 
 
 def _testmon_cmd(python: str) -> list[str]:
