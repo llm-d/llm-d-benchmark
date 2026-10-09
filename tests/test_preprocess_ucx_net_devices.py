@@ -133,6 +133,8 @@ def _run(
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(home),
         "IPROUTE2_CONF_DIR": str(conf_dir),
+        # each test would sleep 2 seconds without this
+        "LLMDBENCH_RT_TABLES_SETTLE_SECONDS": "0",
     }
     full_env.update(env or {})
     result = subprocess.run(
@@ -275,12 +277,13 @@ def test_gid_superset_accepts_non_uniform_tables() -> None:
     assert not qualifies("mlx5_7")
 
 
+def test_rt_tables_settle_delay_stays_configurable() -> None:
+    """Guard the knob that keeps the tests in this file fast."""
+    assert "LLMDBENCH_RT_TABLES_SETTLE_SECONDS" in SCRIPT.read_text()
+
+
 def test_gid_check_source_uses_subset_not_equality() -> None:
     """Guard the actual script, not just a restatement of the rule."""
-    import pathlib
-
-    src = pathlib.Path(
-        "llmdbenchmark/standup/preprocess/set_llmdbench_environment.py"
-    ).read_text()
+    src = SCRIPT.read_text()
     assert "set(s_gid).issubset(device_gids)" in src
     assert "if s_gid == hcadev_to_gid[hcaid]:" not in src

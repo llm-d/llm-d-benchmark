@@ -67,7 +67,7 @@ The repository ships a [pre-commit](https://pre-commit.com/) configuration that 
 That script:
 
 1. Delegates to `./install.sh` (no `-y` flag — we deliberately want a virtualenv, not system Python) to create/reuse `.venv/`, install the `llmdbenchmark` CLI and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner)), and provision the required system tools (`helm`, `helmfile`, `kubectl`, `helm-diff`). This is the same bootstrap CI uses (see [`.github/workflows/ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml)), with `-y` omitted so local development stays in `.venv/` instead of polluting your system Python.
-2. Installs `pre-commit`, `pytest`, and `detect-secrets` from [`.pre-commit_requirements.txt`](.pre-commit_requirements.txt).
+2. Installs `pre-commit`, `pytest`, `pytest-xdist`, `pytest-testmon`, and `detect-secrets` from [`.pre-commit_requirements.txt`](.pre-commit_requirements.txt).
 3. Registers both the `pre-commit` and `pre-push` hook types.
 
 You only need to run this once per clone. On subsequent invocations `install.sh` uses its `~/.llmdbench_dependencies_checked` cache to skip dependencies that have already been verified.
@@ -76,15 +76,35 @@ You only need to run this once per clone. On subsequent invocations `install.sh`
 
 | Hook | Stage | Command | Mirrors CI |
 |---|---|---|---|
-| `py-compile` | `pre-commit`, `pre-push` | `python -m compileall -q llmdbenchmark` (only on changed `llmdbenchmark/**.py`) | — (fast local-only syntax gate) |
-| `pytest` | `pre-commit`, `pre-push` | `python -m pytest tests/ -x -q` | `unit-tests` job in [`ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml) |
-| `render-validation-changed` | `pre-commit`, `pre-push` | [`util/precommit_render_changed.py`](util/precommit_render_changed.py) — detects which scenarios the commit actually touched and renders only those (falls back to `cicd/kind` canary for shared-path changes) | Scoped subset of [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
+| `py-compile` | `pre-commit` | `python -m compileall -q llmdbenchmark` (only on changed `llmdbenchmark/**.py`) | — (fast local-only syntax gate) |
+| `pytest` | `pre-push` | [`util/prepush_unit_tests.py`](util/prepush_unit_tests.py) — [testmon](https://www.testmon.org/) runs only the tests affected by the push; falls back to the full suite when it cannot | `unit-tests` job in [`ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml) |
+| `render-validation-changed` | `pre-commit` | [`util/precommit_render_changed.py`](util/precommit_render_changed.py) — detects which scenarios the commit actually touched and renders only those (falls back to `cicd/kind` canary for shared-path changes) | Scoped subset of [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
+| `generate-sbom` | `pre-commit` | `python util/generate_sbom.py --check` (only when `install.sh`/`pyproject.toml`/`config/templates/values/defaults.yaml`/`util/generate_sbom.py` change) | — (local-only SBOM drift check) |
 | `detect-secrets` | `pre-commit` | [`ibm/detect-secrets`](https://github.com/ibm/detect-secrets) against `.secrets.baseline` with `--use-all-plugins` | — (local-only secrets scan) |
+| `ruff-check` | `pre-commit` | `ruff check --fix` | Ruff jobs in [`ci-pr-lint-and-format.yaml`](.github/workflows/ci-pr-lint-and-format.yaml) |
+| `ruff-format` | `pre-commit` | `ruff format` | Ruff jobs in [`ci-pr-lint-and-format.yaml`](.github/workflows/ci-pr-lint-and-format.yaml) |
 
 Stages explained:
 
-- **`pre-commit`** fires on every `git commit`. Byte-compile, unit tests, a **scoped** render of whichever scenarios your diff actually touched, and a secrets scan. This is your "catch the typo and the scenario regression" layer.
-- **`pre-push`** fires on every `git push`. Runs the same hooks again as a last-chance gate before the change leaves your machine. We intentionally do **not** run the full per-spec render loop here — if your diff didn't touch a spec, re-rendering every spec on every push is wasted work. CI still does the exhaustive per-spec render on the PR, so any shared-path regression a local run missed is caught there.
+- **`pre-commit`** fires on every `git commit`. Byte-compile, a **scoped** render of the scenarios your diff actually touched, an SBOM drift check, ruff lint/format, and a secrets scan. No unit tests here — they kept every commit slow, so they moved to pre-push.
+- **`pre-push`** fires on every `git push` and runs the unit-test hook: testmon picks the tests affected by your pushed python changes; non-python files, deletions, or test-setup changes fall back to the full suite; a push with nothing test-relevant exits immediately. CI still runs the full suite on every PR.
+
+##### How `pytest` picks what to run
+
+[`util/prepush_unit_tests.py`](util/prepush_unit_tests.py) uses the push range pre-commit supplies and picks a mode:
+
+1. Only `.py` files under `llmdbenchmark/`, `tests/`, `workload/`, `config/`, `benchmark-report/` changed → testmon runs only the affected tests (selection data lives in `.testmondata`, gitignored; the first run has no data and runs everything once).
+2. Non-python files under those paths, deleted files under those paths, or a test-setup change (`pyproject.toml`, `uv.lock`, `install.sh`, `.pre-commit_requirements.txt`, `util/prepush_unit_tests.py`, `util/generate_sbom.py`) → full suite.
+3. Nothing test-relevant in the push range (docs, `.github/`, ...) → exits 0 immediately.
+4. Push range unknown (manual run without arguments) → full suite.
+
+For manual debugging, pass files directly:
+
+```bash
+python util/prepush_unit_tests.py llmdbenchmark/parser/config_schema.py
+```
+
+testmon runs force `COVERAGE_CORE=ctrace`: the default `sysmon` core on Python 3.12+ cannot attribute coverage to individual tests.
 
 ##### How `render-validation-changed` picks scenarios
 
@@ -115,8 +135,11 @@ So: edit a single spec → that spec renders. Edit three specs → all three ren
 pre-commit run --all-files
 
 # Run one specific hook by id:
-pre-commit run pytest --all-files
+pre-commit run py-compile --all-files
 pre-commit run render-validation-changed --all-files
+
+# The pytest hook lives at the pre-push stage:
+pre-commit run pytest --hook-stage pre-push
 
 # Run against only the files in your current diff (what `git commit` does):
 pre-commit run
@@ -126,7 +149,7 @@ pre-commit run
 
 If a hook fails, the first line of output tells you which hook and exits with the underlying tool's output. Common cases:
 
-- **`pytest` failure** — run `pytest tests/ -x -q` directly and fix the failing test. The CI `unit-tests` job runs exactly this command, so a fix here is guaranteed to green CI.
+- **`pytest` failure** — run `pytest tests/ benchmark-report/tests/ -x -q -n4` directly; the CI `unit-tests` job runs the same command. To force the hook to run everything: `python util/prepush_unit_tests.py` with no arguments.
 - **`render-validation-changed` failure** — the hook output prints which spec(s) it tried to render and their pass/fail status. Reproduce the failing spec interactively to see the full error:
   ```bash
   llmdbenchmark --spec <the-failing-spec> --dry-run plan -p debug
@@ -151,4 +174,4 @@ If you find yourself reaching for `--no-verify` to get around a legitimate bug, 
 
 #### Updating the hook configuration
 
-The hooks are defined in [`.pre-commit-config.yaml`](.pre-commit-config.yaml). If you add a new hook there or change an existing one, re-run `./util/setup_precommit.sh` (or just `pre-commit install && pre-commit install --hook-type pre-push`) so git picks up the change.
+The hooks are defined in [`.pre-commit-config.yaml`](.pre-commit-config.yaml). If you add a new hook there or change an existing one, re-run `./util/setup_precommit.sh` (or just `pre-commit install` — the config's `default_install_hook_types` registers both the pre-commit and pre-push stages) so git picks up the change.

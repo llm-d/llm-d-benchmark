@@ -17,10 +17,6 @@
 #     to force system Python (the GitHub runner is already isolated), but
 #     for local development we want a real virtualenv so hook execution
 #     stays reproducible and does not pollute the user's system Python.
-#
-# Installs only the pre-commit stage. CI is the gate before push, so we
-# do not duplicate the local hooks at push time. The exhaustive per-spec
-# render lives in CI.
 # -----------------------------------------------------------------------
 set -euo pipefail
 
@@ -57,10 +53,7 @@ echo "==> Running ./install.sh to provision .venv and system tools..."
 source .venv/bin/activate
 
 # ---------------------------------------------------------------------
-# 2. Install the pre-commit-only extras (pre-commit framework, pytest,
-#    detect-secrets plugin) on top of whatever install.sh already put in
-#    the venv. install.sh does not install pytest because it is a dev
-#    dependency, and pre-commit itself lives in .pre-commit_requirements.txt.
+# 2. Install the pre-commit extras from .pre-commit_requirements.txt.
 # ---------------------------------------------------------------------
 echo ""
 echo "==> Installing pre-commit framework and dev extras..."
@@ -68,12 +61,10 @@ pip3 install --upgrade pip
 pip3 install -r .pre-commit_requirements.txt
 
 # ---------------------------------------------------------------------
-# 3. Register the pre-commit hook only. We deliberately don't register
-#    a pre-push hook -- CI runs the full per-spec validation, so the
-#    push-time gate would just duplicate work.
+# 3. Register the hooks (default_install_hook_types covers both stages).
 # ---------------------------------------------------------------------
 echo ""
-echo "==> Registering pre-commit hook..."
+echo "==> Registering pre-commit and pre-push hooks..."
 pre-commit install
 
 echo ""
@@ -81,8 +72,9 @@ echo "==> Installing pre-commit hook environments..."
 pre-commit install-hooks
 
 echo ""
-echo "pre-commit hook installed."
-echo "  pre-commit: py-compile, pytest, render-validation-changed, generate-sbom, detect-secrets, ruff-check, ruff-format"
+echo "hooks installed."
+echo "  pre-commit: py-compile, render-validation-changed, generate-sbom, detect-secrets, ruff-check, ruff-format"
+echo "  pre-push:   pytest (affected tests via testmon, full suite when it cannot)"
 echo ""
 echo "Run 'pre-commit run --all-files' to exercise the hooks now."
 
