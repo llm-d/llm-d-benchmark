@@ -86,6 +86,14 @@ def collect_time_series_data(
     return pod_data
 
 
+def _sum_by_ts(points: list) -> dict[datetime, float]:
+    """One pod can run several engines, each with its own counter."""
+    out: dict[datetime, float] = {}
+    for ts, val in points:
+        out[ts] = out.get(ts, 0.0) + val
+    return out
+
+
 def _ratio_deltas(
     pod_metrics: dict[str, list], numerator: str, denominator: str
 ) -> list[tuple[datetime, float, float]]:
@@ -96,8 +104,8 @@ def _ratio_deltas(
     """
     if numerator not in pod_metrics or denominator not in pod_metrics:
         return []
-    num_by_ts = {ts: val for ts, val in pod_metrics[numerator]}
-    den_by_ts = {ts: val for ts, val in pod_metrics[denominator]}
+    num_by_ts = _sum_by_ts(pod_metrics[numerator])
+    den_by_ts = _sum_by_ts(pod_metrics[denominator])
     common_ts = sorted(set(num_by_ts) & set(den_by_ts))
     out: list[tuple[datetime, float, float]] = []
     for prev, curr in zip(common_ts, common_ts[1:]):
