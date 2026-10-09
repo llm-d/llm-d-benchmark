@@ -1,0 +1,75 @@
+# Derived from benchmark-report/tests/fixtures/inference_perf_lifecycle.yaml,
+# a genuine inference-perf report, with every stats block cut to its mean.
+# The run_analysis tests only need a report that converts.
+
+benchmark_time_seconds: 2.48
+failures:
+  count: 0
+  prompt_len: null
+  request_latency: null
+load_summary:
+  achieved_rate: 1.5
+  count: 3
+  requested_rate: 1.0
+  schedule_delay:
+    mean: 0.00033333333333337035
+  send_duration: 2.0
+successes:
+  audio:
+    bytes:
+      mean: 75000.0
+    count:
+      mean: 0.6666666666666666
+    seconds:
+      mean: 20.0
+  count: 3
+  image:
+    aspect_ratio:
+      mean: 1.5740740740740742
+    bytes:
+      mean: 52000.0
+    count:
+      mean: 2.0
+    pixels:
+      mean: 2481962.6666666665
+  latency:
+    inter_token_latency:
+      mean: 0.1522222222222222
+    normalized_time_per_output_token:
+      mean: 0.009774305555555555
+    request_latency:
+      mean: 0.49
+    time_per_output_token:
+      mean: 0.009279705855977042
+    time_to_first_token:
+      mean: 0.033333333333333354
+  output_len:
+    mean: 53.333333333333336
+  prompt_len:
+    mean: 200.33333333333334
+  prompt_tokens:
+    cached: 0.0
+    total: 601.0
+    uncached: 601.0
+  request_size_bytes:
+    mean: 676666.6666666666
+  throughput:
+    audios_per_sec: 0.8064516129032259
+    images_per_sec: 2.4193548387096775
+    input_tokens_per_sec: 242.33870967741936
+    output_tokens_per_sec: 64.51612903225806
+    requests_per_sec: 1.2096774193548387
+    total_tokens_per_sec: 306.85483870967744
+    videos_per_sec: 1.2096774193548387
+  token_count_mismatches: 0
+  video:
+    aspect_ratio:
+      mean: 1.6296296296296295
+    bytes:
+      mean: 1600000.0
+    count:
+      mean: 1.0
+    frames:
+      mean: 37.333333333333336
+    pixels:
+      mean: 3686400.0

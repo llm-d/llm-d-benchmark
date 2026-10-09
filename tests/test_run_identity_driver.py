@@ -15,7 +15,7 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
     _get_harness_meta,
 )
 
-FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle.yaml"
+FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle_means.yaml"
 
 EXPERIMENT_ID = "inference-perf-conc32-1786024743-hipkpq"
 
