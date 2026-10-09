@@ -12,7 +12,7 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import (
 import pytest
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURE = Path(__file__).parent / "fixtures" / "vllm_benchmark_results.json"
 

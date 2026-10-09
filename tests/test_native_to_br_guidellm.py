@@ -44,7 +44,7 @@ from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
 )
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURE = Path(__file__).parent / "fixtures" / "guidellm_report_v2.json"
 

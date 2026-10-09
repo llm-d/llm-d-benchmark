@@ -34,7 +34,7 @@ import pytest
 import yaml
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GOLDEN_DIR = FIXTURES / "br_v0_2_golden"

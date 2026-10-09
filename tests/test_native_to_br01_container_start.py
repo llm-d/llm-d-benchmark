@@ -14,7 +14,7 @@ from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import import_nop
 import pytest
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 
 def _nop_results(include_container_start=True):

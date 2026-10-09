@@ -27,7 +27,7 @@ from llmd_benchmark_report import BenchmarkReportV02, load_benchmark_report
 import pytest
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LEGACY_EXAMPLE = FIXTURES / "br_v0_2_legacy_example.yaml"

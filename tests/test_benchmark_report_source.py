@@ -1,6 +1,7 @@
 """llm-d-benchmark consumes llmd-benchmark-report only as a published release."""
 
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -9,17 +10,21 @@ import pytest
 from llmdbenchmark import _report_source
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+THIS_FILE = Path(__file__).resolve().relative_to(PROJECT_ROOT).as_posix()
 LOCAL_INSTALL = (
     '{"url": "file:///repo/benchmark-report", "dir_info": {"editable": true}}'
 )
 
-# Images and the installer must take the package from PyPI, never the checkout.
-INSTALL_SITES = [
-    "build/Dockerfile",
-    "build/Dockerfile.s390x",
-    "llm_d_stack_discovery/Dockerfile",
-    "install.sh",
-]
+# The only files allowed to install the checkout, and how many times. Every
+# other file in the repo must take the package from PyPI.
+CHECKOUT_INSTALLS_ALLOWED = {
+    # Builds the release wheel and smoke-tests it before upload.
+    ".github/workflows/br-release.yaml": 1,
+    # The Benchmark Report Tests job, the CI opt-in to the checkout.
+    ".github/workflows/ci-pr-benchmark.yaml": 1,
+    # Documents the opt-in for local schema work.
+    "benchmark-report/README.md": 1,
+}
 CHECKOUT_INSTALL = re.compile(
     r"^\s*(ADD|COPY)\b.*(?<!llmd-)benchmark-report|\binstall\b.*(?<!llmd-)benchmark-report",
     re.MULTILINE,
@@ -111,17 +116,37 @@ def test_pins_agree():
     assert pyproject == analysis == discovery
 
 
-# Each Dockerfile and install.sh. Expects no line that copies or pip-installs
-# the in-repo benchmark-report/ directory.
-@pytest.mark.parametrize("site", INSTALL_SITES)
-def test_nothing_installs_the_checkout(site):
-    text = (PROJECT_ROOT / site).read_text()
-    offending = [m.group(0).strip() for m in CHECKOUT_INSTALL.finditer(text)]
-    assert not offending, f"{site} installs the in-repo package: {offending}"
+# Every tracked or new unignored file but this one. Expects no line that
+# copies or pip-installs the in-repo benchmark-report/ directory beyond
+# CHECKOUT_INSTALLS_ALLOWED, e.g. a new Dockerfile running
+# "pip install ./benchmark-report" fails.
+def test_nothing_installs_the_checkout():
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout.split("\0")
+    except OSError, subprocess.CalledProcessError:
+        pytest.skip("needs a git checkout to list tracked files")
+    offending = {}
+    for name in tracked:
+        if not name or name == THIS_FILE:
+            continue
+        try:
+            text = (PROJECT_ROOT / name).read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        hits = [m.group(0).strip() for m in CHECKOUT_INSTALL.finditer(text)]
+        if len(hits) > CHECKOUT_INSTALLS_ALLOWED.get(name, 0):
+            offending[name] = hits
+    assert not offending, f"install the in-repo package: {offending}"
 
 
 # Every tests/test_*.py that imports the package. Expects each to carry the
-# benchmark_report marker or sit in HARNESS_TESTS_USING_PACKAGE. A new
+# local_benchmark_report marker or sit in HARNESS_TESTS_USING_PACKAGE. A new
 # converter test with neither would only ever run against the release.
 def test_package_importers_are_marked():
     unmarked = []
@@ -129,8 +154,9 @@ def test_package_importers_are_marked():
         if path.name in HARNESS_TESTS_USING_PACKAGE:
             continue
         text = path.read_text()
-        if PACKAGE_IMPORT.search(text) and "mark.benchmark_report" not in text:
+        if PACKAGE_IMPORT.search(text) and "mark.local_benchmark_report" not in text:
             unmarked.append(path.name)
     assert not unmarked, (
-        f"import the package without the benchmark_report marker: {unmarked}"
+        f"{unmarked} import the package. Mark tests of benchmark-report/ code "
+        "local_benchmark_report. Add harness tests to HARNESS_TESTS_USING_PACKAGE."
     )

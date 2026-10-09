@@ -27,7 +27,7 @@ from llmd_benchmark_report.native_to_br0_2 import import_inference_perf
 import pytest
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 FIXTURES = Path(__file__).parent / "fixtures"
 NATIVE_FIXTURE = FIXTURES / "inference_perf_stage_lifecycle_metrics.json"

@@ -241,7 +241,7 @@ def _fma_nop_results(timing_source, container_start_timestamp):
 
 # Only this class exercises the Benchmark Report package, so CI runs it
 # against the checkout. The rest of the module tests harness code.
-@pytest.mark.benchmark_report
+@pytest.mark.local_benchmark_report
 class TestTimingSourceSurvivesNativeToBr01:
     """timing_source + container_start_timestamp survive native->br0.1 import."""
 

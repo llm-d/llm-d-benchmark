@@ -3,5 +3,5 @@ def pytest_configure(config):
     # the published release llmdbenchmark pins.
     config.addinivalue_line(
         "markers",
-        "benchmark_report: exercises the Benchmark Report package source",
+        "local_benchmark_report: opts in to the in-repo Benchmark Report package",
     )

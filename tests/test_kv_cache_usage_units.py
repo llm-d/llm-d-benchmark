@@ -17,7 +17,7 @@ from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
 )
 
 # Exercises the Benchmark Report package, so CI runs it against the checkout.
-pytestmark = pytest.mark.benchmark_report
+pytestmark = pytest.mark.local_benchmark_report
 
 
 @pytest.mark.parametrize(
