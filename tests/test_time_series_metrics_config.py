@@ -13,6 +13,10 @@ from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
     add_metrics_to_benchmark_report,
 )
 
+# Exercises the Benchmark Report package, so CI runs it against the checkout.
+# The process_metrics.py test rides along. That script is stdlib only.
+pytestmark = pytest.mark.benchmark_report
+
 
 def test_process_metrics_uses_configured_metric_list(
     tmp_path: Path, monkeypatch

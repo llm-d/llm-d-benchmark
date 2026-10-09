@@ -25,6 +25,18 @@ CHECKOUT_INSTALL = re.compile(
     re.MULTILINE,
 )
 
+# Harness tests that import the package only to build or read reports. They
+# test harness code, so they stay on the pinned release.
+HARNESS_TESTS_USING_PACKAGE = {
+    "test_aggregate_eval_containers.py",
+    "test_treatment_groups.py",
+}
+PACKAGE_IMPORT = re.compile(
+    r"^\s*(from|import)\s+(llmd_benchmark_report|llmdbenchmark\.analysis\.benchmark_report)\b"
+    r"|^\s*from\s+llmdbenchmark\.analysis\s+import\s.*\bbenchmark_report\b",
+    re.MULTILINE,
+)
+
 
 # Stands in for importlib.metadata.Distribution: returns the given
 # direct_url.json text, or None as an index install does.
@@ -106,3 +118,19 @@ def test_nothing_installs_the_checkout(site):
     text = (PROJECT_ROOT / site).read_text()
     offending = [m.group(0).strip() for m in CHECKOUT_INSTALL.finditer(text)]
     assert not offending, f"{site} installs the in-repo package: {offending}"
+
+
+# Every tests/test_*.py that imports the package. Expects each to carry the
+# benchmark_report marker or sit in HARNESS_TESTS_USING_PACKAGE. A new
+# converter test with neither would only ever run against the release.
+def test_package_importers_are_marked():
+    unmarked = []
+    for path in sorted((PROJECT_ROOT / "tests").glob("test_*.py")):
+        if path.name in HARNESS_TESTS_USING_PACKAGE:
+            continue
+        text = path.read_text()
+        if PACKAGE_IMPORT.search(text) and "mark.benchmark_report" not in text:
+            unmarked.append(path.name)
+    assert not unmarked, (
+        f"import the package without the benchmark_report marker: {unmarked}"
+    )
