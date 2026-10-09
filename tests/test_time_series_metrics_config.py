@@ -618,3 +618,42 @@ def test_stage_reports_parse_the_scrapes_once(tmp_path: Path, monkeypatch) -> No
 
     assert embed_metrics(metrics_dir, tmp_path, log=None) == 2
     assert len(calls) == 1
+
+
+def test_hit_rate_sums_the_engines_of_a_pod(tmp_path: Path) -> None:
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+    # Engine 0 hits 90 of 100 queries, engine 1 hits 0 of 100.
+    for ts, queries, hits in (
+        ("2026-07-14T00:00:00Z", 1000, 0),
+        ("2026-07-14T00:01:00Z", 1100, 90),
+    ):
+        _write_scrape(
+            raw_dir,
+            "pod-1",
+            ts,
+            [
+                f'vllm:prefix_cache_queries_total{{engine="0"}} {queries}',
+                f'vllm:prefix_cache_hits_total{{engine="0"}} {hits}',
+                f'vllm:prefix_cache_queries_total{{engine="1"}} {queries}',
+                'vllm:prefix_cache_hits_total{engine="1"} 0',
+            ],
+        )
+    (processed_dir / "time_series_metrics.json").write_text(
+        '["vllm:prefix_cache_hit_rate"]', encoding="utf-8"
+    )
+    (processed_dir / "metrics_summary.json").write_text(
+        _summary_with({"vllm:prefix_cache_hit_rate": {"mean": 0.0, "unit": "%"}}),
+        encoding="utf-8",
+    )
+
+    report = add_metrics_to_benchmark_report({}, str(metrics_dir))
+    obs = report["results"]["observability"]
+
+    stats = obs["vllm_prefix_cache_hit_rate"]["components"][0]["statistics"]
+    assert stats["mean"] == pytest.approx(45.0)
+    series = obs["components"][0]["time_series"]["prefix_cache_hit_rate"]["series"]
+    assert [p["value"] for p in series] == [pytest.approx(45.0)]
