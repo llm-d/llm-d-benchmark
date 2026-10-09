@@ -20,6 +20,7 @@ Validates that:
 from __future__ import annotations
 
 import copy
+import importlib.resources
 from pathlib import Path
 
 import yaml
@@ -39,8 +40,8 @@ from llmdbenchmark.agent import (
     write_agent_session_workspace,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-BR_DIR = PROJECT_ROOT / "benchmark-report" / "llmd_benchmark_report"
+# Read from the installed package, the published release the agent runs with.
+BR_DIR = importlib.resources.files("llmd_benchmark_report")
 EXAMPLE_REPORT = BR_DIR / "br_v0_2_example.yaml"
 
 

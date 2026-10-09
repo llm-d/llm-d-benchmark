@@ -140,11 +140,9 @@ COPY llmdbenchmark/analysis/metrics_embed.py /usr/local/bin/metrics_embed.py
 
 RUN rsync -az --exclude "__pycache__" /tmp/analysis/ /usr/local/bin/; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
 
-ADD benchmark-report/ /tmp/benchmark-report/
-
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .
-RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install --no-cache-dir /tmp/benchmark-report/
+RUN pip install --no-cache-dir -r requirements-analysis.txt
 
 ADD install.sh /usr/local/bin/llmdbench_install.sh
 RUN chmod +x /usr/local/bin/*; \

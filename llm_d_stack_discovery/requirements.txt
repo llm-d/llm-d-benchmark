@@ -6,3 +6,5 @@ urllib3>=2.8.0
 # Required by the benchmark_report schema modules we import from
 # llmdbenchmark.analysis.benchmark_report (schema_v0_2, schema_v0_2_components).
 pydantic>=2.0
+# Benchmark Report schema; the published release, never the in-repo copy.
+llmd-benchmark-report==0.2.1
