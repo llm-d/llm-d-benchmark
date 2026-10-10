@@ -77,7 +77,7 @@ jobs:
         run: |
           python3 -m venv .venv && . .venv/bin/activate
           pip install -q -e .
-          pip install -q "git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.1.0"
+          pip install -q "git+https://github.com/llm-d-incubation/llm-d-planner.git@v0.3.3"
           llmdbenchmark --version
 
       - name: Ensure namespace + anyuid-bound SA (root for eval image + vLLM)
