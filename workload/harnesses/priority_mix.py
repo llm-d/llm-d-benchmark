@@ -303,15 +303,16 @@ def summarize(
     class_summaries: dict[str, Any] = {}
     for item in classes:
         class_results = by_class.get(item.name, [])
-        latencies = [
-            result.latency_ms for result in class_results if result.error is None
+        # Latency stats describe served requests only: a 429/503 from flow
+        # control returns immediately and would make a shed class look fast.
+        served = [
+            result
+            for result in class_results
+            if result.error is None and 200 <= result.status_code < 300
         ]
-        ttfts = [
-            result.ttft_ms for result in class_results if result.ttft_ms is not None
-        ]
-        tpots = [
-            result.tpot_ms for result in class_results if result.tpot_ms is not None
-        ]
+        latencies = [result.latency_ms for result in served]
+        ttfts = [result.ttft_ms for result in served if result.ttft_ms is not None]
+        tpots = [result.tpot_ms for result in served if result.tpot_ms is not None]
         successes = sum(
             1 for result in class_results if 200 <= result.status_code < 300
         )
