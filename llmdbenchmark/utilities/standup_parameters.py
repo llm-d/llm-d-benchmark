@@ -219,7 +219,7 @@ def _set_pairs(values: list[str], logger=None) -> list[tuple[str, str, object, s
             except OverrideParseError as exc:
                 if logger is not None:
                     logger.log_warning(
-                        f"Ignoring unparseable persisted --set pair {pair!r} "
+                        f"Ignoring unparsable persisted --set pair {pair!r} "
                         f"from the {SECRET_NAME} Secret: {exc}. Pass it "
                         "again if it still applies."
                     )

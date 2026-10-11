@@ -313,7 +313,7 @@ def test_a_stale_pair_packed_behind_another_is_dropped():
     assert args.set_overrides == ["b=1", "c=2"]
 
 
-def test_unparseable_stored_pair_warns_instead_of_vanishing():
+def test_unparsable_stored_pair_warns_instead_of_vanishing():
     args = _reuse(_stored_set("decode.replicas=1", "BROKEN", "vllm.foo=2"))
     assert args.set_overrides == ["decode.replicas=1", "vllm.foo=2"]
     warned = " ".join(str(c) for c in args.logger.log_warning.call_args_list)
