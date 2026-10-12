@@ -71,7 +71,9 @@ def _chat_extra_body() -> dict[str, Any]:
         return {}
     data = json.loads(raw)
     if not isinstance(data, dict):
-        raise ValueError("LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY must be a JSON object")
+        raise ValueError(
+            "LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY must be a JSON object"
+        )
     return data
 
 
@@ -81,7 +83,9 @@ def _inter_turn_delay_seconds() -> float:
         return 0.0
     delay = float(raw)
     if delay < 0:
-        raise ValueError("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS must be non-negative")
+        raise ValueError(
+            "LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS must be non-negative"
+        )
     return delay
 
 
@@ -93,7 +97,11 @@ def apply_patch() -> None:
     from pydantic import ConfigDict, Field
 
     try:
-        from inference_perf.apis import ChatCompletionAPIData, ChatMessage, InferenceInfo
+        from inference_perf.apis import (
+            ChatCompletionAPIData,
+            ChatMessage,
+            InferenceInfo,
+        )
     except ImportError:
         from inference_perf.apis.base import InferenceInfo
         from inference_perf.apis.chat import ChatCompletionAPIData, ChatMessage
@@ -114,15 +122,23 @@ def apply_patch() -> None:
         def user_session(self):
             return LocalUserSession.get_instance(self.user_session_id)
 
-        async def to_request_body(self, effective_model_name, max_tokens, ignore_eos, streaming):
-            self._session_context = await self.user_session.get_context(self.target_round)
+        async def to_request_body(
+            self, effective_model_name, max_tokens, ignore_eos, streaming
+        ):
+            self._session_context = await self.user_session.get_context(
+                self.target_round
+            )
             messages = []
             if self.user_session.system_prompt:
-                messages.append(ChatMessage(role="system", content=self.user_session.system_prompt))
+                messages.append(
+                    ChatMessage(role="system", content=self.user_session.system_prompt)
+                )
             messages.extend(self.user_session.history)
             messages.extend(self.messages)
             self.messages = messages
-            body = await super().to_request_body(effective_model_name, max_tokens, ignore_eos, streaming)
+            body = await super().to_request_body(
+                effective_model_name, max_tokens, ignore_eos, streaming
+            )
             body.update(_chat_extra_body())
             return body
 
@@ -130,21 +146,33 @@ def apply_patch() -> None:
             inference_info.extra_info["user_session"] = self.user_session_id
             inference_info.extra_info["chat_round"] = self.user_session._current_round
 
-        async def process_response(self, response, config, tokenizer, lora_adapter=None):
-            inference_info = await super().process_response(response, config, tokenizer, lora_adapter)
+        async def process_response(
+            self, response, config, tokenizer, lora_adapter=None
+        ):
+            inference_info = await super().process_response(
+                response, config, tokenizer, lora_adapter
+            )
             self.update_inference_info(inference_info)
-            assistant_content = extract_assistant_content(inference_info.extra_info.get("raw_response"))
+            assistant_content = extract_assistant_content(
+                inference_info.extra_info.get("raw_response")
+            )
             self.user_session.history.extend(self.messages[-1:])
             if assistant_content:
-                self.user_session.history.append(ChatMessage(role="assistant", content=assistant_content))
+                self.user_session.history.append(
+                    ChatMessage(role="assistant", content=assistant_content)
+                )
             delay = _inter_turn_delay_seconds()
             if delay:
                 await asyncio.sleep(delay)
             self.user_session.update_context(self._session_context)
             return inference_info
 
-        async def process_failure(self, response, config, tokenizer, exception, lora_adapter=None):
-            inference_info = InferenceInfo(request_metrics=RequestMetrics(text=Text(input_tokens=0)))
+        async def process_failure(
+            self, response, config, tokenizer, exception, lora_adapter=None
+        ):
+            inference_info = InferenceInfo(
+                request_metrics=RequestMetrics(text=Text(input_tokens=0))
+            )
             self.update_inference_info(inference_info)
             self.user_session.update_context(self._session_context)
             return inference_info
@@ -160,7 +188,9 @@ def apply_patch() -> None:
         round_index = data.data_index // len(self.user_sessions)
         prompt = self.prompts[prompt_index]
 
-        initial_prompt_suffix = os.environ.get("LLMDBENCH_SPEC_PREFILL_INITIAL_PROMPT_SUFFIX")
+        initial_prompt_suffix = os.environ.get(
+            "LLMDBENCH_SPEC_PREFILL_INITIAL_PROMPT_SUFFIX"
+        )
         if round_index == 0 and initial_prompt_suffix:
             prompt = f"{prompt}\n\n{initial_prompt_suffix}"
         elif round_index > 0:
