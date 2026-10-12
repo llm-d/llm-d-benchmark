@@ -8,6 +8,7 @@ import yaml
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
+from llmdbenchmark.kustomize.guides import guide_basename, is_fma_guide
 from llmdbenchmark.standup.keda_saturation import (
     stacks_enabling_epp_keda_saturation,
     unique_epp_keda_saturation_namespaces,
@@ -95,7 +96,9 @@ class UninstallHelmStep(Step):
         derivatives like ``fast-model-actuation-keda``): all deploy the FMA
         dual-pods CRs and need the same finalizer-aware cleanup here. The actual
         guide name is returned so the ``llm-d.ai/guide=<name>`` requester
-        selector in ``_delete_fma_crs`` stays correct per variant.
+        selector in ``_delete_fma_crs`` stays correct per variant. For a nested
+        guide (``fast-model-actuation/fast-model-actuation-keda``) that is the
+        basename, which is what the guide's ``llm-d.ai/guide`` label carries.
         """
         for stack_path in context.rendered_stacks or []:
             cfg_file = stack_path / "config.yaml"
@@ -107,10 +110,8 @@ class UninstallHelmStep(Step):
             except OSError, yaml.YAMLError:
                 continue
             guide_name = (cfg.get("kustomize", {}) or {}).get("guideName", "")
-            if guide_name == "fast-model-actuation" or guide_name.startswith(
-                "fast-model-actuation-"
-            ):
-                return guide_name
+            if is_fma_guide(guide_name):
+                return guide_basename(guide_name)
         return ""
 
     def execute(

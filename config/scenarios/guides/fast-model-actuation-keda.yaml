@@ -1,5 +1,8 @@
 # FAST MODEL ACTUATION + KEDA WELL LIT PATH (kustomize-only)
 #
+# LEGACY: kept for release branches up to release-0.10, where the llm-d guide
+# still lives at guides/fast-model-actuation-keda. From main on, use fast-model-actuation-fast-model-actuation-keda.yaml.
+#
 # Deploys the upstream llm-d `fast-model-actuation-keda` guide directly via the
 # kustomize deploy method. This is the FMA-only guide plus scale-from-zero KEDA
 # autoscaling of the GPU-reserving requester Deployment (scaled on EPP

@@ -69,7 +69,11 @@ def _prometheus_api_status(stdout: str) -> tuple[str, str]:
     return status, error
 
 
-_FMA_GUIDE_STACK_NAME = "fast-model-actuation-base"
+# Stack names of the FMA guide scenario: the current one and the legacy name
+# kept for release branches up to release-0.10.
+_FMA_GUIDE_STACK_NAMES = frozenset(
+    {"fast-model-actuation", "fast-model-actuation-base"}
+)
 
 
 class CaptureClusterStateStep(Step):
@@ -111,7 +115,7 @@ class CaptureClusterStateStep(Step):
             plan_config, "eppKedaSaturation.enabled", default=False
         )
         fma_enabled = self._resolve(plan_config, "fma.enabled", default=False)
-        fma_capture = fma_enabled or stack_name == _FMA_GUIDE_STACK_NAME
+        fma_capture = fma_enabled or stack_name in _FMA_GUIDE_STACK_NAMES
         if not (wva_enabled or epp_keda_enabled or fma_capture):
             return StepResult(
                 step_number=self.number,

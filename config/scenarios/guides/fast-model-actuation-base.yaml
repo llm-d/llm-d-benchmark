@@ -1,5 +1,8 @@
 # FAST MODEL ACTUATION WELL LIT PATH (kustomize-only)
 #
+# LEGACY: kept for release branches up to release-0.10, where the llm-d guide
+# still lives at guides/fast-model-actuation-base. From main on, use fast-model-actuation.yaml.
+#
 # Deploys the upstream llm-d `fast-model-actuation-base` guide directly via the
 # kustomize deploy method.
 #
