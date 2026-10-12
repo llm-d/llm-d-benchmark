@@ -5,16 +5,16 @@ mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 PROFILE_SOURCE="${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
 if [[ -z "${LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS+x}" ]]; then
-  PROFILE_INTER_TURN_DELAY="$(yq -r '.llmdbenchmark.inter_turn_delay_seconds // ""' "$PROFILE_SOURCE")"
+  PROFILE_INTER_TURN_DELAY="$(python -c 'import sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); print(profile.get("llmdbenchmark", {}).get("inter_turn_delay_seconds", ""))' "$PROFILE_SOURCE")"
   if [[ -n "$PROFILE_INTER_TURN_DELAY" ]]; then
     export LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS="$PROFILE_INTER_TURN_DELAY"
   fi
 fi
 if [[ -z "${LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY+x}" ]]; then
-  PROFILE_CHAT_EXTRA_BODY="$(yq -o=json -I=0 '.llmdbenchmark.chat_extra_body // {}' "$PROFILE_SOURCE")"
+  PROFILE_CHAT_EXTRA_BODY="$(python -c 'import json, sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); print(json.dumps(profile.get("llmdbenchmark", {}).get("chat_extra_body", {})))' "$PROFILE_SOURCE")"
   export LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY="$PROFILE_CHAT_EXTRA_BODY"
 fi
-yq 'del(.llmdbenchmark) | .storage.local_storage.path = strenv(LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR)' "$PROFILE_SOURCE" >"${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
+python -c 'import os, sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); profile.pop("llmdbenchmark", None); profile["storage"]["local_storage"]["path"] = os.environ["LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"]; yaml.safe_dump(profile, sys.stdout, sort_keys=False)' "$PROFILE_SOURCE" >"${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 
 # inference-perf generates its reports after the final traffic stage drains.
