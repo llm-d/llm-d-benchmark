@@ -95,6 +95,70 @@ repos:
         files: ^(install\.sh|pyproject\.toml|config/templates/values/defaults\.yaml|util/generate_sbom\.py)$
         stages: [pre-commit]
 
+      # ----------------------------------------------------------------
+      # workload/README.md "Directory Layout" -- rebuilds the tree from
+      # the git index under experiments/ and workload/, keeping the
+      # existing per-entry `# comments`. always_run because pre-commit's
+      # `files` filter never sees deleted paths, and the check is a
+      # single `git ls-files` call. Same write-then-fail convention as
+      # generate-sbom.
+      # ----------------------------------------------------------------
+      - id: workload-directory-layout
+        name: Update workload/README.md Directory Layout
+        entry: python3.14 util/generate_workload_layout.py --check
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+
+      # ----------------------------------------------------------------
+      # workload/README.md "Available Profiles by Harness" -- syncs one
+      # table per workload/profiles/<harness>/ directory with the git
+      # index. Hand-written cells of existing rows are kept; new
+      # profiles are appended with empty description cells for the
+      # author to fill in. always_run for the same reason as above.
+      # ----------------------------------------------------------------
+      - id: workload-profiles-table
+        name: Update workload/README.md Available Profiles by Harness
+        entry: python3.14 util/generate_workload_profiles.py --check
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+
+      # ----------------------------------------------------------------
+      # workload/README.md "Profile Configuration Styles" -- one YAML
+      # example per harness, copied from a real profile (sanity_random
+      # first) so examples can't drift from the schemas. Hand-written
+      # intro sentences are kept. Runs after workload-profiles-table
+      # because it follows that section's harness order.
+      # ----------------------------------------------------------------
+      - id: workload-profile-styles
+        name: Update workload/README.md Profile Configuration Styles
+        entry: python3.14 util/generate_workload_profile_styles.py --check
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+
+      # ----------------------------------------------------------------
+      # workload/README.md "Available Harnesses" -- syncs the table with
+      # the workload/harnesses/<name>-llm-d-benchmark.{sh,py} entry
+      # points in the git index. Hand-written Benchmark Tool / Purpose
+      # cells are kept; the Script cell always follows the filename.
+      # ----------------------------------------------------------------
+      - id: workload-harnesses-table
+        name: Update workload/README.md Available Harnesses
+        entry: python3.14 util/generate_workload_harnesses.py --check
+        language: system
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+
   - repo: https://github.com/ibm/detect-secrets
     # If you desire to use a specific version of detect-secrets, you can replace `master` with other git revisions such as branch, tag or commit sha.
     # You are encouraged to use static refs such as tags, instead of branch name

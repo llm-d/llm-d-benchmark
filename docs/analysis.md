@@ -29,7 +29,7 @@ The in-container analysis produces:
 
 ## Local Analysis (`--analyze`)
 
-When `--analyze` is passed to `llmdbenchmark run`, step 11 (`analyze_results`) runs additional analysis on the local machine after results have been collected from the PVC.
+When `--analyze` is passed to `llmdbenchmark run`, step 12 (`analyze_results`) runs additional analysis on the local machine after results have been collected from the PVC.
 
 ```bash
 llmdbenchmark --spec gpu run -l inference-perf -w sanity_random.yaml --analyze

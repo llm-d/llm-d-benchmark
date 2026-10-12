@@ -1,4 +1,4 @@
-"""Step 11 -- Run local analysis on collected benchmark results.
+"""Step 12 -- Run local analysis on collected benchmark results.
 
 Delegates to :func:`llmdbenchmark.analysis.run_analysis` which converts
 raw harness output into standardised benchmark reports using the bundled

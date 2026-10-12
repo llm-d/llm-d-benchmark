@@ -82,3 +82,32 @@ def test_step_04_configmap_tolerates_missing_namespace(tmp_path, monkeypatch) ->
     context = ExecutionContext(plan_dir=tmp_path, workspace=tmp_path, logger=_Logger())
     s4.ModelNamespaceStep()._create_model_preprocess_configmap(_FakeCmd(), context)
     assert captured == []  # warned and returned, no write
+
+
+def test_configmap_skips_python_bytecode(tmp_path, monkeypatch) -> None:
+    """__pycache__/*.pyc must not be bundled: they bloat the ConfigMap past
+    the 256 KiB last-applied-configuration annotation limit, so
+    `kubectl apply` rejects it and the ConfigMap is never created."""
+    from llmdbenchmark.utilities.preprocess_configmap import (
+        create_preprocess_configmap,
+    )
+
+    src = tmp_path / "preprocess"
+    (src / "__pycache__").mkdir(parents=True)
+    (src / "run.sh").write_text("#!/bin/sh\n")
+    (src / "env.py").write_text("print()\n")
+    (src / "__pycache__" / "env.cpython-314.pyc").write_bytes(b"\x00")
+    (src / "stale.pyc").write_bytes(b"\x00")
+
+    context = ExecutionContext(plan_dir=tmp_path, workspace=tmp_path, logger=_Logger())
+    monkeypatch.setattr(ExecutionContext, "preprocess_dir", lambda self: src)
+    cmd = _FakeCmd()
+    create_preprocess_configmap(cmd, context, ["ns-a"])
+
+    (create_call,) = [c for c in cmd.calls if c[0] == "create"]
+    keys = sorted(
+        a.removeprefix("--from-file=").split("=", 1)[0]
+        for a in create_call
+        if str(a).startswith("--from-file=")
+    )
+    assert keys == ["env.py", "run.sh"]

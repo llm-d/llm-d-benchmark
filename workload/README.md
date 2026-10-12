@@ -47,47 +47,109 @@ This directory contains the benchmark workloads that `llmdbenchmark` deploys and
 
 ```
 experiments/                                # DoE experiment definitions (repo root)
+  concurrent-sessions-sweep.yaml
+  max-concurrency-sweep.yaml
+  mixed-workload-contention.yaml
   optimized-baseline.yaml                   # Scheduling strategy comparison
-  tiered-prefix-cache.yaml                  # CPU-offloaded prefix cache sweep
-  precise-prefix-cache-aware.yaml           # Prefix-cache-aware routing sweep
+  otel-session-rate-sweep.yaml
   pd-disaggregation.yaml                    # Prefill-decode disaggregation load curve
+  precise-prefix-cache-aware.yaml           # Prefix-cache-aware routing sweep
+  tiered-prefix-cache.yaml                  # CPU-offloaded prefix cache sweep
+  token-aware-autoscaling.yaml
+  turn-priority-fairness.yaml
 
 workload/
   harnesses/                                # Benchmark entry-point scripts
+    aiperf-llm-d-benchmark.sh
+    collect_metrics.sh
+    dpc_log_parser.py
+    eval-containers-llm-d-benchmark.sh
+    fma_functions.py
     guidellm-llm-d-benchmark.sh             # guidellm harness wrapper
+    inference-perf-lifecycle.sh
     inference-perf-llm-d-benchmark.sh       # inference-perf harness wrapper
     inferencemax-llm-d-benchmark.sh         # inferencemax harness wrapper
     lm-eval-llm-d-benchmark.sh              # lm-eval (accuracy) harness wrapper
     nop-llm-d-benchmark.py                  # No-op harness (testing/validation)
+    nop_functions.py
+    priority-mix-analyze_results.sh
+    priority-mix-llm-d-benchmark.sh
+    priority_mix.py
+    process_epp_logs.py
+    process_metrics.py
     vllm-benchmark-llm-d-benchmark.sh       # vllm-benchmark harness wrapper
   profiles/                                 # Workload profile templates
-    guidellm/                               # Profiles for the guidellm harness
+    aiperf/
+      agentic_multimodal/
+        convert_mmshopbench_to_aiperf.py
+      agentic_multimodal.yaml.in
+      dataset.yaml.in
       sanity_random.yaml.in
+      synthetic.yaml.in
+    eval-containers/
+      aider-polyglot.yaml.in
+      gaia.yaml.in
+    guidellm/                               # Profiles for the guidellm harness
+      concurrent-1k-1k.yaml.in
+      concurrent-heavy-heterogeneous.yaml.in
+      multi-turn.yaml.in
       sanity_concurrent.yaml.in
-      chatbot_synthetic.yaml.in
-      shared_prefix_synthetic.yaml.in
+      sanity_random.yaml.in
       summarization_synthetic.yaml.in
     inference-perf/                         # Profiles for the inference-perf harness
-      sanity_random.yaml.in
+      agent_llm_traces_v2.yaml.in
+      agentic_code_generation.yaml.in
+      approx_prefix_cache_ladder.yaml.in
+      approx_prefix_cache_smoke.yaml.in
+      approx_prefix_cache_zero_reuse_control.yaml.in
       chatbot_sharegpt.yaml.in
       chatbot_synthetic.yaml.in
       code_completion_synthetic.yaml.in
+      guide_async-multitenant_1.yaml.in
+      guide_async-multitenant_2.yaml.in
+      guide_kimi-k3-h100_1.yaml.in
+      guide_multimodal-serving_1.yaml
+      guide_optimized-baseline_1.yaml.in
+      guide_optimized-baseline_2.yaml.in
+      guide_p2p-kv-cache-sharing_1.yaml.in
+      guide_pd-disaggregation_1.yaml.in
+      guide_pd-disaggregation_2.yaml.in
+      guide_precise-prefix-cache-routing_1.yaml.in
+      guide_precise-prefix-cache-routing_2.yaml.in
+      guide_predicted-latency-routing_1.yaml
+      guide_tiered-prefix-cache_1.yaml.in
+      guide_wide-ep_1.yaml.in
+      interactive-chat.yaml.in
+      otel_traces.yaml.in
       random_concurrent.yaml.in
+      random_decode_heavy.yaml.in
+      random_prefill_heavy.yaml.in
+      random_symmetrical.yaml.in
+      sanity_random.yaml.in
       shared_prefix_multi_turn_chat.yaml.in
       shared_prefix_synthetic.yaml.in
+      shared_prefix_synthetic_heavy.yaml.in
       shared_prefix_synthetic_short.yaml.in
       summarization_synthetic.yaml.in
-    inferencemax/                            # Profiles for inferencemax
+      weka_traces.yaml.in
+    inferencemax/                           # Profiles for inferencemax
       random_concurrent.yaml.in
-    lm-eval/                                 # Profiles for the lm-eval (accuracy) harness
+      sanity_random.yaml.in
+    lm-eval/                                # Profiles for the lm-eval (accuracy) harness
       accuracy_default.yaml.in
-    nop/                                     # Profiles for the no-op harness
+      sanity.yaml.in
+    nop/                                    # Profiles for the no-op harness
       nop.yaml.in
-    vllm-benchmark/                          # Profiles for vllm-benchmark
+    priority-mix/
+      priority_mix.yaml.in
+      sanity.yaml.in
+    vllm-benchmark/                         # Profiles for vllm-benchmark
       fixed_dataset.yaml.in
+      guide_wide-ep_1.yaml.in
       random_concurrent.yaml.in
       sanity_random.yaml.in
       sharegpt.yaml.in
+      sonnet_concurrent.yaml.in
 ```
 
 ---
@@ -167,6 +229,8 @@ The harness script runs inside the **benchmark container image** as a Kubernetes
 | `lm-eval` | `lm-eval-llm-d-benchmark.sh` | `lm_eval` (lm-evaluation-harness) | Accuracy/quality evaluation against standard tasks (hellaswag, mmlu, piqa, ...) |
 | `priority-mix` | `priority-mix-llm-d-benchmark.sh` | Custom Python script | Mixed traffic classes with different `x-llm-d-inference-objective` headers |
 | `nop` | `nop-llm-d-benchmark.py` | No-op | Testing and validation without running real benchmarks |
+| `aiperf` | `aiperf-llm-d-benchmark.sh` | `aiperf profile` (NVIDIA AIPerf) | Load testing with synthetic or trace datasets (e.g. mooncake) |
+| `eval-containers` | `eval-containers-llm-d-benchmark.sh` | eval-containers image entrypoint | Agentic task evaluation (aider-polyglot, GAIA); one task per parallel harness pod |
 
 > **lm-eval smoke test:** the `accuracy_default` profile runs the full task set. For a quick pipeline check, cap samples per task and propagate the override into the harness pod, e.g. `LIMIT=10 llmdbenchmark ... -l lm-eval -w accuracy_default.yaml -g LIMIT ...`.
 
@@ -274,7 +338,7 @@ Unknown tokens (not in the substitution map) are left unchanged.
 
 ### Available Profiles by Harness
 
-#### inference-perf (9 profiles)
+#### inference-perf (35 profiles)
 
 | Profile | Load Pattern | Data Type | Description |
 |---------|-------------|-----------|-------------|
@@ -287,18 +351,45 @@ Unknown tokens (not in the substitution map) are left unchanged.
 | `shared_prefix_synthetic.yaml.in` | Variable | Shared prefix | Shared prefix synthetic data |
 | `shared_prefix_synthetic_short.yaml.in` | Variable | Shared prefix | Short shared prefix workload |
 | `summarization_synthetic.yaml.in` | Variable | Synthetic | Long-context summarization |
+| `agent_llm_traces_v2.yaml.in` | Trace session replay, 64 concurrent sessions | OTel agent traces (Exgentic/agent-llm-traces-v2) |  |
+| `agentic_code_generation.yaml.in` | Concurrent ladder 5→40 | Conversation replay (agentic, very long context) |  |
+| `approx_prefix_cache_ladder.yaml.in` | Constant ladder 4→96 req/s, 60s/stage | Shared prefix (512 groups, 2K prefix) |  |
+| `approx_prefix_cache_smoke.yaml.in` | Constant 2 req/s, 20s | Shared prefix (8 groups, 2K prefix) |  |
+| `approx_prefix_cache_zero_reuse_control.yaml.in` | Constant ladder 2→32 req/s, 60s/stage | Random ~2.3K/128 tokens (no prefix reuse) |  |
+| `guide_async-multitenant_1.yaml.in` | Concurrent (2), 80 requests | Random 200/128 tokens |  |
+| `guide_async-multitenant_2.yaml.in` | Constant 10 req/s, 180s | Random 200/128 tokens |  |
+| `guide_kimi-k3-h100_1.yaml.in` | Concurrent ladder 1→20 | Random 4K/1K tokens |  |
+| `guide_multimodal-serving_1.yaml` | Constant ladder 5→35 req/s (600s warmup) | Shared prefix + 4×720p images |  |
+| `guide_optimized-baseline_1.yaml.in` | Poisson ladder 3→60 req/s | Shared prefix (6K prefix, 1.2K/1K tokens) |  |
+| `guide_optimized-baseline_2.yaml.in` | Poisson ladder 1→15 req/s | Shared prefix (2K prefix, 500/500 tokens) |  |
+| `guide_p2p-kv-cache-sharing_1.yaml.in` | Concurrent (128), 1152 requests | Conversation replay (48K context, 6 turns) |  |
+| `guide_pd-disaggregation_1.yaml.in` | Constant 45 req/s, 120s | Random 5K/250 tokens |  |
+| `guide_pd-disaggregation_2.yaml.in` | Constant 1 req/s, 120s | Random 1K/1K tokens |  |
+| `guide_precise-prefix-cache-routing_1.yaml.in` | Poisson ladder 3→60 req/s | Shared prefix (6K prefix, 1.2K/1K tokens) |  |
+| `guide_precise-prefix-cache-routing_2.yaml.in` | Poisson ladder 3→30 req/s | Shared prefix (2K prefix, 500/500 tokens) |  |
+| `guide_predicted-latency-routing_1.yaml` | Concurrent (32), 192 requests | Conversation replay (15K–100K context) |  |
+| `guide_tiered-prefix-cache_1.yaml.in` | Poisson ladder 5→40 req/s | Shared prefix (16K prefix, 256/256 tokens) |  |
+| `guide_wide-ep_1.yaml.in` | Concurrent (2048), 8192 requests | Random 2K/2K tokens |  |
+| `interactive-chat.yaml.in` | Concurrent ladder 10→50 | Conversation replay (multi-turn chat) |  |
+| `otel_traces.yaml.in` | Trace session replay, 4 concurrent sessions | OTel traces (dataset dir) |  |
+| `random_decode_heavy.yaml.in` | Poisson 0.52 req/s, 1200s | Random 256/4K tokens |  |
+| `random_prefill_heavy.yaml.in` | Poisson 1.93 req/s, 1200s | Random 8K/256 tokens |  |
+| `random_symmetrical.yaml.in` | Poisson 1.04 req/s, 1200s | Random 2K/2K tokens |  |
+| `shared_prefix_synthetic_heavy.yaml.in` | Constant 0.5→2 req/s | Shared prefix (32 groups, 4K prefix) |  |
+| `weka_traces.yaml.in` | Trace session replay, 64 concurrent sessions | Weka agent traces (cc-traces-weka) |  |
 
-#### guidellm (5 profiles)
+#### guidellm (6 profiles)
 
 | Profile | Load Pattern | Data Type | Description |
 |---------|-------------|-----------|-------------|
 | `sanity_random.yaml.in` | Constant 1 req/s, 30s | Random | Quick sanity check |
 | `sanity_concurrent.yaml.in` | Concurrent | Random | Concurrent sanity check |
-| `chatbot_synthetic.yaml.in` | Variable | Synthetic chat | Chatbot simulation |
-| `shared_prefix_synthetic.yaml.in` | Variable | Shared prefix | Shared prefix workload |
 | `summarization_synthetic.yaml.in` | Variable | Synthetic | Summarization workload |
+| `concurrent-1k-1k.yaml.in` | Concurrent sweep 1→300 streams, 600s each | Synthetic 1K/1K tokens |  |
+| `concurrent-heavy-heterogeneous.yaml.in` | Concurrent sweep 1→300 streams, 600s each | Synthetic, wide distribution (~8K/800 tokens) |  |
+| `multi-turn.yaml.in` | Concurrent sweep 32→512 streams | Synthetic multi-turn (5 turns, 10K shared prefix) |  |
 
-#### vllm-benchmark (4 profiles)
+#### vllm-benchmark (6 profiles)
 
 | Profile | Load Pattern | Data Type | Description |
 |---------|-------------|-----------|-------------|
@@ -306,20 +397,53 @@ Unknown tokens (not in the substitution map) are left unchanged.
 | `random_concurrent.yaml.in` | Concurrent (max=1) | Random 10K/1K tokens | Large token random workload |
 | `fixed_dataset.yaml.in` | Fixed | Dataset file | Pre-built dataset |
 | `sharegpt.yaml.in` | Variable | ShareGPT | Real conversation dataset |
+| `guide_wide-ep_1.yaml.in` | Concurrent (max=32), 192 prompts | Random 2K/2K tokens |  |
+| `sonnet_concurrent.yaml.in` | 20 req/s, concurrent (max=32) | Sonnet 8K/512 tokens, 6K prefix |  |
 
-#### inferencemax (1 profile)
+#### inferencemax (2 profiles)
 
 | Profile | Load Pattern | Data Type | Description |
 |---------|-------------|-----------|-------------|
 | `random_concurrent.yaml.in` | Concurrent | Random | Concurrent random workload |
+| `sanity_random.yaml.in` | Concurrent (max=1), 4 prompts | Random 128/128 tokens |  |
 
-#### lm-eval (1 profile)
+#### nop (1 profile)
+
+| Profile | Data Type | Description |
+|---------|-----------|-------------|
+| `nop.yaml.in` | None | No-op for testing the pipeline |
+
+#### aiperf (4 profiles)
+
+| Profile | Load Pattern | Data Type | Description |
+|---------|-------------|-----------|-------------|
+| `dataset.yaml.in` | Concurrent (16), 500 requests | Dataset file (mooncake trace) |  |
+| `sanity_random.yaml.in` | Concurrent (2), 40 requests | Synthetic 100/20 tokens |  |
+| `synthetic.yaml.in` | Concurrent (16), 500 requests | Synthetic 1K/200 tokens |  |
+| `agentic_multimodal.yaml.in` |  |  |  |
+
+#### eval-containers (2 profiles)
+
+| Profile | Load Pattern | Data Type | Description |
+|---------|-------------|-----------|-------------|
+| `aider-polyglot.yaml.in` | N/A (task eval) | 225 Exercism tasks, offline |  |
+| `gaia.yaml.in` | N/A (task eval) | 165 GAIA tasks, internet + tools |  |
+
+#### priority-mix (2 profiles)
+
+| Profile | Load Pattern | Data Type | Description |
+|---------|-------------|-----------|-------------|
+| `priority_mix.yaml.in` | Constant 6 req/s, 90s | Mixed-priority chat (3 traffic classes) |  |
+| `sanity.yaml.in` | Constant 1 req/s, 10s | Mixed-priority chat (3 traffic classes) |  |
+
+#### lm-eval (2 profiles)
 
 Unlike the load-generation harnesses, `lm-eval` measures **accuracy** rather than throughput/latency. Profiles configure the evaluation tasks instead of a load pattern.
 
 | Profile | Tasks | Sample Cap | Description |
 |---------|-------|-----------|-------------|
 | `accuracy_default.yaml.in` | hellaswag, mmlu, piqa | none (full run) | Full-accuracy evaluation; override with `LIMIT=<n>` env for a quick smoke test |
+| `sanity.yaml.in` | hellaswag | 10 |  |
 
 Profile keys live under an `evaluation:` block (`tasks`, `num_fewshot`, `limit`, `num_concurrent`, `max_gen_toks`). Any key can be overridden at runtime via the matching env var (`TASKS`, `NUM_FEWSHOT`, `LIMIT`, `NUM_CONCURRENT`, `MAX_GEN_TOKS`); `LM_EVAL_BASE_URL` optionally overrides the detected endpoint.
 
@@ -349,23 +473,19 @@ llmdbenchmark --spec guides/pd-disaggregation run \
   -U "http://${DECODE_IP}:8000"
 ```
 
-#### nop (1 profile)
-
-| Profile | Data Type | Description |
-|---------|-----------|-------------|
-| `nop.yaml.in` | None | No-op for testing the pipeline |
-
 ### Profile Configuration Styles
 
 Each harness uses a different YAML schema for its profiles:
 
-**inference-perf** -- Hierarchical configuration with `load`, `api`, `server`, `tokenizer`, `data`, `report`, and `storage` sections:
+**inference-perf** -- Hierarchical configuration with `load`, `api`, `server`, `tokenizer`, `data`, `report`, and `storage` sections (from `sanity_random.yaml.in`):
 ```yaml
 load:
   type: constant
   stages:
   - rate: 1
     duration: 30
+  request_timeout: 30
+  num_workers: 1
 api:
   type: completion
   streaming: true
@@ -373,35 +493,148 @@ server:
   type: vllm
   model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
   base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
 data:
   type: random
   input_distribution:
-    min: 256
-    max: 512
-    mean: 384
-    std_dev: 10
-    total_count: 100
+    min: 256            # min length of the synthetic prompts
+    max: 512            # max length of the synthetic prompts
+    mean: 384           # mean length of the synthetic prompts
+    std_dev: 10         # standard deviation of the length of the synthetic prompts
+    total_count: 100    # total number of prompts to generate to fit the above mentioned distribution constraints
+# ...
 ```
 
-**guidellm** -- Flat key-value format with rate and data parameters:
+**guidellm** -- Nested `spec` with `backend`, `profile`, `constraints`, and `data` sections; optional `benchmarks` list sweeps overrides across runs (from `sanity_random.yaml.in`):
 ```yaml
-target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
-request_type: text_completions
-profile: constant
-rate: 1
-max_seconds: 30
+spec:
+  backend:
+    kind: openai_http
+    target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+    model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+    request_format: /v1/completions
+  profile:
+    kind: constant
+    rate: 1
+  constraints:
+    - kind: max_duration
+      seconds: 30
+  data:
+    - kind: synthetic_text
+      prompt_tokens: 50
+      prompt_tokens_stdev: 10
+      prompt_tokens_min: 10
+      prompt_tokens_max: 100
+      output_tokens: 50
+      output_tokens_stdev: 10
+      output_tokens_min: 10
+      output_tokens_max: 100
 ```
 
-**vllm-benchmark** -- Executable-based config mapping to CLI arguments:
+**vllm-benchmark** -- Executable-based config mapping to CLI arguments (from `sanity_random.yaml.in`):
+```yaml
+executable: benchmark_serving.py
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+base-url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+max-concurrency: 1
+random-input-len: 128
+num-prompts: 20
+dataset-name: random
+percentile-metrics: "ttft,tpot,itl,e2el"
+metric-percentiles: "0.1,1,5,10,25,75,90,95,99,99.9"
+```
+
+**inferencemax** -- Same executable-based CLI-argument mapping as vllm-benchmark (from `sanity_random.yaml.in`):
 ```yaml
 executable: benchmark_serving.py
 model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
 base-url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
 dataset-name: random
-random-input-len: 10000
-random-output-len: 1000
+random-input-len: 128
+random-output-len: 128
 max-concurrency: 1
+num-prompts: 4
+percentile-metrics: "ttft,tpot,itl,e2el"
+metric-percentiles: "0.1,1,5,10,25,75,90,95,99,99.9"
+ignore-eos: none
+request-rate: inf
+backend: vllm
+result-filename: result.json
+```
+
+**nop** -- Minimal: only the model name and results PVC (from `nop.yaml.in`):
+```yaml
+model_name: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+pvc_name: "REPLACE_ENV_LLMDBENCH_HARNESS_PVC_NAME"
+```
+
+**aiperf** -- Flat keys mapping to `aiperf` CLI arguments (`none` marks a value-less flag) (from `sanity_random.yaml.in`):
+```yaml
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+endpoint-type: completions
+streaming: none
+concurrency: 2
+request-count: 40
+isl: 100
+osl: 20
+extra-inputs: ignore_eos:true
+use-server-token-count: none
+tokenizer-trust-remote-code: none
+no-server-metrics: none
+```
+
+**eval-containers** -- Benchmark selector; the task suite is fixed by the eval container (from `aider-polyglot.yaml.in`):
+```yaml
+harness: eval-containers
+benchmark: aider-polyglot
+description: "Exercism polyglot code-editing -- 6 languages, 225 tasks, fully offline, multi-turn."
+tasks: 225
+internet: false
+model: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+endpoint: "REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL"
+```
+
+**priority-mix** -- `load` and default `request` settings plus weighted `trafficClasses` with priority, objective, and fairness ID (from `sanity.yaml.in`):
+```yaml
+endpoint_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+api:
+  type: chat
+  path: /v1/chat/completions
+load:
+  duration_seconds: 10
+  rate_per_second: 1
+  max_in_flight: 3
+  request_timeout_seconds: 180
+  fail_on_error: false
+request:
+  prompt: Say hello from the priority mix benchmark.
+  max_tokens: 512
+  stream: true
+trafficClasses:
+  - name: critical
+    weight: 0.2
+    priority: 100
+    objective: app-critical
+    fairnessID: tenant-critical
+    request:
+      promptTemplate: "Critical shared prefix for KV reuse. Stable long context facts repeated for prefill stress: alpha beta gamma delta epsilon zeta eta theta iota kappa. Request {variation}. "
+      promptRepeat: 3
+      max_tokens: 128
+# ...
+```
+
+**lm-eval** -- `evaluation` block listing tasks and sampling limits (from `sanity.yaml.in`):
+```yaml
+evaluation:
+  tasks:
+    - hellaswag
+  num_fewshot: 0
+  limit: 10       # null = full run; use LIMIT=<n> plus `-g LIMIT` for a smoke test
+  num_concurrent: 4
 ```
 
 ---
