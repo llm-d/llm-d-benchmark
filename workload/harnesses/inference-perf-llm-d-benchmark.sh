@@ -3,7 +3,18 @@
 echo Using experiment result dir: "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
-yq '.storage["local_storage"]["path"] = '\"${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}\" <"${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}" >${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
+PROFILE_SOURCE="${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
+if [[ -z "${LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS+x}" ]]; then
+  PROFILE_INTER_TURN_DELAY="$(yq -r '.llmdbenchmark.inter_turn_delay_seconds // ""' "$PROFILE_SOURCE")"
+  if [[ -n "$PROFILE_INTER_TURN_DELAY" ]]; then
+    export LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS="$PROFILE_INTER_TURN_DELAY"
+  fi
+fi
+if [[ -z "${LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY+x}" ]]; then
+  PROFILE_CHAT_EXTRA_BODY="$(yq -o=json -I=0 '.llmdbenchmark.chat_extra_body // {}' "$PROFILE_SOURCE")"
+  export LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY="$PROFILE_CHAT_EXTRA_BODY"
+fi
+yq 'del(.llmdbenchmark) | .storage.local_storage.path = strenv(LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR)' "$PROFILE_SOURCE" >"${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 
 # inference-perf generates its reports after the final traffic stage drains.
@@ -11,6 +22,9 @@ export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERI
 # report generation and result collection continue.
 source /workspace/harnesses/inference-perf-lifecycle.sh
 LLMDBENCH_FINAL_STAGE_ID="$(inference_perf_final_stage_id "./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}")"
+
+HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONPATH="${HARNESS_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
@@ -22,7 +36,7 @@ if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; the
 fi
 
 start=$(date +%s.%N)
-inference-perf $LLMDBENCH_HARNESS_ARGS \
+python -c 'import inference_perf_chat_multiturn; inference_perf_chat_multiturn.apply_patch(); import inference_perf; inference_perf.main_cli()' $LLMDBENCH_HARNESS_ARGS \
   > >(inference_perf_capture_stream \
     "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" \
     stdout.log \

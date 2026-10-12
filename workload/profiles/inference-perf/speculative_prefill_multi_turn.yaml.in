@@ -1,0 +1,43 @@
+load:
+  type: constant
+  num_workers: 1
+  worker_max_concurrency: 1
+  stages:
+  - rate: 0.05
+    duration: 120
+api:
+  type: chat
+  streaming: true
+  headers:
+    x-speculative-prefill: "true"
+llmdbenchmark:
+  inter_turn_delay_seconds: 20
+  chat_extra_body:
+    temperature: 0.0
+    seed: 42
+    top_p: 1.0
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: shared_prefix
+  shared_prefix:
+    num_groups: 1                # Number of distinct prefix, Note: the number of users is num_groups * num_prompts_per_group
+    num_prompts_per_group: 1     # Number of unique questions per group (prefix)
+    system_prompt_len: 1000      # Length of the first prefix (in tokens), simulate initialization of a system prompt
+    question_len: 32             # Length of the unique question part (in tokens)
+    output_len: 1200             # Target length for the model's generated output (in tokens)
+    enable_multi_turn_chat: true # Enable user sessions so chat context is appended for each request.
+    seed: 20261010
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace

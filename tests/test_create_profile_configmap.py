@@ -172,9 +172,11 @@ def test_harness_configmap_includes_repository_analyzers(tmp_path: Path) -> None
     harnesses_dir.mkdir(parents=True)
     analyzers_dir.mkdir(parents=True)
     harness = harnesses_dir / "lm-eval-llm-d-benchmark.sh"
+    adapter = harnesses_dir / "inference_perf_chat_multiturn.py"
     analyzer = analyzers_dir / "lm-eval-analyze_results.sh"
     ignored = analyzers_dir / "helper.py"
     harness.write_text("#!/bin/sh\n", encoding="utf-8")
+    adapter.write_text("# adapter\n", encoding="utf-8")
     analyzer.write_text("#!/bin/sh\n", encoding="utf-8")
     ignored.write_text("", encoding="utf-8")
 
@@ -194,6 +196,7 @@ def test_harness_configmap_includes_repository_analyzers(tmp_path: Path) -> None
     assert ok
     create_args = cmd.kube_calls[0][0]
     assert f"--from-file={harness.name}={harness}" in create_args
+    assert f"--from-file={adapter.name}={adapter}" in create_args
     assert f"--from-file={analyzer.name}={analyzer}" in create_args
     assert not any(str(ignored) in arg for arg in create_args)
 

@@ -59,8 +59,6 @@ workload/
     inferencemax-llm-d-benchmark.sh         # inferencemax harness wrapper
     lm-eval-llm-d-benchmark.sh              # lm-eval (accuracy) harness wrapper
     nop-llm-d-benchmark.py                  # No-op harness (testing/validation)
-    speculative-prefill-multiturn.py        # Multi-turn speculative prefill A/B runner
-    speculative-prefill-multiturn-llm-d-benchmark.sh # Standard wrapper for the A/B runner
     vllm-benchmark-llm-d-benchmark.sh       # vllm-benchmark harness wrapper
   profiles/                                 # Workload profile templates
     guidellm/                               # Profiles for the guidellm harness
@@ -76,6 +74,7 @@ workload/
       code_completion_synthetic.yaml.in
       random_concurrent.yaml.in
       shared_prefix_multi_turn_chat.yaml.in
+      speculative_prefill_multi_turn.yaml.in
       shared_prefix_synthetic.yaml.in
       shared_prefix_synthetic_short.yaml.in
       summarization_synthetic.yaml.in
@@ -85,8 +84,6 @@ workload/
       accuracy_default.yaml.in
     nop/                                     # Profiles for the no-op harness
       nop.yaml.in
-    speculative-prefill-multiturn/           # Profiles for speculative prefill multi-turn A/B
-      default.yaml.in
     vllm-benchmark/                          # Profiles for vllm-benchmark
       fixed_dataset.yaml.in
       random_concurrent.yaml.in
@@ -170,7 +167,6 @@ The harness script runs inside the **benchmark container image** as a Kubernetes
 | `inferencemax` | `inferencemax-llm-d-benchmark.sh` | Custom Python script | Benchmarking with warmup and random seed control |
 | `lm-eval` | `lm-eval-llm-d-benchmark.sh` | `lm_eval` (lm-evaluation-harness) | Accuracy/quality evaluation against standard tasks (hellaswag, mmlu, piqa, ...) |
 | `priority-mix` | `priority-mix-llm-d-benchmark.sh` | Custom Python script | Mixed traffic classes with different `x-llm-d-inference-objective` headers |
-| `speculative-prefill-multiturn` | `speculative-prefill-multiturn.py` | Custom Python script | Multi-turn TTFT A/B runner for validating `x-speculative-prefill`; assistant1 is long by default so turn2 cache warmup benefit is visible |
 | `nop` | `nop-llm-d-benchmark.py` | No-op | Testing and validation without running real benchmarks |
 
 > **lm-eval smoke test:** the `accuracy_default` profile runs the full task set. For a quick pipeline check, cap samples per task and propagate the override into the harness pod, e.g. `LIMIT=10 llmdbenchmark ... -l lm-eval -w accuracy_default.yaml -g LIMIT ...`.
@@ -217,6 +213,13 @@ use this stable boundary to release accelerator resources while inference-perf
 generates reports and llm-d-benchmark collects results. Sweep-generated stages
 do not emit the event because their final stage is not known from the rendered
 profile before load generation starts.
+
+For shared-prefix chat multi-turn workloads, the inference-perf wrapper loads
+`inference_perf_chat_multiturn.py` before invoking inference-perf. The adapter
+keeps multi-turn history as chat messages, which is required for profiles such
+as `speculative_prefill_multi_turn.yaml.in` that use `api.type: chat`. It also
+removes Qwen-style `<think>...</think>` content from assistant history so hidden
+reasoning is not fed into the next request.
 
 ### How Harness Scripts Are Mounted
 
@@ -279,7 +282,7 @@ Unknown tokens (not in the substitution map) are left unchanged.
 
 ### Available Profiles by Harness
 
-#### inference-perf (9 profiles)
+#### inference-perf (selected profiles)
 
 | Profile | Load Pattern | Data Type | Description |
 |---------|-------------|-----------|-------------|
@@ -289,9 +292,25 @@ Unknown tokens (not in the substitution map) are left unchanged.
 | `code_completion_synthetic.yaml.in` | Variable | Synthetic code | Code completion workload |
 | `random_concurrent.yaml.in` | Concurrent | Random synthetic | Concurrent random requests |
 | `shared_prefix_multi_turn_chat.yaml.in` | Variable | Shared prefix | Multi-turn with common prefixes |
+| `speculative_prefill_multi_turn.yaml.in` | Constant 0.05 req/s, 120s | Shared prefix | Single-session multi-turn speculative prefill with 20s inter-turn delay |
 | `shared_prefix_synthetic.yaml.in` | Variable | Shared prefix | Shared prefix synthetic data |
 | `shared_prefix_synthetic_short.yaml.in` | Variable | Shared prefix | Short shared prefix workload |
 | `summarization_synthetic.yaml.in` | Variable | Synthetic | Long-context summarization |
+
+The speculative prefill profile fixes the shared-prefix seed, chat request
+parameters (`temperature: 0.0`, `seed: 42`, `top_p: 1.0`), and 1200 output
+tokens. The inference-perf wrapper exports `llmdbenchmark.inter_turn_delay_seconds`
+and `llmdbenchmark.chat_extra_body` to the chat adapter, then removes the
+`llmdbenchmark` section before passing the config to inference-perf. Explicit
+`LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS` and
+`LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY` environment variables override the
+profile values. No `/no_think` suffix is used by default.
+
+For a cold-cache A/B run, restart the serving pod before each arm. Use the
+profile unchanged for spec, and remove `api.headers.x-speculative-prefill` for
+baseline; keep every other setting identical. The 20s delay occurs inside the
+adapter's response processing, so inference-perf's reported request latency
+includes that delay. Compare per-turn TTFT rather than request latency.
 
 #### guidellm (5 profiles)
 
