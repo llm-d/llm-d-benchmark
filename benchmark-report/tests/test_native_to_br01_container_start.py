@@ -10,7 +10,7 @@ gracefully on older native artifacts that predate the field.
 
 import yaml
 
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import import_nop
+from llmd_benchmark_report.native_to_br0_1 import import_nop
 
 
 def _nop_results(include_container_start=True):

@@ -1,6 +1,6 @@
 """Converter test: inference-perf native report -> benchmark report v0.2.1.
 
-The input fixture (tests/fixtures/inference_perf_lifecycle.yaml) is genuine
+The input fixture (benchmark-report/tests/fixtures/inference_perf_lifecycle.yaml) is genuine
 inference-perf output, captured from inference-perf's own summarize_requests
 (see the fixture header). This test pins that the converter maps every
 multimodal field to the right v0.2.1 location and units, performs the
@@ -16,11 +16,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from llmdbenchmark.analysis.benchmark_report.base import Units
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+from llmd_benchmark_report.base import Units
+from llmd_benchmark_report.native_to_br0_2 import (
     import_inference_perf,
 )
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import BenchmarkReportV021
+from llmd_benchmark_report.schema_v0_2 import BenchmarkReportV021
 
 FIXTURE = Path(__file__).parent / "fixtures" / "inference_perf_lifecycle.yaml"
 

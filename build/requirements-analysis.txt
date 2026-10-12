@@ -4,3 +4,4 @@ pandas>=3.0.6
 pydantic>=2.13.5
 PyYAML>=6.0.3
 scipy>=1.18.0
+llmd-benchmark-report==0.2.1

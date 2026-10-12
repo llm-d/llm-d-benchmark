@@ -414,7 +414,6 @@ COPY llmdbenchmark/analysis/scripts/inferencemax-analyze_results.sh /usr/local/b
 COPY llmdbenchmark/analysis/scripts/lm-eval-analyze_results.sh /usr/local/bin/lm-eval-analyze_results.sh
 COPY llmdbenchmark/analysis/scripts/eval-containers-analyze_results.sh /usr/local/bin/eval-containers-analyze_results.sh
 COPY llmdbenchmark/analysis/scripts/aiperf-analyze_results.sh /usr/local/bin/aiperf-analyze_results.sh
-COPY benchmark-report/ /opt/benchmark-report/
 COPY llmdbenchmark/analysis/summary.py /usr/local/bin/summary.py
 COPY llmdbenchmark/analysis/metrics_embed.py /usr/local/bin/metrics_embed.py
 COPY llmdbenchmark/analysis/scripts/embed_metrics.py /usr/local/bin/embed_metrics.py
@@ -423,7 +422,6 @@ COPY llmdbenchmark/analysis/scripts/extract_summary.py /usr/local/bin/extract_su
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
-RUN pip install --no-cache-dir /opt/benchmark-report
 ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
 RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
 

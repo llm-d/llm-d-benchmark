@@ -5,7 +5,7 @@ The 0.2 line has one implementation (#1922). Reports converted before its
 and dashboards, so the current model has to read them exactly as the v0.2
 model did.
 
-``tests/fixtures/br_v0_2_legacy_example.yaml`` is the v0.2 example report as
+``benchmark-report/tests/fixtures/br_v0_2_legacy_example.yaml`` is the v0.2 example report as
 committed before 0.2.1 became the only revision, and
 ``br_v0_2_legacy_example.dump.yaml`` is what the v0.2 model dumped for it.
 Loading fills defaults (e.g. ``parallelism: 1``) and coerces numbers, so the
@@ -13,7 +13,7 @@ dump is compared to that recorded output rather than to the input file.
 
 Regenerate the recorded dump only for an intentional change with:
 
-    BR_UPDATE_GOLDEN=1 python -m pytest tests/test_benchmark_report_v0_2_legacy.py
+    BR_UPDATE_GOLDEN=1 python -m pytest benchmark-report/tests/test_benchmark_report_v0_2_legacy.py
 """
 
 from __future__ import annotations

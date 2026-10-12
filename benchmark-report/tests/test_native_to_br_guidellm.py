@@ -1,6 +1,6 @@
 """Converter test: GuideLLM native report -> benchmark report v0.1 / v0.2.
 
-The input fixture (tests/fixtures/guidellm_report_v2.json) is genuine GuideLLM
+The input fixture (benchmark-report/tests/fixtures/guidellm_report_v2.json) is genuine GuideLLM
 output, captured by running ``guidellm run`` against GuideLLM's own
 ``mock-server`` with a two-stage ``constant`` profile, multi-turn synthetic
 text, and a prefix bucket. Only the per-request payload dumps and the
@@ -28,16 +28,16 @@ from pathlib import Path
 
 import pytest
 
-from llmdbenchmark.analysis.benchmark_report import guidellm_native
-from llmdbenchmark.analysis.benchmark_report.base import Units
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import (
+from llmd_benchmark_report import guidellm_native
+from llmd_benchmark_report.base import Units
+from llmd_benchmark_report.native_to_br0_1 import (
     import_guidellm as import_guidellm_v01,
 )
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+from llmd_benchmark_report.native_to_br0_2 import (
     import_guidellm as import_guidellm_v02,
 )
-from llmdbenchmark.analysis.benchmark_report.schema_v0_1 import BenchmarkReportV01
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
+from llmd_benchmark_report.schema_v0_1 import BenchmarkReportV01
+from llmd_benchmark_report.schema_v0_2 import (
     BenchmarkReportV02,
     Distribution,
     LoadSource,

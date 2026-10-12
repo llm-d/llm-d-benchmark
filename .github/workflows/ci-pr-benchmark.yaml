@@ -29,8 +29,35 @@ jobs:
           pip install -r build/requirements-analysis.txt
           pip install pytest pytest-xdist
 
+      # Runs against the published llmd-benchmark-report that install.sh pins.
       - name: Run unit tests
-        run: python -m pytest tests/ benchmark-report/tests/ -x -q -n4
+        run: python -m pytest tests/ -x -q -n4
+
+  # -- Benchmark Report package tests, against this checkout (no cluster needed) --
+  benchmark-report-tests:
+    name: Benchmark Report Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      # The package alone, without llmdbenchmark, so these tests cannot reach
+      # harness code.
+      - name: Install the in-repo Benchmark Report package
+        run: pip install -e benchmark-report pytest pytest-xdist
+
+      # From benchmark-report/ so the repo root, and llmdbenchmark with it, is
+      # not on sys.path.
+      - name: Run Benchmark Report tests
+        working-directory: benchmark-report
+        run: python -m pytest tests/ -x -q -n4
 
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:

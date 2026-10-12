@@ -25,7 +25,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from llmdbenchmark.analysis.benchmark_report.cli import main
+from llmd_benchmark_report.cli import main
 
 FIXTURE = Path(__file__).parent / "fixtures" / "guidellm_report_v2.json"
 

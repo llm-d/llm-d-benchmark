@@ -6,7 +6,7 @@ does not define, so every report came out with p25 unset.
 
 from pathlib import Path
 
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import (
+from llmd_benchmark_report.native_to_br0_1 import (
     import_vllm_benchmark,
 )
 
