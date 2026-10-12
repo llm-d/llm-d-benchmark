@@ -78,7 +78,7 @@ tool_version_for() {
         curl)      echo "8_21_0"  ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v3.19.0" ;;
-        helm-diff) echo "v3.13.0" ;;
+        helm-diff) echo "v3.15.15" ;;
         # helm-diff build compatible with Helm 4's plugin SDK; selected at
         # install time when an on-PATH helm is already major version 4+.
         helm-diff-v4) echo "v3.15.7" ;;
