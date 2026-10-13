@@ -48,6 +48,8 @@ ISTIO_CRDS = [
 
 LWS_CRDS = [
     "leaderworkersets.leaderworkerset.x-k8s.io",
+    "disaggregatedsets.disaggregatedset.x-k8s.io",
+    "disaggregatedsetrolescalers.disaggregatedset.x-k8s.io",
 ]
 
 

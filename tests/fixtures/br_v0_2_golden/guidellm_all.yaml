@@ -178,7 +178,7 @@
   scenario:
     load:
       metadata:
-        cfg_id: a27609013d811e184f054f227f3f3cfaff620ae213938d5fd977a9d8d55630fd
+        cfg_id: c9692f2c6db616aa8c9dce4a1ff2e3884bb609e47e1064015835139ea078db78
         schema_version: 0.0.1
       native:
         config:
@@ -299,7 +299,7 @@
             tokenizer:
               kind: huggingface_auto
               load_kwargs: {}
-              model: /Users/mengmeiye/github/guidellm/tests/fixtures/tokenizers/minimal
+              model: tests/fixtures/tokenizers/minimal
       standardized:
         input_seq_len:
           distribution: gaussian
@@ -509,7 +509,7 @@
   scenario:
     load:
       metadata:
-        cfg_id: a27609013d811e184f054f227f3f3cfaff620ae213938d5fd977a9d8d55630fd
+        cfg_id: c9692f2c6db616aa8c9dce4a1ff2e3884bb609e47e1064015835139ea078db78
         schema_version: 0.0.1
       native:
         config:
@@ -630,7 +630,7 @@
             tokenizer:
               kind: huggingface_auto
               load_kwargs: {}
-              model: /Users/mengmeiye/github/guidellm/tests/fixtures/tokenizers/minimal
+              model: tests/fixtures/tokenizers/minimal
       standardized:
         input_seq_len:
           distribution: gaussian

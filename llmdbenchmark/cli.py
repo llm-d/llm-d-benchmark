@@ -1462,6 +1462,40 @@ def _collect_stack_models(context) -> list[tuple[str, str]]:
     return rows
 
 
+def _resolve_summary_workload(context) -> str:
+    """Return the workload profile the run used, for the summary banner.
+
+    Mirrors the resolution in the render/deploy steps: ``--workload`` wins,
+    then each rendered stack's ``harness.experimentProfile`` /
+    ``harness.profile``, then ``sanity_random.yaml``. Stacks that resolve to
+    different profiles are listed comma-separated.
+    """
+    default = "sanity_random.yaml"
+    if context.harness_profile:
+        profiles = [context.harness_profile]
+    else:
+        profiles = []
+        stack_filter = getattr(context, "stack_filter", None) or []
+        for stack_path in getattr(context, "rendered_stacks", []) or []:
+            if stack_filter and stack_path.name not in stack_filter:
+                continue
+            harness_cfg = {}
+            try:
+                with open(stack_path / "config.yaml", encoding="utf-8") as fh:
+                    harness_cfg = (_yaml.safe_load(fh) or {}).get("harness") or {}
+            except OSError, _yaml.YAMLError:
+                pass
+            profile = (
+                harness_cfg.get("experimentProfile")
+                or harness_cfg.get("profile")
+                or default
+            )
+            if profile not in profiles:
+                profiles.append(profile)
+        profiles = profiles or [default]
+    return ", ".join(p[:-3] if p.endswith(".in") else p for p in profiles)
+
+
 def _parse_stack_filter(raw: str | None) -> list[str] | None:
     """Parse --stack / LLMDBENCH_STACK into a list of stack names, or None."""
     if not raw:
@@ -1583,7 +1617,7 @@ def _execute_run(args, logger, render_plan_errors):
     # --- Summary banner ---
     results_dir = context.run_results_dir()
     namespace = context.harness_namespace or context.namespace or "unknown"
-    workload = context.harness_profile or "unknown"
+    workload = _resolve_summary_workload(context)
     experiment_ids = getattr(context, "experiment_ids", [])
     parallelism = context.harness_parallelism or 1
 
@@ -1629,7 +1663,6 @@ def _execute_run(args, logger, render_plan_errors):
                         f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)"
                     )
     logger.log_info(f"  Local results:  {results_dir}")
-    logger.log_info(f"  Local analysis: {context.run_analysis_dir()}")
     if context.no_cleanup and not context.container_only:
         logger.log_info(
             "  Pods:           kept (--no-cleanup); inspect with kubectl, "
@@ -1645,6 +1678,14 @@ def _execute_run(args, logger, render_plan_errors):
             f"$({kube_bin} get pod -n {namespace} -l role=llm-d-benchmark-data-access "
             f"-o jsonpath='{{.items[0].metadata.name}}') -- ls /requests/"
         )
+    if not context.dry_run and not context.container_only:
+        prism_url = _find_prism_url(context)
+        if prism_url:
+            label = "Analysis and Performance Data Visualization:"
+            # Bold only on a terminal, so piped/CI output stays escape-free.
+            if sys.stdout.isatty():
+                label = f"\033[1m{label}\033[22m"
+            logger.log_info(f"  🔑 {label} {prism_url}")
     logger.log_info("=" * 60)
     logger.log_info(
         f"Run complete (mode={mode}, harness={harness}).",
@@ -1660,6 +1701,73 @@ def _execute_run(args, logger, render_plan_errors):
         _store_run_parameters_configmap(
             context, harness, workload, experiment_ids, logger
         )
+
+
+def _find_prism_url(context) -> str | None:
+    """URL of the llm-d-prism dashboard, or None when it is not deployed.
+
+    Standup deploys prism into the model namespace; the harness namespace is
+    checked too, for runs that point at a stack someone else stood up. On
+    OpenShift the URL is the Route that standup exposes; elsewhere there is no
+    ingress, so the port-forward command that reaches it is returned instead.
+    Best-effort: any lookup failure just omits the line from the summary.
+    """
+    try:
+        cmd = context.require_cmd()
+        namespaces = []
+        for ns in (context.namespace, context.harness_namespace):
+            if ns and ns not in namespaces:
+                namespaces.append(ns)
+
+        for ns in namespaces:
+            svc_result = cmd.kube(
+                "get",
+                "service",
+                "-l",
+                "app.kubernetes.io/name=llm-d-prism",
+                "-o",
+                "json",
+                namespace=ns,
+                check=False,
+                timeout=30,
+            )
+            if not svc_result.success:
+                continue
+            services = json.loads(svc_result.stdout or "{}").get("items", [])
+            if not services:
+                continue
+            svc = services[0]
+            svc_name = svc["metadata"]["name"]
+
+            if context.is_openshift:
+                route_result = cmd.kube(
+                    "get",
+                    "route",
+                    "-o",
+                    "json",
+                    namespace=ns,
+                    check=False,
+                    timeout=30,
+                )
+                if route_result.success:
+                    for route in json.loads(route_result.stdout or "{}").get(
+                        "items", []
+                    ):
+                        spec = route.get("spec", {})
+                        host = spec.get("host")
+                        if host and spec.get("to", {}).get("name") == svc_name:
+                            scheme = "https" if spec.get("tls") else "http"
+                            return f"{scheme}://{host}"
+
+            kube_bin = "oc" if context.is_openshift else "kubectl"
+            port = (svc.get("spec", {}).get("ports") or [{}])[0].get("port", 80)
+            return (
+                f"{kube_bin} port-forward -n {ns} svc/{svc_name} 8080:{port}"
+                " then open http://localhost:8080"
+            )
+    except Exception:
+        return None
+    return None
 
 
 def _store_run_parameters_configmap(context, harness, workload, experiment_ids, logger):

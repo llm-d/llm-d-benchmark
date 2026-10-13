@@ -1867,8 +1867,10 @@ Map directly to the [llm-d well-lit-path guides](https://github.com/llm-d/llm-d/
 |----------|-------------|
 | `agentic-serving.yaml` | Reasoning and tool-call serving driven by OTel-trace replay |
 | `epp-keda-saturation.yaml` | Optimized baseline plus EPP+KEDA saturation autoscaling (no WVA) |
-| `fast-model-actuation-base.yaml` | Fast model actuation, kustomize deploy only |
-| `fast-model-actuation-keda.yaml` | Fast model actuation plus scale-from-zero KEDA |
+| `fast-model-actuation.yaml` | Fast model actuation, kustomize deploy only |
+| `fast-model-actuation-fast-model-actuation-keda.yaml` | Fast model actuation plus scale-from-zero KEDA |
+| `fast-model-actuation-base.yaml` | Legacy name of `fast-model-actuation.yaml`, for release branches up to release-0.10 |
+| `fast-model-actuation-keda.yaml` | Legacy name of `fast-model-actuation-fast-model-actuation-keda.yaml`, for release branches up to release-0.10 |
 | `flow-control.yaml` | Optimized baseline with custom EPP flow-control plugins |
 | `multimodal-serving-aggregation.yaml` | Multimodal serving, aggregated prefill and decode |
 | `multimodal-serving-e-disaggregation.yaml` | Multimodal serving, encode disaggregated from prefill/decode |
@@ -2210,6 +2212,8 @@ right column names the file under `experiments/` that matches the guide.
 |---------------|---------------------|
 | `agentic-serving.yaml.j2` | -- |
 | `epp-keda-saturation.yaml.j2` | -- |
+| `fast-model-actuation.yaml.j2` | -- |
+| `fast-model-actuation-fast-model-actuation-keda.yaml.j2` | -- |
 | `fast-model-actuation-base.yaml.j2` | -- |
 | `fast-model-actuation-keda.yaml.j2` | -- |
 | `flow-control.yaml.j2` | -- |

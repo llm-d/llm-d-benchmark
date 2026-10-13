@@ -16,7 +16,7 @@ then
     exit 1
 fi
 
-excluded_envars="LLMDBENCH_CONTROL_PCMD|LLMDBENCH_CONTROL_KCMD|LLMDBENCH_CONTROL_HCMD|LLMDBENCH_HF_TOKEN|LLMDBENCH_CONTROL_WORK_DIR"
+excluded_envars="LLMDBENCH_CONTROL_KCMD|LLMDBENCH_CONTROL_HCMD|LLMDBENCH_HF_TOKEN|LLMDBENCH_CONTROL_WORK_DIR"
 echo "📜 Resetting all environment variables LLMDBENCH to default values..."
 echo "ℹ️ Excluding the following variables: $(echo $excluded_envars | sed 's/|/, /g')"
 for envar in $(env | grep LLMDBENCH | grep -Ev ${excluded_envars} | sort); do

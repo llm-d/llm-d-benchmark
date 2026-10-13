@@ -45,7 +45,16 @@ def create_preprocess_configmap(
     from_file_args = []
     file_paths = []
     try:
-        file_paths = sorted(p for p in preprocess_dir.rglob("*") if p.is_file())
+        # Skip Python bytecode: __pycache__/*.pyc left by local imports
+        # push the ConfigMap past the 256 KiB last-applied-configuration
+        # annotation limit, so `kubectl apply` rejects it outright.
+        file_paths = sorted(
+            p
+            for p in preprocess_dir.rglob("*")
+            if p.is_file()
+            and "__pycache__" not in p.parts
+            and p.suffix not in (".pyc", ".pyo")
+        )
         for path in file_paths:
             from_file_args.extend(
                 [
@@ -78,7 +87,7 @@ def create_preprocess_configmap(
             yaml_path.write_text(result.stdout, encoding="utf-8")
             apply_result = cmd.kube("apply", "-f", str(yaml_path))
             if not apply_result.success:
-                context.logger.log_warning(
+                context.logger.log_error(
                     f"Failed to apply preprocesses configmap in ns/{ns}: "
                     f"{apply_result.stderr}"
                 )

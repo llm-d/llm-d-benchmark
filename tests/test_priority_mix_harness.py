@@ -191,3 +191,23 @@ def test_priority_mix_reports_streaming_ttft_and_tpot() -> None:
     assert summary["ttft_ms"]["avg"] > 0
     assert summary["tpot_ms"]["avg"] > 0
     assert summary["output_tokens"] == 3
+
+
+def test_rejected_requests_stay_out_of_latency_stats() -> None:
+    """A 429/503 comes back at once; counting it would make a shed class look fast."""
+    traffic_class = priority_mix.TrafficClass(name="batch", weight=1, priority=-10)
+    served = [
+        priority_mix.RequestResult("batch", 200, latency, ttft_ms=50.0, tpot_ms=10.0)
+        for latency in (200.0, 210.0)
+    ]
+    rejected = [
+        priority_mix.RequestResult("batch", status, 2.0) for status in (429, 503)
+    ]
+
+    summary = priority_mix.summarize(served + rejected, [traffic_class])
+    batch = summary["traffic_classes"]["batch"]
+
+    assert batch["successes"] == 2
+    assert batch["errors"] == 2
+    assert batch["latency_ms"]["avg"] == 205.0
+    assert batch["latency_ms"]["p50"] == 205.0

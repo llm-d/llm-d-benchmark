@@ -7,6 +7,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.kustomize.guides import is_fma_guide
 from llmdbenchmark.smoketests.nok8s import (
     health_check as nok8s_health_check,
     inference_test as nok8s_inference_test,
@@ -212,9 +213,7 @@ class BaseSmoketest:
         if is_kustomize:
             if guide_name in ("pd-disaggregation", "wide-ep"):
                 roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
-            elif guide_name == "fast-model-actuation" or guide_name.startswith(
-                "fast-model-actuation-"
-            ):
+            elif is_fma_guide(guide_name):
                 # Every FMA variant (base guide + derivatives like
                 # fast-model-actuation-keda) has no decode/prefill Deployments:
                 # launcher pods host vLLM and are intentionally sleeping (not all

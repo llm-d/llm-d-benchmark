@@ -1412,13 +1412,15 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
                 continue
 
         if metrics.load_cached_compiled_graph == 0 and metrics.compile_graph == 0:
+            # The elapsed time is the last number: the shape or compile range
+            # ("for compile range (1, 8192) takes 12.34 s") comes before it.
             floats = find_floats_in_line(cached_compiled_graph, line)
             if len(floats) > 0:
-                metrics.load_cached_compiled_graph = floats[0]
+                metrics.load_cached_compiled_graph = floats[-1]
                 continue
             floats = find_floats_in_line(compiled_graph, line)
             if len(floats) > 0:
-                metrics.compile_graph = floats[0]
+                metrics.compile_graph = floats[-1]
                 continue
 
         if metrics.torch_compile == 0:

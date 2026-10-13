@@ -68,7 +68,7 @@
    ],
    "tokenizer": {
     "kind": "huggingface_auto",
-    "model": "/Users/mengmeiye/github/guidellm/tests/fixtures/tokenizers/minimal",
+    "model": "tests/fixtures/tokenizers/minimal",
     "load_kwargs": {}
    },
    "data": [

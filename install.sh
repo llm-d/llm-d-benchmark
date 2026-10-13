@@ -30,7 +30,6 @@ REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
 REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
 export _APT_GET_UPDATE_RUN=0
-export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
 # ---------------------------------------------------------------------------
 # pip isolation

@@ -208,6 +208,15 @@ def _compute_stats(values, unit=""):
     }
 
 
+def _report_stats(values, units):
+    """_compute_stats for the files embedded in the benchmark report, whose
+    v0.2 ``Statistics`` model requires ``units`` rather than ``unit``."""
+    stats = _compute_stats(values)
+    del stats["unit"]
+    stats["units"] = units
+    return stats
+
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -378,7 +387,7 @@ def aggregate_pod_startup_stats():
     if not values:
         return
 
-    data["aggregate"] = _compute_stats(values, "s")
+    data["aggregate"] = _report_stats(values, "s")
     _save_json(startup_file, data)
     print(
         f"Pod startup stats: {len(values)} pods, mean={data['aggregate']['mean']:.1f}s"
@@ -412,7 +421,7 @@ def aggregate_requester_startup_stats():
     if not values:
         return
 
-    data["requester_runtime_aggregate"] = _compute_stats(values, "s")
+    data["requester_runtime_aggregate"] = _report_stats(values, "s")
     _save_json(startup_file, data)
     print(
         f"Requester run-time startup: {len(values)} pods, "
@@ -435,7 +444,7 @@ def aggregate_replica_stats():
     status_file = os.path.join(processed_dir, "replica_status.json")
     status_data = _load_json(status_file)
     if status_data:
-        status_data["aggregate_ready_replicas"] = _compute_stats(ready_counts, "count")
+        status_data["aggregate_ready_replicas"] = _report_stats(ready_counts, "count")
         _save_json(status_file, status_data)
 
     print(
