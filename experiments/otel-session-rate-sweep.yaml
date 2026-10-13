@@ -16,8 +16,7 @@
 #     --namespace <NAMESPACE> \
 #     --harness inference-perf \
 #     --workload otel_traces.yaml \
-#     --experiments experiments/otel-session-rate-sweep.yaml \
-#     --analyze
+#     --experiments experiments/otel-session-rate-sweep.yaml
 #
 # Cache reset: with `reset_caches` enabled, before each treatment's run
 # the harness POSTs /reset_prefix_cache?reset_external=true, /reset_mm_cache,

@@ -20,8 +20,7 @@
 #     --harness inference-perf \
 #     --workload weka_traces.yaml \
 #     --experiments experiments/mixed-workload-contention.yaml \
-#     --monitoring -g METRICS_COLLECTION_INTERVAL \
-#     --analyze
+#     --monitoring -g METRICS_COLLECTION_INTERVAL
 #
 # Members each hold their own dataset, so a wide group may need
 # `--set harness.resources.memoryLimit=<N>Gi`.

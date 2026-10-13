@@ -228,3 +228,39 @@ def test_debug_profiles_create_configmap_for_each_harness(tmp_path: Path) -> Non
         call[0][2] for call in cmd.kube_calls if call[0][:2] == ("create", "configmap")
     ]
     assert created_configmaps == ["guidellm-profiles", "inference-perf-profiles"]
+
+
+def test_harness_configmap_includes_the_run_summary_script(tmp_path: Path) -> None:
+    from llmdbenchmark.utilities.kube_helpers import RUN_SUMMARY_SCRIPT
+
+    base_dir = tmp_path / "repo"
+    harnesses_dir = base_dir / "workload" / "harnesses"
+    harnesses_dir.mkdir(parents=True)
+    (harnesses_dir / "eval-containers-llm-d-benchmark.sh").write_text(
+        "#!/bin/sh\n", encoding="utf-8"
+    )
+    summary = base_dir / RUN_SUMMARY_SCRIPT
+    summary.parent.mkdir(parents=True)
+    summary.write_text("", encoding="utf-8")
+
+    cmd = _StubCmd(
+        [
+            _Result(success=True, stdout="apiVersion: v1\nkind: ConfigMap\n"),
+            _Result(success=True),
+        ]
+    )
+    context = _ScriptContext(tmp_path / "run", base_dir)
+    context.run_dir().mkdir()
+
+    ok, _ = CreateProfileConfigmapStep()._create_harness_scripts_configmap(
+        context, cmd, "bench"
+    )
+
+    assert ok
+    assert f"--from-file={summary.name}={summary}" in cmd.kube_calls[0][0]
+
+
+def test_run_summary_script_exists_in_the_repository() -> None:
+    from llmdbenchmark.utilities.kube_helpers import RUN_SUMMARY_SCRIPT
+
+    assert (Path(__file__).resolve().parents[1] / RUN_SUMMARY_SCRIPT).is_file()

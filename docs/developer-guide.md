@@ -31,7 +31,6 @@ accurate to the current codebase.
   - [How Steps Share State](#how-steps-share-state)
 - [5. How to Add a New Analysis Module](#5-how-to-add-a-new-analysis-module)
   - [Where Analysis Code Lives](#where-analysis-code-lives)
-  - [How to Add a New Metric to Cross-Treatment Comparison](#how-to-add-a-new-metric-to-cross-treatment-comparison)
   - [Analysis Pipeline Chain](#analysis-pipeline-chain)
 - [6. How to Add a New Harness](#6-how-to-add-a-new-harness)
   - [Required Files](#required-files)
@@ -623,7 +622,6 @@ numbers. Steps not in the set are excluded from partitioning.
 | `harness_skip_run` | `bool` | Default `False` | Skip harness run (collect-only mode) |
 | `harness_service_account` | `str \| None` | Run phase | Service account for harness pods |
 | `harness_envvars_to_pod` | `str \| None` | Run phase | Extra env vars forwarded to harness pods |
-| `analyze_locally` | `bool` | Default `False` | Run analysis locally instead of in-cluster |
 | `endpoint_url` | `str \| None` | CLI flag | Existing endpoint URL (run-only mode) |
 | `run_config_file` | `str \| None` | CLI flag | Pre-built run config file (run-only mode) |
 | `generate_config_only` | `bool` | Default `False` | Generate config without executing run |
@@ -707,44 +705,26 @@ All analysis code is in `llmdbenchmark/analysis/`:
 
 ```
 llmdbenchmark/analysis/
-    __init__.py              # Main run_analysis() entry point
-    cross_treatment.py       # Cross-treatment comparison (CSV)
+    __init__.py              # Main run_analysis() entry point (driver fallback)
+    aggregate_eval_containers.py  # eval-containers run summary (runs in a pod)
     benchmark_report/        # Benchmark report format converters
         native_to_br0_1.py   # Convert harness output to BR v0.1
         native_to_br0_2.py   # Convert harness output to BR v0.2
         ...
 ```
 
-### How to Add a New Metric to Cross-Treatment Comparison
-
-Edit `METRICS_OF_INTEREST` in `llmdbenchmark/analysis/cross_treatment.py`. Each
-entry is a tuple of `(dotted_path_in_br_v0.2, csv_column_name)`:
-
-```python
-METRICS_OF_INTEREST = [
-    # ... existing metrics ...
-    (
-        "results.request_performance.aggregate.latency.time_to_first_token.mean",
-        "ttft_mean_s",
-    ),
-    # Add your new metric:
-    ("results.custom_section.my_metric.value", "my_metric_value"),
-]
-```
-
 ### Analysis Pipeline Chain
 
-The analysis pipeline runs in two stages:
+Each harness analyzes its own results in the pod, through its
+`llmdbenchmark/analysis/scripts/<harness>-analyze_results.sh`:
 
-1. **Per-treatment analysis** (`run_analysis()` in `__init__.py`):
-   - Converts raw harness output to benchmark report v0.1 and v0.2 YAML
-   - Extracts summary from stdout.log
-   - Embeds the collected Prometheus metrics into the v0.2 reports
+- Converts raw harness output to benchmark report v0.1 and v0.2 YAML
+- Extracts summary from stdout.log
+- Embeds the collected Prometheus metrics into the v0.2 reports
+  (`embed_metrics.py`); a harness that runs `collect_metrics.sh` must do this
 
-2. **Cross-treatment analysis** (`generate_cross_treatment_summary()` in
-   `cross_treatment.py`):
-   - Reads benchmark report v0.2 files from all treatment subdirectories
-   - Produces a CSV summary table (one row per treatment)
+On the driver, `run_analysis()` in `__init__.py` does the same steps, but only
+for a result set the pod did not analyze.
 
 ---
 

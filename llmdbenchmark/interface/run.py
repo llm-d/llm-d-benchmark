@@ -293,13 +293,10 @@ def add_subcommands(
     )
     run_parser.add_argument(
         "--analyze",
+        dest="analyze_deprecated",
         action="store_true",
         default=env("LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY") == "1",
-        help="After collection, compare treatments (2+ result sets) into "
-        "results/cross-treatment-comparison/, summarize eval-containers tasks "
-        "into results/agentic-summary/, and re-analyze any result set the "
-        "harness pod did not analyze itself. Sets with in-pod reports are "
-        "reused, not re-analyzed (env: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1).",
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument(
         "--data-collect",

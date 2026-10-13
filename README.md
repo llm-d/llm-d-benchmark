@@ -539,7 +539,6 @@ llmdbenchmark --version
 | `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
 | `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account name for harness pods |
 | `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
-| `--analyze` | | Run local analysis on results after collection |
 | `-z` / `--skip` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results |
 | `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
 | `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict the benchmark to the named subset of stacks. Endpoint URL auto-resolves for the selected stack - no need for `--endpoint-url`. When `--stack` selects exactly one stack, `-m/--models` scopes to that stack only. |
@@ -745,7 +744,7 @@ Both paths share steps 00-05 (infrastructure, namespaces, secrets) and step 10 (
 | 08 | collect_results | Per-stack | Collect results from PVC to local workspace |
 | 09 | upload_results | Global | Upload results to cloud storage (safety-net bulk upload) |
 | 10 | cleanup_post | Global | Clean up harness pods and ConfigMaps |
-| 11 | analyze_results | Global | Run local analysis on collected results |
+| 11 | analyze_results | Global | Build any benchmark report the harness pod did not build |
 
 ### [Teardown Steps](llmdbenchmark/teardown/README.md)
 
@@ -892,7 +891,7 @@ Results are saved in the native format of each harness, as well as a universal B
 
 ### [Analysis](docs/analysis.md)
 
-The analysis pipeline builds the benchmark reports, embeds the Prometheus metrics into them, and writes a cross-treatment comparison table. Analysis runs both inside the harness container (automatically) and locally via `--analyze`. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which standup can deploy in-cluster.
+The analysis pipeline builds the benchmark reports inside the harness pod and embeds the Prometheus metrics into them, so the reports land on the workload PVC. For eval-containers, a summary pod also writes one run-level report per treatment. The driver only rebuilds reports a pod did not build. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which standup can deploy in-cluster.
 
 ## Dependencies
 

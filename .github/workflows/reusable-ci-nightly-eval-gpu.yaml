@@ -105,7 +105,7 @@ jobs:
           llmdbenchmark --spec "$SPEC" $DRYFLAG run \
             --cluster-config "$CC" \
             -p "$NS" -t "$METHODS" -j "$TASKS" \
-            --base-dir . --analyze --wait-timeout "$WAIT"
+            --base-dir . --wait-timeout "$WAIT"
 
       - name: Teardown vLLM model (free the GPU)
         if: always()

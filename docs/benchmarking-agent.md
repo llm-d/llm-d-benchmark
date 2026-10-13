@@ -127,17 +127,14 @@ The rendered command is:
 ```
 llmdbenchmark --spec guides/optimized-baseline --workspace /workspace run \
   --namespace benchmarks --endpoint-url http://qwen-endpoint.default.svc.cluster.local \
-  --model Qwen/Qwen3-0.6B --harness inference-perf --workload chatbot_synthetic.yaml --analyze
+  --model Qwen/Qwen3-0.6B --harness inference-perf --workload chatbot_synthetic.yaml
 ```
 
 `--spec` and `--workspace` come before `run` because both are root-level
 flags (`llmdbenchmark/cli.py:1783-1787`), matching the repository's own
-example at `llmdbenchmark/cli.py:1076-1080`. `--analyze` is always
-emitted: the in-container analyzer already writes benchmark-report v0.2
-files regardless, but `--analyze` also gates step 12
-(`step_12_analyze_results.py:27-31`), which re-converts locally and adds
-the cross-treatment CSV -- it is not, contrary to an earlier draft of this
-feature's PRD, what causes v0.2 reports to exist at all. `--monitoring`
+example at `llmdbenchmark/cli.py:1076-1080`. No analysis flag is
+needed: the in-container analyzer writes the benchmark-report v0.2 files,
+and step 12 always fills in any report a pod did not build. `--monitoring`
 is added only when `benchmark_monitoring_override` is set; its absence is
 already the code default (`interface/run.py:203-207`).
 

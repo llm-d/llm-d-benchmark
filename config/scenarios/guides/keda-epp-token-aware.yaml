@@ -22,7 +22,7 @@
 #   llmdbenchmark --spec guides/keda-epp-token-aware standup -p <namespace>
 #   llmdbenchmark --spec guides/keda-epp-token-aware run \
 #     --harness inference-perf --workload random_prefill_heavy.yaml \
-#     --monitoring --analyze
+#     --monitoring
 #
 # BEFORE YOU RUN: peakPrefillThroughput below is hardware- and model-specific.
 # The value here is a rendered starting point. Measure yours against the standing,

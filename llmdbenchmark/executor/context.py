@@ -148,7 +148,6 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     max_parallel_treatments: int = 1
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
-    analyze_locally: bool = False
     harness_data_access_timeout: int = 120
 
     # Path to local llm-d repository clone (for kustomize method)

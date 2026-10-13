@@ -21,14 +21,14 @@
 #   llmdbenchmark --spec guides/keda-epp-token-aware run \
 #     --harness inference-perf \
 #     --experiments experiments/token-aware-autoscaling.yaml \
-#     --monitoring --analyze
+#     --monitoring
 #
 # Shared across topologies -- swap --spec to run the same DoE against the
 # P/D-disaggregated scenario instead:
 #   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation run \
 #     --harness inference-perf \
 #     --experiments experiments/token-aware-autoscaling.yaml \
-#     --monitoring --analyze
+#     --monitoring
 #
 # `experiment` (standup/run/teardown per setup treatment) also works, but it
 # serves with the scenario's placeholder peakPrefillThroughput, because

@@ -47,4 +47,4 @@ llmdbenchmark = "llmdbenchmark.cli:cli"
 
 # These files run inside the harness images, which are on older Python versions.
 [tool.ruff]
-per-file-target-version = { "workload/harnesses/**" = "py312", "llmdbenchmark/analysis/scripts/**" = "py312", "llmdbenchmark/standup/preprocess/**" = "py312", "llmdbenchmark/analysis/summary.py" = "py312", "llmdbenchmark/analysis/metrics_embed.py" = "py312" }
+per-file-target-version = { "workload/harnesses/**" = "py312", "llmdbenchmark/analysis/scripts/**" = "py312", "llmdbenchmark/standup/preprocess/**" = "py312", "llmdbenchmark/analysis/summary.py" = "py312", "llmdbenchmark/analysis/metrics_embed.py" = "py312", "llmdbenchmark/analysis/aggregate_eval_containers.py" = "py312" }

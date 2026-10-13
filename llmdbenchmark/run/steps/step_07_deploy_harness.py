@@ -33,6 +33,7 @@ from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
 from llmdbenchmark.utilities.kube_helpers import (
     DATA_ACCESS_LABEL,
     HARNESS_DONE_SENTINEL,
+    RUN_SUMMARY_SCRIPT,
     find_data_access_pod,
     wait_for_pods_by_selector,
     wait_for_harness_sentinels,
@@ -58,6 +59,10 @@ from llmdbenchmark.utilities.endpoint import reset_caches_pods
 #: Scopes a wait to one treatment's pods. ``app`` stays as-is: cleanup selects
 #: on it.
 TREATMENT_LABEL = "llmdbench.ai/treatment"
+
+#: Marks the eval-containers run summary pod, which the task wait leaves out.
+ROLE_LABEL = "llmdbench.ai/role"
+RUN_SUMMARY_ROLE = "summary"
 
 
 @dataclass(frozen=True)
@@ -194,6 +199,11 @@ class DeployHarnessStep(Step):
             context_value=context.harness_name,
             default="inference-perf",
         )
+        if harness_name == "eval-containers" and context.no_pvc:
+            context.logger.log_warning(
+                "--no-pvc: each task has its own emptyDir, so no run summary is "
+                "written; the per-task reports are."
+            )
         harness_ns = self._resolve(
             plan_config,
             "harness.namespace",
@@ -491,22 +501,37 @@ class DeployHarnessStep(Step):
                 else spec.profile_name
             )
 
-            for parallel_idx in range(1, spec.parallelism + 1):
+            run_summary = self._wants_run_summary(spec.harness_name, context)
+            summary_pod: str | None = None
+
+            # One more slot after the tasks for the run summary pod.
+            for parallel_idx in range(1, spec.parallelism + 1 + int(run_summary)):
+                is_summary = parallel_idx > spec.parallelism
                 pod_suffix = self._rand_suffix(8)
-                pod_name = (
-                    f"llmdbench-harness-debug-{pod_suffix}"
-                    if context.harness_debug
-                    else f"{spec.harness_name}-{pod_suffix}"
-                )
+                if context.harness_debug:
+                    pod_name = f"llmdbench-harness-debug-{pod_suffix}"
+                elif is_summary:
+                    pod_name = f"{spec.harness_name}-{RUN_SUMMARY_ROLE}-{pod_suffix}"
+                else:
+                    pod_name = f"{spec.harness_name}-{pod_suffix}"
 
                 # Per-pod results directory, suffixed with the pod index.
                 results_dir = (
-                    f"{spec.results_dir_prefix}/{experiment_id}_{parallel_idx}"
+                    spec.results_dir_prefix
+                    if is_summary
+                    else f"{spec.results_dir_prefix}/{experiment_id}_{parallel_idx}"
                 )
 
                 # Build harness command per pod (results_dir differs)
                 if context.harness_debug:
                     harness_command = "sleep infinity"
+                elif is_summary:
+                    harness_command = self._run_summary_command(
+                        spec.results_dir_prefix,
+                        experiment_id,
+                        spec.parallelism,
+                        spec.timeout,
+                    )
                 else:
                     harness_cfg = (
                         spec.plan_config.get("harness", {}) if spec.plan_config else {}
@@ -526,6 +551,10 @@ class DeployHarnessStep(Step):
                     if context.no_pvc:
                         harness_command = self._no_pvc_keepalive_command(
                             harness_command, spec.results_dir_prefix
+                        )
+                    elif run_summary:
+                        harness_command = self._done_marker_command(
+                            harness_command, results_dir
                         )
 
                 # Build template values by merging plan_config with runtime values
@@ -555,6 +584,11 @@ class DeployHarnessStep(Step):
                         "no_pvc": context.no_pvc,
                     }
                 )
+                if is_summary:
+                    template_values["pod_role"] = RUN_SUMMARY_ROLE
+                    template_values["pod_resources"] = self._require_config(
+                        spec.plan_config or {}, "harness", "runSummary", "resources"
+                    )
 
                 # Inject base64-encoded kubeconfig so kubectl works inside the pod
                 # (needed by collect_metrics.sh and llm-d-benchmark.sh vLLM scraping)
@@ -632,6 +666,13 @@ class DeployHarnessStep(Step):
                         template_values["harness"]["extraEnvVars"] = extra_env
 
                 if context.dry_run:
+                    if is_summary:
+                        context.logger.log_info(
+                            f"[DRY RUN] Would deploy run summary pod '{pod_name}' "
+                            f"(experiment={experiment_id})"
+                        )
+                        summary_pod = pod_name
+                        continue
                     context.logger.log_info(
                         f"[DRY RUN] Would deploy pod '{pod_name}' "
                         f"(experiment={experiment_id}, parallel={parallel_idx}/{spec.parallelism})"
@@ -662,7 +703,20 @@ class DeployHarnessStep(Step):
                     spec.harness_ns,
                     check=False,
                 )
-                if not result.success:
+                if is_summary:
+                    # A warning only: the tasks do not depend on it.
+                    if result.success:
+                        summary_pod = pod_name
+                        context.logger.log_info(
+                            f"Deployed run summary pod '{pod_name}' "
+                            f"(experiment={experiment_id})"
+                        )
+                    else:
+                        context.logger.log_warning(
+                            f"Failed to deploy run summary pod '{pod_name}', so "
+                            f"there will be no run summary: {result.stderr}"
+                        )
+                elif not result.success:
                     deploy_errors.append(
                         f"Failed to deploy pod '{pod_name}': {result.stderr}"
                     )
@@ -711,15 +765,20 @@ class DeployHarnessStep(Step):
                         context,
                     )
                 else:
+                    # `!=` also matches pods without the label, so this is
+                    # every task pod and never the summary pod.
                     wait_errors = wait_for_pods_by_selector(
                         spec.cmd,
-                        f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value}",
+                        f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value},"
+                        f"{ROLE_LABEL}!={RUN_SUMMARY_ROLE}",
                         spec.harness_ns,
                         spec.timeout,
                         context,
                     )
                 if wait_errors:
                     treatment_errors.extend(wait_errors)
+                elif summary_pod:
+                    self._wait_for_run_summary(spec, treatment_label_value, context)
             elif (
                 not no_pods
                 and context.no_pvc
@@ -806,6 +865,8 @@ class DeployHarnessStep(Step):
                     )
 
             # Phase 5: clean up this treatment's pods
+            if summary_pod and not context.dry_run:
+                treatment_pod_names.append(summary_pod)
             if (
                 treatment_pod_names
                 and not context.dry_run
@@ -1963,6 +2024,66 @@ class DeployHarnessStep(Step):
         """
         sentinel = f"{results_dir_prefix}/{HARNESS_DONE_SENTINEL}"
         return f"({harness_command}); echo $? > {sentinel}; sleep infinity"
+
+    @staticmethod
+    def _wants_run_summary(harness_name: str, context: ExecutionContext) -> bool:
+        """eval-containers runs one task per pod, so only a pod that sees every
+        task's results can write the run-level summary. With --no-pvc each task
+        has its own emptyDir and nothing sees them all."""
+        return (
+            harness_name == "eval-containers"
+            and not context.no_pvc
+            and not context.harness_debug
+        )
+
+    @staticmethod
+    def _done_marker_command(harness_command: str, results_dir: str) -> str:
+        """Mark the task done for the run summary, keeping the task's exit code
+        so a failed task still fails its pod."""
+        # mkdir: a task that fails before making its dir must still be marked.
+        marker = f"{results_dir}/{HARNESS_DONE_SENTINEL}"
+        return (
+            f"({harness_command}); rc=$?; mkdir -p {results_dir}; "
+            f"echo $rc > {marker}; exit $rc"
+        )
+
+    @staticmethod
+    def _run_summary_command(
+        results_dir_prefix: str,
+        experiment_id: str,
+        parallelism: int,
+        timeout: int,
+        script: str = f"/usr/local/bin/{RUN_SUMMARY_SCRIPT.name}",
+    ) -> str:
+        # `|| true`: on an image too old to import the script, the run still has
+        # its per-task reports.
+        return (
+            f"python3 {script} --expect {parallelism} --deadline {timeout} "
+            f"{shlex.quote(results_dir_prefix)} {shlex.quote(experiment_id)} || true"
+        )
+
+    def _wait_for_run_summary(
+        self,
+        spec: _TreatmentSpec,
+        treatment_label_value: str,
+        context: ExecutionContext,
+    ) -> None:
+        """The tasks are done, so the summary is quick. A task that died without
+        its marker keeps the summary waiting, so this only warns, and cleanup
+        removes the pod."""
+        grace = self._require_config(
+            spec.plan_config or {}, "harness", "runSummary", "waitTimeout"
+        )
+        errors = wait_for_pods_by_selector(
+            spec.cmd,
+            f"app={spec.pod_label},{TREATMENT_LABEL}={treatment_label_value},"
+            f"{ROLE_LABEL}={RUN_SUMMARY_ROLE}",
+            spec.harness_ns,
+            grace,
+            context,
+        )
+        for error in errors:
+            context.logger.log_warning(f"Run summary not written: {error}")
 
     @staticmethod
     def _build_harness_command(

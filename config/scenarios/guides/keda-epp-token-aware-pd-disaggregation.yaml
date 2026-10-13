@@ -29,7 +29,7 @@
 #   make calibrate-peak-prefill NAMESPACE=<namespace> APPLY=1
 #   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation run \
 #     --harness inference-perf --workload random_prefill_heavy.yaml \
-#     --monitoring --analyze
+#     --monitoring
 #
 # BEFORE YOU RUN: peakPrefillThroughput below is a PLACEHOLDER borrowed from the
 # co-located guide's own measurement (Qwen3-32B / H100-80GB / TP=2, same model

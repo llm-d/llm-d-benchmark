@@ -12,6 +12,9 @@ metadata:
     app: "{{ harness.podLabel }}"
     function: load_generator
     llmdbench.ai/treatment: "{{ treatment_label_value | default('default') }}"
+{% if pod_role is defined and pod_role %}
+    llmdbench.ai/role: "{{ pod_role }}"
+{% endif %}
 spec:
   containers:
   - name: harness
@@ -39,13 +42,14 @@ spec:
         chmod +x "/usr/local/bin/$(basename "$script")";
       done;
       {{ harness_command }}
+{% set pod_resources = pod_resources | default(harness.resources, true) %}
     resources:
       limits:
-        cpu: "{{ harness.resources.cpu }}"
-        memory: {{ harness.resources.memoryLimit | default(harness.resources.memory, true) }}
+        cpu: "{{ pod_resources.cpu }}"
+        memory: {{ pod_resources.memoryLimit | default(pod_resources.memory, true) }}
       requests:
-        cpu: "{{ harness.resources.cpu }}"
-        memory: {{ harness.resources.memory }}
+        cpu: "{{ pod_resources.cpu }}"
+        memory: {{ pod_resources.memory }}
     env:
     # Stage markers are logged in local time, then compared against `date -u`
     # scrape timestamps when clipping per-stage series.

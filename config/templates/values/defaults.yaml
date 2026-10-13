@@ -1928,13 +1928,20 @@ harness:
   output: local
   inferencePerf:
     rayonNumThreads: 4
+  # eval-containers only: one small pod per treatment that waits for the tasks
+  # and writes the run-level summary next to them. waitTimeout is how long the
+  # driver waits for it once the tasks are done.
+  runSummary:
+    waitTimeout: 300
+    resources:
+      cpu: 1
+      memory: 1Gi
 
 # ============================================================================
 # EXPERIMENT RUNTIME DEFAULTS
 # ============================================================================
 experiment:
   resultsDir: /requests
-  analyzeLocally: false
   workspaceDir: /workspace
   datasetUrl: ""
   datasetDir: ""

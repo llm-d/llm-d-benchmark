@@ -10,7 +10,11 @@ import pytest
 import yaml
 
 from llmdbenchmark.analysis.aggregate_eval_containers import (
+    CSV_NAME,
+    DONE_MARKER,
+    REPORT_NAME,
     generate_agentic_summary,
+    main,
     _polyglot_language,
 )
 from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
@@ -144,9 +148,7 @@ def test_tokens_come_from_provider_span_not_http_span(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_1", task_id=200, spans=spans)
 
     assert generate_agentic_summary(tmp_path) == 1
-    report = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )
+    report = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())
     obs = report["results"]["observability"]
     assert obs["eval_containers_input_tokens"] == 1000
     assert obs["eval_containers_output_tokens"] == 200  # not 277
@@ -164,9 +166,9 @@ def test_score_and_language_aggregation(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_3", task_id=170, reward=1.0, spans=rust)
 
     assert generate_agentic_summary(tmp_path) == 3
-    obs = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["observability"]
+    obs = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
 
     assert obs["eval_containers_tasks"] == 3
     assert obs["eval_containers_passed_count"] == 2
@@ -181,9 +183,9 @@ def test_score_and_language_aggregation(tmp_path: Path) -> None:
 def test_reward_txt_fallback_when_result_json_missing(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_1", task_id=5, reward=None, reward_txt="1.0")
     assert generate_agentic_summary(tmp_path) == 1
-    obs = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["observability"]
+    obs = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
     assert obs["eval_containers_passed_count"] == 1
     assert obs["eval_containers_reward_sum"] == pytest.approx(1.0)
 
@@ -194,9 +196,9 @@ def test_exit_code_classification(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_3", task_id=3, exit_code="1")
 
     generate_agentic_summary(tmp_path)
-    obs = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["observability"]
+    obs = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
     assert obs["eval_containers_tasks_exit_timeout"] == 1
     assert obs["eval_containers_tasks_exit_error"] == 1
 
@@ -228,9 +230,9 @@ def test_ttft_discards_values_exceeding_their_call(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_1", task_id=1, spans=spans)
 
     generate_agentic_summary(tmp_path)
-    obs = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["observability"]
+    obs = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
     assert obs["eval_containers_ttft_valid_calls"] == 1
     assert obs["eval_containers_ttft_discarded_calls"] == 1
     assert obs["eval_containers_ttft_seconds"]["mean"] == pytest.approx(0.5)
@@ -241,9 +243,9 @@ def test_task_latency_uses_harness_wall_clock(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_1", task_id=1, spans=spans, delta="PT300S")
 
     generate_agentic_summary(tmp_path)
-    obs = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["observability"]
+    obs = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
     # Wall-clock (300s) is reported separately from the LLM-span proxy (1s).
     assert obs["eval_containers_task_latency_seconds"]["mean"] == pytest.approx(300.0)
     assert obs["eval_containers_task_llm_span_seconds"]["mean"] == pytest.approx(1.0)
@@ -270,9 +272,9 @@ def test_rates_use_the_wall_clock_of_parallel_tasks(tmp_path: Path) -> None:
         )
 
     generate_agentic_summary(tmp_path)
-    throughput = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["request_performance"]["aggregate"]["throughput"]
+    throughput = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["request_performance"]["aggregate"]["throughput"]
     assert throughput["request_rate"]["mean"] == pytest.approx(0.4)
     assert throughput["total_token_rate"]["mean"] == pytest.approx(400.0)
 
@@ -283,9 +285,9 @@ def test_missing_timestamps_omit_task_latency(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_1", task_id=1, spans=spans, delta=None)
 
     generate_agentic_summary(tmp_path)
-    obs = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )["results"]["observability"]
+    obs = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
     assert "eval_containers_task_latency_seconds" not in obs
     assert obs["eval_containers_task_llm_span_seconds"]["mean"] == pytest.approx(1.0)
 
@@ -296,9 +298,7 @@ def test_csv_has_units_in_column_names_and_one_row_per_task(tmp_path: Path) -> N
     _write_task(tmp_path, "run_2", task_id=170, spans=spans)
 
     generate_agentic_summary(tmp_path)
-    with open(
-        tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8"
-    ) as f:
+    with open(tmp_path / "run_summary" / CSV_NAME, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
     assert len(rows) == 2
@@ -306,8 +306,7 @@ def test_csv_has_units_in_column_names_and_one_row_per_task(tmp_path: Path) -> N
     assert [r["task_id"] for r in rows] == ["170", "200"]
     assert rows[0]["language"] == "python"
     assert rows[1]["language"] == "rust"
-    # Latency columns state their unit, unlike treatment_comparison.csv's
-    # `_s`-suffixed columns that actually carry milliseconds.
+    # Latency columns state their unit.
     header = rows[0].keys()
     assert "call_latency_mean_ms" in header
     assert "task_latency_s" in header
@@ -329,9 +328,7 @@ def test_report_validates_against_v0_2_schema(tmp_path: Path) -> None:
     _write_task(tmp_path, "run_1", task_id=1, spans=spans)
     generate_agentic_summary(tmp_path)
 
-    data = yaml.safe_load(
-        (tmp_path / "agentic-summary" / "agentic_run_report.yaml").read_text()
-    )
+    data = yaml.safe_load((tmp_path / "run_summary" / REPORT_NAME).read_text())
     report = load_benchmark_report(data)
     assert report.version == "0.2.1"
     assert report.run.uid == "run"
@@ -355,9 +352,7 @@ def test_time_to_first_call_anchors_on_harness_start(tmp_path: Path) -> None:
         tmp_path, "run_1", task_id=1, spans=spans, delta="PT100S", harness_start=start
     )
     generate_agentic_summary(tmp_path)
-    with open(
-        tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8"
-    ) as f:
+    with open(tmp_path / "run_summary" / CSV_NAME, encoding="utf-8") as f:
         row = list(csv.DictReader(f))[0]
     # The real answer is 10s. The buggy derivation would give 100 - 2 = 98.
     assert float(row["time_to_first_call_s"]) == pytest.approx(10.0, abs=0.01)
@@ -370,8 +365,116 @@ def test_time_to_first_call_blank_without_harness_start(tmp_path: Path) -> None:
     spans = [_span("/openai/v1/responses", 1_000_000_000, 2_000_000_000, {})]
     _write_task(tmp_path, "run_1", task_id=1, spans=spans, delta="PT100S")
     generate_agentic_summary(tmp_path)
-    with open(
-        tmp_path / "agentic-summary" / "agentic_tasks.csv", encoding="utf-8"
-    ) as f:
+    with open(tmp_path / "run_summary" / CSV_NAME, encoding="utf-8") as f:
         row = list(csv.DictReader(f))[0]
     assert row["time_to_first_call_s"] == ""
+
+
+# ---------------------------------------------------------------------------
+# In-pod entry point
+# ---------------------------------------------------------------------------
+
+
+def _done(task_dir: Path) -> Path:
+    (task_dir / DONE_MARKER).write_text("0\n", encoding="utf-8")
+    return task_dir
+
+
+def test_main_writes_the_summary_as_its_own_result_set(tmp_path: Path) -> None:
+    _done(_write_task(tmp_path, "exp_1", task_id=1))
+    _done(_write_task(tmp_path, "exp_2", task_id=2, reward=0.0))
+    _write_task(tmp_path, "other_1", task_id=3)
+
+    assert main(["--expect", "2", "--deadline", "5", str(tmp_path), "exp"]) == 0
+
+    summary = tmp_path / "exp_summary"
+    assert sorted(p.name for p in summary.iterdir()) == sorted([CSV_NAME, REPORT_NAME])
+    data = yaml.safe_load((summary / REPORT_NAME).read_text())
+    assert data["run"]["uid"] == "exp"
+    obs = data["results"]["observability"]
+    assert obs["eval_containers_tasks"] == 2
+    assert obs["eval_containers_tasks_expected"] == 2
+    assert obs["eval_containers_passed_count"] == 1
+    # Nothing staged is left behind.
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".")]
+
+
+def test_main_waits_for_every_marker(tmp_path: Path, monkeypatch) -> None:
+    import llmdbenchmark.analysis.aggregate_eval_containers as agg
+
+    _done(_write_task(tmp_path, "exp_1", task_id=1))
+    late = _write_task(tmp_path, "exp_2", task_id=2)
+    sleeps: list[float] = []
+
+    def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        _done(late)
+
+    monkeypatch.setattr(agg.time, "sleep", _sleep)
+    assert main(["--expect", "2", "--deadline", "0", str(tmp_path), "exp"]) == 0
+
+    assert len(sleeps) == 1
+    data = yaml.safe_load((tmp_path / "exp_summary" / REPORT_NAME).read_text())
+    assert data["results"]["observability"]["eval_containers_tasks"] == 2
+
+
+def test_main_summarizes_what_finished_by_the_deadline(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import llmdbenchmark.analysis.aggregate_eval_containers as agg
+
+    _done(_write_task(tmp_path, "exp_1", task_id=1))
+    # Still running: has metadata but no marker, so it must not be read.
+    _write_task(tmp_path, "exp_2", task_id=2)
+    clock = iter([0.0, 0.0, 100.0])
+    monkeypatch.setattr(agg.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(agg.time, "sleep", lambda _s: None)
+
+    assert main(["--expect", "2", "--deadline", "10", str(tmp_path), "exp"]) == 0
+
+    obs = yaml.safe_load((tmp_path / "exp_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
+    assert obs["eval_containers_tasks"] == 1
+    assert obs["eval_containers_tasks_expected"] == 2
+
+
+def test_main_never_fails_and_leaves_nothing_half_done(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import llmdbenchmark.analysis.aggregate_eval_containers as agg
+
+    _done(_write_task(tmp_path, "exp_1", task_id=1))
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(agg, "_write_csv", _boom)
+    assert main(["--expect", "1", "--deadline", "5", str(tmp_path), "exp"]) == 0
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["exp_1"]
+
+
+def test_summary_dir_is_not_read_as_a_task(tmp_path: Path) -> None:
+    _done(_write_task(tmp_path, "exp_1", task_id=1))
+    assert main(["--expect", "1", "--deadline", "5", str(tmp_path), "exp"]) == 0
+    # A second pass, as on a retried attempt, still sees exactly one task.
+    assert main(["--expect", "1", "--deadline", "5", str(tmp_path), "exp"]) == 0
+    obs = yaml.safe_load((tmp_path / "exp_summary" / REPORT_NAME).read_text())[
+        "results"
+    ]["observability"]
+    assert obs["eval_containers_tasks"] == 1
+
+
+def test_done_marker_matches_the_harness_sentinel() -> None:
+    from llmdbenchmark.utilities.kube_helpers import HARNESS_DONE_SENTINEL
+
+    assert DONE_MARKER == HARNESS_DONE_SENTINEL
+
+
+def test_runs_on_the_image_python() -> None:
+    """The harness image is older than the driver's Python."""
+    import ast
+
+    import llmdbenchmark.analysis.aggregate_eval_containers as agg
+
+    ast.parse(Path(agg.__file__).read_text(encoding="utf-8"), feature_version=(3, 12))

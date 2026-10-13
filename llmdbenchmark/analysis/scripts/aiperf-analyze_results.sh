@@ -33,4 +33,13 @@ echo "Results data conversion completed successfully."
 
 mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/analysis"
 python3 /usr/local/bin/extract_summary.py "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
-exit $?
+_summary_rc=$?
+
+# Integrate vLLM metrics into benchmark report(s) v0.2
+_metrics_dir="$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics"
+if [[ -f "$_metrics_dir/processed/metrics_summary.json" ]]; then
+  echo "Integrating metrics summary into benchmark report(s) v0.2..."
+  python3 /usr/local/bin/embed_metrics.py "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" 2>&1 | tee -a "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log" || true
+fi
+
+exit $_summary_rc

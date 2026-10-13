@@ -20,7 +20,7 @@
 #   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu standup \
 #     --cluster-config <cc> -p "$NS" -t modelservice
 #   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu run \
-#     --cluster-config <cc> -p "$NS" -j <#tasks> --analyze
+#     --cluster-config <cc> -p "$NS" -j <#tasks>
 #   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu teardown \
 #     --cluster-config <cc> -p "$NS"
 #

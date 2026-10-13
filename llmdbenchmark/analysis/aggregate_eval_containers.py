@@ -2,43 +2,52 @@
 
 The framework runs ONE benchmark task per parallel harness pod, so a 50-task
 scenario leaves 50 result directories each holding a single-task benchmark
-report. Nothing rolls those up: ``cross_treatment.py`` treats every directory as
-a separate experimental *treatment* (its intended meaning -- one row per
-configuration, compared side by side), which for this harness produces N rows
-that look like N configurations of one task each. It also carries no
-``observability`` columns, so the score cannot appear there at all.
+report. This answers the question a run actually poses: across all N tasks,
+what was the score, the latency, and the token usage?
 
-This module answers the question a run actually poses: across all N tasks, what
-was the score, the latency, and the token usage? It reads only artifacts that
-already exist and writes two files under ``agentic-summary/``:
+It runs next to the tasks, in one extra pod (or container) per treatment that
+waits for every task to finish, and writes a result set of its own,
+``<experiment_id>_summary/``:
 
-* ``agentic_run_report.yaml`` -- one v0.2-shaped benchmark report for the whole
-  run, so existing tooling can read it.
+* ``benchmark_report_v0.2,_agentic_run.yaml`` -- one v0.2-shaped benchmark report
+  for the whole run, kept plain and collected like every other report.
 * ``agentic_tasks.csv`` -- one row per task, with units in the column names.
 
-Deliberately NOT written as ``benchmark_report_v0.2*.yaml`` at the results root:
-``cross_treatment`` discovers inputs by that glob, and a run-level report sitting
-there would be re-ingested as if it were another task.
+Shipped to the pod as a plain script, so it must run on the image's Python and
+read only plain files.
+
+Usage: aggregate_eval_containers.py --expect N --deadline SECONDS <results_dir> <experiment_id>
 """
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
+import shutil
+import sys
+import tempfile
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
-from llmdbenchmark.utilities.archive import read_member
-
 import yaml
-
-from llmdbenchmark.analysis.benchmark_report.base import Units
-from llmdbenchmark.analysis.benchmark_report.core import load_benchmark_report
-from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+from llmd_benchmark_report.base import Units
+from llmd_benchmark_report.core import load_benchmark_report
+from llmd_benchmark_report.native_to_br0_2 import (
     agentic_stat,
     is_agentic_request_span,
 )
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import VERSION
+from llmd_benchmark_report.schema_v0_2 import VERSION
+
+SUMMARY_SUFFIX = "_summary"
+REPORT_NAME = "benchmark_report_v0.2,_agentic_run.yaml"
+CSV_NAME = "agentic_tasks.csv"
+# Same as HARNESS_DONE_SENTINEL in utilities/kube_helpers.py, which the pod cannot
+# import.
+DONE_MARKER = ".llmdbench_harness_done"
+_POLL_S = 10
 
 # aider-polyglot ships language-ordered, so a task id implies its language. Used
 # to report per-language pass rates: a contiguous slice of this dataset is
@@ -92,28 +101,9 @@ def _polyglot_language(task_id: int | None) -> str:
 
 
 def _read_text(task_dir: Path, relative: str) -> str | None:
-    """Text of ``relative`` under ``task_dir``, plain or from the task's archive.
-
-    Every scoring input here is archived by default, and each caller treats a read
-    failure as "no data" -- so without this the whole report comes out blank while
-    still reporting success.
-    """
-    plain = task_dir / relative
-    if plain.is_file():
-        # UnicodeDecodeError too, so both branches agree: catching it only on the
-        # archive side made a non-UTF8 trace raise on a plain tree and be swallowed
-        # on a compressed one.
-        try:
-            return plain.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
-            return None
-
-    payload = read_member(task_dir, relative)
-    if payload is None:
-        return None
     try:
-        return payload.decode("utf-8")
-    except UnicodeDecodeError:
+        return (task_dir / relative).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return None
 
 
@@ -172,7 +162,7 @@ def _read_reward(task_dir: Path) -> tuple[float | None, bool | None, str, int | 
         task_id = _read_yaml(task_dir, "run_metadata.yaml").get("task_id")
     try:
         task_id_int = int(task_id)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         task_id_int = None
 
     if "reward" in result:
@@ -180,7 +170,7 @@ def _read_reward(task_dir: Path) -> tuple[float | None, bool | None, str, int | 
         passed = result.get("passed")
         try:
             reward_f = float(reward)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             reward_f = None
         if passed is None and reward_f is not None:
             passed = reward_f >= 1.0
@@ -343,7 +333,7 @@ def _iso_to_unix_ns(value: Any) -> int | None:
         from datetime import datetime
 
         dt = datetime.fromisoformat(text)
-    except ValueError, ImportError:
+    except (ValueError, ImportError):
         return None
     if dt.tzinfo is None:
         # The harness writes an offset; a naive value would silently be read as
@@ -365,14 +355,29 @@ def _duration_seconds(delta: Any) -> float | None:
         return None
 
 
-def _task_dirs(results_dir: Path) -> list[Path]:
+def _is_task_of(name: str, experiment_id: str) -> bool:
+    base, sep, tail = name.rpartition("_")
+    return bool(sep) and base == experiment_id and tail.isdigit()
+
+
+def _task_dirs(results_dir: Path, experiment_id: str | None = None) -> list[Path]:
+    # The summary dir has no run_metadata.yaml, so it is never read as a task.
     return sorted(
         d
         for d in results_dir.iterdir()
         if d.is_dir()
-        and d.name != "agentic-summary"
-        and d.name != "cross-treatment-comparison"
         and (d / "run_metadata.yaml").exists()
+        and (experiment_id is None or _is_task_of(d.name, experiment_id))
+    )
+
+
+def _done_task_dirs(results_dir: Path, experiment_id: str) -> list[Path]:
+    return sorted(
+        d
+        for d in results_dir.iterdir()
+        if d.is_dir()
+        and _is_task_of(d.name, experiment_id)
+        and (d / DONE_MARKER).exists()
     )
 
 
@@ -390,7 +395,7 @@ def _run_uid(tasks: list[_TaskMetrics]) -> str:
     return tasks[0].name if tasks else "eval-containers"
 
 
-def _build_report(tasks: list[_TaskMetrics]) -> dict:
+def _build_report(tasks: list[_TaskMetrics], expected: int | None = None) -> dict:
     """Assemble the run-level v0.2-shaped report."""
     latencies_ms = [ms for t in tasks for ms in t.call_latencies_ms]
     task_latencies_s = [t.task_latency_s for t in tasks if t.task_latency_s is not None]
@@ -457,6 +462,8 @@ def _build_report(tasks: list[_TaskMetrics]) -> dict:
         "eval_containers_ttft_valid_calls": len(ttft_s),
         "eval_containers_ttft_discarded_calls": sum(t.ttft_discarded for t in tasks),
     }
+    if expected is not None:
+        observability["eval_containers_tasks_expected"] = expected
     if scored:
         observability["eval_containers_pass_rate"] = passed_count / scored
         observability["eval_containers_reward_mean"] = sum(rewards) / scored
@@ -605,35 +612,42 @@ def generate_agentic_summary(
     results_dir: Path | str,
     output_dir: Path | str | None = None,
     context: Any = None,
+    *,
+    task_dirs: list[Path] | None = None,
+    expected: int | None = None,
 ) -> int:
-    """Aggregate every eval-containers task under ``results_dir``.
+    """Aggregate eval-containers tasks under ``results_dir`` into ``output_dir``.
 
-    Returns the number of tasks aggregated (0 if there was nothing to do), so a
-    caller can log it the way the cross-treatment step does.
+    ``output_dir`` defaults to ``<results_dir>/<experiment_id>_summary``. Returns
+    the number of tasks aggregated (0 if there was nothing to do).
     """
     results_dir = Path(results_dir)
     if not results_dir.is_dir():
         return 0
 
-    task_dirs = _task_dirs(results_dir)
+    if task_dirs is None:
+        task_dirs = _task_dirs(results_dir)
     if not task_dirs:
         _log(context, "No eval-containers task directories found for aggregation")
         return 0
 
     tasks = [_TaskMetrics(d) for d in task_dirs]
 
-    output_dir = Path(output_dir) if output_dir else results_dir / "agentic-summary"
+    report = _build_report(tasks, expected)
+    output_dir = (
+        Path(output_dir)
+        if output_dir
+        else results_dir / f"{report['run']['uid']}{SUMMARY_SUFFIX}"
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    report = _build_report(tasks)
-    report_path = output_dir / "agentic_run_report.yaml"
+    report_path = output_dir / REPORT_NAME
     # Round-trip through the schema rather than dumping the dict: it validates
     # the output (Statistics forbids extra keys, and units are checked per field)
     # and serializes the Units enum, which yaml.safe_dump cannot represent.
     load_benchmark_report(report).export_yaml(str(report_path))
 
-    csv_path = output_dir / "agentic_tasks.csv"
-    _write_csv(tasks, csv_path)
+    _write_csv(tasks, output_dir / CSV_NAME)
 
     observability = report["results"]["observability"]
     passed = observability.get("eval_containers_passed_count", 0)
@@ -645,3 +659,66 @@ def generate_agentic_summary(
         f"{observability.get('eval_containers_total_tokens', 0)} tokens -> {report_path}",
     )
     return len(tasks)
+
+
+def _wait_for_tasks(
+    results_dir: Path, experiment_id: str, expected: int, deadline_s: float
+) -> list[Path]:
+    started = time.monotonic()
+    while True:
+        done = _done_task_dirs(results_dir, experiment_id)
+        if len(done) >= expected:
+            return done
+        if deadline_s > 0 and time.monotonic() - started >= deadline_s:
+            print(
+                f"WARNING: only {len(done)} of {expected} tasks finished before the "
+                f"deadline; summarizing those",
+                file=sys.stderr,
+            )
+            return done
+        time.sleep(_POLL_S)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--expect", type=int, required=True)
+    parser.add_argument(
+        "--deadline", type=float, default=0, help="Seconds to wait; 0 waits forever."
+    )
+    parser.add_argument("results_dir", type=Path)
+    parser.add_argument("experiment_id")
+    args = parser.parse_args(argv)
+
+    context = SimpleNamespace(logger=SimpleNamespace(log_info=print))
+    final_dir = args.results_dir / f"{args.experiment_id}{SUMMARY_SUFFIX}"
+    staging = None
+    try:
+        done = _wait_for_tasks(
+            args.results_dir, args.experiment_id, args.expect, args.deadline
+        )
+        # The staging name has no experiment id, so a crash cannot leave
+        # something the driver would collect as a result set.
+        staging = Path(
+            tempfile.mkdtemp(prefix=".agentic-summary-", dir=args.results_dir)
+        )
+        if generate_agentic_summary(
+            args.results_dir,
+            staging,
+            context,
+            task_dirs=done,
+            expected=args.expect,
+        ):
+            shutil.rmtree(final_dir, ignore_errors=True)
+            staging.rename(final_dir)
+            staging = None
+            print(f"Run summary written to {final_dir}")
+    except Exception as exc:  # noqa: BLE001 -- must not fail the treatment
+        print(f"WARNING: agentic summary failed: {exc}", file=sys.stderr)
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

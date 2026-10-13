@@ -11,7 +11,11 @@ from pathlib import Path
 import pytest
 from _toolchain import requires_compress_tools
 
-from llmdbenchmark.cli import _resolve_data_collect, _validate_data_collect
+from llmdbenchmark.cli import (
+    _resolve_data_collect,
+    _validate_data_collect,
+    _warn_deprecated_analyze,
+)
 from llmdbenchmark.interface import run as run_interface
 from llmdbenchmark.utilities.archive import (
     RemoteReader,
@@ -72,13 +76,42 @@ def test_resolving_twice_warns_once() -> None:
     assert len(logger.warnings) == 1
 
 
-@pytest.mark.parametrize("extra", [["--analyze"], ["--no-pvc"], ["-z"]])
+@pytest.mark.parametrize("extra", [["--no-pvc"], ["-z"]])
 def test_skip_refuses_what_it_cannot_honour(extra) -> None:
     args = _parse(["run", "--data-collect", "skip", *extra])
     logger = _Logger()
     _resolve_data_collect(args, logger)
     with pytest.raises(SystemExit):
         _validate_data_collect(args, logger)
+
+
+def test_analyze_is_ignored_with_a_warning(monkeypatch) -> None:
+    monkeypatch.delenv("LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY", raising=False)
+    args = _parse(["run", "--data-collect", "skip", "--analyze"])
+    logger = _Logger()
+    _resolve_data_collect(args, logger)
+    _validate_data_collect(args, logger)
+    _warn_deprecated_analyze(args, logger)
+    assert any("--analyze" in w for w in logger.warnings)
+
+    quiet = _Logger()
+    _warn_deprecated_analyze(_parse(["run"]), quiet)
+    assert quiet.warnings == []
+
+
+def test_analyze_env_var_is_ignored_with_a_warning(monkeypatch) -> None:
+    monkeypatch.setenv("LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY", "1")
+    logger = _Logger()
+    _warn_deprecated_analyze(_parse(["run"]), logger)
+    assert len(logger.warnings) == 1
+
+
+def test_analyze_is_hidden_from_help() -> None:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+    run_interface.add_subcommands(subparsers, parents=[])
+    run_parser = subparsers.choices["run"]
+    assert "--analyze" not in run_parser.format_help()
 
 
 def test_skip_with_cloud_output_warns_but_proceeds() -> None:

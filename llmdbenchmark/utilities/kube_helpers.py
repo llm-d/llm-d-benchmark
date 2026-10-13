@@ -28,8 +28,13 @@ DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 
 #: Written by --no-pvc harness pods (as ``echo $? > <prefix>/<sentinel>``)
 #: once the benchmark finishes, while the pod itself keeps sleeping so its
-#: emptyDir stays reachable for collection.
+#: emptyDir stays reachable for collection. eval-containers tasks write it too,
+#: so the run summary knows when every task is done.
 HARNESS_DONE_SENTINEL = ".llmdbench_harness_done"
+
+#: Run-level summary of the eval-containers tasks, relative to the repository
+#: root. It runs next to the tasks, so it ships with the harness scripts.
+RUN_SUMMARY_SCRIPT = Path("llmdbenchmark/analysis/aggregate_eval_containers.py")
 
 # Retry budget for locating the data-access pod. Deliberately generous relative
 # to what it guards: ~14s of polling against a wave of results that cost hours of

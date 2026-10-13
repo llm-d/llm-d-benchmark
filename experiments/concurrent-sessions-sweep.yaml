@@ -19,8 +19,7 @@
 #     --workload otel_traces.yaml \
 #     --experiments experiments/concurrent-sessions-sweep.yaml \
 #     --monitoring -g METRICS_COLLECTION_INTERVAL \
-#     --wait-timeout 10800 \
-#     --analyze
+#     --wait-timeout 10800
 
 # Clear vLLM prefix/mm/encoder caches on every serving pod before each
 # treatment so every value starts cold. Requires VLLM_SERVER_DEV_MODE=1

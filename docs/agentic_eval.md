@@ -52,7 +52,7 @@ export OPENAI_API_KEY="<your-key>"        # exported so -g forwards it by name  
 
 llmdbenchmark --spec examples/eval-containers-gaia run \
   -U "https://<your-endpoint>" -m "<model-id>" -p <namespace> \
-  -g OPENAI_API_KEY -j 1 --base-dir . --analyze --wait-timeout 3600
+  -g OPENAI_API_KEY -j 1 --base-dir . --wait-timeout 3600
 ```
 
 ---
@@ -135,7 +135,7 @@ model is stood up:
 ```bash
 llmdbenchmark --spec examples/eval-containers-gaia run \
   -U "https://<proxy-endpoint>" -m "<model-id>" \
-  -p <ns> -g OPENAI_API_KEY -j 1 --base-dir . --analyze
+  -p <ns> -g OPENAI_API_KEY -j 1 --base-dir .
 ```
 
 The harness pod needs egress to the endpoint; model access is usually
@@ -149,7 +149,7 @@ endpoint. `run` does *not* auto-standup.
 
 ```bash
 llmdbenchmark --spec <gpu-scenario> standup  -p <ns> -t modelservice --base-dir .
-llmdbenchmark --spec <gpu-scenario> run      -p <ns> -t modelservice -j 1 --base-dir . --analyze  # NO -U / -g
+llmdbenchmark --spec <gpu-scenario> run      -p <ns> -t modelservice -j 1 --base-dir .  # NO -U / -g
 llmdbenchmark --spec <gpu-scenario> teardown -p <ns> -t modelservice --base-dir .
 ```
 
@@ -182,20 +182,30 @@ status `200`, and `stdout.log` is non-empty and free of `API Error`.
 
 ### Run-level aggregate
 
-`--analyze` also rolls every task up into `agentic-summary/` at the results root
-(one task per pod means the per-task reports alone can't answer "how did the run
-do"):
+One task per pod means the per-task reports alone can't answer "how did the run
+do". So each treatment also runs one small summary pod next to its tasks. Once
+every task has finished, it rolls them up into one more result set,
+`<experiment-id>_summary/`, on the workload PVC. That set is collected like any
+other, and the in-cluster llm-d-prism dashboard shows its report.
 
 | File | Contains |
 |---|---|
-| `agentic_run_report.yaml` | Benchmark-report v0.2 for the whole run: pass rate, pooled LLM-call latency, token totals, and per-language pass rates for `aider-polyglot`. |
+| `benchmark_report_v0.2,_agentic_run.yaml` | Benchmark-report v0.2 for the whole run: pass rate, pooled LLM-call latency, token totals, and per-language pass rates for `aider-polyglot`. `eval_containers_tasks_expected` is the number of tasks launched; it is higher than `eval_containers_tasks` when some task did not finish in time. |
 | `agentic_tasks.csv` | One row per task — score, exit code, call count, latency, tokens. Units are in the column names. |
 
 ```bash
 grep -E 'tasks|passed_count|pass_rate|total_tokens' \
-  <results>/agentic-summary/agentic_run_report.yaml
-column -s, -t < <results>/agentic-summary/agentic_tasks.csv
+  <results>/<experiment-id>_summary/benchmark_report_v0.2,_agentic_run.yaml
+tar -I zstd -xOf <results>/<experiment-id>_summary/workspace.tar.zst \
+  ./agentic_tasks.csv | column -s, -t
 ```
+
+The CSV is inside the set's archive when the output is compressed (the default);
+with `--no-compress` it sits next to the report. The summary pod's resources and
+how long the driver waits for it after the tasks are `harness.runSummary` in the
+scenario. With nok8s the summary runs as one more container on the same host.
+`--no-pvc` runs have no run summary: every task keeps its results in its own
+emptyDir, so nothing can see them all.
 
 Scores live under `results.observability` as `eval_containers_*` keys. Read
 `_tasks_exit_timeout` and `_tasks_exit_error` beside the pass rate: a task killed
@@ -213,4 +223,4 @@ call), so a low `_ttft_valid_calls` means treat that metric as thin.
 
 See also: [run.md](run.md) (harness/profile mechanics) ·
 [openshift-setup.md](openshift-setup.md) (cluster-config + OpenShift prereqs) ·
-[analysis.md](analysis.md) (`--analyze` report).
+[analysis.md](analysis.md) (benchmark reports).

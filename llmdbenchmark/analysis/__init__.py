@@ -147,8 +147,6 @@ def run_analysis(
     Returns:
         ``None`` on success, or an error string.
     """
-    # Returns None (success) so the caller still counts this result set: the
-    # cross-treatment comparison is gated on that count and is driver-only work.
     if pod_analysis_present(harness_name, results_dir):
         _log(context, f"{results_dir.name}: using in-pod analysis")
         return None

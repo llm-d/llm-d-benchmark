@@ -33,15 +33,15 @@ Output files:
 - `benchmark_report,_<filename>.yaml` -- v0.1 format
 - `benchmark_report_v0.2,_<filename>.yaml` -- v0.2 format
 
-## Cross-Treatment Comparison (`cross_treatment.py`)
+## eval-containers Run Summary (`aggregate_eval_containers.py`)
 
-Reads benchmark report v0.2 YAML files from multiple result directories and produces a comparison table.
+`eval-containers` runs one task per harness pod. This module rolls a treatment's tasks up into one run-level v0.2 report. It never runs on the driver: it ships in the harness-scripts ConfigMap and runs as a plain script in one extra summary pod per treatment (or one more container under nok8s), so it must parse on the image's Python and read only plain files.
 
-### `generate_cross_treatment_summary(results_dir, output_dir=None, context=None) -> int`
+```
+aggregate_eval_containers.py --expect N --deadline SECONDS <results_dir> <experiment_id>
+```
 
-Returns the number of treatments compared. Output goes to `results_dir/cross-treatment-comparison/` by default.
-
-It writes `treatment_comparison.csv`: one row per treatment with columns for TTFT, TPOT, ITL, E2E latency (mean and P99), output/request/total throughput, total requests, failures, input/output lengths, tool, and rate.
+It waits until N task dirs `<experiment_id>_<n>` hold the done marker (or the deadline passes, 0 means no deadline), then writes `<experiment_id>_summary/` with `benchmark_report_v0.2,_agentic_run.yaml` and `agentic_tasks.csv`. It always exits 0.
 
 ## benchmark_report/ Subdirectory
 
@@ -69,7 +69,7 @@ benchmark_report/
 
 ## Integration into the Run Phase
 
-Analysis is invoked by run step 11 (`AnalyzeResultsStep`) after result collection. The step calls `run_analysis()` for each result directory, then `generate_cross_treatment_summary()` if multiple treatments were collected. Analysis is also triggered when `--analyze` is passed to the `run` command.
+Every harness analyzes its own results in the pod. Run step 12 (`AnalyzeResultsStep`) always runs after result collection and calls `run_analysis()` for each result directory; it does nothing for a directory that already holds the pod's reports, so it only fills gaps. It is skipped under `--data-collect skip`.
 
 ## Dependencies
 

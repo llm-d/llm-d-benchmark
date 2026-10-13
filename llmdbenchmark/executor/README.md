@@ -225,7 +225,6 @@ Mutable dataclass populated incrementally across phases. Shared by all steps and
 | `harness_envvars_to_pod` | `str or None` | Env vars to propagate to pods |
 | `endpoint_url` | `str or None` | Explicit endpoint (run-only mode) |
 | `run_config_file` | `str or None` | Run config YAML path |
-| `analyze_locally` | `bool` | Run local analysis after collection |
 | `data_access_timeout` | `int` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 
 ### Key Methods

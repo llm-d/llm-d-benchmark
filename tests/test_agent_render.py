@@ -3,7 +3,7 @@
 Validates that:
 - the Agent-Rendered Run Command argv matches the pinned canonical ordering
 - every run-flag token in argv is a real flag defined in interface/run.py
-- --analyze is always present; --monitoring only under the override
+- --monitoring only under the override
 - rendering is deterministic (byte-identical argv and manifest dump)
 - the Benchmark Job Manifest carries both identities, no ttlSecondsAfterFinished,
   no hostPath/kubeconfig, and args identical to the run command's own argv slice
@@ -73,7 +73,6 @@ def test_argv_pinned_ordering():
         "inference-perf",
         "--workload",
         "chatbot_synthetic.yaml",
-        "--analyze",
     ]
 
 
@@ -89,13 +88,12 @@ def test_run_flags_are_a_subset_of_real_run_py_flags():
     assert run_flags_used <= _real_run_flags()
 
 
-def test_analyze_always_present_monitoring_only_on_override():
+def test_monitoring_only_on_override():
     recommendation = recommend(
         RecommendationFacts(workload_intent=WorkloadIntent.INTERACTIVE_CHAT)
     )
 
     default_command = render_run_command(recommendation, _execution_facts())
-    assert "--analyze" in default_command.argv
     assert "--monitoring" not in default_command.argv
     assert "--config" not in default_command.argv
     assert "--generate-config" not in default_command.argv

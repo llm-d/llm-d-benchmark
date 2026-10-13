@@ -107,7 +107,6 @@ llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
   -p <namespace> \
   -g OPENAI_API_KEY \
   -j 5 \
-  --analyze \
   --wait-timeout 3600
 ```
 

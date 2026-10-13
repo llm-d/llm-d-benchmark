@@ -142,20 +142,19 @@ def _resolve_data_collect(args: argparse.Namespace, logger) -> str:
     return mode
 
 
+def _warn_deprecated_analyze(args: argparse.Namespace, logger) -> None:
+    if getattr(args, "analyze_deprecated", False):
+        logger.log_warning(
+            "--analyze / LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY is ignored: "
+            "results are always analyzed now."
+        )
+
+
 def _validate_data_collect(args: argparse.Namespace, logger) -> None:
     # Here rather than in run preflight, whose `should_skip` returns True under
     # `-z` -- one of the combinations that has to be caught.
     if getattr(args, "data_collect", "default") != "skip":
         return
-
-    if getattr(args, "analyze", False):
-        logger.log_error(
-            "--data-collect skip leaves results on the PVC, so there is nothing "
-            "local to analyze. Unset --analyze / "
-            "LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY, or use --data-collect "
-            "default/fast/results."
-        )
-        sys.exit(1)
 
     if getattr(args, "no_pvc", False):
         logger.log_error(
@@ -190,6 +189,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     if args.command in (Command.RUN.value, Command.EXPERIMENT.value):
         _resolve_data_collect(args, logger)
         _validate_data_collect(args, logger)
+        _warn_deprecated_analyze(args, logger)
 
     # Before the render, so a refused update does not first render a plan.
     update_components = None
@@ -1359,7 +1359,6 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         max_parallel_treatments=max_parallel_treatments,
         harness_service_account=getattr(args, "serviceaccount", None),
         harness_envvars_to_pod=getattr(args, "envvarspod", None),
-        analyze_locally=getattr(args, "analyze", False),
         endpoint_url=endpoint_url,
         run_config_file=run_config_file,
         container_only=container_only,
@@ -1813,7 +1812,6 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
             "pvc_results_paths": pvc_paths,
             "pvc_results_prefix": results_dir_prefix,
             "timestamp": timestamp,
-            "analyze": context.analyze_locally,
             "parallelism": parallelism,
             "output": context.harness_output or "local",
         }

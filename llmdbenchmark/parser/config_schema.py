@@ -400,6 +400,15 @@ class InferencePerfConfig(BaseModel):
     rayonNumThreads: int
 
 
+class HarnessRunSummaryConfig(BaseModel):
+    """Pod that writes the eval-containers run-level summary."""
+
+    model_config = STRICT_CONFIG
+
+    waitTimeout: int = Field(ge=0)
+    resources: HarnessResourcesConfig
+
+
 class HarnessConfig(BaseModel):
     """Benchmark harness configuration."""
 
@@ -424,6 +433,7 @@ class HarnessConfig(BaseModel):
     tolerations: list[dict[str, Any]] = Field(default_factory=list)
     output: str
     inferencePerf: InferencePerfConfig
+    runSummary: HarnessRunSummaryConfig | None = None
     namespace: str | None = None
     pvcSize: str | None = None
     # Cluster-specific overrides supplied via --cluster-config (deep-merged onto

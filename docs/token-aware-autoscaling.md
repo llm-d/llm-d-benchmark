@@ -57,18 +57,18 @@ Leave `APPLY=1` off to measure and print without touching the stack.
 # one shape
 llmdbenchmark --spec guides/keda-epp-token-aware run \
   --harness inference-perf --workload random_prefill_heavy.yaml \
-  --monitoring --analyze
+  --monitoring
 
 # all three, sequentially, against the same calibrated stack
 llmdbenchmark --spec guides/keda-epp-token-aware run \
   --harness inference-perf --experiments experiments/token-aware-autoscaling.yaml \
-  --monitoring --analyze
+  --monitoring
 ```
 
 Use `run --experiments` here, not `experiment`. The `experiment` command stands up its own
 stack from the scenario and tears it down afterwards, so it serves with the scenario's
 **placeholder** `peakPrefillThroughput` and discards what step 2 wrote. It also does not accept
-`-g` or `--analyze`.
+`-g`.
 
 The three shapes share one autoscaled pool, so a shape can start above `minReplicas` while the
 previous shape's replicas drain (the `scaleDown` policy removes one pod per 300s). For a
@@ -85,7 +85,7 @@ llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation standup -p <n
 make calibrate-peak-prefill NAMESPACE=<namespace> APPLY=1
 llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation run \
   --harness inference-perf --workload random_prefill_heavy.yaml \
-  --monitoring --analyze
+  --monitoring
 ```
 
 The difference downstream: prefill and decode are separate Deployments, so standup creates **two**

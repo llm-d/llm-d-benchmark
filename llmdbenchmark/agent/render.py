@@ -56,7 +56,6 @@ def _argv(
         selected.harness,
         "--workload",
         selected.workload_profile,
-        "--analyze",
     ]
     if execution_facts.benchmark_monitoring_override:
         argv.append("--monitoring")

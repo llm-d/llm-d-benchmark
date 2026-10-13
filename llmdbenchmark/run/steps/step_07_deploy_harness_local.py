@@ -27,14 +27,15 @@ from pathlib import Path
 
 import yaml
 
-from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.run.steps.step_07_deploy_harness import DeployHarnessStep
 from llmdbenchmark.utilities.container_host import (
     ContainerHost,
     ContainerHostError,
     expand_remote_path,
 )
+from llmdbenchmark.utilities.kube_helpers import RUN_SUMMARY_SCRIPT
 
 
 class DeployHarnessLocalStep(Step):
@@ -156,22 +157,15 @@ class DeployHarnessLocalStep(Step):
                 else profile_name
             )
 
-            names: list[str] = []
-            for i in range(1, parallelism + 1):
-                name = f"{harness_name}-{experiment_id}-{i}".lower()
-                exp_results = f"/requests/{experiment_id}_{i}"
-                if context.harness_debug:
-                    harness_command = "sleep infinity"
-                else:
-                    harness_command = DeployHarnessStep._build_harness_command(
-                        harness_executable=harness_executable,
-                        profile_name=pod_profile_name,
-                        harness_name=harness_name,
-                        results_dir=exp_results,
-                        entrypoint=entrypoint,
-                        dataset_url=context.dataset_url,
-                    )
+            run_summary = DeployHarnessStep._wants_run_summary(harness_name, context)
 
+            def _launch(
+                name: str,
+                harness_command: str,
+                extra_mounts: str = "",
+                experiment_id: str = experiment_id,
+            ) -> str | None:
+                """Start one container; returns an error, or None."""
                 # Write the in-container entry script to disk and mount it, to
                 # avoid shell-quoting issues with the harness command.
                 entry_host = results_dir / f".harness-entry-{name}.sh"
@@ -195,13 +189,11 @@ class DeployHarnessLocalStep(Step):
                             check=False,
                         )
                         if not push.success:
-                            err = (
+                            return (
                                 f"Failed to stage the harness entry script to "
                                 f"{host.destination}:{mount_entry}: "
                                 f"{(push.stderr or '').strip()[:200]}"
                             )
-                            errors.append(err)
-                            continue
 
                 # Built as an argument tail and wrapped once at the end: under
                 # ssh transport the command is quoted as a unit, so appending to
@@ -233,6 +225,7 @@ class DeployHarnessLocalStep(Step):
                     f"-v {mount_profiles}:/workspace/profiles "
                     f"-v {mount_harnesses}:/workspace/harnesses:ro "
                     f"-v {mount_entry}:/tmp/harness-entry.sh:ro "
+                    f"{extra_mounts}"
                     # Override the image ENTRYPOINT (llm-d-benchmark.sh) so our
                     # setup script runs -- mirrors the k8s pod's command:[sh,-c].
                     f"--entrypoint sh {image} /tmp/harness-entry.sh"
@@ -241,9 +234,60 @@ class DeployHarnessLocalStep(Step):
                 cmd.execute(host.runtime_cmd("rm", "-f", name), check=False)
                 result = cmd.execute(run_cmd, check=False, stdin=token_stdin)
                 if not result.success and not context.dry_run:
-                    errors.append(f"Failed to start harness container {name}")
+                    return f"Failed to start harness container {name}"
+                return None
+
+            names: list[str] = []
+            for i in range(1, parallelism + 1):
+                name = f"{harness_name}-{experiment_id}-{i}".lower()
+                exp_results = f"/requests/{experiment_id}_{i}"
+                if context.harness_debug:
+                    harness_command = "sleep infinity"
+                else:
+                    harness_command = DeployHarnessStep._build_harness_command(
+                        harness_executable=harness_executable,
+                        profile_name=pod_profile_name,
+                        harness_name=harness_name,
+                        results_dir=exp_results,
+                        entrypoint=entrypoint,
+                        dataset_url=context.dataset_url,
+                    )
+                    if run_summary:
+                        harness_command = DeployHarnessStep._done_marker_command(
+                            harness_command, exp_results
+                        )
+                launch_error = _launch(name, harness_command)
+                if launch_error:
+                    errors.append(launch_error)
                 else:
                     names.append(name)
+
+            # Every task container shares /requests, so one more container sees
+            # all of them and writes the run summary next to them.
+            summary_name = ""
+            if run_summary and names:
+                summary_name = f"{harness_name}-{experiment_id}-summary".lower()
+                summary_src, summary_error = self._stage_run_summary_script(
+                    cmd, host, base_dir, remote_root, context
+                )
+                if not summary_error:
+                    summary_error = _launch(
+                        summary_name,
+                        DeployHarnessStep._run_summary_command(
+                            "/requests",
+                            experiment_id,
+                            parallelism,
+                            timeout,
+                            script=f"/tmp/{RUN_SUMMARY_SCRIPT.name}",
+                        ),
+                        f"-v {summary_src}:/tmp/{RUN_SUMMARY_SCRIPT.name}:ro ",
+                    )
+                if summary_error:
+                    # A warning only: the tasks do not depend on it.
+                    context.logger.log_warning(
+                        f"No run summary for '{experiment_id}': {summary_error}"
+                    )
+                    summary_name = ""
 
             context.logger.log_info(
                 f"Launched {len(names)} harness container(s) for "
@@ -267,6 +311,11 @@ class DeployHarnessLocalStep(Step):
                         if error:
                             errors.append(error)
                     self._capture_and_remove(cmd, host, name, results_dir)
+
+                if summary_name:
+                    self._wait_for_run_summary(
+                        cmd, host, summary_name, plan_config, results_dir, context
+                    )
 
                 # Bring the results home so the collect/analyze steps and the
                 # caller see the same tree the local path produces.
@@ -414,6 +463,42 @@ class DeployHarnessLocalStep(Step):
             f"Staged harness inputs to {host.destination}:{remote_root}"
         )
         return None
+
+    def _stage_run_summary_script(
+        self, cmd, host, base_dir: Path, remote_root: str, context
+    ) -> tuple[str, str | None]:
+        """Path of the run summary script as the daemon sees it, and an error."""
+        source = base_dir / RUN_SUMMARY_SCRIPT
+        if not host.is_remote:
+            return str(source), None
+        target = f"{remote_root}/{RUN_SUMMARY_SCRIPT.name}"
+        if context.dry_run:
+            return target, None
+        push = cmd.execute(host.push_file(str(source), target), check=False)
+        if not push.success:
+            return target, (
+                f"Failed to stage {source.name} to {host.destination}:{target}: "
+                f"{(push.stderr or '').strip()[:200]}"
+            )
+        return target, None
+
+    def _wait_for_run_summary(
+        self, cmd, host, name: str, plan_config: dict, results_dir: Path, context
+    ) -> None:
+        """The tasks are done, so the summary is quick. A task that died without
+        its marker keeps the summary waiting, so this only warns."""
+        grace = self._require_config(
+            plan_config, "harness", "runSummary", "waitTimeout"
+        )
+        cmd.execute(
+            f"timeout {grace} {host.runtime_cmd('wait', name)}",
+            check=False,
+            force=True,
+        )
+        error = self._exit_status_error(cmd, host, name, grace)
+        if error:
+            context.logger.log_warning(f"Run summary not written: {error}")
+        self._capture_and_remove(cmd, host, name, results_dir)
 
     def _exit_status_error(self, cmd, host, name, timeout) -> str | None:
         """Return an error string if harness container *name* did not exit 0.

@@ -1,8 +1,8 @@
-"""Step 12 -- Run local analysis on collected benchmark results.
+"""Step 12 -- Build the benchmark reports the harness pod did not build.
 
-Delegates to :func:`llmdbenchmark.analysis.run_analysis` which converts
-raw harness output into standardised benchmark reports using the bundled
-``benchmark_report`` library.
+Every harness analyzes its own results in the pod, so this is only a fallback:
+:func:`llmdbenchmark.analysis.run_analysis` does nothing for a result set that
+already holds the pod's reports.
 """
 
 from pathlib import Path
@@ -13,22 +13,20 @@ from llmdbenchmark.executor.context import ExecutionContext
 
 
 class AnalyzeResultsStep(Step):
-    """Run local analysis on collected benchmark results."""
+    """Build missing benchmark reports on the driver."""
 
     def __init__(self):
         super().__init__(
             number=12,
             name="analyze_results",
-            description="Run local analysis on collected results",
+            description="Build missing benchmark reports on the driver",
             phase=Phase.RUN,
             per_stack=False,
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip unless --analyze / LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1."""
-        if context.harness_debug:
-            return True
-        return not context.analyze_locally
+        # Under skip nothing was copied here, so there is nothing to read.
+        return context.harness_debug or context.collect_skip
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -59,81 +57,20 @@ class AnalyzeResultsStep(Step):
                 message=(f"[DRY RUN] Would analyze {len(subdirs)} result set(s)"),
             )
 
-        # Run analysis for each result sub-directory
-        errors: list[str] = []
         analyzed = 0
-
         for result_subdir in sorted(results_dir.iterdir()):
             if not result_subdir.is_dir():
                 continue
 
-            context.logger.log_info(f"Analyzing {result_subdir.name}...", emoji="🔍")
-
             err = run_analysis(harness_name, result_subdir, context)
             if err:
-                errors.append(err)
+                # A warning, not a failure: the run already finished and this
+                # step runs on every run.
+                context.logger.log_warning(
+                    f"Analysis issue in {result_subdir.name}: {err}"
+                )
             else:
                 analyzed += 1
-
-        if errors and analyzed == 0:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="All analysis runs failed",
-                errors=errors,
-            )
-
-        for err in errors:
-            context.logger.log_warning(f"Analysis issue: {err}")
-
-        # Cross-treatment comparison (only useful with 2+ result dirs)
-        if analyzed >= 2:
-            try:
-                from llmdbenchmark.analysis.cross_treatment import (
-                    generate_cross_treatment_summary,
-                )
-
-                comparison_dir = results_dir / "cross-treatment-comparison"
-                compared = generate_cross_treatment_summary(
-                    results_dir,
-                    output_dir=comparison_dir,
-                    context=context,
-                )
-                if compared:
-                    context.logger.log_info(
-                        f"Cross-treatment comparison: {compared} treatments "
-                        f"compared in {comparison_dir}",
-                        emoji="📊",
-                    )
-            except Exception as exc:
-                context.logger.log_warning(f"Cross-treatment comparison failed: {exc}")
-
-        # Run-level roll-up for the agentic harness. Not gated on analyzed >= 2:
-        # this harness puts one TASK per result dir, so even a single-task smoke
-        # run has something to summarize. Cross-treatment cannot answer this --
-        # it reads each dir as a separate experimental treatment and carries no
-        # observability columns, so the score never reaches it.
-        if harness_name == "eval-containers":
-            try:
-                from llmdbenchmark.analysis.aggregate_eval_containers import (
-                    generate_agentic_summary,
-                )
-
-                summary_dir = results_dir / "agentic-summary"
-                summarized = generate_agentic_summary(
-                    results_dir,
-                    output_dir=summary_dir,
-                    context=context,
-                )
-                if summarized:
-                    context.logger.log_info(
-                        f"Agentic summary: {summarized} task(s) aggregated "
-                        f"in {summary_dir}",
-                        emoji="📊",
-                    )
-            except Exception as exc:
-                context.logger.log_warning(f"Agentic summary failed: {exc}")
 
         return StepResult(
             step_number=self.number,

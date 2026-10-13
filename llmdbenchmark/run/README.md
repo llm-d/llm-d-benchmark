@@ -124,12 +124,11 @@ llmdbenchmark --spec guides/optimized-baseline run -p <NS> -z
 | `--data-access-lookup-delay S` | `LLMDBENCH_DATA_ACCESS_LOOKUP_DELAY` | Seconds between those attempts (default: 3.0) |
 | `-z` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results from PVC |
 | `-d` | `LLMDBENCH_DEBUG` | Debug mode -- start harness with `sleep infinity` |
-| `--analyze` | | Run local analysis on collected results |
 | `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
 | `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 | `--pvc-bind-timeout N` | `LLMDBENCH_PVC_BIND_TIMEOUT` | Seconds to wait for the workload PVC to reach the Bound phase during run step 02 (default: 240). |
-| `--data-collect MODE` | `LLMDBENCH_DATA_COLLECT` | How much result data reaches this machine: `default` (`oc cp`), `fast` (a gzip'd `oc exec \| tar` stream -- same files, far quicker for large trees), `results` (only the benchmark reports, `run_metadata.yaml` and `experiment-summary.yaml`) or `skip` (nothing; everything stays on the PVC). Under `results` and `skip`, `--validate-failures` reads the PVC over `exec`. `skip` refuses `--analyze`, `--no-pvc` and `-z`, and warns that `-r` uploads nothing. Replaces the deprecated `--fast-collect` |
+| `--data-collect MODE` | `LLMDBENCH_DATA_COLLECT` | How much result data reaches this machine: `default` (`oc cp`), `fast` (a gzip'd `oc exec \| tar` stream -- same files, far quicker for large trees), `results` (only the benchmark reports, `run_metadata.yaml` and `experiment-summary.yaml`) or `skip` (nothing; everything stays on the PVC). Under `results` and `skip`, `--validate-failures` reads the PVC over `exec`. `skip` refuses `--no-pvc` and `-z`, and warns that `-r` uploads nothing. Replaces the deprecated `--fast-collect` |
 | `--no-pvc` | `LLMDBENCH_NO_PVC` | Run without the workload PVC/data-access pod; results are copied straight from the harness pods into the workspace (for clusters where users cannot provision PVCs) |
 | `--no-cleanup` | `LLMDBENCH_NO_CLEANUP` | Leave harness pods and ConfigMaps in place after the run for inspection (logs, exec, re-copy); the next run removes leftovers. Pairs well with `--no-pvc`, whose kept pods stay asleep with results still in their emptyDir |
 
@@ -149,23 +148,26 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 | 07 | `DeployHarnessStep` | Deploy harness pod(s), wait for completion, collect results, capture logs |
 | 08 | `WaitCompletionStep` | Wait for harness pods (used when step 07 does not inline waiting) |
 | 09 | `CollectResultsStep` | Collect results from PVC to local workspace (skipped under `--data-collect skip`) |
-| 12 | `AnalyzeResultsStep` | Run local analysis on results (before upload so artifacts are included) |
 | 10 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3); skipped under `--data-collect skip`, which leaves nothing local to upload |
 | 11 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
+| 12 | `AnalyzeResultsStep` | Build any benchmark report the harness pod did not build (always on; skipped under `--data-collect skip`) |
 
-Note: Step 12 (analyze) runs before step 10 (upload) so analysis artifacts are included in the
-upload. Compression happens inside step 07, on the PVC, before the results are collected --
-nothing is compressed on the driver.
+Steps run in number order, so step 12 (analyze) runs after step 10 (upload): a report the
+driver builds is not uploaded. Compression happens inside step 07, on the PVC, before the
+results are collected -- nothing is compressed on the driver.
 
-Step 12 defers per-result-set analysis to the harness pod: where a harness ships an
-analyzer, the pod builds its reports and summary before the results are collected,
-so collection is a pure transfer. The driver pass remains the fallback for a result set
-the pod did not analyse -- an older image, a harness with no analyzer, or one that failed.
+Every harness analyzes its results in the pod: the pod builds its reports and summary before
+the results are collected, so they land on the workload PVC and collection is a pure
+transfer. Step 12 is only the fallback for a result set the pod did not analyse -- an older
+image, or a pod killed after the load finished. A failure there is a warning, not an error.
+`--analyze` is still accepted, but it only logs a warning.
 
-It still runs the work no single pod can: the cross-treatment comparison (which spans
-result directories) and the `eval-containers` run-level roll-up (which spans task
-directories). Both read their inputs out of the archive rather than requiring a plain
-copy.
+For `eval-containers`, which runs one task per pod, step 07 also starts one small summary pod
+per treatment. It waits for every task's done marker, then writes the run-level report into
+`<experiment-id>_summary/` on the PVC, which is collected like any other result set. The task
+wait leaves the summary pod out (`llmdbench.ai/role!=summary`). After the tasks, the driver
+waits for it for `harness.runSummary.waitTimeout`; a summary that does not finish only warns.
+nok8s does the same with one more container; `--no-pvc` has no run summary.
 
 ## Common Patterns
 
@@ -295,11 +297,9 @@ the PVC actually holds, not the ones step 06 predicted. A read that fails for an
 reason other than "the file is not there" fails the treatment as a transport error,
 rather than being mistaken for a missing file.
 
-`skip` refuses combinations it cannot honour: `--analyze` (nothing local to analyze),
-`--no-pvc` (results would live only in a pod's `emptyDir` and die with it), and `-z`
+`skip` refuses combinations it cannot honour: `--no-pvc` (results would live only in a pod's `emptyDir` and die with it), and `-z`
 (which exists to collect from the PVC). With `-r gs://…` it warns that nothing will
-be uploaded and proceeds. Steps 09 (collect) and 10 (upload) skip; step 12 (analyze)
-is unreachable by the rule above.
+be uploaded and proceeds. Steps 09 (collect), 10 (upload) and 12 (analyze) skip.
 
 `--fast-collect` still works as a deprecated alias for `--data-collect fast`.
 

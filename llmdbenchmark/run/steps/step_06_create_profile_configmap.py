@@ -4,6 +4,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.utilities.kube_helpers import RUN_SUMMARY_SCRIPT
 
 # ConfigMap name used by the harness pod template (20_harness_pod.yaml.j2).
 HARNESS_SCRIPTS_CONFIGMAP = "llmdbench-harness-scripts"
@@ -239,6 +240,10 @@ class CreateProfileConfigmapStep(Step):
                         f"--from-file={analyzer_file.name}={analyzer_file}",
                     )
                     script_count += 1
+
+        run_summary = base_dir / RUN_SUMMARY_SCRIPT
+        if run_summary.is_file():
+            from_file_args.append(f"--from-file={run_summary.name}={run_summary}")
 
         if script_count == 0:
             return False, f"No harness scripts found in {harnesses_dir}"
