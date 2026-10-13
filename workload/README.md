@@ -346,7 +346,7 @@ Unknown tokens (not in the substitution map) are left unchanged.
 
 ### Available Profiles by Harness
 
-#### inference-perf (35 profiles)
+#### inference-perf (36 profiles)
 
 | Profile | Load Pattern | Data Type | Description |
 |---------|-------------|-----------|-------------|
