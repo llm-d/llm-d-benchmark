@@ -218,36 +218,39 @@ scenario:
           replicas: 1
           flags:
             v: 2
-        pluginsConfigFile: "wide-ep-config.yaml"
-        pluginsCustomConfig:
-          wide-ep-config.yaml: |
-            apiVersion: llm-d.ai/v1alpha1
-            kind: EndpointPickerConfig
-            plugins:
-            - type: disagg-headers-handler
-            - type: always-disagg-pd-decider
-            - type: disagg-profile-handler
-              parameters:
-                deciderPluginName: always-disagg-pd-decider
-            - type: prefill-filter
-            - type: decode-filter
-            - type: prefix-cache-scorer
-            - type: queue-scorer
-            - type: active-request-scorer
-            schedulingProfiles:
-            - name: prefill
+          pluginsConfigFile: "wide-ep-config.yaml"
+          pluginsCustomConfig:
+            wide-ep-config.yaml: |
+              apiVersion: llm-d.ai/v1alpha1
+              kind: EndpointPickerConfig
               plugins:
-              - pluginRef: prefill-filter
-              - pluginRef: prefix-cache-scorer
-                weight: 3
-              - pluginRef: queue-scorer
-                weight: 2
-              - pluginRef: active-request-scorer
-                weight: 2
-            - name: decode
-              plugins:
-              - pluginRef: decode-filter
-              - pluginRef: active-request-scorer
+              # Upstream also adds a `disaggregatedset-rollout-screener` here; it is
+              # omitted because this scenario deploys LeaderWorkerSets via
+              # modelservice, not the guide's DisaggregatedSet.
+              - type: always-disagg-pd-decider
+              - type: disagg-profile-handler
+                parameters:
+                  deciders:
+                    prefill: always-disagg-pd-decider
+              - type: prefill-filter
+              - type: decode-filter
+              - type: prefix-cache-scorer
+              - type: queue-scorer
+              - type: active-request-scorer
+              schedulingProfiles:
+              - name: prefill
+                plugins:
+                - pluginRef: prefill-filter
+                - pluginRef: prefix-cache-scorer
+                  weight: 3
+                - pluginRef: queue-scorer
+                  weight: 2
+                - pluginRef: active-request-scorer
+                  weight: 2
+              - name: decode
+                plugins:
+                - pluginRef: decode-filter
+                - pluginRef: active-request-scorer
           resources:
             requests:
               cpu: "4"

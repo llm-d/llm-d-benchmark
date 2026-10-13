@@ -55,6 +55,18 @@ def add_subcommands(
         ),
     )
     plan_parser.add_argument(
+        "--hostpath",
+        metavar="PATH",
+        default=env("LLMDBENCH_HOSTPATH"),
+        help="Directory on the worker nodes that holds the model weights, "
+        "mounted directly into the serving pods as a hostPath volume (no "
+        "model PV/PVC); the download DaemonSet fills it on every target "
+        "node. Sets storage.hostPath.enabled=true and storage.hostPath.path. "
+        "'none' sets storage.hostPath.enabled=false. Omitted: the "
+        "scenario's storage.hostPath is used (disabled by default) "
+        "(env: LLMDBENCH_HOSTPATH). Default: none.",
+    )
+    plan_parser.add_argument(
         "-f",
         "--monitoring",
         action="store_true",

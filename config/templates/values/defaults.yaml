@@ -323,22 +323,24 @@ storage:
     storageClassName: *storage_class
 
   # HostPath-backed model storage (opt-in).
-  # When enabled, a static PersistentVolume with hostPath is created and the
-  # model PVC binds to it via a matching storageClassName.  A DaemonSet
-  # downloads the model to the hostPath on every target node BEFORE the
-  # serving pods start; the regular download Job is skipped.
+  # When enabled, no model PV/PVC is created: the serving pods (modelservice
+  # decode/prefill, standalone, FMA launcher) mount `path` on the worker node
+  # directly as a hostPath volume at the usual model mount point. A DaemonSet
+  # downloads the model into <path>/<model.path> on every target node BEFORE
+  # the serving pods start; the regular download Job is skipped. Each pod
+  # reports Ready only once its node's copy is complete, so standup waits for
+  # every node's download.
   #
   # Requirements:
   #   - Nodes must have the hostPath directory writable.
   #   - nodeSelector / tolerations should target the GPU nodes where
-  #     vLLM pods will schedule.
-  #   - The storageClassName does NOT need a real StorageClass object
-  #     on the cluster; static PV binding uses label matching.
+  #     vLLM pods will schedule: serving pods only find weights on nodes
+  #     the DaemonSet ran on.
+  #   - OpenShift: every ServiceAccount in the namespace is granted the
+  #     hostmount-anyuid SCC so serving pods may mount the hostPath.
   hostPath:
     enabled: false
-    path: /mnt/models
-    storageClassName: hostpath
-    capacity: 300Gi
+    path: /var/model-cache
     nodeSelector: {}
     tolerations: []
     daemonSetTimeout: 3600
@@ -1900,7 +1902,8 @@ gatewayProviders:
 # ============================================================================
 lws:
   # Install the LeaderWorkerSet controller (with its DisaggregatedSet API)
-  # during standup. Also implied by multinode.enabled.
+  # during standup. Also implied by multinode.enabled, and setting it
+  # forces multinode.enabled to true.
   enabled: false
   # Chart version managed in chartVersions.lws
   namespace: lws-system

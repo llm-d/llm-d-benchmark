@@ -716,11 +716,18 @@ spec:
 {% endif %}
 {% endif %}
 {% endfor %}
-{# Conditional model storage PVC volume #}
+{# Conditional model storage volume: the node directory in hostPath mode,
+   the model PVC otherwise #}
 {% if standalone.mountModelVolume %}
       - name: model-cache
+{% if storage is defined and storage.hostPath is defined and storage.hostPath.enabled | default(false) %}
+        hostPath:
+          path: {{ storage.hostPath.path }}
+          type: Directory
+{% else %}
         persistentVolumeClaim:
           claimName: {{ standalone.modelPvcName }}
+{% endif %}
 {% endif %}
 {# Additional volumes (per-deployment extras) #}
 {% if standalone.additionalVolumes is defined %}

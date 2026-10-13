@@ -262,6 +262,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_prism=getattr(args, "prism", None),
             cli_wva=getattr(args, "wva", False),
             cli_gateway_class=getattr(args, "gateway_class", None),
+            cli_hostpath=getattr(args, "hostpath", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
             cli_non_admin=getattr(args, "non_admin", False),
             # --cluster-config is folded into the global bucket of
@@ -1920,6 +1921,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_wva=getattr(args, "wva", False),
         cli_epp_keda_saturation=getattr(args, "epp_keda_saturation", False),
         cli_gateway_class=getattr(args, "gateway_class", None),
+        cli_hostpath=getattr(args, "hostpath", None),
         setup_overrides=setup_overrides,
         setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         cli_non_admin=getattr(args, "non_admin", False),
@@ -2252,6 +2254,7 @@ def _log_env_overrides(logger, args):
         ),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
         "LLMDBENCH_NO_PVC": ("no_pvc", "--no-pvc"),
+        "LLMDBENCH_HOSTPATH": ("hostpath", "--hostpath"),
         "LLMDBENCH_NO_CLEANUP": ("no_cleanup", "--no-cleanup"),
         "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": (
             "fma_teardown_timeout",

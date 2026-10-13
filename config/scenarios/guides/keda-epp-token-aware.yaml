@@ -75,8 +75,6 @@ scenario:
         hostPath:
           enabled: false
           path: /mnt/models
-          storageClassName: hostpath
-          capacity: 1Ti
           # Target the GPU nodes where decode pods will schedule.
           # Replace with your cluster's actual node labels.
           nodeSelector:

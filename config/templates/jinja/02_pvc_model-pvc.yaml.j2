@@ -1,3 +1,5 @@
+{# hostPath mode mounts the node directory directly -- no model PVC. #}
+{% if not (storage.hostPath is defined and storage.hostPath.enabled | default(false)) %}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -11,9 +13,7 @@ spec:
   resources:
     requests:
       storage: {{ storage.modelPvc.size }}
-{% if storage.hostPath is defined and storage.hostPath.enabled | default(false) %}
-  storageClassName: {{ storage.hostPath.storageClassName }}
-  volumeName: {{ storage.modelPvc.name }}-hostpath-pv
-{% elif storage.modelPvc.storageClassName is defined and storage.modelPvc.storageClassName not in ["default", "auto", ""] %}
+{% if storage.modelPvc.storageClassName is defined and storage.modelPvc.storageClassName not in ["default", "auto", ""] %}
   storageClassName: {{ storage.modelPvc.storageClassName }}
+{% endif %}
 {% endif %}

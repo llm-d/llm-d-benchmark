@@ -33,11 +33,14 @@ spec:
       containers:
         - name: downloader
           image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+          # Same reason as the download Job: a :latest tag would otherwise
+          # re-pull the whole image on every node at every standup.
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - |
               set -e
-              TARGET_DIR="{{ storage.hostPath.path }}/{{ model.path }}"
+              TARGET_DIR="{{ storage.hostPath.path }}/${MODEL_PATH}"
               MARKER="${TARGET_DIR}/.download-complete"
               if [ -f "${MARKER}" ]; then
                 echo "Model already present at ${TARGET_DIR}, skipping download."
@@ -45,13 +48,30 @@ spec:
               fi
               echo "Downloading model to ${TARGET_DIR}..."
               mkdir -p "${TARGET_DIR}"
-              hf download "{{ model.huggingfaceId }}" --local-dir "${TARGET_DIR}" --max-workers {{ downloadJob.maxWorkers }}
+              hf download "${HF_MODEL_ID}" --local-dir "${TARGET_DIR}" --max-workers {{ downloadJob.maxWorkers }}
+              # Serving pods mount the node directory directly, so on SELinux
+              # nodes the files need a label non-spc_t containers can read.
+              # Non-SELinux nodes reject chcon; that is not an error there.
               echo "Relabelling for non-spc_t readers..."
-              chcon -R -t container_file_t "{{ storage.hostPath.path }}"
+              chcon -R -t container_file_t "{{ storage.hostPath.path }}" || \
+                echo "chcon failed (SELinux not enabled?); continuing."
               touch "${MARKER}"
               echo "Download complete."
               exec sleep infinity
+          # Ready only once this node's copy is complete: standup waits on
+          # DaemonSet readiness before deploying the serving pods.
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f "{{ storage.hostPath.path }}/${MODEL_PATH}/.download-complete"
+            periodSeconds: 10
           env:
+            - name: MODEL_PATH
+              value: {{ model.path }}
+            - name: HF_MODEL_ID
+              value: {{ model.huggingfaceId }}
             - name: HF_HOME
               value: /tmp/huggingface
             - name: HOME
@@ -77,6 +97,11 @@ spec:
             path: {{ storage.hostPath.path }}
             type: DirectoryOrCreate
 ---
+{# hostPath volumes need the hostmount-anyuid SCC on OpenShift -- for the
+   downloader and for every serving pod that mounts the node directory
+   (modelservice decode/prefill, standalone, FMA launcher), each of which
+   runs under a different ServiceAccount. Granting the namespace's
+   ServiceAccount group keeps one binding valid for every stack. #}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -86,6 +111,9 @@ subjects:
 - kind: ServiceAccount
   name: {{ serviceAccount.name }}
   namespace: {{ namespace.name }}
+- kind: Group
+  apiGroup: rbac.authorization.k8s.io
+  name: system:serviceaccounts:{{ namespace.name }}
 roleRef:
   kind: ClusterRole
   name: system:openshift:scc:hostmount-anyuid

@@ -35,6 +35,13 @@ schedulerName: default-scheduler
 {# -------------------------------------------------------------------------- #}
 {# MODEL ARTIFACTS                                                            #}
 {# -------------------------------------------------------------------------- #}
+{# hostPath mode: the weights live in a node directory, not a PVC. The chart
+   only knows pvc/hf/oci model volumes, so its own model volume is turned off
+   (mountModelVolume: false) and decode/prefill mount the node directory
+   themselves at the same mountPath. The uri keeps its pvc:// form so a
+   vllmServe modelCommand still resolves to <mountPath>/<model.path>. #}
+{% set ms_model_hostpath = (storage.hostPath is defined and storage.hostPath.enabled | default(false))
+                           and not (modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf') %}
 modelArtifacts:
   name: {{ model.name }}
 {% if modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf' %}
@@ -414,7 +421,7 @@ decode:
   - name: "vllm"
     image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
     imagePullPolicy: {{ decode.vllm.imagePullPolicy | default(images.vllm.pullPolicy) | default('IfNotPresent') }}
-    mountModelVolume: {{ decode.mountModelVolume | lower }}
+    mountModelVolume: {{ (decode.mountModelVolume and not ms_model_hostpath) | lower }}
 {% set decode_model_command = decode.vllm.modelCommand | default('custom') %}
     modelCommand: {{ decode_model_command }}
 {% if decode_model_command == 'custom' %}
@@ -533,6 +540,11 @@ decode:
         readOnly: {{ mount.readOnly | lower }}
 {% endif %}
 {% endfor %}
+{% if ms_model_hostpath and decode.mountModelVolume %}
+      - name: model-storage
+        mountPath: /model-cache
+        readOnly: true
+{% endif %}
 {% if decode.additionalVolumeMounts is defined %}
 {% for mount in decode.additionalVolumeMounts %}
       - name: {{ mount.name }}
@@ -587,6 +599,12 @@ decode:
 {% endif %}
 {% endif %}
 {% endfor %}
+{% if ms_model_hostpath and decode.mountModelVolume %}
+    - name: model-storage
+      hostPath:
+        path: {{ storage.hostPath.path }}
+        type: Directory
+{% endif %}
 {% if decode.additionalVolumes is defined %}
 {% for volume in decode.additionalVolumes %}
     - name: {{ volume.name }}
@@ -844,7 +862,7 @@ prefill:
   - name: "vllm"
     image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
     imagePullPolicy: {{ (prefill.vllm.imagePullPolicy if prefill.vllm is defined and prefill.vllm.imagePullPolicy is defined else images.vllm.pullPolicy) | default('IfNotPresent') }}
-    mountModelVolume: {{ prefill.mountModelVolume | lower }}
+    mountModelVolume: {{ (prefill.mountModelVolume and not ms_model_hostpath) | lower }}
 {% set prefill_model_command = prefill.vllm.modelCommand | default('custom') %}
     modelCommand: {{ prefill_model_command }}
 {% if prefill_model_command == 'custom' %}
@@ -963,6 +981,11 @@ prefill:
         readOnly: {{ mount.readOnly | lower }}
 {% endif %}
 {% endfor %}
+{% if ms_model_hostpath and prefill.mountModelVolume %}
+      - name: model-storage
+        mountPath: /model-cache
+        readOnly: true
+{% endif %}
 {% if prefill.additionalVolumeMounts is defined %}
 {% for mount in prefill.additionalVolumeMounts %}
       - name: {{ mount.name }}
@@ -1017,6 +1040,12 @@ prefill:
 {% endif %}
 {% endif %}
 {% endfor %}
+{% if ms_model_hostpath and prefill.mountModelVolume %}
+    - name: model-storage
+      hostPath:
+        path: {{ storage.hostPath.path }}
+        type: Directory
+{% endif %}
 {% if prefill.additionalVolumes is defined %}
 {% for volume in prefill.additionalVolumes %}
     - name: {{ volume.name }}

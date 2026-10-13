@@ -225,6 +225,7 @@ FLAG_KEYS: dict[str, str] = {
     "epp_keda_saturation": "eppKedaSaturation",
     "monitoring": "monitoring",
     "no_pvc": "storage",
+    "hostpath": "storage",
 }
 
 #: Flags that set no single key.

@@ -213,25 +213,32 @@ scenario:
                 - type: precise-prefix-cache-producer # `precise-prefix-cache-scorer` is deprecated
                   parameters:
                     tokenProcessorConfig:
-                      blockSize: 64
+                      blockSizeTokens: 64
                     speculativeIndexing: true
                     indexerConfig:
                       kvBlockIndexConfig:
                         enableMetrics: true
                     kvEventsConfig:
+                      engineType: "vllm"
                       topicFilter: "kv@"
                       concurrency: 8
                       discoverPods: true
                       podDiscoveryConfig:
                         socketPort: 5556
-                - type: prefix-cache-scorer
+                        replaySocketPort: 5559
+                - type: inflight-load-producer
                   parameters:
                     prefixMatchInfoProducerName: precise-prefix-cache-producer
-                - type: kv-cache-utilization-scorer
-                - type: queue-scorer
-                - type: no-hit-lru-scorer
+                - type: prefix-cache-affinity-filter
                   parameters:
+                    # Exact resident-block fractions from KV-cache events, not the
+                    # approximate producer.
                     prefixMatchInfoProducerName: precise-prefix-cache-producer
+                    # Measured with guides/recipes/router/calibration/calibrate.sh on
+                    # the upstream reference setup (Qwen3-32B, H100 80 GB, TP=2,
+                    # chunk 8192). Re-measure for other hardware/models.
+                    peakPrefillThroughput: 15926
+                - type: token-load-scorer
               dataLayer: # metrics-data-source + core-metrics-extractor injected by default
                 sources:
                   - pluginRef: endpoint-notification-source
@@ -240,14 +247,8 @@ scenario:
               schedulingProfiles:
                 - name: default
                   plugins:
-                    - pluginRef: kv-cache-utilization-scorer
-                      weight: 2.0
-                    - pluginRef: queue-scorer
-                      weight: 2.0
-                    - pluginRef: prefix-cache-scorer
-                      weight: 3.0
-                    - pluginRef: no-hit-lru-scorer
-                      weight: 2.0
+                    - pluginRef: prefix-cache-affinity-filter
+                    - pluginRef: token-load-scorer
           resources:
             requests:
               cpu: "4"
@@ -343,7 +344,7 @@ scenario:
             ${accelerator.dtypeArgs} \
             ${accelerator.executionArgs} \
             --prefix-caching-hash-algo sha256_cbor \
-            --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(VLLM_INFERENCE_PORT)@$(MODEL_NAME)"}' \
+            --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "replay_endpoint":"$(KV_EVENTS_REPLAY_ENDPOINT)", "topic":"kv@$(POD_IP):$(VLLM_INFERENCE_PORT)@$(MODEL_NAME)"}' \
             --disable-uvicorn-access-log \
             --disable-access-log-for-endpoints=/health,/metrics,/v1/models
 
@@ -374,6 +375,8 @@ scenario:
         extraEnvVars:
           - name: KV_EVENTS_ENDPOINT
             value: "tcp://*:5556"
+          - name: KV_EVENTS_REPLAY_ENDPOINT
+            value: "tcp://*:5559"
           - name: DO_NOT_TRACK
             value: "1"
 
@@ -384,6 +387,9 @@ scenario:
         extraContainerConfig:
           ports:
             - containerPort: 5557  # NIXL side channel port
+              protocol: TCP
+            - containerPort: 5559  # KV-events replay (precise-prefix-cache-producer)
+              name: kv-replay
               protocol: TCP
             - containerPort: 8200  # Metrics port
               name: metrics

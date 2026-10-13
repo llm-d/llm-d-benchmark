@@ -93,14 +93,20 @@ class ModelNamespaceStep(Step):
         # of every pvc-protocol stack's model weights. Warn-only so single-
         # stack scenarios and operators with intentional headroom are
         # unaffected. See _warn_on_undersized_model_pvc for the rules.
-        if len(pvc_stacks) >= 2:
-            self._warn_on_undersized_model_pvc(context, pvc_stacks)
+        # hostPath stacks have no model PVC to size.
+        model_pvc_stacks = [
+            p
+            for p in pvc_stacks
+            if not self._is_hostpath_enabled(self._load_stack_config(p))
+        ]
+        if len(model_pvc_stacks) >= 2:
+            self._warn_on_undersized_model_pvc(context, model_pvc_stacks)
 
         for stack_path in pvc_stacks:
             stack_cfg = self._load_stack_config(stack_path)
-            if self._is_hostpath_enabled(stack_cfg):
-                self._apply_hostpath_pv(cmd, context, errors, stack_path)
-            self._create_model_pvc(cmd, context, errors, stack_path)
+            # hostPath stacks mount the node directory directly: no model PVC.
+            if not self._is_hostpath_enabled(stack_cfg):
+                self._create_model_pvc(cmd, context, errors, stack_path)
             self._create_extra_pvc(cmd, context, errors, stack_path)
 
         self._add_context_secret(cmd, context, errors, plan_config)
@@ -177,10 +183,10 @@ class ModelNamespaceStep(Step):
         )
 
     def _check_no_pvc_hostpath_conflict(self, context) -> str | None:
-        """--no-pvc contradicts explicit hostPath storage: hostPath still
-        creates PV/PVC objects, and it is a deliberate scenario choice --
-        neither silently overriding it nor silently creating PVC objects
-        would honor the user's intent. Fail fast with the fix spelled out."""
+        """--no-pvc contradicts explicit hostPath storage: --no-pvc fetches
+        weights at runtime, while hostPath pre-stages them on the nodes and
+        is a deliberate scenario choice -- silently overriding either would
+        not honor the user's intent. Fail fast with the fix spelled out."""
         if not context.no_pvc:
             return None
         for stack_path in context.rendered_stacks or []:
@@ -194,9 +200,9 @@ class ModelNamespaceStep(Step):
             if enabled:
                 return (
                     f"--no-pvc conflicts with storage.hostPath.enabled=true "
-                    f"(stack '{stack_path.name}'): hostPath creates PV/PVC "
-                    f"objects. Disable hostPath in the scenario or drop "
-                    f"--no-pvc."
+                    f"(stack '{stack_path.name}'): hostPath pre-stages model "
+                    f"weights on the nodes, --no-pvc fetches them at runtime. "
+                    f"Disable hostPath in the scenario or drop --no-pvc."
                 )
         return None
 
@@ -586,22 +592,6 @@ class ModelNamespaceStep(Step):
                     f"{max_retries} attempts: {wait_result.stderr}"
                 )
 
-    def _apply_hostpath_pv(
-        self,
-        cmd: CommandExecutor,
-        context: ExecutionContext,
-        errors: list,
-        stack_path: Path,
-    ) -> None:
-        """Apply the static hostPath PV for a stack."""
-        pv_yaml = self._find_yaml(stack_path, "02a_pv_model-hostpath")
-        if not pv_yaml or not self._has_yaml_content(pv_yaml):
-            return
-
-        result = cmd.kube("apply", "-f", str(pv_yaml))
-        if not result.success and "AlreadyExists" not in result.stderr:
-            errors.append(f"Failed to create hostPath PV: {result.stderr}")
-
     def _apply_download_daemonset(
         self,
         cmd: CommandExecutor,
@@ -733,11 +723,6 @@ class ModelNamespaceStep(Step):
         storage = plan_config.get("storage", {})
 
         hostpath_enabled = self._is_hostpath_enabled(plan_config)
-        hostpath_sc = (
-            storage.get("hostPath", {}).get("storageClassName", "")
-            if hostpath_enabled
-            else ""
-        )
 
         storage_classes_to_check: set[str] = set()
         for pvc_key in ("modelPvc", "workloadPvc", "extraPvc"):
@@ -747,13 +732,8 @@ class ModelNamespaceStep(Step):
             if pvc_key == "extraPvc" and not pvc.get("name"):
                 continue  # extraPvc disabled
 
-            # When hostPath is enabled, the modelPvc's storageClassName is
-            # a synthetic label for static PV binding, not a real SC object.
+            # hostPath mode creates no model PVC, so its StorageClass is unused.
             if pvc_key == "modelPvc" and hostpath_enabled:
-                context.logger.log_info(
-                    f'StorageClass "{hostpath_sc}" is a synthetic hostPath '
-                    "binding label -- skipping cluster validation"
-                )
                 continue
 
             if sc:

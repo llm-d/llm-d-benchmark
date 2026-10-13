@@ -72,7 +72,7 @@ Step 06 is always added alongside 07 or 08. It writes the values files (`infra.y
 
 Components whose steps the active deploy method never runs are dropped, so a modelservice stack is not told it updated `standalone`.
 
-The flags that change what gets rendered count the same way as a `--set` of the key they set: `-m` as `model`, `-r` as `release`, `--gateway-class` as `gateway`, `-a`/`-b` as `affinity`/`annotations`, `--wva`, `--epp-keda-saturation`, and `--monitoring` as their keys, and `--no-pvc`/`--pvc` as `storage`. `-t` switches the deploy method, so it is refused like `kustomize`. `--full-infra` restarts nothing. A flag only counts when it differs from what the original standup used.
+The flags that change what gets rendered count the same way as a `--set` of the key they set: `-m` as `model`, `-r` as `release`, `--gateway-class` as `gateway`, `-a`/`-b` as `affinity`/`annotations`, `--wva`, `--epp-keda-saturation`, and `--monitoring` as their keys, and `--no-pvc`/`--pvc` and `--hostpath` as `storage`. `-t` switches the deploy method, so it is refused like `kustomize`. `--full-infra` restarts nothing. A flag only counts when it differs from what the original standup used.
 
 ### Shared infrastructure
 
@@ -85,7 +85,7 @@ These cannot be applied to a live stack in place, and are refused unless `--forc
 | Change | Why |
 |---|---|
 | `model`, `-m` | the weights must be downloaded again |
-| `storage`, `--no-pvc`/`--pvc` | PVCs cannot be resized or rebound in place |
+| `storage`, `--no-pvc`/`--pvc`, `--hostpath` | PVCs cannot be resized or rebound in place |
 | `namespace` | every resource moves, orphaning the current namespace |
 | `gatewayApiCrd` | re-applies cluster-scoped CRDs, affecting every tenant |
 | `release`, `-r` | renames every helm release, orphaning the installed ones |

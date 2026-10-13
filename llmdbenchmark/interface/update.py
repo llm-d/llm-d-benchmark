@@ -64,7 +64,7 @@ def add_subcommands(
         help=(
             "Allow changes that cannot be applied in place: the --set keys "
             "model, storage, downloadJob, namespace, gatewayApiCrd, release, "
-            "kustomize, nok8s, a change of -m, -t, -r or --no-pvc, and any "
+            "kustomize, nok8s, a change of -m, -t, -r, --no-pvc or --hostpath, and any "
             "change or -s list that reaches the components "
             + ", ".join(sorted(DANGEROUS_COMPONENTS))
             + ". These re-download weights, recreate PVCs, re-apply "

@@ -163,12 +163,13 @@ scenario:
                 name: loose-affinity-filter
                 parameters:
                   affinityThreshold: 0.8
+                  ttftSource: latencyPredictor
+                  maxTTFTPenaltyMs: 5000
               - type: latency-scorer
               - type: weighted-random-picker
               schedulingProfiles:
               - name: default
                 plugins:
-                - pluginRef: predicted-latency-producer
                 - pluginRef: loose-affinity-filter
                 - pluginRef: latency-scorer
                 - pluginRef: weighted-random-picker

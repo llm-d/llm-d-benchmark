@@ -81,6 +81,7 @@ class RenderPlans:
         cli_wva: bool = False,
         cli_epp_keda_saturation: bool = False,
         cli_gateway_class: str | None = None,
+        cli_hostpath: str | None = None,
         setup_overrides: dict | None = None,
         setup_overrides_by_stack: dict[str, dict] | None = None,
         cli_stack_filter: list[str] | None = None,
@@ -104,6 +105,9 @@ class RenderPlans:
         # so the validator sees the post-override value. Only affects
         # rendering on the modelservice path; ignored by kustomize/standalone/fma.
         self.cli_gateway_class = cli_gateway_class
+        # CLI override for hostPath model storage: a node directory turns
+        # it on at that path, "none" turns it off, None keeps the scenario.
+        self.cli_hostpath = cli_hostpath
         # Unscoped overrides applied LAST, so they win over everything below:
         # DoE ``setup.treatments`` values ride here, and a treatment is the
         # deliberate sweep factor -- it must beat a CLI ``--set``.
@@ -655,6 +659,36 @@ class RenderPlans:
         )
         return result
 
+    def _resolve_hostpath(self, values: dict) -> dict:
+        """Override hostPath model storage from ``--hostpath``.
+
+        ``--hostpath <dir>`` sets ``storage.hostPath.enabled: true`` with
+        ``storage.hostPath.path: <dir>``; ``--hostpath none`` sets
+        ``enabled: false``. When the flag is not given (``cli_hostpath is
+        None``), scenario/defaults values are used unchanged.
+        """
+        if self.cli_hostpath is None:
+            return values
+
+        result = deepcopy(values)
+        storage = result.get("storage")
+        if not isinstance(storage, dict):
+            storage = result["storage"] = {}
+        hostpath = storage.get("hostPath")
+        if not isinstance(hostpath, dict):
+            hostpath = storage["hostPath"] = {}
+
+        if self.cli_hostpath.strip().lower() == "none":
+            hostpath["enabled"] = False
+            self.logger.log_info("hostPath model storage disabled from CLI")
+        else:
+            hostpath["enabled"] = True
+            hostpath["path"] = self.cli_hostpath
+            self.logger.log_info(
+                f"hostPath model storage enabled from CLI (path={self.cli_hostpath})"
+            )
+        return result
+
     def _resolve_wva(self, values: dict) -> dict:
         """Enable the Workload Variant Autoscaler when ``-u/--wva`` is set."""
         if not self.cli_wva:
@@ -665,6 +699,30 @@ class RenderPlans:
         wva_config["enabled"] = True
 
         self.logger.log_info("Workload Variant Autoscaler enabled from CLI")
+        return result
+
+    def _resolve_lws_multinode(self, values: dict) -> dict:
+        """Force ``multinode.enabled`` on whenever ``lws.enabled`` is set.
+
+        LWS-backed model servers are deployed through the multinode
+        (LeaderWorkerSet) code paths, so ``lws.enabled: true`` implies
+        ``multinode.enabled: true``.
+        """
+        lws_config = values.get("lws") or {}
+        if not lws_config.get("enabled", False):
+            return values
+
+        multinode_config = values.get("multinode") or {}
+        if multinode_config.get("enabled", False):
+            return values
+
+        result = deepcopy(values)
+        multinode = result.get("multinode")
+        if not isinstance(multinode, dict):
+            multinode = result["multinode"] = {}
+        multinode["enabled"] = True
+
+        self.logger.log_info("multinode.enabled set to true (implied by lws.enabled)")
         return result
 
     def _resolve_epp_keda_saturation(self, values: dict) -> dict:
@@ -1059,6 +1117,9 @@ class RenderPlans:
     _STACK_SCOPED_DEFAULTS: tuple[tuple[tuple[str, ...], str], ...] = (
         # config path, default value that triggers the rewrite
         (("downloadJob", "name"), "download-model"),
+        # hostPath download DaemonSet - step 04 deletes it by name before
+        # re-applying, so a shared name would kill a sibling's download.
+        (("storage", "hostPath", "daemonSetName"), "download-model-ds"),
         # EPP metrics-reader Secret - the router chart uses this to give
         # its SA access to the user-workload-monitoring Prometheus. Two
         # router Helm releases sharing this Secret name in one namespace
@@ -2310,6 +2371,8 @@ class RenderPlans:
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_prism(merged_values)
         merged_values = self._resolve_wva(merged_values)
+        merged_values = self._resolve_hostpath(merged_values)
+        merged_values = self._resolve_lws_multinode(merged_values)
         merged_values = self._resolve_epp_keda_saturation(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)

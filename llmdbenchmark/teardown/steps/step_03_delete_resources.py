@@ -36,6 +36,14 @@ STANDALONE_PATTERNS = [
     "lmbenchmark",
 ]
 
+# Model download workloads (the download Job, and the hostPath download
+# DaemonSet). Standup creates them for every deploy method, so they are
+# deleted whichever method filter applies. "download-model" is the shipped
+# name prefix of both (multi-stack names add a -<model_id_label> suffix);
+# names a scenario configures are read from the plan.
+DOWNLOAD_KINDS = ("job.batch/", "job/", "daemonset.apps/", "daemonset/")
+DOWNLOAD_NAME_PREFIX = "download-model"
+
 MODELSERVICE_PATTERNS = [
     "llm-d-benchmark-preprocesses",
     "p2p",
@@ -235,6 +243,7 @@ class DeleteResourcesStep(Step):
                 "secret name for resource filtering."
             )
         hf_secret = self._require_config(plan_config, "huggingface", "secretName")
+        download_names = self._download_workload_names(context)
 
         for ns in namespaces:
             context.logger.log_info(f'Cleaning namespace "{ns}" (normal mode)...')
@@ -256,6 +265,7 @@ class DeleteResourcesStep(Step):
                 r for r in all_resources if not self._is_system_resource(r, hf_secret)
             ]
 
+            candidates = filtered
             if standalone_active and not modelservice_active:
                 filtered = [
                     r for r in filtered if self._matches_any(r, STANDALONE_PATTERNS)
@@ -264,6 +274,12 @@ class DeleteResourcesStep(Step):
                 filtered = [
                     r for r in filtered if self._matches_any(r, MODELSERVICE_PATTERNS)
                 ]
+            kept = set(filtered)
+            filtered += [
+                r
+                for r in candidates
+                if r not in kept and self._is_download_workload(r, download_names)
+            ]
 
             # Also find model-serving workload controllers by pod
             # template labels. oc get -l only filters by metadata.labels,
@@ -425,6 +441,9 @@ class DeleteResourcesStep(Step):
     ) -> None:
         """Delete the hostPath PVs bound to our own namespaces.
 
+        Standup no longer creates these (hostPath mode mounts the node
+        directory directly); this cleans up PVs left by older standups.
+
         PVs are cluster-scoped and `usage=model-cache` carries no namespace, so
         on a shared cluster the label alone also matches other tenants' PVs. One
         of those left Terminating behind a pv-protection finalizer never goes
@@ -527,6 +546,28 @@ class DeleteResourcesStep(Step):
         if f"secret/{hf_secret}" in resource_lower:
             return True
         return False
+
+    def _download_workload_names(self, context: ExecutionContext) -> set[str]:
+        """Download Job / DaemonSet names configured by any rendered stack."""
+        names: set[str] = set()
+        for stack_path in context.rendered_stacks or []:
+            cfg = self._load_stack_config(stack_path) or {}
+            names.add((cfg.get("downloadJob") or {}).get("name") or "")
+            hostpath = (cfg.get("storage") or {}).get("hostPath") or {}
+            names.add(hostpath.get("daemonSetName") or "")
+        names.discard("")
+        return names
+
+    @staticmethod
+    def _is_download_workload(resource: str, names: set[str]) -> bool:
+        """Return True for a model download Job or DaemonSet."""
+        kind_prefix = next(
+            (k for k in DOWNLOAD_KINDS if resource.lower().startswith(k)), None
+        )
+        if kind_prefix is None:
+            return False
+        name = resource[len(kind_prefix) :]
+        return name in names or name.lower().startswith(DOWNLOAD_NAME_PREFIX)
 
     @staticmethod
     def _matches_any(resource: str, patterns: list[str]) -> bool:

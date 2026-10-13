@@ -170,8 +170,14 @@ spec:
 {% endif %}
 {% if fma.mountModelVolume %}
       - name: model-cache
+{% if storage is defined and storage.hostPath is defined and storage.hostPath.enabled | default(false) %}
+        hostPath:
+          path: {{ storage.hostPath.path }}
+          type: Directory
+{% else %}
         persistentVolumeClaim:
           claimName: {{ fma.modelPvcName }}
+{% endif %}
 {% endif %}
 ---
 apiVersion: fma.llm-d.ai/v1alpha1

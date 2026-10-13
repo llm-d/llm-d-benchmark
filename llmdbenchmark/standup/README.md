@@ -40,7 +40,7 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
   `--no-pvc` only covers the model PVC (above); pair the two flags for a
   fully PVC-less flow.
 - Scenarios with `storage.hostPath.enabled: true` fail fast — hostPath
-  creates PV/PVC objects and contradicts the flag.
+  pre-stages weights on the nodes, which contradicts fetching at runtime.
 - Scenario `customCommand`s should serve `$MODEL_SERVE_REF` (exported to
   every serving pod) instead of hardcoding `/model-cache/...` paths -- it
   resolves to the staged PVC path in PVC mode and the HF model ID in hf
