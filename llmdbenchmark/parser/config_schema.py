@@ -387,6 +387,8 @@ class HarnessResourcesConfig(BaseModel):
     model_config = STRICT_CONFIG
 
     cpu: int | str
+    cpuLimit: int | str | None = None
+    """CPU limit; falls back to ``cpu`` when unset."""
     memory: str
     memoryLimit: str | None = None
     """Memory limit; falls back to ``memory`` when unset."""
@@ -400,13 +402,22 @@ class InferencePerfConfig(BaseModel):
     rayonNumThreads: int
 
 
-class HarnessRunSummaryConfig(BaseModel):
-    """Pod that writes the eval-containers run-level summary."""
+class HarnessImageConfig(BaseModel):
+    """Image the eval tasks run in."""
 
     model_config = STRICT_CONFIG
 
-    waitTimeout: int = Field(ge=0)
-    resources: HarnessResourcesConfig
+    repository: str
+    tag: str
+    pullPolicy: str | None = None
+
+
+class HarnessRunSummaryConfig(BaseModel):
+    """How long the driver waits for the eval-containers helpers."""
+
+    model_config = STRICT_CONFIG
+
+    waitTimeout: int = Field(ge=1)
 
 
 class HarnessConfig(BaseModel):
@@ -433,7 +444,9 @@ class HarnessConfig(BaseModel):
     tolerations: list[dict[str, Any]] = Field(default_factory=list)
     output: str
     inferencePerf: InferencePerfConfig
-    runSummary: HarnessRunSummaryConfig | None = None
+    runSummary: HarnessRunSummaryConfig
+    helperResources: HarnessResourcesConfig
+    evalImage: HarnessImageConfig | None = None
     namespace: str | None = None
     pvcSize: str | None = None
     # Cluster-specific overrides supplied via --cluster-config (deep-merged onto

@@ -23,7 +23,11 @@ from llmdbenchmark.analysis.metrics_embed import (  # noqa: F401
     REPORT_STAGE_RE as _REPORT_STAGE_RE,
     stage_windows as _stage_windows,
 )
-from llmdbenchmark.utilities.archive import read_member
+from llmdbenchmark.utilities.archive import (
+    REMOTE_ARCHIVE_NAME,
+    read_member,
+    read_members,
+)
 
 if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
@@ -65,7 +69,9 @@ _IN_POD_ANALYZERS = frozenset(
 )
 
 
-def pod_analysis_present(harness_name: str, results_dir: Path) -> bool:
+def pod_analysis_present(
+    harness_name: str, results_dir: Path, analysis_dir: Path | None = None
+) -> bool:
     """True when *results_dir* already holds the pod's own analysis output.
 
     Presence is decided on the artifacts, not on the harness name alone: an
@@ -80,6 +86,10 @@ def pod_analysis_present(harness_name: str, results_dir: Path) -> bool:
         # during collection either way -- so a plain check reads as "the pod did
         # nothing" and hands the work to a driver path whose own input is archived
         # too, failing the run.
+        if analysis_dir is not None and (
+            (analysis_dir / results_dir.name / "result.txt").is_file()
+        ):
+            return True
         return read_member(results_dir, "analysis/result.txt") is not None
     return any(results_dir.glob("benchmark_report_v0.2,_*.yaml"))
 
@@ -147,7 +157,9 @@ def run_analysis(
     Returns:
         ``None`` on success, or an error string.
     """
-    if pod_analysis_present(harness_name, results_dir):
+    run_analysis_dir = getattr(context, "run_analysis_dir", None)
+    analysis_dir = run_analysis_dir() if callable(run_analysis_dir) else None
+    if pod_analysis_present(harness_name, results_dir, analysis_dir):
         _log(context, f"{results_dir.name}: using in-pod analysis")
         return None
 
@@ -170,6 +182,11 @@ def run_analysis(
             result_files = [str(results_dir / pattern)]
 
     if not result_files:
+        if glob.has_magic(pattern) and read_members(results_dir, pattern):
+            return (
+                f"no benchmark report from the pod, and the raw results "
+                f"('{pattern}') are only in {REMOTE_ARCHIVE_NAME}"
+            )
         _log(context, f"No result files matching '{pattern}' in {results_dir.name}")
         return None  # Nothing to convert -- not an error
 

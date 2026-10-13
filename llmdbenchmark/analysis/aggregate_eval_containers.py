@@ -1,20 +1,4 @@
-"""Run-level aggregation for the eval-containers agentic harness.
-
-The framework runs ONE benchmark task per parallel harness pod, so a 50-task
-scenario leaves 50 result directories each holding a single-task benchmark
-report. This answers the question a run actually poses: across all N tasks,
-what was the score, the latency, and the token usage?
-
-It runs next to the tasks, in one extra pod (or container) per treatment that
-waits for every task to finish, and writes a result set of its own,
-``<experiment_id>_summary/``:
-
-* ``benchmark_report_v0.2,_agentic_run.yaml`` -- one v0.2-shaped benchmark report
-  for the whole run, kept plain and collected like every other report.
-* ``agentic_tasks.csv`` -- one row per task, with units in the column names.
-
-Shipped to the pod as a plain script, so it must run on the image's Python and
-read only plain files.
+"""Run-level summary of the eval-containers tasks.
 
 Usage: aggregate_eval_containers.py --expect N --deadline SECONDS <results_dir> <experiment_id>
 """
@@ -44,8 +28,7 @@ from llmd_benchmark_report.schema_v0_2 import VERSION
 SUMMARY_SUFFIX = "_summary"
 REPORT_NAME = "benchmark_report_v0.2,_agentic_run.yaml"
 CSV_NAME = "agentic_tasks.csv"
-# Same as HARNESS_DONE_SENTINEL in utilities/kube_helpers.py, which the pod cannot
-# import.
+# same as HARNESS_DONE_SENTINEL, which the pod can not import
 DONE_MARKER = ".llmdbench_harness_done"
 _POLL_S = 10
 
@@ -361,7 +344,6 @@ def _is_task_of(name: str, experiment_id: str) -> bool:
 
 
 def _task_dirs(results_dir: Path, experiment_id: str | None = None) -> list[Path]:
-    # The summary dir has no run_metadata.yaml, so it is never read as a task.
     return sorted(
         d
         for d in results_dir.iterdir()
@@ -616,11 +598,6 @@ def generate_agentic_summary(
     task_dirs: list[Path] | None = None,
     expected: int | None = None,
 ) -> int:
-    """Aggregate eval-containers tasks under ``results_dir`` into ``output_dir``.
-
-    ``output_dir`` defaults to ``<results_dir>/<experiment_id>_summary``. Returns
-    the number of tasks aggregated (0 if there was nothing to do).
-    """
     results_dir = Path(results_dir)
     if not results_dir.is_dir():
         return 0
@@ -656,7 +633,7 @@ def generate_agentic_summary(
         context,
         f"Agentic summary: {len(tasks)} tasks, {passed}/{scored} passed, "
         f"{observability.get('eval_containers_llm_calls', 0)} LLM calls, "
-        f"{observability.get('eval_containers_total_tokens', 0)} tokens -> {report_path}",
+        f"{observability.get('eval_containers_total_tokens', 0)} tokens",
     )
     return len(tasks)
 
@@ -696,11 +673,12 @@ def main(argv: list[str] | None = None) -> int:
         done = _wait_for_tasks(
             args.results_dir, args.experiment_id, args.expect, args.deadline
         )
-        # The staging name has no experiment id, so a crash cannot leave
-        # something the driver would collect as a result set.
+        # no experiment id in the name, so a left-over dir is never collected
         staging = Path(
             tempfile.mkdtemp(prefix=".agentic-summary-", dir=args.results_dir)
         )
+        # mkdtemp makes 0700; others must read it
+        staging.chmod(0o755)
         if generate_agentic_summary(
             args.results_dir,
             staging,
@@ -712,7 +690,7 @@ def main(argv: list[str] | None = None) -> int:
             staging.rename(final_dir)
             staging = None
             print(f"Run summary written to {final_dir}")
-    except Exception as exc:  # noqa: BLE001 -- must not fail the treatment
+    except Exception as exc:  # noqa: BLE001
         print(f"WARNING: agentic summary failed: {exc}", file=sys.stderr)
     finally:
         if staging is not None:

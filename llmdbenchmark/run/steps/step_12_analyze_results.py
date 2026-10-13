@@ -1,9 +1,4 @@
-"""Step 12 -- Build the benchmark reports the harness pod did not build.
-
-Every harness analyzes its own results in the pod, so this is only a fallback:
-:func:`llmdbenchmark.analysis.run_analysis` does nothing for a result set that
-already holds the pod's reports.
-"""
+"""Step 12 -- Build missing benchmark reports on the driver."""
 
 from pathlib import Path
 
@@ -25,7 +20,6 @@ class AnalyzeResultsStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        # Under skip nothing was copied here, so there is nothing to read.
         return context.harness_debug or context.collect_skip
 
     def execute(
@@ -64,8 +58,6 @@ class AnalyzeResultsStep(Step):
 
             err = run_analysis(harness_name, result_subdir, context)
             if err:
-                # A warning, not a failure: the run already finished and this
-                # step runs on every run.
                 context.logger.log_warning(
                     f"Analysis issue in {result_subdir.name}: {err}"
                 )

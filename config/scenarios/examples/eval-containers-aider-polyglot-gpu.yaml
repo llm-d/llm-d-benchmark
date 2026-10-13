@@ -53,23 +53,11 @@ scenario:
         uriProtocol: hf
 
       # NOTE: this block must sit at `common.images`, NOT nested inside
-      # `common.storage`. Indented one level deeper it parses as
-      # common.storage.images, which nothing reads -- the harness then silently
-      # falls back to images.benchmark from defaults.yaml
-      # (ghcr.io/llm-d/llm-d-benchmark), an image with no /entrypoint.sh and no
-      # /usr/local/bin/run, so the harness container dies with exit 127 after
-      # ~18s having produced no task artifacts.
+      # `common.storage`, where nothing reads it.
       images:
         vllm:
           repository: docker.io/vllm/vllm-openai
           tag: latest
-        benchmark:
-          # 2026-08-11 latest: 2-attempt grading (agent receives test failures
-          # after first attempt and gets one more try), plus fixed unpassable
-          # tasks and hidden test suite (PR #337 + #347, Exgentic/eval-containers).
-          repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
-          tag: latest
-          pullPolicy: Always
 
       vllmCommon:
         shmMemory: 4Gi
@@ -148,6 +136,13 @@ scenario:
             - qwen3
 
     harness:
+      evalImage:
+        # 2026-08-11 latest: 2-attempt grading (agent receives test failures
+        # after first attempt and gets one more try), plus fixed unpassable
+        # tasks and hidden test suite (PR #337 + #347, Exgentic/eval-containers).
+        repository: ghcr.io/exgentic/evals/aider-polyglot--gemini-cli-standalone
+        tag: latest
+        pullPolicy: Always
       name: eval-containers
       experimentProfile: aider-polyglot.yaml
       entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh

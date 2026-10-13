@@ -3,54 +3,7 @@
    with runtime values (endpoint URL, experiment ID, results directory).
    It is NOT rendered during the plan phase.
 #}
-apiVersion: v1
-kind: Pod
-metadata:
-  name: {{ pod_name }}
-  namespace: {{ harness.namespace | default(namespace.name) }}
-  labels:
-    app: "{{ harness.podLabel }}"
-    function: load_generator
-    llmdbench.ai/treatment: "{{ treatment_label_value | default('default') }}"
-{% if pod_role is defined and pod_role %}
-    llmdbench.ai/role: "{{ pod_role }}"
-{% endif %}
-spec:
-  containers:
-  - name: harness
-    image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
-    imagePullPolicy: {{ images.benchmark.pullPolicy }}
-{% set harness_privileged = harness.privileged | default(false) %}
-{% if harness_privileged or (harness.runAsUser is defined and harness.runAsUser is not none) %}
-    securityContext:
-{% if harness_privileged %}
-      privileged: true
-{% endif %}
-{% if harness.runAsUser is defined and harness.runAsUser is not none %}
-      runAsUser: {{ harness.runAsUser }}
-{% if harness.runAsUser == 0 %}
-      runAsGroup: 0
-{% endif %}
-{% endif %}
-{% endif %}
-    command: ["sh", "-c"]
-    args:
-    - >-
-      for script in /workspace/harnesses/*; do
-        [ -f "$script" ] || continue;
-        cp "$script" /usr/local/bin/;
-        chmod +x "/usr/local/bin/$(basename "$script")";
-      done;
-      {{ harness_command }}
-{% set pod_resources = pod_resources | default(harness.resources, true) %}
-    resources:
-      limits:
-        cpu: "{{ pod_resources.cpu }}"
-        memory: {{ pod_resources.memoryLimit | default(pod_resources.memory, true) }}
-      requests:
-        cpu: "{{ pod_resources.cpu }}"
-        memory: {{ pod_resources.memory }}
-    env:
+{% macro pod_env() %}
     # Stage markers are logged in local time, then compared against `date -u`
     # scrape timestamps when clipping per-stage series.
     - name: TZ
@@ -185,6 +138,67 @@ spec:
       value: "{{ env_entry.value }}"
 {% endfor %}
 {% endif %}
+{% endmacro %}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ pod_name }}
+  namespace: {{ harness.namespace | default(namespace.name) }}
+  labels:
+    app: "{{ harness.podLabel }}"
+    function: load_generator
+    llmdbench.ai/treatment: "{{ treatment_label_value | default('default') }}"
+{% if pod_role is defined and pod_role %}
+    llmdbench.ai/role: "{{ pod_role }}"
+{% endif %}
+{% set eval_task = harness.name == 'eval-containers' and harness.evalImage and pod_role | default('') != 'summary' %}
+{% set report_cmd = report_command | default('<built at run time>') %}
+{% set with_report = eval_task and report_cmd %}
+{% if with_report %}
+  annotations:
+    kubectl.kubernetes.io/default-container: harness
+{% endif %}
+spec:
+{% if with_report %}
+  shareProcessNamespace: true
+{% endif %}
+  containers:
+  - name: harness
+{% set pod_image = pod_image | default(harness.evalImage if eval_task else images.benchmark, true) %}
+    image: {{ pod_image.repository }}:{{ pod_image.tag }}
+    imagePullPolicy: {{ pod_image.pullPolicy | default('IfNotPresent', true) }}
+{% set harness_privileged = harness.privileged | default(false) %}
+{% if harness_privileged or (harness.runAsUser is defined and harness.runAsUser is not none) %}
+    securityContext:
+{% if harness_privileged %}
+      privileged: true
+{% endif %}
+{% if harness.runAsUser is defined and harness.runAsUser is not none %}
+      runAsUser: {{ harness.runAsUser }}
+{% if harness.runAsUser == 0 %}
+      runAsGroup: 0
+{% endif %}
+{% endif %}
+{% endif %}
+    command: ["sh", "-c"]
+    args:
+    - >-
+      for script in /workspace/harnesses/*; do
+        [ -f "$script" ] || continue;
+        cp "$script" /usr/local/bin/;
+        chmod +x "/usr/local/bin/$(basename "$script")";
+      done;
+      {{ harness_command }}
+{% set pod_resources = pod_resources | default(harness.resources, true) %}
+    resources:
+      limits:
+        cpu: "{{ pod_resources.cpuLimit | default(pod_resources.cpu, true) }}"
+        memory: {{ pod_resources.memoryLimit | default(pod_resources.memory, true) }}
+      requests:
+        cpu: "{{ pod_resources.cpu }}"
+        memory: {{ pod_resources.memory }}
+    env:
+{{ pod_env().rstrip('\n') }}
     volumeMounts:
     - name: results
       mountPath: /requests
@@ -195,6 +209,36 @@ spec:
 {% endfor %}
     - name: harness-scripts
       mountPath: /workspace/harnesses
+{% if with_report %}
+  - name: report
+    image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+    imagePullPolicy: {{ images.benchmark.pullPolicy | default('IfNotPresent', true) }}
+{% if harness.runAsUser is defined and harness.runAsUser is not none %}
+    securityContext:
+      runAsUser: {{ harness.runAsUser }}
+{% if harness.runAsUser == 0 %}
+      runAsGroup: 0
+{% endif %}
+{% endif %}
+    command: ["sh", "-c"]
+    args:
+    - >-
+      {{ report_cmd }}
+    resources:
+      limits:
+        cpu: "{{ harness.helperResources.cpuLimit | default(harness.helperResources.cpu, true) }}"
+        memory: {{ harness.helperResources.memoryLimit | default(harness.helperResources.memory, true) }}
+      requests:
+        cpu: "{{ harness.helperResources.cpu }}"
+        memory: {{ harness.helperResources.memory }}
+    env:
+{{ pod_env().rstrip('\n') }}
+    volumeMounts:
+    - name: results
+      mountPath: /requests
+    - name: harness-scripts
+      mountPath: /workspace/harnesses
+{% endif %}
   volumes:
   - name: results
 {% if no_pvc | default(false) %}

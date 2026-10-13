@@ -1940,14 +1940,14 @@ harness:
   output: local
   inferencePerf:
     rayonNumThreads: 4
-  # eval-containers only: one small pod per treatment that waits for the tasks
-  # and writes the run-level summary next to them. waitTimeout is how long the
-  # driver waits for it once the tasks are done.
+  evalImage: null
+  helperResources:
+    cpu: 100m
+    cpuLimit: 1
+    memory: 256Mi
+    memoryLimit: 2Gi
   runSummary:
     waitTimeout: 300
-    resources:
-      cpu: 1
-      memory: 1Gi
 
 # ============================================================================
 # EXPERIMENT RUNTIME DEFAULTS

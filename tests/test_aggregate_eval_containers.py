@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import itertools
 import json
 from pathlib import Path
 
@@ -306,7 +307,6 @@ def test_csv_has_units_in_column_names_and_one_row_per_task(tmp_path: Path) -> N
     assert [r["task_id"] for r in rows] == ["170", "200"]
     assert rows[0]["language"] == "python"
     assert rows[1]["language"] == "rust"
-    # Latency columns state their unit.
     header = rows[0].keys()
     assert "call_latency_mean_ms" in header
     assert "task_latency_s" in header
@@ -395,7 +395,6 @@ def test_main_writes_the_summary_as_its_own_result_set(tmp_path: Path) -> None:
     assert obs["eval_containers_tasks"] == 2
     assert obs["eval_containers_tasks_expected"] == 2
     assert obs["eval_containers_passed_count"] == 1
-    # Nothing staged is left behind.
     assert not [p for p in tmp_path.iterdir() if p.name.startswith(".")]
 
 
@@ -424,9 +423,8 @@ def test_main_summarizes_what_finished_by_the_deadline(
     import llmdbenchmark.analysis.aggregate_eval_containers as agg
 
     _done(_write_task(tmp_path, "exp_1", task_id=1))
-    # Still running: has metadata but no marker, so it must not be read.
     _write_task(tmp_path, "exp_2", task_id=2)
-    clock = iter([0.0, 0.0, 100.0])
+    clock = itertools.chain([0.0, 0.0], itertools.repeat(100.0))
     monkeypatch.setattr(agg.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(agg.time, "sleep", lambda _s: None)
 
@@ -457,7 +455,6 @@ def test_main_never_fails_and_leaves_nothing_half_done(
 def test_summary_dir_is_not_read_as_a_task(tmp_path: Path) -> None:
     _done(_write_task(tmp_path, "exp_1", task_id=1))
     assert main(["--expect", "1", "--deadline", "5", str(tmp_path), "exp"]) == 0
-    # A second pass, as on a retried attempt, still sees exactly one task.
     assert main(["--expect", "1", "--deadline", "5", str(tmp_path), "exp"]) == 0
     obs = yaml.safe_load((tmp_path / "exp_summary" / REPORT_NAME).read_text())[
         "results"
@@ -472,9 +469,16 @@ def test_done_marker_matches_the_harness_sentinel() -> None:
 
 
 def test_runs_on_the_image_python() -> None:
-    """The harness image is older than the driver's Python."""
     import ast
 
     import llmdbenchmark.analysis.aggregate_eval_containers as agg
 
     ast.parse(Path(agg.__file__).read_text(encoding="utf-8"), feature_version=(3, 12))
+
+
+def test_summary_dir_is_readable_by_other_users(tmp_path: Path) -> None:
+    _done(_write_task(tmp_path, "exp_1", task_id=1))
+
+    main(["--expect", "1", "--deadline", "5", str(tmp_path), "exp"])
+
+    assert (tmp_path / "exp_summary").stat().st_mode & 0o777 == 0o755

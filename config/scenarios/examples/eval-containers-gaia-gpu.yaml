@@ -57,11 +57,6 @@ scenario:
         vllm:
           repository: docker.io/vllm/vllm-openai
           tag: latest
-        benchmark:
-          # codex agent: client-side web search, works on non-Anthropic models.
-          repository: ghcr.io/exgentic/evals/gaia--codex-standalone
-          tag: latest
-          pullPolicy: Always
 
       vllmCommon:
         shmMemory: 2Gi
@@ -155,6 +150,11 @@ scenario:
             - qwen3
 
     harness:
+      evalImage:
+        # codex agent: client-side web search, works on non-Anthropic models.
+        repository: ghcr.io/exgentic/evals/gaia--codex-standalone
+        tag: latest
+        pullPolicy: Always
       name: eval-containers
       experimentProfile: gaia.yaml
       # runAsUser + serviceAccount come from --cluster-config (OpenShift-specific).

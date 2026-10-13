@@ -35,7 +35,7 @@ Output files:
 
 ## eval-containers Run Summary (`aggregate_eval_containers.py`)
 
-`eval-containers` runs one task per harness pod. This module rolls a treatment's tasks up into one run-level v0.2 report. It never runs on the driver: it ships in the harness-scripts ConfigMap and runs as a plain script in one extra summary pod per treatment (or one more container under nok8s), so it must parse on the image's Python and read only plain files.
+`eval-containers` runs one task per harness pod. This module rolls a treatment's tasks up into one run-level v0.2 report. It never runs on the driver: it ships in the harness-scripts ConfigMap and runs as a plain script in one extra summary pod per treatment (or one more container under nok8s), in the llm-d-benchmark image, so it must parse on that image's Python and read only plain files.
 
 ```
 aggregate_eval_containers.py --expect N --deadline SECONDS <results_dir> <experiment_id>
@@ -69,7 +69,7 @@ benchmark_report/
 
 ## Integration into the Run Phase
 
-Every harness analyzes its own results in the pod. Run step 12 (`AnalyzeResultsStep`) always runs after result collection and calls `run_analysis()` for each result directory; it does nothing for a directory that already holds the pod's reports, so it only fills gaps. It is skipped under `--data-collect skip`.
+Harnesses analyze their own results in the pod (eval-containers through a report sidecar in each task pod). Run step 12 (`AnalyzeResultsStep`) always runs after result collection and calls `run_analysis()` for each result directory; it does nothing for a directory that already holds the pod's reports, so it only fills gaps. It has no converter for aiperf or lm-eval, and for inference-perf, vllm-benchmark or inferencemax it warns when the raw results are only inside a set's archive. It is skipped under `--data-collect skip`.
 
 ## Dependencies
 

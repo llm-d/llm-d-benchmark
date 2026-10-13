@@ -7,7 +7,7 @@
 #   llmdbenchmark --spec examples/eval-containers-aider-polyglot run -p "$NS" -j <#tasks>
 #
 # The model deployment below mirrors sim.yaml (CPU, no GPU); only the
-# images.benchmark and harness blocks differ. aider-polyglot runs fully offline
+# harness block differs. aider-polyglot runs fully offline
 # -- the harness pod needs no internet egress.
 #
 # IMPORTANT NOTE:
@@ -69,14 +69,6 @@ scenario:
         vllm:
           repository: ghcr.io/llm-d/llm-d-inference-sim
           tag: latest
-        # The harness pod runs THIS image: agent + in-pod gateway + grader + otel,
-        # the single-container standalone bundle. Swap for any published
-        # evals/<benchmark>--<agent>-standalone image to run a different eval.
-        # 2026-08-11 latest: 2-attempt grading (PR #337 + #347, Exgentic/eval-containers).
-        benchmark:
-          repository: ghcr.io/exgentic/evals/aider-polyglot--claude-code-standalone
-          tag: latest
-          pullPolicy: Always
 
       vllmCommon:
         shmMemory: 500Mi
@@ -210,6 +202,14 @@ scenario:
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
     harness:
+      # The tasks run THIS image: agent + in-pod gateway + grader + otel,
+      # the standalone bundle. Swap for any published
+      # evals/<benchmark>--<agent>-standalone image to run a different eval.
+      # 2026-08-11 latest: 2-attempt grading (PR #337 + #347, Exgentic/eval-containers).
+      evalImage:
+        repository: ghcr.io/exgentic/evals/aider-polyglot--claude-code-standalone
+        tag: latest
+        pullPolicy: Always
       name: eval-containers
       experimentProfile: aider-polyglot.yaml
       # Run our script directly instead of the default load-generator entrypoint

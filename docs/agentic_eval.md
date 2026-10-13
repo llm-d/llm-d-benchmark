@@ -21,8 +21,9 @@ generating and evaluating real agent workloads in real time.
         │  talks to the cluster with kubectl/oc
         ▼
   Cluster (kind, or any Kubernetes / OpenShift)
-        │  deploys N "harness pods" running the eval image
-        │  each image = agent + in-pod gateway + grader + OTel collector
+        │  deploys N "harness pods": the eval image runs the task
+        │  (agent + in-pod gateway + grader + OTel collector), and an
+        │  llm-d-benchmark sidecar builds the task's benchmark report
         ▼
   Each agent's model calls flow:
         agent → in-pod gateway → your model endpoint → the model
@@ -77,15 +78,14 @@ the pipeline.
 A scenario is a YAML describing one run (model, eval image, storage, harness
 wiring); anything unset falls back to `config/templates/values/defaults.yaml`.
 Shipped examples: `config/scenarios/examples/eval-containers-{gaia,aider-polyglot}.yaml`
-(run-only) plus their `-gpu` variants. The three blocks that make it an
+(run-only) plus their `-gpu` variants. The two blocks that make it an
 `eval-containers` scenario:
 
 ```yaml
-    images:
-      benchmark:                            # the eval image the harness pod runs
+    harness:
+      evalImage:                            # the image the tasks run in
         repository: ghcr.io/exgentic/evals/<benchmark>--<agent>
         tag: latest
-    harness:
       name: eval-containers                 # selects this harness
       experimentProfile: gaia.yaml          # per-benchmark profile
       entrypoint: /workspace/harnesses/eval-containers-llm-d-benchmark.sh
@@ -95,8 +95,10 @@ Shipped examples: `config/scenarios/examples/eval-containers-{gaia,aider-polyglo
       huggingfaceId: <hf-id-or-served-id>
 ```
 
-Change `images.benchmark` + `harness.experimentProfile` to point at a different
-benchmark/agent. The `model`/`decode`/`prefill`/`storage` blocks describe **how
+Change `harness.evalImage` + `harness.experimentProfile` to point at a different
+benchmark/agent. Leave `images.benchmark` alone: the report sidecar, the run
+summary, the data-access pod and the downloads all need the llm-d-benchmark
+image it points at. The `model`/`decode`/`prefill`/`storage` blocks describe **how
 the model is served** (next section).
 
 `EVAL_MODEL` must stay a **bare** handle: the in-pod gateway carries the provider
@@ -184,8 +186,8 @@ status `200`, and `stdout.log` is non-empty and free of `API Error`.
 
 One task per pod means the per-task reports alone can't answer "how did the run
 do". So each treatment also runs one small summary pod next to its tasks. Once
-every task has finished, it rolls them up into one more result set,
-`<experiment-id>_summary/`, on the workload PVC. That set is collected like any
+every task and its report sidecar have finished, it rolls them up into one more
+result set, `<experiment-id>_summary/`, on the workload PVC. That set is collected like any
 other, and the in-cluster llm-d-prism dashboard shows its report.
 
 | File | Contains |
@@ -201,11 +203,12 @@ tar -I zstd -xOf <results>/<experiment-id>_summary/workspace.tar.zst \
 ```
 
 The CSV is inside the set's archive when the output is compressed (the default);
-with `--no-compress` it sits next to the report. The summary pod's resources and
-how long the driver waits for it after the tasks are `harness.runSummary` in the
-scenario. With nok8s the summary runs as one more container on the same host.
-`--no-pvc` runs have no run summary: every task keeps its results in its own
-emptyDir, so nothing can see them all.
+with `--no-compress` it sits next to the report. The sidecars and the summary
+pod share `harness.helperResources`; `harness.runSummary.waitTimeout` is how
+long the driver waits for the summary once the tasks are done, even when some
+task failed. With nok8s the sidecars and the summary run as more containers on
+the same host, and `waitTimeout` also bounds the wait for the report containers. On Kubernetes, `--no-pvc` runs have per-task reports but no run summary: every
+task keeps its results in its own emptyDir, so nothing can see them all.
 
 Scores live under `results.observability` as `eval_containers_*` keys. Read
 `_tasks_exit_timeout` and `_tasks_exit_error` beside the pass rate: a task killed

@@ -7,7 +7,7 @@
 #   llmdbenchmark --spec examples/eval-containers-gaia run -p "$NS" -j <#tasks>
 #
 # The model deployment below mirrors sim.yaml (CPU, no GPU); only the
-# images.benchmark and harness blocks differ. GAIA is a web/tool agentic task,
+# harness block differs. GAIA is a web/tool agentic task,
 # so the harness pod needs internet egress (and an HF token if the deployment
 # gates the dataset -- enable huggingface.* to inject HF_TOKEN).
 #
@@ -62,12 +62,7 @@ scenario:
         uriProtocol: hf
 
       # NOTE: `images` and `vllmCommon` belong at `common.<key>`, NOT nested
-      # inside `common.storage`. One level deeper they parse as
-      # common.storage.images / common.storage.vllmCommon, which nothing reads,
-      # and the harness silently falls back to images.benchmark from
-      # defaults.yaml (ghcr.io/llm-d/llm-d-benchmark) -- an image with no
-      # /entrypoint.sh and no /usr/local/bin/run, so the harness container exits
-      # 127 within ~20s having produced no task artifacts.
+      # inside `common.storage`, where nothing reads them.
       images:
         vllmOpenai:
           repository: ghcr.io/llm-d/llm-d-inference-sim
@@ -75,15 +70,6 @@ scenario:
         vllm:
           repository: ghcr.io/llm-d/llm-d-inference-sim
           tag: latest
-        # The harness pod runs THIS image: agent + in-pod gateway + grader + otel,
-        # the single-container standalone bundle. Swap for any published
-        # evals/<benchmark>--<agent>-standalone image to run a different eval.
-        benchmark:
-          # codex agent: its web search is client-side, so it works on
-          # non-Anthropic served models (unlike claude-code's server-side one).
-          repository: ghcr.io/exgentic/evals/gaia--codex-standalone
-          tag: v0.1.0
-          pullPolicy: IfNotPresent
 
       vllmCommon:
         shmMemory: 500Mi
@@ -215,6 +201,15 @@ scenario:
     #                 LLMDBENCH_HARNESS_CPU_MEM=2Gi
     # -------------------------------------------------------------------------
     harness:
+      # The tasks run THIS image: agent + in-pod gateway + grader + otel,
+      # the standalone bundle. Swap for any published
+      # evals/<benchmark>--<agent>-standalone image to run a different eval.
+      evalImage:
+        # codex agent: its web search is client-side, so it works on
+        # non-Anthropic served models (unlike claude-code's server-side one).
+        repository: ghcr.io/exgentic/evals/gaia--codex-standalone
+        tag: v0.1.0
+        pullPolicy: IfNotPresent
       name: eval-containers
       experimentProfile: gaia.yaml
       # Run our script directly instead of the default load-generator entrypoint

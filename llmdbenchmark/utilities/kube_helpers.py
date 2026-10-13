@@ -26,14 +26,12 @@ CRASH_STATES = _CRASH_STATES
 
 DATA_ACCESS_LABEL = "role=llm-d-benchmark-data-access"
 
-#: Written by --no-pvc harness pods (as ``echo $? > <prefix>/<sentinel>``)
-#: once the benchmark finishes, while the pod itself keeps sleeping so its
-#: emptyDir stays reachable for collection. eval-containers tasks write it too,
-#: so the run summary knows when every task is done.
+#: Holds the exit code of a finished harness. Under --no-pvc the pod keeps
+#: sleeping after it, so its emptyDir stays reachable for collection.
 HARNESS_DONE_SENTINEL = ".llmdbench_harness_done"
+TASK_EXIT_MARKER = ".llmdbench_task_exit"
+TASK_PID_MARKER = ".llmdbench_task_pid"
 
-#: Run-level summary of the eval-containers tasks, relative to the repository
-#: root. It runs next to the tasks, so it ships with the harness scripts.
 RUN_SUMMARY_SCRIPT = Path("llmdbenchmark/analysis/aggregate_eval_containers.py")
 
 # Retry budget for locating the data-access pod. Deliberately generous relative
@@ -227,8 +225,11 @@ def wait_for_pods_by_selector(
     namespace: str,
     timeout: int,
     context: ExecutionContext,
+    helper_containers: tuple[str, ...] = (),
 ) -> list[str]:
     """Wait for pods matching ``selector`` to start and then complete.
+
+    A failure in one of ``helper_containers`` is only a warning.
 
     Uses the same two-phase approach as the original bash:
 
@@ -317,7 +318,14 @@ def wait_for_pods_by_selector(
             pods = json.loads(check_result.stdout).get("items", [])
         except json.JSONDecodeError, AttributeError:
             pods = []
-        crash_details = [detail for pod in pods for detail in _pod_crash_details(pod)]
+        crash_details = []
+        for pod in pods:
+            state = PodState.from_api(pod)
+            crash_details.extend(state.crash_details_without(helper_containers))
+            if helper_containers:
+                for detail in state.crash_details:
+                    if detail not in crash_details:
+                        context.logger.log_warning(f"Helper container failed: {detail}")
         if crash_details:
             errors.append("Found pods in error state: " + "; ".join(crash_details))
 
@@ -334,6 +342,7 @@ def wait_for_harness_sentinels(
     sentinel_path: str,
     timeout: int,
     context: ExecutionContext,
+    container: str | None = None,
 ) -> list[str]:
     """Wait for --no-pvc harness pods to write their completion sentinel.
 
@@ -364,6 +373,7 @@ def wait_for_harness_sentinels(
             result = cmd.kube(
                 "exec",
                 pod,
+                *(("-c", container) if container else ()),
                 "--",
                 "cat",
                 sentinel_path,
@@ -655,6 +665,7 @@ def capture_pod_logs(
     namespace: str,
     log_dir: Path,
     context: ExecutionContext,
+    extra_containers: tuple[str, ...] = (),
 ) -> None:
     """Capture logs from individual harness pods."""
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -672,6 +683,20 @@ def capture_pod_logs(
             context.logger.log_info(f"Captured logs for pod '{pod_name}'")
         else:
             context.logger.log_warning(f"Could not capture logs for pod '{pod_name}'")
+        for container in extra_containers:
+            result = cmd.kube(
+                "logs",
+                pod_name,
+                "-c",
+                container,
+                "--namespace",
+                namespace,
+                check=False,
+            )
+            if result.success and result.stdout:
+                (log_dir / f"{pod_name}-{container}.log").write_text(
+                    result.stdout, encoding="utf-8"
+                )
 
 
 def capture_label_logs(

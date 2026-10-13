@@ -68,6 +68,7 @@ workload/
     guidellm-llm-d-benchmark.sh             # guidellm harness wrapper
     inference-perf-lifecycle.sh
     inference-perf-llm-d-benchmark.sh       # inference-perf harness wrapper
+    inference_perf_chat_multiturn.py
     inferencemax-llm-d-benchmark.sh         # inferencemax harness wrapper
     lm-eval-llm-d-benchmark.sh              # lm-eval (accuracy) harness wrapper
     nop-llm-d-benchmark.py                  # No-op harness (testing/validation)
@@ -127,10 +128,10 @@ workload/
       random_symmetrical.yaml.in
       sanity_random.yaml.in
       shared_prefix_multi_turn_chat.yaml.in
-      speculative_prefill_multi_turn.yaml.in
       shared_prefix_synthetic.yaml.in
       shared_prefix_synthetic_heavy.yaml.in
       shared_prefix_synthetic_short.yaml.in
+      speculative_prefill_multi_turn.yaml.in
       summarization_synthetic.yaml.in
       weka_traces.yaml.in
     inferencemax/                           # Profiles for inferencemax

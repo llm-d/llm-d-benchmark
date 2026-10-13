@@ -158,18 +158,23 @@ Steps run in number order, so step 12 (analyze) runs after step 10 (upload): a r
 driver builds is not uploaded. Compression happens inside step 07, on the PVC, before the
 results are collected -- nothing is compressed on the driver.
 
-Every harness analyzes its results in the pod: the pod builds its reports and summary before
+Harnesses analyze their results in the pod: the pod builds its reports and summary before
 the results are collected, so they land on the workload PVC and collection is a pure
 transfer. Step 12 is only the fallback for a result set the pod did not analyse -- an older
-image, or a pod killed after the load finished. A failure there is a warning, not an error.
-`--analyze` is still accepted, but it only logs a warning.
+image, or a pod killed after the load finished. It cannot rebuild aiperf or lm-eval reports,
+nor, for inference-perf, vllm-benchmark or inferencemax, convert raw results that are only inside a set's archive. A failure
+there is a warning, not an error. `--analyze` is still accepted, but it only logs a warning.
 
-For `eval-containers`, which runs one task per pod, step 07 also starts one small summary pod
-per treatment. It waits for every task's done marker, then writes the run-level report into
-`<experiment-id>_summary/` on the PVC, which is collected like any other result set. The task
-wait leaves the summary pod out (`llmdbench.ai/role!=summary`). After the tasks, the driver
-waits for it for `harness.runSummary.waitTimeout`; a summary that does not finish only warns.
-nok8s does the same with one more container; `--no-pvc` has no run summary.
+`eval-containers` tasks run in their own image (`harness.evalImage`), which cannot build
+reports. So each task pod also runs a `report` sidecar on `images.benchmark`: it waits for the
+task's exit marker, builds the task's benchmark report, then writes the done marker. Step 07
+also starts one small summary pod per treatment. It waits for every done marker, then writes
+the run-level report into `<experiment-id>_summary/` on the PVC, which is collected like any
+other result set. The task wait leaves the summary pod out (`llmdbench.ai/role!=summary`).
+After the tasks, even failed ones, the driver waits for it for
+`harness.runSummary.waitTimeout`. A summary that does not finish only warns, and that
+treatment is then not compressed. nok8s does the same with more containers; on Kubernetes `--no-pvc` has
+per-task reports but no run summary.
 
 ## Common Patterns
 

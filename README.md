@@ -665,8 +665,9 @@ what `results_store` globs off the live filesystem to resolve a run's uid/model/
 Everything else -- the per-request JSON, logs including the raw Prometheus snapshots, metric
 summaries, CSV, HTML, traces -- lives in `workspace.tar.zst`, and every component that reads
 one of those goes through the archive rather than requiring a plain copy: summary extraction,
-the `eval-containers` roll-up and per-task reports, the failure validator, and the FMA
-comparison table. CI's log-dump steps read through `util/dump_result_file.sh`.
+the failure validator, and the FMA comparison table. The `eval-containers` reports and run
+summary are built next to the tasks: in the cluster before compression, or on the
+nok8s host, which does not compress. CI's log-dump steps read through `util/dump_result_file.sh`.
 
 Inspect an archive without expanding it:
 
@@ -735,16 +736,17 @@ Both paths share steps 00-05 (infrastructure, namespaces, secrets) and step 10 (
 |------|------|-------|-------------|
 | 00 | preflight | Global | Validate cluster connectivity and run-phase prerequisites |
 | 01 | cleanup_previous | Global | Remove leftover harness pods from previous runs |
-| 02 | detect_endpoint | Per-stack | Discover or accept the model-serving endpoint |
-| 03 | verify_model | Per-stack | Verify the expected model is served at the endpoint |
-| 04 | render_profiles | Per-stack | Render workload profile templates with runtime values |
-| 05 | create_profile_configmap | Per-stack | Create profile and harness-scripts ConfigMaps |
-| 06 | deploy_harness | Per-stack | Deploy harness pod(s) and execute the full treatment cycle |
-| 07 | wait_completion | Per-stack | Wait for harness pod(s) to complete |
-| 08 | collect_results | Per-stack | Collect results from PVC to local workspace |
-| 09 | upload_results | Global | Upload results to cloud storage (safety-net bulk upload) |
-| 10 | cleanup_post | Global | Clean up harness pods and ConfigMaps |
-| 11 | analyze_results | Global | Build any benchmark report the harness pod did not build |
+| 02 | harness_namespace | Global | Prepare the harness namespace, and the workload PVC and data access pod unless `--no-pvc` |
+| 03 | detect_endpoint | Per-stack | Discover or accept the model-serving endpoint |
+| 04 | verify_model | Per-stack | Verify the expected model is served at the endpoint |
+| 05 | render_profiles | Per-stack | Render workload profile templates with runtime values |
+| 06 | create_profile_configmap | Per-stack | Create profile and harness-scripts ConfigMaps |
+| 07 | deploy_harness | Per-stack | Deploy harness pod(s) and execute the full treatment cycle |
+| 08 | wait_completion | Per-stack | Wait for harness pod(s) to complete |
+| 09 | collect_results | Per-stack | Collect results from PVC to local workspace |
+| 10 | upload_results | Global | Upload results to cloud storage (safety-net bulk upload) |
+| 11 | cleanup_post | Global | Clean up harness pods and ConfigMaps |
+| 12 | analyze_results | Global | Build any benchmark report the harness pod did not build |
 
 ### [Teardown Steps](llmdbenchmark/teardown/README.md)
 
@@ -891,7 +893,7 @@ Results are saved in the native format of each harness, as well as a universal B
 
 ### [Analysis](docs/analysis.md)
 
-The analysis pipeline builds the benchmark reports inside the harness pod and embeds the Prometheus metrics into them, so the reports land on the workload PVC. For eval-containers, a summary pod also writes one run-level report per treatment. The driver only rebuilds reports a pod did not build. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which `llmdbenchmark run` deploys in-cluster (`--no-prism` to opt out).
+The analysis pipeline builds the benchmark reports inside the harness pod and embeds the Prometheus metrics into them, so the reports land on the workload PVC. For eval-containers, whose task image cannot build reports, a sidecar in each task pod builds them, and a summary pod writes one run-level report per treatment. The driver only rebuilds reports a pod did not build. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which `llmdbenchmark run` deploys in-cluster (`--no-prism` to opt out).
 
 ## Dependencies
 

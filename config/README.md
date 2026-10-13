@@ -1242,6 +1242,25 @@ The `llm-d-benchmark.sh` entrypoint handles:
 
 ---
 
+#### eval-containers
+
+eval-containers tasks run in the eval image, set with `harness.evalImage`. Leave `images.benchmark` as it is: a `report` sidecar in each task pod, the run summary pod, and the other helpers need the llm-d-benchmark image.
+
+```yaml
+harness:
+  name: eval-containers
+  evalImage:
+    repository: ghcr.io/exgentic/evals/<benchmark>--<agent>
+    tag: latest
+  helperResources:     # report sidecars and the run summary pod (defaults shown)
+    cpu: 100m
+    cpuLimit: 1
+    memory: 256Mi
+    memoryLimit: 2Gi
+  runSummary:
+    waitTimeout: 300   # seconds the driver waits for the summary (and, on nok8s, the reports) once the tasks are done
+```
+
 ## Flow Control Configuration
 
 Flow control is an EPP (inference scheduler) feature that manages request queuing and load distribution. When enabled, the EPP buffers requests based on pool capacity rather than sending them immediately to pods.
@@ -1560,7 +1579,7 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 | Key | Default | Used by |
 |-----|---------|---------|
 | `images.vllm` | `ghcr.io/llm-d/llm-d-cuda:auto` | Modelservice decode/prefill pods, standalone fallback |
-| `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod |
+| `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod, eval-containers report sidecar and run summary pod |
 | `images.routerEndpointPicker` | `ghcr.io/llm-d/llm-d-router-endpoint-picker-dev:auto` | llm-d-router EPP |
 | `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar (proxy in front of vLLM) |
 | `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | Legacy UDS tokenizer. **No longer wired to `router.tokenizer`** -- the llm-d-router chart runs its own `vllm-render` sidecar, configured via `router.tokenizer.image`. Retained only for scenarios that reference it as an init container via `imageKey: udsTokenizer`. |
@@ -1592,6 +1611,7 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
 | `19_wva-kustomize.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
 | `20_harness_pod.yaml.j2` | `images.benchmark` | Benchmark harness pod |
+| `20_harness_pod.yaml.j2` (eval-containers task) | `harness.evalImage` | The eval task container; its `report` sidecar uses `images.benchmark` |
 
 ### Fallback Chains
 

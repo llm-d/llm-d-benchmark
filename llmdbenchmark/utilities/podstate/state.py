@@ -334,10 +334,14 @@ class PodState:
     @property
     def crash_details(self) -> list[str]:
         """Concrete per-container crash descriptions for user-facing errors."""
+        return self.crash_details_without()
+
+    def crash_details_without(self, skipped: tuple[str, ...] = ()) -> list[str]:
+        """:attr:`crash_details`, leaving out the containers named in *skipped*."""
         failures = [
             f"{self.name}/{container.name} ({', '.join(details)})"
             for container in self.all_containers
-            if (details := container.failure_details)
+            if container.name not in skipped and (details := container.failure_details)
         ]
 
         if not failures and self.status_reason in CRASH_STATES:
