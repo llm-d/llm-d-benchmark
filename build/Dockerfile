@@ -99,8 +99,8 @@ RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.7.3
-ARG GUIDELLM_COMMIT=v0.7.3
+ARG GUIDELLM_BRANCH=v0.8.1
+ARG GUIDELLM_COMMIT=v0.8.1
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
@@ -114,14 +114,14 @@ RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
 
 ARG AIPERF_REPO=https://github.com/ai-dynamo/aiperf.git
-ARG AIPERF_BRANCH=v0.12.0
-ARG AIPERF_COMMIT=v0.12.0
+ARG AIPERF_BRANCH=v0.13.0
+ARG AIPERF_COMMIT=v0.13.0
 RUN git clone --branch ${AIPERF_BRANCH} ${AIPERF_REPO}
 RUN cd aiperf; \
     git checkout ${AIPERF_COMMIT}; \
     pip install .
 
-ARG LM_EVAL_VERSION=0.4.12
+ARG LM_EVAL_VERSION=0.4.13
 RUN pip install --root-user-action=ignore "lm-eval[api]==$LM_EVAL_VERSION"
 
 RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \

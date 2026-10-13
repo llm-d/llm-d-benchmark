@@ -118,8 +118,8 @@ RUN cd /tmp/arrow/python && \
 # Install inference-perf (FULL deps now possible)
 # -----------------------------
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=v0.6.0
-ARG INFERENCE_PERF_COMMIT=v0.6.0
+ARG INFERENCE_PERF_BRANCH=v0.7.0
+ARG INFERENCE_PERF_COMMIT=v0.7.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
@@ -371,8 +371,8 @@ RUN VLLM_TARGET_DEVICE=cpu VLLM_CPU_MOE_PREPACK=0 \
 # ----------------
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.6.1
-ARG GUIDELLM_COMMIT=v0.6.1
+ARG GUIDELLM_BRANCH=v0.8.1
+ARG GUIDELLM_COMMIT=v0.8.1
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
@@ -389,8 +389,8 @@ RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
 
 ARG AIPERF_REPO=https://github.com/ai-dynamo/aiperf.git
-ARG AIPERF_BRANCH=v0.8.0
-ARG AIPERF_COMMIT=v0.8.0
+ARG AIPERF_BRANCH=v0.13.0
+ARG AIPERF_COMMIT=v0.13.0
 RUN git clone --branch ${AIPERF_BRANCH} ${AIPERF_REPO}
 RUN cd aiperf; \
     git checkout ${AIPERF_COMMIT}; \
