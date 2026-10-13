@@ -22,7 +22,11 @@ def add_subcommands(
             "uninstalled (no remaining stacks of this scenario depend on it). "
             "Pass --stack to scope teardown to specific stacks; the WVA controller "
             "is then preserved so the sibling stacks keep autoscaling. --deep "
-            "uninstalls the controller regardless of --stack."
+            "uninstalls the controller regardless of --stack.\n"
+            "\n"
+            "The persistent llm-d-prism dashboard (deployed by `run`) survives "
+            "normal teardown. Pass --prism to remove it as well; --deep always "
+            "removes it."
         ),
         help="Tear down a previously deployed llm-d stack.",
     )
@@ -66,6 +70,18 @@ def add_subcommands(
             "Forces the WVA controller to be uninstalled even when --stack "
             "is set. prometheus-adapter and shared cluster-wide RBAC are "
             "still preserved (other tenants depend on them)."
+        ),
+    )
+    teardown_parser.add_argument(
+        "--prism",
+        dest="remove_prism",
+        action="store_true",
+        default=False,
+        help=(
+            "Also remove the persistent llm-d-prism dashboard (Deployment, "
+            "Service and, on OpenShift, Route). Disabled by default: prism "
+            "survives normal and --stack teardown. --deep always removes it. "
+            "The workload PVC it reads from is kept."
         ),
     )
     teardown_parser.add_argument(

@@ -96,9 +96,10 @@ def test_monitoring_is_tristate():
     assert _parse("--no-monitoring").monitoring is False
 
 
-def test_prism_is_tristate():
-    assert _parse().prism is None
-    assert _parse("--no-prism").prism is False
+def test_prism_is_a_run_flag_only():
+    """prism is deployed by `run`, so `update` does not accept --prism."""
+    with pytest.raises(SystemExit):
+        _parse("--no-prism")
 
 
 # ---------------------------------------------------------------------------

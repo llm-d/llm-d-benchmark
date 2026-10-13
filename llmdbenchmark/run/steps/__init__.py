@@ -6,6 +6,7 @@ from llmdbenchmark.run.steps.step_00_preflight import RunPreflightStep
 from llmdbenchmark.run.steps.step_01_cleanup_previous import RunCleanupPreviousStep
 from llmdbenchmark.run.steps.step_02_harness_namespace import HarnessNamespaceStep
 from llmdbenchmark.run.steps.step_02a_fma_warmup import FMAWarmupStep
+from llmdbenchmark.run.steps.step_02b_deploy_prism import DeployPrismStep
 from llmdbenchmark.run.steps.step_03_detect_endpoint import DetectEndpointStep
 from llmdbenchmark.run.steps.step_04_verify_model import VerifyModelStep
 from llmdbenchmark.run.steps.step_05_render_profiles import RenderProfilesStep
@@ -34,6 +35,7 @@ def get_run_steps() -> list[Step]:
         RunPreflightStep(),
         RunCleanupPreviousStep(),
         HarnessNamespaceStep(),
+        DeployPrismStep(),
         FMAWarmupStep(),
         DetectEndpointStep(),
         VerifyModelStep(),

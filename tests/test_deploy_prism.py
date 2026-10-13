@@ -3,8 +3,8 @@
 Behavior under test:
 - ``--prism`` / ``--no-prism`` override ``prism.enabled``; omitting both keeps
   scenario/defaults values.
-- ``should_skip`` honours ``prism.enabled`` and the nok8s / kustomize-skip-infra
-  deployment methods.
+- ``--prism`` / ``--no-prism`` belong to ``run``, not ``standup``.
+- ``should_skip`` honours ``prism.enabled``, nok8s and collect-only (``-z``).
 - ``execute`` is non-fatal: an apply failure or an unready pod still succeeds.
 - The OpenShift route is created only when missing, and only on OpenShift.
 - Normal teardown preserves persist-labelled resources.
@@ -21,7 +21,7 @@ import pytest
 import yaml
 
 from llmdbenchmark.parser.render_plans import RenderPlans
-from llmdbenchmark.standup.steps.step_09_deploy_prism import DeployPrismStep
+from llmdbenchmark.run.steps.step_02b_deploy_prism import DeployPrismStep
 from llmdbenchmark.teardown.steps.step_03_delete_resources import DeleteResourcesStep
 
 
@@ -56,7 +56,7 @@ class _StubCmd:
 class _StubContext:
     rendered_stacks: list[Path] = field(default_factory=list)
     deployed_methods: list[str] = field(default_factory=lambda: ["modelservice"])
-    kustomize_skip_infra: bool = True
+    harness_skip_run: bool = False
     is_openshift: bool = False
     dry_run: bool = False
     no_pvc: bool = False
@@ -109,27 +109,47 @@ def test_resolve_prism_override(
     assert result["prism"]["enabled"] is expected
 
 
+def test_prism_flag_lives_on_run_not_standup() -> None:
+    from llmdbenchmark.cli import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["run"]).prism is None
+    assert parser.parse_args(["run", "--prism"]).prism is True
+    assert parser.parse_args(["run", "--no-prism"]).prism is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(["standup", "--no-prism"])
+
+
+def test_prism_is_a_run_step() -> None:
+    from llmdbenchmark.run.steps import get_run_steps
+    from llmdbenchmark.standup.steps import get_standup_steps
+
+    run_names = [s.name for s in get_run_steps()]
+    assert run_names.index("deploy_prism") == run_names.index("harness_namespace") + 1
+    assert "deploy_prism" not in {s.name for s in get_standup_steps()}
+
+
 @pytest.mark.parametrize(
-    "prism,methods,skip_infra,expected",
+    "prism,methods,skip_run,expected",
     [
-        (None, ["modelservice"], True, False),  # absent config => deployed
-        ({"enabled": False}, ["modelservice"], True, True),
-        ({"enabled": True}, ["nok8s"], True, True),
-        ({"enabled": True}, ["kustomize"], True, True),
-        ({"enabled": True}, ["kustomize"], False, False),
+        (None, ["modelservice"], False, False),  # absent config => deployed
+        ({"enabled": False}, ["modelservice"], False, True),
+        ({"enabled": True}, ["nok8s"], False, True),
+        ({"enabled": True}, ["kustomize"], False, False),  # benchmark infra
+        ({"enabled": True}, ["modelservice"], True, True),  # -z collect-only
     ],
 )
 def test_should_skip(
     tmp_path: Path,
     prism: dict | None,
     methods: list[str],
-    skip_infra: bool,
+    skip_run: bool,
     expected: bool,
 ) -> None:
     ctx = _StubContext(
         rendered_stacks=[_stack(tmp_path, prism=prism)],
         deployed_methods=methods,
-        kustomize_skip_infra=skip_infra,
+        harness_skip_run=skip_run,
     )
 
     assert DeployPrismStep().should_skip(ctx) is expected

@@ -112,6 +112,7 @@ llmdbenchmark --spec guides/optimized-baseline run -p <NS> -z
 | `-c FILE` | | Run config YAML file -- enables run-only mode |
 | `--generate-config` | | Generate a run config YAML from current settings and exit |
 | `--monitoring` | `LLMDBENCH_MONITORING` | Enable vLLM metrics scraping and pod log capture |
+| `--prism` / `--no-prism` | `LLMDBENCH_PRISM` | Deploy or skip the persistent llm-d-prism dashboard (default: scenario `prism.enabled`, which is on) |
 | `-q SA` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account for harness pods |
 | `-g VARS` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
 | `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment treatments YAML for parameter sweeping |
@@ -141,6 +142,7 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 | 00 | `RunPreflightStep` | Validate cluster connectivity and output destination; note (not fail) if the harness namespace doesn't exist yet -- step 02 creates it |
 | 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
 | 02 | `HarnessNamespaceStep` | Prepare harness namespace: namespace, HF token secret, preprocess ConfigMap; plus workload PVC + data-access pod in PVC mode. Runs in every k8s run (including --no-pvc, which skips only the PVC/data-access portion). |
+| 02b | `DeployPrismStep` | Deploy the persistent in-cluster llm-d-prism dashboard over the workload PVC (`--no-prism` skips it; also skipped with `--no-pvc`). Best-effort: failures only warn. Survives teardown except `teardown --prism` or `-d`. |
 | 03 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
 | 04 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |
 | 05 | `RenderProfilesStep` | Render workload profile templates with runtime values; handle experiment treatments |

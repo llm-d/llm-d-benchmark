@@ -288,6 +288,11 @@ class CommandExecutor:
             parts.extend(["--context", self.kube_context])
         return parts
 
+    def kube_argv(self, *args: str) -> list[str]:
+        """Return a kubectl/oc argv with kubeconfig flags, for callers that
+        must manage the process themselves (e.g. a long-lived port-forward)."""
+        return [self._kube_bin, *self._kubeconfig_args(), *args]
+
     def kube(
         self,
         *args: str,

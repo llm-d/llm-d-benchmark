@@ -38,6 +38,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     non_admin: bool = False
     current_phase: Any = None  # Phase enum, set at runtime to avoid circular import
     deep_clean: bool = False  # teardown: wipe all resources in namespaces
+    remove_prism: bool = False  # teardown: also remove the persistent llm-d-prism
     release: str = "llmdbench"  # Helm release name prefix
     # Stored in the cluster for `update` to reuse. Runtime only, never a
     # config knob.
@@ -72,6 +73,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     # Deployed state (populated during standup, consumed by run)
     deployed_endpoints: dict[str, str] = field(default_factory=dict)
+    # stack -> URL reachable from outside the cluster (standup step 09).
+    external_endpoints: dict[str, str] = field(default_factory=dict)
     deployed_methods: list[str] = field(default_factory=list)
 
     # Node resource discovery (populated during step 03)

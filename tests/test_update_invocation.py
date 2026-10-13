@@ -46,7 +46,6 @@ def _args(**kwargs):
         "annotations": None,
         "release": None,
         "monitoring": None,
-        "prism": None,
         "wva": None,
         "epp_keda_saturation": None,
         "no_pvc": None,
@@ -339,9 +338,8 @@ def test_an_on_flag_can_be_turned_off():
 
 
 def test_tristate_flags_are_reused_both_ways():
-    args = _reuse(_stored(invocation_monitoring="false", invocation_prism="true"))
-    assert args.monitoring is False
-    assert args.prism is True
+    assert _reuse(_stored(invocation_monitoring="false")).monitoring is False
+    assert _reuse(_stored(invocation_monitoring="true")).monitoring is True
 
 
 def test_reuse_reads_the_harness_namespace():

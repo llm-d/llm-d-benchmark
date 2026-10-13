@@ -28,10 +28,10 @@ COMPONENT_STEPS: dict[str, frozenset[int]] = {
     "fma": frozenset({5, 8}),
     "nok8s": frozenset({5}),
     "kustomize": frozenset({5}),
-    "prism": frozenset({9}),
     "monitoring": frozenset({3, 8}),
     "namespace": frozenset({4}),
     "admin": frozenset({2}),
+    "expose": frozenset({9}),
 }
 
 #: Components that may not be re-applied without ``--force``, and why.
@@ -97,7 +97,8 @@ KEY_COMPONENTS: dict[str, tuple[KeyClass, frozenset[str], str]] = {
     # -- other deploy methods ---------------------------------------------
     "standalone": (KeyClass.SAFE, frozenset({"standalone", "vllm", "epp", "fma"}), ""),
     "fma": (KeyClass.SAFE, frozenset({"fma"}), ""),
-    "prism": (KeyClass.SAFE, frozenset({"prism"}), ""),
+    # -- external access (Route / port-forward) ----------------------------
+    "externally_accessible": (KeyClass.SAFE, frozenset({"expose"}), ""),
     # -- helm plumbing shared by every release ----------------------------
     "chartVersions": (KeyClass.SAFE, _VLLM | _EPP | {"infra"}, ""),
     "helmRepositories": (KeyClass.SAFE, _VLLM | _EPP | {"infra"}, ""),
@@ -170,7 +171,7 @@ KEY_COMPONENTS: dict[str, tuple[KeyClass, frozenset[str], str]] = {
     ),
     "storage": (
         KeyClass.DANGEROUS,
-        _VLLM | {"namespace", "prism"},
+        _VLLM | {"namespace"},
         "recreates PVCs, which cannot be resized or rebound in place",
     ),
     "namespace": (
@@ -202,6 +203,7 @@ KEY_COMPONENTS: dict[str, tuple[KeyClass, frozenset[str], str]] = {
     "harness": (KeyClass.NOOP, frozenset(), "only the run phase reads it"),
     "experiment": (KeyClass.NOOP, frozenset(), "only the experiment phase reads it"),
     "dataAccess": (KeyClass.NOOP, frozenset(), "only the run phase reads it"),
+    "prism": (KeyClass.NOOP, frozenset(), "only the run phase deploys it"),
     "description": (KeyClass.NOOP, frozenset(), "it is run metadata"),
     "idleCleanup": (
         KeyClass.NOOP,
@@ -222,7 +224,6 @@ FLAG_KEYS: dict[str, str] = {
     "wva": "wva",
     "epp_keda_saturation": "eppKedaSaturation",
     "monitoring": "monitoring",
-    "prism": "prism",
     "no_pvc": "storage",
 }
 

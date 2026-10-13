@@ -2,7 +2,7 @@
 
 This document describes the analysis pipeline for `llm-d-benchmark`: where the benchmark reports are built and what the driver adds.
 
-To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which reads the benchmark reports this pipeline produces. Standup can deploy it in-cluster, where it reads them straight from the workload PVC.
+To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which reads the benchmark reports this pipeline produces. `llmdbenchmark run` deploys it in-cluster (`--no-prism` to opt out), where it reads them straight from the workload PVC.
 
 ## Overview
 

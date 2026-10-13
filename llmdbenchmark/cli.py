@@ -1127,6 +1127,13 @@ def _print_standup_summary(context, result, logger):
         for name, url in endpoints.items():
             logger.log_info(f"    {name}: {url}")
 
+    external = context.external_endpoints or {}
+    if external:
+        logger.log_info("-" * W)
+        logger.log_info("  External Endpoints:")
+        for name, url in external.items():
+            logger.log_info(f"    {name}: {url}")
+
     logger.log_info("=" * W)
     logger.line_break()
     logger.log_info(f"Workspace: {context.workspace}")
@@ -1170,6 +1177,7 @@ def _do_teardown(args, logger, render_plan_errors):
         container_runtime=plan_info.get("nok8s_runtime", "docker"),
         container_connection=plan_info.get("nok8s_connection", "localhost"),
         deep_clean=getattr(args, "deep", False),
+        remove_prism=getattr(args, "remove_prism", False),
         release=getattr(args, "release", "llmdbench"),
         namespace=namespace,
         harness_namespace=harness_ns,
@@ -1705,9 +1713,9 @@ def _execute_run(args, logger, render_plan_errors):
 def _find_prism_url(context) -> str | None:
     """URL of the llm-d-prism dashboard, or None when it is not deployed.
 
-    Standup deploys prism into the model namespace; the harness namespace is
-    checked too, for runs that point at a stack someone else stood up. On
-    OpenShift the URL is the Route that standup exposes; elsewhere there is no
+    Run step 02b deploys prism into the model namespace; the harness namespace
+    is checked too, for runs that point at a stack someone else stood up. On
+    OpenShift the URL is the Route that step exposes; elsewhere there is no
     ingress, so the port-forward command that reaches it is returned instead.
     Best-effort: any lookup failure just omits the line from the summary.
     """

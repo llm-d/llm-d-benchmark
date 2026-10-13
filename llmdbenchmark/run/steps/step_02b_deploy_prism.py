@@ -1,4 +1,9 @@
-"""Step 09 -- Deploy the persistent in-cluster llm-d-prism dashboard."""
+"""Step 02b -- Deploy the persistent in-cluster llm-d-prism dashboard.
+
+Runs right after step 02 has prepared the harness namespace, so the workload
+PVC that prism plots from already exists. The dashboard outlives the run and
+normal teardown; re-applying it on every run is idempotent.
+"""
 
 from __future__ import annotations
 
@@ -13,18 +18,19 @@ class DeployPrismStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=9,
+            number=2,
             name="deploy_prism",
             description="Deploy persistent llm-d-prism dashboard",
-            phase=Phase.STANDUP,
+            phase=Phase.RUN,
             per_stack=False,
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        methods = context.deployed_methods or []
-        if "nok8s" in methods:
+        # Same gating as step 02: no cluster for nok8s, and collect-only mode
+        # deploys nothing new.
+        if "nok8s" in (context.deployed_methods or []):
             return True
-        if methods == ["kustomize"] and context.kustomize_skip_infra:
+        if context.harness_skip_run:
             return True
         plan_config = self._load_plan_config(context)
         prism = (plan_config or {}).get("prism", {}) or {}
@@ -57,7 +63,8 @@ class DeployPrismStep(Step):
                 message="prism template not rendered (disabled) -- skipping",
             )
 
-        # workload-pvc is owned by run step 02, which has not run yet.
+        # Step 02 creates workload-pvc in the harness namespace; make sure it
+        # also exists here when the model namespace differs (idempotent).
         if not self._ensure_workload_pvc(cmd, context, ns):
             return StepResult(
                 step_number=self.number,
@@ -108,7 +115,7 @@ class DeployPrismStep(Step):
                         f"Could not create prism route (non-fatal): {expose.stderr}"
                     )
 
-        # Best-effort readiness wait -- a stuck pull must not fail standup.
+        # Best-effort readiness wait -- a stuck pull must not fail the run.
         wait_result = cmd.wait_for_pods(
             label="app.kubernetes.io/name=llm-d-prism",
             namespace=ns,

@@ -23,9 +23,10 @@ SYSTEM_EXCLUDES = {
     "openshift-service-ca.crt",
 }
 
-# llm-d-prism persists across normal teardown; deep clean still removes it.
+# llm-d-prism persists across normal teardown; deep clean or --prism removes it.
 PRISM_PERSIST_LABEL = "llm-d-benchmark.ai/persist=true"
 PRISM_NAME_MATCH = "llm-d-prism"
+PRISM_APP_LABEL = "app.kubernetes.io/name=llm-d-prism"
 
 STANDALONE_PATTERNS = [
     "standalone",
@@ -320,7 +321,8 @@ class DeleteResourcesStep(Step):
                 except json.JSONDecodeError, KeyError:
                     pass
 
-            # Preserve persistent llm-d-prism resources (skipped on deep clean).
+            # Preserve persistent llm-d-prism resources (skipped on deep clean);
+            # --prism deletes them below by label.
             if not context.deep_clean:
                 protected = self._prism_protected_names(cmd, resource_list, ns)
                 before = len(filtered)
@@ -333,8 +335,11 @@ class DeleteResourcesStep(Step):
                 if skipped:
                     context.logger.log_info(
                         f"  Preserving {skipped} persistent llm-d-prism "
-                        f"resource(s) in {ns} (removed only by `teardown -d`)"
+                        f"resource(s) in {ns} (removed by `teardown --prism` or `-d`)"
                     )
+
+            if context.remove_prism:
+                self._delete_prism(cmd, context, ns, errors)
 
             if not filtered:
                 context.logger.log_info(f"  No matching resources found in {ns}")
@@ -373,6 +378,44 @@ class DeleteResourcesStep(Step):
             )
 
         self._delete_host_path_pvs(cmd, context, namespaces)
+
+    @staticmethod
+    def _delete_prism(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        errors: list,
+    ) -> None:
+        """Delete the persistent llm-d-prism dashboard (`teardown --prism`).
+
+        Matched by its app label rather than name, since the name is
+        configurable. The Route created by `oc expose` inherits the Service's
+        labels. The workload PVC it mounts holds results and is kept.
+        """
+        kinds = "deployment,service"
+        if context.is_openshift:
+            kinds += ",route"
+        context.logger.log_info(
+            f"  Deleting llm-d-prism dashboard in {namespace} (--prism)",
+            emoji="🗑️",
+        )
+        result = cmd.kube(
+            "delete",
+            kinds,
+            "--namespace",
+            namespace,
+            "-l",
+            PRISM_APP_LABEL,
+            "--ignore-not-found=true",
+            check=False,
+        )
+        if not result.success:
+            context.logger.log_warning(
+                f"    Could not delete llm-d-prism in {namespace}: {result.stderr}"
+            )
+            errors.append(
+                f"Failed to delete llm-d-prism in {namespace}: {result.stderr}"
+            )
 
     @staticmethod
     def _delete_host_path_pvs(

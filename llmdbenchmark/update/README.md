@@ -43,9 +43,9 @@ A rolling update starts the new pod before it stops the old one, so it needs roo
 | `annotations`, `labels`, `vllmCommon` | standalone, fma, vllm | 5, 6, 8 |
 | `images` | standalone, vllm, epp | 5, 6, 7, 8 |
 | `router` | epp | 6, 7 |
+| `externally_accessible` | expose | 9 |
 | `standalone` | standalone, fma, vllm, epp | 5, 6, 7, 8 |
 | `fma` | fma | 5, 6, 8 |
-| `prism` | prism | 9 |
 | `chartVersions`, `helmRepositories` | vllm, epp, infra | 6, 7, 8 |
 | `monitoring` | monitoring, standalone, vllm, epp | 3, 5, 6, 7, 8 |
 | `keda`, `wva` | monitoring, fma, vllm | 3, 5, 6, 8 |
@@ -58,7 +58,7 @@ A rolling update starts the new pod before it stops the old one, so it needs roo
 | `serviceAccountOverride` | namespace, vllm | 4, 6, 8 |
 | `huggingface` | namespace, standalone, fma, vllm, epp | 4, 5, 6, 7, 8 |
 | `model` | namespace, standalone, fma, vllm, epp | 4, 5, 6, 7, 8 |
-| `storage` | namespace, prism, vllm | 4, 6, 8, 9 |
+| `storage` | namespace, vllm | 4, 6, 8 |
 | `downloadJob` | namespace | 4 |
 | `namespace` | admin, namespace, infra, vllm, epp | 2, 4, 6, 7, 8 |
 | `gatewayApiCrd` | admin | 2 |
@@ -72,7 +72,7 @@ Step 06 is always added alongside 07 or 08. It writes the values files (`infra.y
 
 Components whose steps the active deploy method never runs are dropped, so a modelservice stack is not told it updated `standalone`.
 
-The flags that change what gets rendered count the same way as a `--set` of the key they set: `-m` as `model`, `-r` as `release`, `--gateway-class` as `gateway`, `-a`/`-b` as `affinity`/`annotations`, `--wva`, `--epp-keda-saturation`, `--monitoring` and `--prism` as their keys, and `--no-pvc`/`--pvc` as `storage`. `-t` switches the deploy method, so it is refused like `kustomize`. `--full-infra` restarts nothing. A flag only counts when it differs from what the original standup used.
+The flags that change what gets rendered count the same way as a `--set` of the key they set: `-m` as `model`, `-r` as `release`, `--gateway-class` as `gateway`, `-a`/`-b` as `affinity`/`annotations`, `--wva`, `--epp-keda-saturation`, and `--monitoring` as their keys, and `--no-pvc`/`--pvc` as `storage`. `-t` switches the deploy method, so it is refused like `kustomize`. `--full-infra` restarts nothing. A flag only counts when it differs from what the original standup used.
 
 ### Shared infrastructure
 
@@ -99,7 +99,7 @@ The gate looks at where a change lands, not at which key named it, so no spellin
 
 ### Changes that restart nothing
 
-`harness`, `experiment` and `dataAccess` are read by the run phase; `description` is metadata; `idleCleanup` drives a standalone CronJob. `update` warns and, when nothing else is in scope, re-applies nothing. It still reads and records the flags.
+`harness`, `experiment`, `dataAccess` and `prism` are read by the run phase; `description` is metadata; `idleCleanup` drives a standalone CronJob. `update` warns and, when nothing else is in scope, re-applies nothing. It still reads and records the flags.
 
 An override whose top-level key is not in any of these groups is refused, because it is either a typo or a key nobody has classified yet.
 

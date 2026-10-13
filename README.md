@@ -451,7 +451,7 @@ llmdbenchmark --version
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) to render into the plan |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model to render the plan for |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment method (`standalone`, `modelservice`) |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `none`, `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. `none` exposes decode vLLM directly through a plain Service with no Gateway, EPP, Envoy, or routing proxy. Ignored when the active deploy method is `kustomize`, `standalone`, or `fma`. |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `none`, `epponly` (alias `standalone`), `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. `none` exposes decode vLLM directly through a plain Service with no Gateway, EPP, Envoy, or routing proxy. Ignored when the active deploy method is `kustomize`, `standalone`, or `fma`. |
 | `-f` / `--monitoring` | | Enable monitoring in rendered templates (PodMonitor, EPP verbosity) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path (used for cluster resource auto-detection) |
 
@@ -891,7 +891,7 @@ Results are saved in the native format of each harness, as well as a universal B
 
 ### [Analysis](docs/analysis.md)
 
-The analysis pipeline builds the benchmark reports inside the harness pod and embeds the Prometheus metrics into them, so the reports land on the workload PVC. For eval-containers, a summary pod also writes one run-level report per treatment. The driver only rebuilds reports a pod did not build. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which standup can deploy in-cluster.
+The analysis pipeline builds the benchmark reports inside the harness pod and embeds the Prometheus metrics into them, so the reports land on the workload PVC. For eval-containers, a summary pod also writes one run-level report per treatment. The driver only rebuilds reports a pod did not build. To visualize results, use [llm-d-prism](https://github.com/llm-d/llm-d-prism), which `llmdbenchmark run` deploys in-cluster (`--no-prism` to opt out).
 
 ## Dependencies
 

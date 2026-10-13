@@ -24,7 +24,7 @@ from llmdbenchmark.standup.steps.step_07_deploy_router import DeployRouterStep
 from llmdbenchmark.standup.steps.step_08_deploy_modelservice import (
     DeployModelserviceStep,
 )
-from llmdbenchmark.standup.steps.step_09_deploy_prism import DeployPrismStep
+from llmdbenchmark.standup.steps.step_09_expose_endpoint import ExposeEndpointStep
 
 
 def get_standup_steps() -> list[Step]:
@@ -41,5 +41,5 @@ def get_standup_steps() -> list[Step]:
         DeploySetupStep(),
         DeployRouterStep(),
         DeployModelserviceStep(),
-        DeployPrismStep(),
+        ExposeEndpointStep(),
     ]

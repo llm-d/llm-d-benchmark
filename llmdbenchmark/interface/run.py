@@ -264,6 +264,18 @@ def add_subcommands(
         help="Enable vLLM /metrics scraping and pod log capture during the run. Without this flag, metrics are not collected.",
     )
 
+    # Dashboard
+    run_parser.add_argument(
+        "--prism",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Deploy (--prism) or skip (--no-prism) the persistent in-cluster "
+        "llm-d-prism dashboard, which plots the reports on the workload PVC. "
+        "Omit to use scenario/defaults (deployed by default; env: "
+        "LLMDBENCH_PRISM). Skipped with --no-pvc. Survives normal and "
+        "--stack teardown; removed by `teardown --prism` or -d/--deep.",
+    )
+
     # Pod configuration
     run_parser.add_argument(
         "-q",

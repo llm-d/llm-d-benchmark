@@ -92,7 +92,6 @@ def test_dangerous_and_noop_keys_explain_themselves():
         ("prefill", {6, 8}),
         ("router", {6, 7}),
         ("images", {6, 7, 8}),
-        ("prism", {9}),
     ],
 )
 def test_safe_keys_map_to_expected_steps(key, expected):
@@ -108,7 +107,7 @@ def test_step_six_is_added_as_prerequisite():
 
 
 def test_step_six_not_added_without_seven_or_eight():
-    assert components_to_steps({"prism"}, deployed_methods=MODELSERVICE) == {9}
+    assert components_to_steps({"namespace"}, deployed_methods=MODELSERVICE) == {4}
 
 
 def test_multiple_keys_union_their_steps():

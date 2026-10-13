@@ -1853,9 +1853,21 @@ eppKedaSaturation:
             periodSeconds: 300
 
 # ============================================================================
+# EXTERNAL ACCESS
+#
+# When true (the default), standup step 09 makes each stack's model endpoint reachable from
+# outside the cluster, for every Kubernetes deploy method: an OpenShift Route
+# (reused if one already targets the model Service), or on plain Kubernetes a
+# detached `kubectl port-forward` on a free local port starting at 8000. The
+# URL is printed in the standup summary.
+# ============================================================================
+externally_accessible: true
+
+# ============================================================================
 # PRISM DASHBOARD
 #
-# Persistent in-cluster dashboard. Survives teardown; removed only by `-d`.
+# Persistent in-cluster dashboard. Survives teardown; removed by
+# `teardown --prism` or `-d`.
 # ============================================================================
 prism:
   enabled: true

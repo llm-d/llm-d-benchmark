@@ -49,7 +49,6 @@ BOOL_INVOCATION_DESTS: frozenset[str] = frozenset(
 #: --no-monitoring is not the same as no flag.
 TRISTATE_FIELDS: dict[str, str] = {
     "invocation_monitoring": "monitoring",
-    "invocation_prism": "prism",
 }
 
 #: Not reused, only compared: flags taken with --stack describe those stacks only.

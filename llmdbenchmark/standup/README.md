@@ -19,7 +19,7 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 06 | `DeploySetupStep` | per-stack | Set up Helm repos, stage the helmfile values files, and deploy gateway infrastructure for modelservice mode |
 | 07 | `DeployRouterStep` | per-stack | Deploy the llm-d router (EPP + provider resources) |
 | 08 | `DeployModelserviceStep` | per-stack | Deploy the model via the llm-d modelservice Helm chart |
-| 09 | `DeployPrismStep` | global | Deploy the in-cluster llm-d-prism dashboard |
+| 09 | `ExposeEndpointStep` | per-stack | Unless `externally_accessible: false`, expose the model Service outside the cluster: an OpenShift Route, or a detached `kubectl port-forward` on Kubernetes. Skipped for nok8s and FMA-only. |
 
 Note: Step 01 is intentionally absent (reserved). Smoketest and inference test run as a separate phase after standup, from the `llmdbenchmark.smoketests` module; `get_standup_steps()` no longer registers them. `step_10_smoketest.py` and `step_11_inference_test.py` are still on disk but unregistered -- only their helpers are still imported.
 
@@ -50,6 +50,26 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
 - Note: the `plan` subcommand previews the un-switched scenario (`--no-pvc`
   overrides apply at standup render time only), so a plan preview may show
   `uriProtocol: pvc` even when the standup will force `hf`.
+
+## External access (`externally_accessible`)
+
+By default (`externally_accessible: true`) standup makes each stack's model
+endpoint reachable from outside the cluster; set it to `false` in the scenario
+(or pass `--set externally_accessible=false`) to opt out. It applies to every Kubernetes deploy
+method (`standalone`, `modelservice` with any gateway class, `kustomize`);
+step 09 finds the Service fronting the model and:
+
+- **OpenShift**: reuses a Route already targeting that Service (e.g. the one
+  standalone or the istio/agentgateway path creates) or creates
+  `<service>-external` with `oc expose`.
+- **Kubernetes**: starts a detached `kubectl port-forward svc/<service>` on the
+  first free local port from 8000. It keeps running after standup exits; its
+  PID and log are written under `<workspace>/setup/port-forward-*.{pid,log}`.
+  Stop it with `kill <pid>`.
+
+The URL appears under "External Endpoints" in the standup summary. Stacks that
+share one gateway Service share one Route / port-forward. Skipped for `nok8s`
+(already on the host) and FMA-only (no model Service). Default: `true`.
 
 ## Updating a live stack
 

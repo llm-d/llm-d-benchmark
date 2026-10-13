@@ -303,3 +303,30 @@ def test_direct_service_uses_gateway_namespace_and_decode_target_port(
     assert direct_service["metadata"]["namespace"] == "model-serving"
     assert direct_service["spec"]["ports"][0]["port"] == 8000
     assert direct_service["spec"]["ports"][0]["targetPort"] == 8100
+
+
+def test_standalone_cli_gateway_class_is_alias_for_epponly() -> None:
+    renderer = _renderer()
+    renderer.cli_gateway_class = "standalone"
+    values = {
+        "gateway": {"className": "istio"},
+        "modelservice": {"enabled": True},
+    }
+
+    result = renderer._resolve_gateway_class(values)
+
+    assert result["gateway"]["className"] == "epponly"
+
+
+def test_standalone_scenario_gateway_class_is_alias_for_epponly() -> None:
+    renderer = _renderer()
+    renderer.cli_gateway_class = None
+    values = {
+        "gateway": {"className": "standalone"},
+        "modelservice": {"enabled": True},
+    }
+
+    result = renderer._resolve_gateway_class(values)
+
+    assert result["gateway"]["className"] == "epponly"
+    assert values["gateway"]["className"] == "standalone"  # input not mutated

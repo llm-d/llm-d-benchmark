@@ -785,6 +785,18 @@ class RenderPlans:
         "data-science-gateway-class",
     )
 
+    # Alternate spellings normalized to their canonical class at plan time,
+    # so every rendered template and step sees exactly one value.
+    # "standalone" is llm-d's name for the EPP-only router topology.
+    _GATEWAY_CLASS_ALIASES: dict[str, str] = {
+        "standalone": "epponly",
+    }
+
+    @classmethod
+    def _canonical_gateway_class(cls, gateway_class: str) -> str:
+        """Return the canonical name for a gateway class (resolving aliases)."""
+        return cls._GATEWAY_CLASS_ALIASES.get(gateway_class, gateway_class)
+
     def _resolve_gateway_class(self, values: dict) -> dict:
         """Apply ``--gateway-class`` CLI override to ``gateway.className``.
 
@@ -797,11 +809,25 @@ class RenderPlans:
         On the modelservice path we enforce a whitelist so a typo fails
         fast at plan time rather than silently producing a broken Gateway
         / InferencePool chart configuration.
+
+        Aliases (``standalone`` -> ``epponly``) are resolved for both the
+        CLI value and a ``gateway.className`` set in the scenario, so the
+        two spellings render identical plans.
         """
+        scenario_class = (values.get("gateway") or {}).get("className")
+        if isinstance(scenario_class, str):
+            canonical = self._canonical_gateway_class(scenario_class.strip())
+            if canonical != scenario_class:
+                values = deepcopy(values)
+                values["gateway"]["className"] = canonical
+                self.logger.log_info(
+                    f"Gateway class {scenario_class!r} is an alias for {canonical!r}"
+                )
+
         if not self.cli_gateway_class:
             return values
 
-        candidate = self.cli_gateway_class.strip()
+        candidate = self._canonical_gateway_class(self.cli_gateway_class.strip())
 
         modelservice_enabled = (values.get("modelservice") or {}).get("enabled", True)
 

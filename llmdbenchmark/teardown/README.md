@@ -56,7 +56,7 @@ Two modes:
 - Standalone patterns: `standalone`, `download-model`, `testinference`, `lmbenchmark`
 - Modelservice patterns: `llm-d-benchmark-preprocesses`, `p2p`, `inference-gateway`, `inferencepool`, `httproute`, `llm-route`, `base-model`, `endpoint-picker`, etc.
 
-System resources (e.g. `kube-root-ca.crt`, `odh-trusted-ca-bundle`) are excluded.
+System resources (e.g. `kube-root-ca.crt`, `odh-trusted-ca-bundle`) are excluded. The persistent llm-d-prism dashboard (label `llm-d-benchmark.ai/persist=true`) is also preserved unless `--prism` is passed, in which case its Deployment, Service and (on OpenShift) Route are deleted by the `app.kubernetes.io/name=llm-d-prism` label. The workload PVC it reads from is kept.
 
 Resource types checked: `deployment`, `httproute`, `service`, `gateway`, `gatewayparameters`, `inferencepool`, `inferencemodel`, `configmap`, `ingress`, `pod`, `job`.
 
