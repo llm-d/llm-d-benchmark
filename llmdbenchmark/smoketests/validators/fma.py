@@ -16,8 +16,14 @@ from pathlib import Path
 from time import perf_counter, sleep
 
 from llmdbenchmark.executor.command import CommandExecutor
-from llmdbenchmark.executor.context import ExecutionContext
-from llmdbenchmark.smoketests.base import BaseSmoketest, _load_config, _nested_get
+from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
+from llmdbenchmark.smoketests.autoscaling import ScaleTarget
+from llmdbenchmark.smoketests.base import (
+    BaseSmoketest,
+    _load_config,
+    _model_id_label,
+    _nested_get,
+)
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.utilities.kube_helpers import _pod_crash_details
 
@@ -33,6 +39,9 @@ from llmdbenchmark.utilities.kube_helpers import _pod_crash_details
 # replicas=N there are N bound launchers. Any bound launcher serves the same
 # model, so probing pods[0] of the `dual`-selected set is sufficient.
 _FMA_LAUNCHER_COMPONENT_SELECTOR = "app.kubernetes.io/component=launcher"
+# Requester Deployment name: `fma-requester` (guide) or
+# `fma-requester-{model_id_label}` (fma method).
+_FMA_REQUESTER_PREFIX = "fma-requester"
 # Set by the controller on a launcher when it binds to a requester; removed on
 # unbind.
 _FMA_BOUND_LABEL = "dual-pods.llm-d.ai/dual"
@@ -162,6 +171,21 @@ class FmaValidator(BaseSmoketest):
         requester_replicas = _nested_get(plan_config, "fma", "requester", "replicas")
         return (requester_replicas or 0) == 0
 
+    def _is_stack_target(
+        self, target: ScaleTarget, plan_config: dict, context: ExecutionContext
+    ) -> bool:
+        """Also matches the fma method's requester, which has no guide label,
+        by its exact name."""
+        if super()._is_stack_target(target, plan_config, context):
+            return True
+        model_id_label = _model_id_label(plan_config)
+        return (
+            "fma" in (context.deployed_methods or [])
+            and bool(model_id_label)
+            and target.kind == "Deployment"
+            and target.name == f"{_FMA_REQUESTER_PREFIX}-{model_id_label}"
+        )
+
     def run_health_checks(
         self,
         context: ExecutionContext,
@@ -199,6 +223,29 @@ class FmaValidator(BaseSmoketest):
                     message=(
                         f"No launcher pods found "
                         f"(selector '{_FMA_LAUNCHER_COMPONENT_SELECTOR}')"
+                    ),
+                )
+            )
+            return report
+
+        # Requester at zero: launchers are idle, so only the crash scan applies.
+        zeroed = self._scaled_to_zero_targets(cmd, context, namespace, plan_config)
+        if zeroed:
+            _, idle_crashed = _fma_launcher_crashes(launcher_pods)
+            if idle_crashed:
+                context.logger.log_warning(
+                    f"Idle launcher pod(s) in a container crash state (not "
+                    f"failing the stack; check the node): {'; '.join(idle_crashed)}"
+                )
+            report.add(
+                CheckResult(
+                    "fma_requester_scaled_to_zero",
+                    True,
+                    message=(
+                        f"Requester scaled to 0 by "
+                        f"{'; '.join(t.describe() for t in zeroed)}; no launcher "
+                        f"is bound by design. The inference test exercises "
+                        f"scale-from-zero through the router"
                     ),
                 )
             )
@@ -348,6 +395,14 @@ class FmaValidator(BaseSmoketest):
 
         model_name = _nested_get(plan_config, "model", "name") or ""
         port = str(_nested_get(plan_config, "vllmCommon", "inferencePort") or "8000")
+
+        # Requester at zero: go through the router (a launcher pod request never
+        # triggers the scale-up). Checked before the plan-based skip, since a
+        # plan starting at 0 can still be autoscaled. FMA-only has no router.
+        if self._scaled_to_zero_targets(cmd, context, namespace, plan_config):
+            if is_fma_only_mode(context):
+                return _fma_skip_report("fma_inference_skipped_no_router")
+            return super().run_inference_test(context, stack_path)
 
         if self._launcher_created_on_demand(context, cmd, plan_config):
             return _fma_skip_report("fma_inference_skipped_no_launcher")
