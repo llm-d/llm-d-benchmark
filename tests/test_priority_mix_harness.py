@@ -15,8 +15,8 @@ from typing import Any
 
 _HARNESS_PATH = (
     Path(__file__).resolve().parent.parent
-    / "workload"
-    / "harnesses"
+    / "experimental"
+    / "priority-mix"
     / "priority_mix.py"
 )
 _spec = importlib.util.spec_from_file_location("priority_mix", _HARNESS_PATH)

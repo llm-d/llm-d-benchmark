@@ -2249,11 +2249,11 @@ right column names the file under `experiments/` that matches the guide.
 | `wide-ep.yaml.j2` | -- |
 | `workload-autoscaling.yaml.j2` | -- |
 
-**Examples:** `cpu.yaml.j2`, `eval-containers-aider-polyglot.yaml.j2`, `eval-containers-aider-polyglot-gpu.yaml.j2`, `eval-containers-gaia.yaml.j2`, `eval-containers-gaia-gpu.yaml.j2`, `fma.yaml.j2`, `gpu.yaml.j2`, `launcher.yaml.j2`, `multi-model-optimized-baseline.yaml.j2`, `sim.yaml.j2`, `spyre.yaml.j2`, `spyre-s390x.yaml.j2`
+**Examples:** `cpu.yaml.j2`, `fma.yaml.j2`, `gpu.yaml.j2`, `launcher.yaml.j2`, `multi-model-optimized-baseline.yaml.j2`, `sim.yaml.j2`, `spyre.yaml.j2`, `spyre-s390x.yaml.j2`
 
 **CI/CD:** `cks.yaml.j2`, `gke.yaml.j2`, `kind.yaml.j2`, `ocp.yaml.j2`, `ocp-keda.yaml.j2`, `ocp-keda-fma-hotstart.yaml.j2`, `ocp-keda-fma-warmstart.yaml.j2`
 
-**Experimental:** `kimi-k3-h100.yaml.j2`
+**Experimental:** `eval-containers-aider-polyglot.yaml.j2`, `eval-containers-aider-polyglot-gpu.yaml.j2`, `eval-containers-gaia.yaml.j2`, `eval-containers-gaia-gpu.yaml.j2`, `kimi-k3-h100.yaml.j2`
 
 ---
 

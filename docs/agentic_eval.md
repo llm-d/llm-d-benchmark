@@ -51,7 +51,7 @@ alternatives).
 ```bash
 export OPENAI_API_KEY="<your-key>"        # exported so -g forwards it by name  # pragma: allowlist secret
 
-llmdbenchmark --spec examples/eval-containers-gaia run \
+llmdbenchmark --spec experimental/eval-containers-gaia run \
   -U "https://<your-endpoint>" -m "<model-id>" -p <namespace> \
   -g OPENAI_API_KEY -j 1 --base-dir . --wait-timeout 3600
 ```
@@ -77,7 +77,7 @@ the pipeline.
 
 A scenario is a YAML describing one run (model, eval image, storage, harness
 wiring); anything unset falls back to `config/templates/values/defaults.yaml`.
-Shipped examples: `config/scenarios/examples/eval-containers-{gaia,aider-polyglot}.yaml`
+Shipped scenarios: `config/scenarios/experimental/eval-containers-{gaia,aider-polyglot}.yaml`
 (run-only) plus their `-gpu` variants. The two blocks that make it an
 `eval-containers` scenario:
 
@@ -135,7 +135,7 @@ Point the agent at an **existing** endpoint (e.g. a model proxy/router) — no
 model is stood up:
 
 ```bash
-llmdbenchmark --spec examples/eval-containers-gaia run \
+llmdbenchmark --spec experimental/eval-containers-gaia run \
   -U "https://<proxy-endpoint>" -m "<model-id>" \
   -p <ns> -g OPENAI_API_KEY -j 1 --base-dir .
 ```

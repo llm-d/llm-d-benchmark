@@ -225,6 +225,24 @@ class CreateProfileConfigmapStep(Step):
                 )
                 script_count += 1
 
+        experimental_dir = base_dir / "experimental"
+        if experimental_dir.is_dir():
+            for exp_subdir in sorted(experimental_dir.iterdir()):
+                if not exp_subdir.is_dir():
+                    continue
+                for script_file in sorted(exp_subdir.iterdir()):
+                    if script_file.is_file() and (
+                        script_file.name.endswith("-llm-d-benchmark.sh")
+                        or script_file.name.endswith("-llm-d-benchmark.py")
+                        or script_file.name.endswith("-analyze_results.sh")
+                        or script_file.name.endswith("-analyze_results.py")
+                        or script_file.name == "priority_mix.py"
+                    ):
+                        from_file_args.append(
+                            f"--from-file={script_file.name}={script_file}",
+                        )
+                        script_count += 1
+
         # Harness scripts are intentionally supplied from the checked-out
         # repository so a run can use a new/updated harness with an older
         # benchmark image. Keep its matching analyzers on the same update path;

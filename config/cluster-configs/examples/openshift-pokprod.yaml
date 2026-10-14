@@ -1,7 +1,7 @@
 # Cluster config for the pok-prod OpenShift GPU cluster (H100 nodes).
 #
 # Usage:
-#   llmdbenchmark --spec examples/eval-containers-gaia-gpu standup \
+#   llmdbenchmark --spec experimental/eval-containers-gaia-gpu standup \
 #     --cluster-config config/cluster-configs/examples/openshift-pokprod.yaml \
 #     -p <namespace> -t modelservice
 #

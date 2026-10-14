@@ -4,7 +4,7 @@
 # GPU-served model for meaningful scores) and runs the eval-containers harness:
 # the GAIA general-AI-assistant benchmark, one task per parallel pod.
 #
-#   llmdbenchmark --spec examples/eval-containers-gaia run -p "$NS" -j <#tasks>
+#   llmdbenchmark --spec experimental/eval-containers-gaia run -p "$NS" -j <#tasks>
 #
 # The model deployment below mirrors sim.yaml (CPU, no GPU); only the
 # harness block differs. GAIA is a web/tool agentic task,

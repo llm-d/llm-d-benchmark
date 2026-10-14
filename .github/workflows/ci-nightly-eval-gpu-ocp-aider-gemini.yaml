@@ -7,7 +7,7 @@ name: CI - Nightly Eval GPU on OCP (aider-polyglot / gemini-cli)
 # standup -> run -> teardown lifecycle.
 #
 # The served model + GPU config live entirely in the scenario
-# (config/scenarios/examples/eval-containers-aider-polyglot-gpu.yaml): 1 H100,
+# (config/scenarios/experimental/eval-containers-aider-polyglot-gpu.yaml): 1 H100,
 # TP=1, decode-only (prefill disabled). aider-polyglot runs fully offline.
 #
 # Target: OCP pok-prod (self-hosted runner + KUBECONFIG_DATA_OCP).
@@ -42,7 +42,7 @@ jobs:
   eval-gpu:
     uses: ./.github/workflows/reusable-ci-nightly-eval-gpu.yaml
     with:
-      scenario: examples/eval-containers-aider-polyglot-gpu
+      scenario: experimental/eval-containers-aider-polyglot-gpu
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmd-eval-gpu-nightly' }}
       service_account: ${{ inputs.eval_service_account || 'eval-runner' }}
       tasks: ${{ inputs.tasks || '1' }}

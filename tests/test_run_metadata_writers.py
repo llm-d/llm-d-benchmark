@@ -14,7 +14,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-HARNESS_DIR = Path(__file__).resolve().parent.parent / "workload" / "harnesses"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+HARNESS_DIR = REPO_ROOT / "workload" / "harnesses"
+HARNESS_DIRS = (
+    HARNESS_DIR,
+    REPO_ROOT / "experimental" / "eval-containers",
+    REPO_ROOT / "experimental" / "priority-mix",
+)
 
 # Not the full schema: these two have no effect until a user sets a description,
 # so a new harness can omit them without anything else failing.
@@ -22,7 +28,9 @@ REQUIRED_KEYS = ("description_text", "description_keywords")
 
 WRITERS = sorted(
     path
-    for path in HARNESS_DIR.iterdir()
+    for directory in HARNESS_DIRS
+    if directory.is_dir()
+    for path in directory.iterdir()
     if path.is_file() and "run_metadata.yaml" in path.read_text(encoding="utf-8")
 )
 

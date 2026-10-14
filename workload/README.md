@@ -63,7 +63,6 @@ workload/
     aiperf-llm-d-benchmark.sh
     collect_metrics.sh
     dpc_log_parser.py
-    eval-containers-llm-d-benchmark.sh
     fma_functions.py
     guidellm-llm-d-benchmark.sh             # guidellm harness wrapper
     inference-perf-lifecycle.sh
@@ -73,9 +72,6 @@ workload/
     lm-eval-llm-d-benchmark.sh              # lm-eval (accuracy) harness wrapper
     nop-llm-d-benchmark.py                  # No-op harness (testing/validation)
     nop_functions.py
-    priority-mix-analyze_results.sh
-    priority-mix-llm-d-benchmark.sh
-    priority_mix.py
     process_epp_logs.py
     process_metrics.py
     vllm-benchmark-llm-d-benchmark.sh       # vllm-benchmark harness wrapper
@@ -87,9 +83,6 @@ workload/
       dataset.yaml.in
       sanity_random.yaml.in
       synthetic.yaml.in
-    eval-containers/
-      aider-polyglot.yaml.in
-      gaia.yaml.in
     guidellm/                               # Profiles for the guidellm harness
       concurrent-1k-1k.yaml.in
       concurrent-heavy-heterogeneous.yaml.in
@@ -142,9 +135,6 @@ workload/
       sanity.yaml.in
     nop/                                    # Profiles for the no-op harness
       nop.yaml.in
-    priority-mix/
-      priority_mix.yaml.in
-      sanity.yaml.in
     vllm-benchmark/                         # Profiles for vllm-benchmark
       fixed_dataset.yaml.in
       guide_wide-ep_1.yaml.in
@@ -229,25 +219,10 @@ The harness script runs inside the **benchmark container image** as a Kubernetes
 | `vllm-benchmark` | `vllm-benchmark-llm-d-benchmark.sh` | `vllm bench serve` | vLLM-native benchmarking with latency percentiles |
 | `inferencemax` | `inferencemax-llm-d-benchmark.sh` | Custom Python script | Benchmarking with warmup and random seed control |
 | `lm-eval` | `lm-eval-llm-d-benchmark.sh` | `lm_eval` (lm-evaluation-harness) | Accuracy/quality evaluation against standard tasks (hellaswag, mmlu, piqa, ...) |
-| `priority-mix` | `priority-mix-llm-d-benchmark.sh` | Custom Python script | Mixed traffic classes with different `x-llm-d-inference-objective` headers |
 | `nop` | `nop-llm-d-benchmark.py` | No-op | Testing and validation without running real benchmarks |
 | `aiperf` | `aiperf-llm-d-benchmark.sh` | `aiperf profile` (NVIDIA AIPerf) | Load testing with synthetic or trace datasets (e.g. mooncake) |
-| `eval-containers` | `eval-containers-llm-d-benchmark.sh` | eval-containers image entrypoint | Agentic task evaluation (aider-polyglot, GAIA); one task per parallel harness pod |
 
 > **lm-eval smoke test:** the `accuracy_default` profile runs the full task set. For a quick pipeline check, cap samples per task and propagate the override into the harness pod, e.g. `LIMIT=10 llmdbenchmark ... -l lm-eval -w accuracy_default.yaml -g LIMIT ...`.
-
-The `priority-mix` harness is intended for EPP flow-control validation. Its
-profile defines traffic classes with different `objective` values; the harness
-converts each objective to an `x-llm-d-inference-objective` request header. The
-target stack must define matching `InferenceObjective` resources, for example
-through `router.inferenceObjectives`, so those headers resolve to configured
-priority bands instead of falling back to priority `0`. Streaming profiles also
-report per-traffic-class TTFT and TPOT so priority impact can be compared across
-classes. Each traffic class may override the global request with its own
-`request.prompt`, `request.promptTemplate`, `request.promptRepeat`, and
-`request.max_tokens`, which is useful for creating high-priority shared-prefix
-traffic and low-priority long-prompt cache pressure when evaluating priority
-based KV eviction.
 
 ### Harness Script Contract
 
@@ -432,20 +407,6 @@ Unknown tokens (not in the substitution map) are left unchanged.
 | `synthetic.yaml.in` | Concurrent (16), 500 requests | Synthetic 1K/200 tokens |  |
 | `agentic_multimodal.yaml.in` |  |  |  |
 
-#### eval-containers (2 profiles)
-
-| Profile | Load Pattern | Data Type | Description |
-|---------|-------------|-----------|-------------|
-| `aider-polyglot.yaml.in` | N/A (task eval) | 225 Exercism tasks, offline |  |
-| `gaia.yaml.in` | N/A (task eval) | 165 GAIA tasks, internet + tools |  |
-
-#### priority-mix (2 profiles)
-
-| Profile | Load Pattern | Data Type | Description |
-|---------|-------------|-----------|-------------|
-| `priority_mix.yaml.in` | Constant 6 req/s, 90s | Mixed-priority chat (3 traffic classes) |  |
-| `sanity.yaml.in` | Constant 1 req/s, 10s | Mixed-priority chat (3 traffic classes) |  |
-
 #### lm-eval (2 profiles)
 
 Unlike the load-generation harnesses, `lm-eval` measures **accuracy** rather than throughput/latency. Profiles configure the evaluation tasks instead of a load pattern.
@@ -594,47 +555,6 @@ extra-inputs: ignore_eos:true
 use-server-token-count: none
 tokenizer-trust-remote-code: none
 no-server-metrics: none
-```
-
-**eval-containers** -- Benchmark selector; the task suite is fixed by the eval container (from `aider-polyglot.yaml.in`):
-```yaml
-harness: eval-containers
-benchmark: aider-polyglot
-description: "Exercism polyglot code-editing -- 6 languages, 225 tasks, fully offline, multi-turn."
-tasks: 225
-internet: false
-model: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
-endpoint: "REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL"
-```
-
-**priority-mix** -- `load` and default `request` settings plus weighted `trafficClasses` with priority, objective, and fairness ID (from `sanity.yaml.in`):
-```yaml
-endpoint_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
-api:
-  type: chat
-  path: /v1/chat/completions
-load:
-  duration_seconds: 10
-  rate_per_second: 1
-  max_in_flight: 3
-  request_timeout_seconds: 180
-  fail_on_error: false
-request:
-  prompt: Say hello from the priority mix benchmark.
-  max_tokens: 512
-  stream: true
-trafficClasses:
-  - name: critical
-    weight: 0.2
-    priority: 100
-    objective: app-critical
-    fairnessID: tenant-critical
-    request:
-      promptTemplate: "Critical shared prefix for KV reuse. Stable long context facts repeated for prefill stress: alpha beta gamma delta epsilon zeta eta theta iota kappa. Request {variation}. "
-      promptRepeat: 3
-      max_tokens: 128
-# ...
 ```
 
 **lm-eval** -- `evaluation` block listing tasks and sampling limits (from `sanity.yaml.in`):

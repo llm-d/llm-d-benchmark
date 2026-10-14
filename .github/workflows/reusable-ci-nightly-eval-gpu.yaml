@@ -24,7 +24,7 @@ name: Reusable - Nightly Eval GPU (eval-containers, vLLM standup)
 on:
   workflow_call:
     inputs:
-      scenario:          { required: true,  type: string }   # e.g. examples/eval-containers-gaia-gpu
+      scenario:          { required: true,  type: string }   # e.g. experimental/eval-containers-gaia-gpu
       cluster_namespace: { required: false, type: string, default: 'llmd-eval-gpu-nightly' }
       service_account:   { required: false, type: string, default: 'eval-runner' }
       # Cluster-specific overrides (storage class, SA, runAsUser). Scenarios are

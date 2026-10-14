@@ -173,7 +173,8 @@ def test_defaults_keep_the_benchmark_image_for_helpers() -> None:
 
 
 @pytest.mark.parametrize(
-    "scenario", sorted((REPO / "config/scenarios/examples").glob("eval-containers-*"))
+    "scenario",
+    sorted((REPO / "config/scenarios/experimental").glob("eval-containers-*")),
 )
 def test_eval_scenarios_set_the_eval_image_only_for_tasks(scenario: Path) -> None:
     stack = yaml.safe_load(scenario.read_text(encoding="utf-8"))["scenario"][0]

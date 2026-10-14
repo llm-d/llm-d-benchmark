@@ -89,6 +89,10 @@ class RenderProfilesStep(Step):
         else:
             profiles_source = base_dir / "workload" / "profiles" / harness_name
             if not profiles_source.is_dir():
+                exp_profiles = base_dir / "experimental" / harness_name / "profiles"
+                if exp_profiles.is_dir():
+                    profiles_source = exp_profiles
+            if not profiles_source.is_dir():
                 errors.append(f"Profiles directory not found: {profiles_source}")
                 return StepResult(
                     step_number=self.number,

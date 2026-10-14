@@ -17,11 +17,11 @@
 #   --cluster-config config/cluster-configs/examples/openshift-pokprod.yaml
 #
 # Sequence (run does NOT auto-standup):
-#   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu standup \
+#   llmdbenchmark --spec experimental/eval-containers-aider-polyglot-gpu standup \
 #     --cluster-config <cc> -p "$NS" -t modelservice
-#   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu run \
+#   llmdbenchmark --spec experimental/eval-containers-aider-polyglot-gpu run \
 #     --cluster-config <cc> -p "$NS" -j <#tasks>
-#   llmdbenchmark --spec examples/eval-containers-aider-polyglot-gpu teardown \
+#   llmdbenchmark --spec experimental/eval-containers-aider-polyglot-gpu teardown \
 #     --cluster-config <cc> -p "$NS"
 #
 # aider-polyglot runs fully offline. Qwen3.6-27B is public on HF.

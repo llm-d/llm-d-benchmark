@@ -1,7 +1,7 @@
 # Cluster config for a generic OpenShift cluster with ODF/Ceph storage.
 #
 # Usage:
-#   llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
+#   llmdbenchmark --spec experimental/eval-containers-aider-polyglot run \
 #     --cluster-config config/cluster-configs/examples/openshift-generic.yaml \
 #     -U <endpoint> -m <model> -p <namespace> -j 5
 #

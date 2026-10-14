@@ -229,7 +229,7 @@ not have. Use a GPU cloud (GKE/CoreWeave/AWS) or on-prem GPU cluster instead.
    > health + inference only — **not** that pod resources/flags match the
    > scenario. Do step 2's `kubectl` inspection by hand to confirm that.
 4. **Output is coherent** — one manual `/v1/completions` call, or an
-   `examples/eval-containers-*` run, catches misconfig that still "answers"
+   `experimental/eval-containers-*` run, catches misconfig that still "answers"
    (wrong dtype, bad TP).
 
 ### Benchmark validity

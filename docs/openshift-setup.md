@@ -14,7 +14,7 @@ defaults.yaml  →  scenario.yaml  →  --cluster-config FILE  →  --set KEY=VA
                                       not committed)            overrides)
 ```
 
-The scenario file (`config/scenarios/examples/eval-containers-aider-polyglot.yaml`) is
+The scenario file (`config/scenarios/experimental/eval-containers-aider-polyglot.yaml`) is
 generic and works on any Kubernetes cluster. Cluster-specific values — storage class,
 service account, root privilege — live only in your `cluster-config` file.
 
@@ -99,7 +99,7 @@ Ready-to-use example files are in `config/cluster-configs/examples/`.
 ## Step 3: Run the benchmark
 
 ```bash
-llmdbenchmark --spec examples/eval-containers-aider-polyglot run \
+llmdbenchmark --spec experimental/eval-containers-aider-polyglot run \
   --cluster-config ~/my-clusters/exgentic-openshift.yaml \
   --base-dir . \
   -U "https://<your-litellm-endpoint>" \
