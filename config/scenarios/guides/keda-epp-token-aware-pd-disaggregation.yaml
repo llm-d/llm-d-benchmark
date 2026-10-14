@@ -11,8 +11,9 @@
 # co-located). Built on guides/pd-disaggregation the same way that scenario was
 # built on guides/optimized-baseline -- everything about the base topology
 # (model, storage, disagg routing plugins, prefill/decode Deployments) is
-# reused verbatim; only the router's token-aware plugins, decode's pod
-# monitoring, and the eppKedaSaturation block are added/changed.
+# reused verbatim, including the router plugins (only peakPrefillThroughput
+# differs); decode's pod monitoring and the eppKedaSaturation block are
+# added/changed.
 #
 # Reuses the eppKedaSaturation plumbing (Thanos auth, TriggerAuthentication, EPP
 # ServiceMonitor) with scaledObject.targets -- a list that renders ONE
@@ -167,6 +168,9 @@ scenario:
             token-aware-pd-plugins.yaml: |
               apiVersion: llm-d.ai/v1alpha1
               kind: EndpointPickerConfig
+              # Same plugins as the pd-disaggregation guide's router values, which
+              # upstream keda-epp-token-aware/pd-disaggregation reuses unchanged apart
+              # from setting peakPrefillThroughput to the calibrated value.
               plugins:
               - type: always-disagg-pd-decider
               - type: disagg-profile-handler
@@ -175,31 +179,42 @@ scenario:
                     prefill: always-disagg-pd-decider
               - type: prefill-filter
               - type: decode-filter
-              - type: prefix-cache-scorer
-              - type: active-request-scorer
-              - type: token-load-scorer
+              - type: approx-prefix-cache-producer
+                parameters:
+                  # 5k-ISL gpt-oss-120b reference workload; a modest match window
+                  # keeps EPP prefix-matching cheap.
+                  maxPrefixTokensToMatch: 131072
               # publishes llm_d_epp_inflight_tokens -- the prefill trigger's only source
               - type: inflight-load-producer
-              - type: approx-prefix-cache-producer
               - type: prefix-cache-affinity-filter
                 parameters:
-                  # Keep in sync with eppKedaSaturation.scaledObject.peakPrefillThroughput
-                  # below. The router prices recompute-vs-reuse with this; the KEDA
-                  # prefill trigger converts tokens to seconds with it. They must agree.
+                  # PLACEHOLDER -- see the "BEFORE YOU RUN" note at the top of this file.
+                  # Upstream's 33821 was measured for gpt-oss-120b on H200 through the
+                  # P/D path; this scenario serves Qwen3-32B, so it borrows the
+                  # co-located measurement until calibrated. Keep in sync with
+                  # eppKedaSaturation.scaledObject.peakPrefillThroughput below. The
+                  # router prices recompute-vs-reuse with this; the KEDA prefill
+                  # trigger converts tokens to seconds with it. They must agree.
                   peakPrefillThroughput: 15845
+              - type: token-load-scorer
+              - type: active-request-scorer
+              - type: max-score-picker
               schedulingProfiles:
+              # Prefill does the prompt pass: keep prefix groups on cache-warm pods
+              # (affinity filter) and pick by queued prefill token load.
               - name: prefill
                 plugins:
                 - pluginRef: prefill-filter
                 - pluginRef: prefix-cache-affinity-filter
                 - pluginRef: token-load-scorer
+                - pluginRef: max-score-picker
+              # Pure decode is bound by concurrent in-flight requests, not prefill
+              # throughput: pick the least-busy endpoint.
               - name: decode
                 plugins:
                 - pluginRef: decode-filter
                 - pluginRef: active-request-scorer
-                  weight: 2
-                - pluginRef: prefix-cache-scorer
-                  weight: 3
+                - pluginRef: max-score-picker
           resources:
             requests:
               cpu: "4"

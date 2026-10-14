@@ -1033,7 +1033,11 @@ not "fall back to /bin/sh"; it removes the field and breaks rendering.
    `{selector: overrides}` mapping -- `"*"`, an exact stack name, or an
    fnmatch glob -- resolved per stack by specificity in
    `_effective_setup_overrides`) and `setup_overrides` (unscoped, applied
-   last so a DoE treatment always beats a CLI `--set`). After merging, `RenderPlans` resolves model IDs, per-stack
+   last so a DoE treatment always beats a CLI `--set`). After merging, the
+   dedicated-flag resolvers run (`_resolve_model`, `_resolve_gateway_class`,
+   `_resolve_hostpath`, `_resolve_network`, ...), so a flag such as
+   `--hostpath` or `--network` beats both `--set` and treatments on the keys
+   it sets. `RenderPlans` then resolves model IDs, per-stack
    identity names, and substitutes `${dotted.path}` references, then renders
    each Jinja2 template in `config/templates/jinja/` with the final values.
 3. Output goes to one directory per stack under the plan directory (e.g.,

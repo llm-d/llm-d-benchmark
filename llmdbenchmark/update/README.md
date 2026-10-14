@@ -72,7 +72,7 @@ Step 06 is always added alongside 07 or 08. It writes the values files (`infra.y
 
 Components whose steps the active deploy method never runs are dropped, so a modelservice stack is not told it updated `standalone`.
 
-The flags that change what gets rendered count the same way as a `--set` of the key they set: `-m` as `model`, `-r` as `release`, `--gateway-class` as `gateway`, `-a`/`-b` as `affinity`/`annotations`, `--wva`, `--epp-keda-saturation`, and `--monitoring` as their keys, and `--no-pvc`/`--pvc` and `--hostpath` as `storage`. `-t` switches the deploy method, so it is refused like `kustomize`. `--full-infra` restarts nothing. A flag only counts when it differs from what the original standup used.
+The flags that change what gets rendered count the same way as a `--set` of the key they set: `-m` as `model`, `-r` as `release`, `--gateway-class` as `gateway`, `-a`/`-b` and `--network` as `affinity`/`annotations`, `--wva`, `--epp-keda-saturation`, and `--monitoring` as their keys, and `--no-pvc`/`--pvc` and `--hostpath` as `storage`. `-t` switches the deploy method, so it is refused like `kustomize`. `--full-infra` restarts nothing. A flag only counts when it differs from what the original standup used.
 
 ### Shared infrastructure
 

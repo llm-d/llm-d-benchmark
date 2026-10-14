@@ -37,6 +37,7 @@ INVOCATION_FIELDS: dict[str, str] = {
     "invocation_epp_keda_saturation": "epp_keda_saturation",
     "invocation_no_pvc": "no_pvc",
     "invocation_hostpath": "hostpath",
+    "invocation_network": "network",
     "invocation_full_infra": "full_infra",
 }
 

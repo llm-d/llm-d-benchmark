@@ -190,9 +190,24 @@ def add_deploy_arguments(parser: argparse.ArgumentParser, *, unset_by_default=Fa
         "mounted directly into the serving pods as a hostPath volume (no "
         "model PV/PVC); the download DaemonSet fills it on every target "
         "node. Sets storage.hostPath.enabled=true and storage.hostPath.path. "
-        "'none' sets storage.hostPath.enabled=false. Omitted: the "
+        "'none' sets storage.hostPath.enabled=false. Wins over --set and "
+        "DoE treatments for these keys. Omitted: the "
         "scenario's storage.hostPath is used (disabled by default) "
         "(env: LLMDBENCH_HOSTPATH). Default: none.",
+    )
+    parser.add_argument(
+        "--network",
+        metavar="NETWORKS",
+        default=env("LLMDBENCH_NETWORK"),
+        help="Value for the k8s.v1.cni.cncf.io/networks (Multus) pod "
+        "annotation on every serving pod: modelservice decode and prefill, "
+        "standalone, and the FMA launcher. Shortcut for --set of "
+        "annotations.decode.pod, annotations.prefill.pod, "
+        "standalone.podAnnotations and "
+        "fma.launcher.podTemplate.metadata.annotations. 'none' removes the "
+        "annotation. Wins over --set and DoE treatments for these keys. "
+        "Omitted: the scenario's annotations are used "
+        "(env: LLMDBENCH_NETWORK). Default: none.",
     )
     if unset_by_default:
         parser.add_argument(

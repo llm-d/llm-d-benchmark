@@ -60,7 +60,8 @@ Generates deployment plans (YAML/Helm manifests) without executing anything on t
 | `-m` / `--models` | `LLMDBENCH_MODELS` | Model to render the plan for |
 | `-t` / `--methods` | `LLMDBENCH_METHODS` | Deploy method (standalone, modelservice, fma) |
 | `-f` / `--monitoring` | -- | Enable monitoring in rendered templates |
-| `--hostpath PATH` | `LLMDBENCH_HOSTPATH` | Node directory holding the model weights, mounted directly into the serving pods as a hostPath volume (no model PV/PVC; the download DaemonSet fills it on each node). Sets `storage.hostPath.enabled=true` and `storage.hostPath.path`; `none` disables hostPath. Omitted: scenario value (default: none) |
+| `--hostpath PATH` | `LLMDBENCH_HOSTPATH` | Node directory holding the model weights, mounted directly into the serving pods as a hostPath volume (no model PV/PVC; the download DaemonSet fills it on each node). Sets `storage.hostPath.enabled=true` and `storage.hostPath.path`; `none` disables hostPath. Shortcut for those `--set`s, but wins over `--set` and DoE treatments. Omitted: scenario value (default: none). See [standup.md](../../docs/standup.md#shortcut-flags-for-common---sets) |
+| `--network NETWORKS` | `LLMDBENCH_NETWORK` | Value of the `k8s.v1.cni.cncf.io/networks` (Multus) pod annotation on every serving pod: modelservice decode/prefill (`annotations.{decode,prefill}.pod`), standalone (`standalone.podAnnotations`) and the FMA launcher (`fma.launcher.podTemplate.metadata.annotations`). `none` removes it. Shortcut for those `--set`s, but wins over `--set` and DoE treatments. Omitted: scenario value. See [standup.md](../../docs/standup.md#shortcut-flags-for-common---sets) |
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig for cluster resource auto-detection |
 
 ### standup (`standup.py`)
@@ -79,7 +80,8 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `-r` / `--release` | `LLMDBENCH_RELEASE` | Helm chart release name |
 | `-u` / `--wva` | `LLMDBENCH_WVA` | Enable Workload Variant Autoscaler |
 | `--monitoring` | -- | Enable PodMonitor and metrics scraping |
-| `--hostpath PATH` | `LLMDBENCH_HOSTPATH` | Node directory holding the model weights, mounted directly into the serving pods as a hostPath volume (no model PV/PVC; the download DaemonSet fills it on each node). Sets `storage.hostPath.enabled=true` and `storage.hostPath.path`; `none` disables hostPath. Omitted: scenario value (default: none) |
+| `--hostpath PATH` | `LLMDBENCH_HOSTPATH` | Node directory holding the model weights, mounted directly into the serving pods as a hostPath volume (no model PV/PVC; the download DaemonSet fills it on each node). Sets `storage.hostPath.enabled=true` and `storage.hostPath.path`; `none` disables hostPath. Shortcut for those `--set`s, but wins over `--set` and DoE treatments. Omitted: scenario value (default: none). See [standup.md](../../docs/standup.md#shortcut-flags-for-common---sets) |
+| `--network NETWORKS` | `LLMDBENCH_NETWORK` | Value of the `k8s.v1.cni.cncf.io/networks` (Multus) pod annotation on every serving pod: modelservice decode/prefill (`annotations.{decode,prefill}.pod`), standalone (`standalone.podAnnotations`) and the FMA launcher (`fma.launcher.podTemplate.metadata.annotations`). `none` removes it. Shortcut for those `--set`s, but wins over `--set` and DoE treatments. Omitted: scenario value. See [standup.md](../../docs/standup.md#shortcut-flags-for-common---sets) |
 | `--parallel` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--skip-smoketest` | -- | Skip automatic post-standup smoketests |
@@ -162,7 +164,8 @@ Orchestrates a full DoE experiment with automatic standup/run/teardown per setup
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 | `-f` / `--monitoring` | -- | Enable PodMonitor and metrics scraping |
-| `--hostpath PATH` | `LLMDBENCH_HOSTPATH` | Node directory holding the model weights, mounted directly into the serving pods as a hostPath volume (no model PV/PVC; the download DaemonSet fills it on each node). Sets `storage.hostPath.enabled=true` and `storage.hostPath.path`; `none` disables hostPath. Omitted: scenario value (default: none) |
+| `--hostpath PATH` | `LLMDBENCH_HOSTPATH` | Node directory holding the model weights, mounted directly into the serving pods as a hostPath volume (no model PV/PVC; the download DaemonSet fills it on each node). Sets `storage.hostPath.enabled=true` and `storage.hostPath.path`; `none` disables hostPath. Shortcut for those `--set`s, but wins over `--set` and DoE treatments. Omitted: scenario value (default: none). See [standup.md](../../docs/standup.md#shortcut-flags-for-common---sets) |
+| `--network NETWORKS` | `LLMDBENCH_NETWORK` | Value of the `k8s.v1.cni.cncf.io/networks` (Multus) pod annotation on every serving pod: modelservice decode/prefill (`annotations.{decode,prefill}.pod`), standalone (`standalone.podAnnotations`) and the FMA launcher (`fma.launcher.podTemplate.metadata.annotations`). `none` removes it. Shortcut for those `--set`s, but wins over `--set` and DoE treatments. Omitted: scenario value. See [standup.md](../../docs/standup.md#shortcut-flags-for-common---sets) |
 | `-l` / `--harness` | `LLMDBENCH_HARNESS` | Harness name |
 | `-w` / `--workload` | `LLMDBENCH_WORKLOAD` | Workload profile name |
 | `-o` / `--overrides` | `LLMDBENCH_OVERRIDES` | Profile overrides |

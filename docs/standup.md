@@ -147,7 +147,8 @@ Highest wins:
 ```
 defaults.yaml → shared: → stack block → --cluster-config → --set
   → DoE setup.treatments → dedicated flags (-m, -t, --gateway-class,
-                                            --monitoring, --wva)
+                                            --monitoring, --wva,
+                                            --hostpath, --network)
 ```
 
 `--set` beats the stack's own block -- unlike a value in `shared:`, which
@@ -159,6 +160,39 @@ functions that run *after* the whole merge, not as another merge layer. So
 `-m facebook/opt-125m` wins over both `--set model.name=...` and a
 treatment that sets `model.name`. Use `--set` for keys with no dedicated
 flag; when a flag exists, the flag is authoritative.
+
+### Shortcut flags for common `--set`s
+
+`--hostpath` and `--network` are shortcuts: each one renders the same plan
+as the `--set`s listed below.
+
+| Flag | Same as |
+|---|---|
+| `--hostpath PATH` | `--set storage.hostPath.enabled=true --set storage.hostPath.path=PATH` |
+| `--hostpath none` | `--set storage.hostPath.enabled=false` |
+| `--network NETWORKS` | `--set 'annotations.decode.pod."k8s.v1.cni.cncf.io/networks"=NETWORKS'`<br>`--set 'annotations.prefill.pod."k8s.v1.cni.cncf.io/networks"=NETWORKS'`<br>`--set 'standalone.podAnnotations."k8s.v1.cni.cncf.io/networks"=NETWORKS'`<br>`--set 'fma.launcher.podTemplate.metadata.annotations."k8s.v1.cni.cncf.io/networks"=NETWORKS'` |
+| `--network none` | No `--set` equivalent: removes the annotation from all four maps. (`--set` cannot delete a key; setting it to `""` renders an empty annotation instead.) |
+
+`--network` sets the Multus networks annotation on the serving pods of every
+deploy method: modelservice decode and prefill, standalone, and the FMA
+launcher. It only touches that one key, so other annotations are kept.
+
+Two differences from typing the `--set`s yourself:
+
+- **The flag wins.** Like the other dedicated flags, these are applied after
+  the merge, so they override a `--set` *and* a DoE `setup.treatments`
+  entry for the same key. For example, `--network net-a --set
+  'annotations.decode.pod."k8s.v1.cni.cncf.io/networks"=net-b'` deploys
+  decode with `net-a`, and `--hostpath /data/a --set
+  storage.hostPath.path=/data/b` uses `/data/a`.
+- **Omitting the flag changes nothing.** Without the flag, the scenario's own
+  `storage.hostPath` and pod annotations are used as written (for example,
+  `pd-disaggregation` already sets `multi-nic-inference`).
+
+Both flags are available on `plan`, `standup` and `experiment`, and can be
+set with `LLMDBENCH_HOSTPATH` / `LLMDBENCH_NETWORK`. On `update`,
+`--hostpath` counts as a `storage` change (refused without `--force`) and
+`--network` as an `annotations` change.
 
 Every applied override is logged with its previous value
 (`[stack] Scenario override: decode.replicas: 1 -> 4`), and an override

@@ -226,6 +226,7 @@ FLAG_KEYS: dict[str, str] = {
     "monitoring": "monitoring",
     "no_pvc": "storage",
     "hostpath": "storage",
+    "network": "annotations",
 }
 
 #: Flags that set no single key.

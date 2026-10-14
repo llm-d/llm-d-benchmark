@@ -82,6 +82,7 @@ class RenderPlans:
         cli_epp_keda_saturation: bool = False,
         cli_gateway_class: str | None = None,
         cli_hostpath: str | None = None,
+        cli_network: str | None = None,
         setup_overrides: dict | None = None,
         setup_overrides_by_stack: dict[str, dict] | None = None,
         cli_stack_filter: list[str] | None = None,
@@ -108,6 +109,9 @@ class RenderPlans:
         # CLI override for hostPath model storage: a node directory turns
         # it on at that path, "none" turns it off, None keeps the scenario.
         self.cli_hostpath = cli_hostpath
+        # CLI shortcut for the Multus networks pod annotation on every
+        # serving pod; "none" removes it, None keeps the scenario.
+        self.cli_network = cli_network
         # Unscoped overrides applied LAST, so they win over everything below:
         # DoE ``setup.treatments`` values ride here, and a treatment is the
         # deliberate sweep factor -- it must beat a CLI ``--set``.
@@ -686,6 +690,52 @@ class RenderPlans:
             hostpath["path"] = self.cli_hostpath
             self.logger.log_info(
                 f"hostPath model storage enabled from CLI (path={self.cli_hostpath})"
+            )
+        return result
+
+    #: Multus pod annotation that attaches secondary networks.
+    NETWORK_ANNOTATION = "k8s.v1.cni.cncf.io/networks"
+
+    #: Where each deploy method reads its serving pods' annotations.
+    NETWORK_ANNOTATION_PATHS: tuple[tuple[str, ...], ...] = (
+        ("annotations", "decode", "pod"),
+        ("annotations", "prefill", "pod"),
+        ("standalone", "podAnnotations"),
+        ("fma", "launcher", "podTemplate", "metadata", "annotations"),
+    )
+
+    def _resolve_network(self, values: dict) -> dict:
+        """Set the Multus networks annotation from ``--network``.
+
+        ``--network <value>`` sets ``k8s.v1.cni.cncf.io/networks: <value>``
+        on the modelservice decode/prefill pods, the standalone pods and
+        the FMA launcher pods -- the same as a ``--set`` of each of those
+        annotation maps. ``--network none`` removes the annotation from
+        all of them. When the flag is not given (``cli_network is None``),
+        scenario/defaults values are used unchanged.
+        """
+        if self.cli_network is None:
+            return values
+
+        result = deepcopy(values)
+        remove = self.cli_network.strip().lower() == "none"
+        for path in self.NETWORK_ANNOTATION_PATHS:
+            node = result
+            for key in path:
+                child = node.get(key)
+                if not isinstance(child, dict):
+                    child = node[key] = {}
+                node = child
+            if remove:
+                node.pop(self.NETWORK_ANNOTATION, None)
+            else:
+                node[self.NETWORK_ANNOTATION] = self.cli_network
+
+        if remove:
+            self.logger.log_info("Pod networks annotation removed from CLI")
+        else:
+            self.logger.log_info(
+                f"Pod networks annotation set from CLI ({self.cli_network})"
             )
         return result
 
@@ -2372,6 +2422,7 @@ class RenderPlans:
         merged_values = self._resolve_prism(merged_values)
         merged_values = self._resolve_wva(merged_values)
         merged_values = self._resolve_hostpath(merged_values)
+        merged_values = self._resolve_network(merged_values)
         merged_values = self._resolve_lws_multinode(merged_values)
         merged_values = self._resolve_epp_keda_saturation(merged_values)
         merged_values = self._resolve_hf_token(merged_values)

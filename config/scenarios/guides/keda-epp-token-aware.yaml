@@ -150,17 +150,22 @@ scenario:
             token-aware-plugins.yaml: |
               apiVersion: llm-d.ai/v1alpha1
               kind: EndpointPickerConfig
+              # Same plugins as the optimized-baseline guide's router values, which
+              # upstream keda-epp-token-aware reuses unchanged apart from setting
+              # peakPrefillThroughput to the calibrated value.
               plugins:
-              - type: token-load-scorer
+              - type: approx-prefix-cache-producer
               # publishes llm_d_epp_inflight_tokens -- the prefill trigger's only source
               - type: inflight-load-producer
-              - type: approx-prefix-cache-producer
               - type: prefix-cache-affinity-filter
                 parameters:
-                  # Keep in sync with eppKedaSaturation.scaledObject.peakPrefillThroughput
-                  # below. The router prices recompute-vs-reuse with this; the KEDA
-                  # trigger converts tokens to seconds with it. They must agree.
+                  # Calibrated for this stack (docs/token-aware-autoscaling.md); upstream's
+                  # reference figure is 15928. Keep in sync with
+                  # eppKedaSaturation.scaledObject.peakPrefillThroughput below. The router
+                  # prices recompute-vs-reuse with this; the KEDA trigger converts tokens
+                  # to seconds with it. They must agree.
                   peakPrefillThroughput: 15845
+              - type: token-load-scorer
               schedulingProfiles:
               - name: default
                 plugins:
