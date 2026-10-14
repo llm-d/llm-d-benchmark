@@ -81,6 +81,25 @@ def _fma_pod_ip(pod: dict | None) -> str:
     return ((pod or {}).get("status", {}) or {}).get("podIP", "") or ""
 
 
+def _fma_launcher_crashes(pods: list[dict]) -> tuple[list[str], list[str]]:
+    """Crash details for *pods*, split into (bound, idle) launchers.
+
+    Each detail names the node so a bad-GPU node can be cordoned straight from
+    the CI log.
+    """
+    bound: list[str] = []
+    idle: list[str] = []
+    for pod in pods:
+        details = _pod_crash_details(pod)
+        if not details:
+            continue
+        node = (pod.get("spec", {}) or {}).get("nodeName") or "<unscheduled>"
+        labels = pod.get("metadata", {}).get("labels", {}) or {}
+        target = bound if _FMA_BOUND_LABEL in labels else idle
+        target.extend(f"{detail} on node {node}" for detail in details)
+    return bound, idle
+
+
 def _fma_skip_report(check_name: str) -> SmoketestReport:
     """A passing report recording that launcher checks were skipped because
     no launcher is expected at smoketest (benchmark fma, requester=0)."""
@@ -138,8 +157,10 @@ class FmaValidator(BaseSmoketest):
 
         FMA has no Service/gateway; a launcher pod hosts vLLM and is bound to a
         requester on demand. We assert three things the generic path misses:
-          1. No launcher pod is in a container-level crash state
-             (OOMKilled/CrashLoopBackOff/image-pull/non-zero exit).
+          1. No BOUND launcher pod is in a container-level crash state
+             (OOMKilled/CrashLoopBackOff/image-pull/non-zero exit). Idle pool
+             launchers (one per GPU node) only log a warning: a single bad
+             node must not fail a stack whose serving launcher is healthy.
           2. The bound launcher carries the state-change-reflector's signature
              annotation.
           3. vLLM answers /v1/models on the launcher pod IP:port.
@@ -155,9 +176,6 @@ class FmaValidator(BaseSmoketest):
         if self._launcher_created_on_demand(context, cmd, plan_config):
             return _fma_skip_report("fma_health_skipped_no_launcher")
 
-        # 1. No launcher pod in a CONTAINER-level crash state. Catches a
-        #    container OOMKill (kernel), CrashLoopBackOff, image-pull failure, or
-        #    non-zero exit.
         launcher_pods = _fma_pods(cmd, namespace, _FMA_LAUNCHER_COMPONENT_SELECTOR)
         if not launcher_pods and not cmd.dry_run:
             report.add(
@@ -172,24 +190,26 @@ class FmaValidator(BaseSmoketest):
             )
             return report
 
-        crashed: list[str] = []
-        for pod in launcher_pods:
-            crashed.extend(_pod_crash_details(pod))
-        report.add(
-            CheckResult(
-                "fma_launcher_no_crash",
-                not crashed,
-                message=(
-                    "Launcher pods healthy (no container crash states)"
-                    if not crashed
-                    else f"Launcher pod(s) in a container crash state: {'; '.join(crashed)}"
-                ),
-            )
+        # Wait for the binding first: the crash scan below needs the bound
+        # label to tell the serving launcher from idle pool members.
+        serving_pod = self._fma_wait_serving(cmd, context, namespace)
+
+        # 1. No BOUND launcher in a CONTAINER-level crash state. Catches a
+        #    container OOMKill (kernel), CrashLoopBackOff, image-pull failure, or
+        #    non-zero exit. Re-list so the states and labels are post-binding.
+        launcher_pods = (
+            _fma_pods(cmd, namespace, _FMA_LAUNCHER_COMPONENT_SELECTOR) or launcher_pods
         )
+        bound_crashed, idle_crashed = _fma_launcher_crashes(launcher_pods)
+        if idle_crashed:
+            context.logger.log_warning(
+                f"Idle launcher pod(s) in a container crash state (not failing "
+                f"the stack; check the node): {'; '.join(idle_crashed)}"
+            )
 
         # 2. The bound launcher must be serving and carry the signature annotation.
-        serving_pod = self._fma_wait_serving(cmd, context, namespace)
         if serving_pod is None:
+            crashed = bound_crashed + idle_crashed
             report.add(
                 CheckResult(
                     "fma_launcher_bound",
@@ -198,10 +218,31 @@ class FmaValidator(BaseSmoketest):
                         f"No launcher pod became bound/serving for model "
                         f"'{model_name}' within {self._FMA_SERVING_TIMEOUT}s "
                         f"(selector '{_fma_serving_selector()}')"
+                        + (
+                            f"; launcher pod(s) in a container crash state: "
+                            f"{'; '.join(crashed)}"
+                            if crashed
+                            else ""
+                        )
                     ),
                 )
             )
             return report
+
+        report.add(
+            CheckResult(
+                "fma_launcher_no_crash",
+                not bound_crashed,
+                message=(
+                    "Bound launcher pod(s) healthy (no container crash states)"
+                    if not bound_crashed
+                    else (
+                        f"Bound launcher pod(s) in a container crash state: "
+                        f"{'; '.join(bound_crashed)}"
+                    )
+                ),
+            )
+        )
 
         pod_name = serving_pod.get("metadata", {}).get("name", "")
         _log_fma_sleeping(context, serving_pod)
