@@ -13,6 +13,7 @@ class CommandPhase(str, Enum):
     ROUTER = "router"
     MODELSERVER = "modelserver"
     MONITORING = "monitoring"
+    AUTOSCALING = "autoscaling"
     VERIFY = "verify"
     CLEANUP = "cleanup"
 
@@ -125,6 +126,7 @@ class _Section(str, Enum):
     ROUTER_GATEWAY = "router_gateway"
     MODELSERVER = "modelserver"
     MONITORING = "monitoring"
+    AUTOSCALING = "autoscaling"
     VERIFICATION = "verification"
     CLEANUP = "cleanup"
     IGNORED = "ignored"
@@ -178,6 +180,11 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         or "send test" in lower
     ):
         return _Section.VERIFICATION
+    if "autoscal" in lower or "keda" in lower:
+        # A guide title ("... + KEDA Autoscaling") is not an autoscaling step.
+        if current == _Section.PREAMBLE:
+            return current
+        return _Section.AUTOSCALING
     if "monitoring" in lower:
         return _Section.MONITORING
     if "deploy the model server" in lower or "model server" in lower:
@@ -209,6 +216,7 @@ def _section_to_phase_mode(
         _Section.ROUTER_GATEWAY: (CommandPhase.ROUTER, DeployMode.GATEWAY),
         _Section.MODELSERVER: (CommandPhase.MODELSERVER, DeployMode.ANY),
         _Section.MONITORING: (CommandPhase.MONITORING, DeployMode.ANY),
+        _Section.AUTOSCALING: (CommandPhase.AUTOSCALING, DeployMode.ANY),
         _Section.VERIFICATION: (CommandPhase.VERIFY, DeployMode.ANY),
         _Section.CLEANUP: (CommandPhase.CLEANUP, DeployMode.ANY),
     }
