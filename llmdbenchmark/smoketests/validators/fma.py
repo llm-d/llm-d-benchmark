@@ -50,6 +50,12 @@ def _fma_serving_selector() -> str:
 
 def _fma_pods(cmd, namespace: str, selector: str) -> list[dict]:
     """Pod items (from ``kubectl get pods -o json``) matching *selector*."""
+    return _fma_list_pods(cmd, namespace, selector) or []
+
+
+def _fma_list_pods(cmd, namespace: str, selector: str) -> list[dict] | None:
+    """Like :func:`_fma_pods`, but None when kubectl fails or returns invalid
+    JSON, so callers can tell a failed listing from an empty one."""
     result = cmd.kube(
         "get",
         "pods",
@@ -61,13 +67,15 @@ def _fma_pods(cmd, namespace: str, selector: str) -> list[dict]:
         "json",
         check=False,
     )
-    if not result.success or not (result.stdout or "").strip():
+    if not result.success:
+        return None
+    if not (result.stdout or "").strip():
         return []
 
     try:
         return loads(result.stdout).get("items", [])
     except JSONDecodeError:
-        return []
+        return None
 
 
 def _fma_serving_pod(cmd, namespace: str) -> dict | None:
@@ -81,9 +89,13 @@ def _fma_pod_ip(pod: dict | None) -> str:
     return ((pod or {}).get("status", {}) or {}).get("podIP", "") or ""
 
 
-def _fma_launcher_crashes(pods: list[dict]) -> tuple[list[str], list[str]]:
+def _fma_launcher_crashes(
+    pods: list[dict], bound_names: frozenset[str] = frozenset()
+) -> tuple[list[str], list[str]]:
     """Crash details for *pods*, split into (bound, idle) launchers.
 
+    A pod is bound when it carries the bound label or is named in
+    *bound_names* (pods already observed bound, whatever this listing shows).
     Each detail names the node so a bad-GPU node can be cordoned straight from
     the CI log.
     """
@@ -94,8 +106,10 @@ def _fma_launcher_crashes(pods: list[dict]) -> tuple[list[str], list[str]]:
         if not details:
             continue
         node = (pod.get("spec", {}) or {}).get("nodeName") or "<unscheduled>"
-        labels = pod.get("metadata", {}).get("labels", {}) or {}
-        target = bound if _FMA_BOUND_LABEL in labels else idle
+        metadata = pod.get("metadata", {}) or {}
+        labels = metadata.get("labels", {}) or {}
+        is_bound = _FMA_BOUND_LABEL in labels or metadata.get("name", "") in bound_names
+        target = bound if is_bound else idle
         target.extend(f"{detail} on node {node}" for detail in details)
     return bound, idle
 
@@ -196,11 +210,31 @@ class FmaValidator(BaseSmoketest):
 
         # 1. No BOUND launcher in a CONTAINER-level crash state. Catches a
         #    container OOMKill (kernel), CrashLoopBackOff, image-pull failure, or
-        #    non-zero exit. Re-list so the states and labels are post-binding.
-        launcher_pods = (
-            _fma_pods(cmd, namespace, _FMA_LAUNCHER_COMPONENT_SELECTOR) or launcher_pods
-        )
-        bound_crashed, idle_crashed = _fma_launcher_crashes(launcher_pods)
+        #    non-zero exit. Re-list so the states and labels are post-binding;
+        #    never classify the pre-wait snapshot, whose labels predate binding.
+        launcher_pods = _fma_list_pods(cmd, namespace, _FMA_LAUNCHER_COMPONENT_SELECTOR)
+        if launcher_pods is None:
+            report.add(
+                CheckResult(
+                    "fma_launcher_pods_listed",
+                    False,
+                    message=(
+                        f"Could not re-list launcher pods after the binding wait "
+                        f"(selector '{_FMA_LAUNCHER_COMPONENT_SELECTOR}'); "
+                        f"cannot tell bound from idle launchers"
+                    ),
+                )
+            )
+            return report
+        bound_names: frozenset[str] = frozenset()
+        if serving_pod is not None:
+            serving_name = serving_pod.get("metadata", {}).get("name", "")
+            bound_names = frozenset({serving_name})
+            if all(
+                p.get("metadata", {}).get("name") != serving_name for p in launcher_pods
+            ):
+                launcher_pods.append(serving_pod)
+        bound_crashed, idle_crashed = _fma_launcher_crashes(launcher_pods, bound_names)
         if idle_crashed:
             context.logger.log_warning(
                 f"Idle launcher pod(s) in a container crash state (not failing "

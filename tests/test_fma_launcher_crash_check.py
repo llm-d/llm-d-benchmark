@@ -58,12 +58,18 @@ def _launcher(name, node, *, bound=False, container=HEALTHY):
 
 
 class _FakeCmd:
-    """Answers `kubectl get pods -l <selector>` from a fixed pod list."""
+    """Answers `kubectl get pods -l <selector>` from a fixed pod list.
+
+    *launcher_listings* overrides successive launcher-selector listings: each
+    entry is a pod list, or None for a failed kubectl call. Once exhausted,
+    listings fall back to *pods*.
+    """
 
     dry_run = False
 
-    def __init__(self, pods):
+    def __init__(self, pods, launcher_listings=None):
         self.pods = pods
+        self.launcher_listings = list(launcher_listings or [])
 
     def kube(self, *args, check=False):
         selector = args[args.index("-l") + 1]
@@ -72,15 +78,19 @@ class _FakeCmd:
             items = [
                 p for p in items if fma._FMA_BOUND_LABEL in p["metadata"]["labels"]
             ]
+        elif self.launcher_listings:
+            items = self.launcher_listings.pop(0)
+            if items is None:
+                return SimpleNamespace(success=False, stdout="")
         return SimpleNamespace(success=True, stdout=json.dumps({"items": items}))
 
 
 @pytest.fixture
 def run(tmp_path):
-    def _run(pods):
+    def _run(pods, launcher_listings=None):
         ctx = MagicMock()
         ctx.deployed_methods = ["kustomize"]
-        ctx.require_cmd.return_value = _FakeCmd(pods)
+        ctx.require_cmd.return_value = _FakeCmd(pods, launcher_listings)
         ctx.require_namespace.return_value = "ns"
         validator = fma.FmaValidator.__new__(fma.FmaValidator)
         validator._FMA_SERVING_TIMEOUT = 0
@@ -143,4 +153,52 @@ def test_all_healthy_passes_without_warning(run):
 
     assert report.passed, report.errors()
     assert checks["fma_launcher_no_crash"].passed
+    logger.log_warning.assert_not_called()
+
+
+def test_failed_refresh_fails_instead_of_reusing_snapshot(run):
+    bound = _launcher("launcher-bound", "node-bad", bound=True, container=CRASHED)
+    # Pre-wait snapshot: the launcher is not labeled bound yet.
+    snapshot = [_launcher("launcher-bound", "node-bad", container=CRASHED)]
+    report, checks, logger = run([bound], launcher_listings=[snapshot, None])
+
+    assert not report.passed
+    assert not checks["fma_launcher_pods_listed"].passed
+    assert "fma_launcher_no_crash" not in checks
+    logger.log_warning.assert_not_called()
+
+
+def test_serving_pod_counts_as_bound_without_label_in_listing(run):
+    bound = _launcher("launcher-bound", "node-bad", bound=True, container=CRASHED)
+    unlabeled = _launcher("launcher-bound", "node-bad", container=CRASHED)
+    report, checks, logger = run([bound], launcher_listings=[[bound], [unlabeled]])
+
+    assert not report.passed
+    assert "launcher-bound/inference-server" in checks["fma_launcher_no_crash"].message
+    logger.log_warning.assert_not_called()
+
+
+def test_serving_pod_missing_from_listing_is_still_checked(run):
+    bound = _launcher("launcher-bound", "node-bad", bound=True, container=CRASHED)
+    report, checks, _ = run([bound], launcher_listings=[[bound], []])
+
+    assert not report.passed
+    assert "on node node-bad" in checks["fma_launcher_no_crash"].message
+
+
+def test_classification_uses_post_binding_state(run):
+    # Binding happens during _fma_wait_serving: the pre-wait listing has no
+    # bound label, the post-wait listing does. Classifying the pre-wait
+    # listing would call this crash idle and only warn.
+    unbound = _launcher("launcher-a", "node-bad", container=CRASHED)
+    bound = _launcher("launcher-a", "node-bad", bound=True, container=CRASHED)
+    idle = _launcher("launcher-b", "node-ok")
+    report, checks, logger = run(
+        [bound, idle], launcher_listings=[[unbound, idle], [bound, idle]]
+    )
+
+    assert not report.passed
+    message = checks["fma_launcher_no_crash"].message
+    assert "launcher-a/inference-server (CrashLoopBackOff" in message
+    assert "on node node-bad" in message
     logger.log_warning.assert_not_called()
