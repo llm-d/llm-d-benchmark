@@ -104,10 +104,14 @@ class GpuValidator(BaseSmoketest):
             serving_pod = standalone_pods[0]
         else:
             report.add(
-                CheckResult(
-                    "deploy_method",
-                    False,
-                    message="No decode or standalone pods found",
+                self._no_serving_pods_check(
+                    cmd,
+                    context,
+                    namespace,
+                    [
+                        f"llm-d.ai/model={model_short},llm-d.ai/role=decode",
+                        f"llm-d.ai/model={model_short},llm-d.ai/role={standalone_role}",
+                    ],
                 )
             )
             return report

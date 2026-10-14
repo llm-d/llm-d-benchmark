@@ -72,6 +72,13 @@ class _FakeCmd:
         self.launcher_listings = list(launcher_listings or [])
 
     def kube(self, *args, check=False):
+        if "-l" not in args:
+            # Autoscaler discovery: answer like a cluster without KEDA/HPAs.
+            return SimpleNamespace(
+                success=False,
+                stdout="",
+                stderr='error: the server doesn\'t have a resource type "x"',
+            )
         selector = args[args.index("-l") + 1]
         items = self.pods
         if fma._FMA_BOUND_LABEL in selector:

@@ -316,6 +316,21 @@ class KustomizeDeployStep(Step):
                 context=context,
             )
 
+        # --- 5b. Autoscaling (e.g. a KEDA ScaledObject) ---
+        # After the wait: pods must be Ready before the autoscaler takes over.
+        for gc in parsed.get_commands(CommandPhase.AUTOSCALING):
+            resolved = resolver.resolve(gc.raw)
+            result = self._run_resolved(
+                cmd, resolved, check=False, context=context, phase="autoscaling"
+            )
+            if not result.success:
+                return self._fail(
+                    [f"Autoscaling step failed: {result.stderr}"],
+                    stack_path,
+                    "Autoscaling deployment failed",
+                    context=context,
+                )
+
         # --- 6. Endpoint ---
         epp_service = f"{guide_name.split('/')[-1]}-epp"
         context.deployed_endpoints[stack_path.name] = epp_service
