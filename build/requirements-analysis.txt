@@ -1,5 +1,5 @@
 kubernetes>=35.0.0
-numpy>=2.5.3
+numpy>=2.5.4
 pandas>=3.0.6
 pydantic>=2.13.5
 PyYAML>=6.0.3
