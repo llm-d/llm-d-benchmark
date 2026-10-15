@@ -13,6 +13,11 @@ from llmdbenchmark.experiment.parser import (
     groups_from_treatments,
     read_treatment_groups,
 )
+from llmdbenchmark.parser.cli_overrides import (
+    coerce_value,
+    split_override_pairs,
+    surprising_coercion,
+)
 from llmdbenchmark.utilities.profile_renderer import (
     build_env_map,
     render_profile_file,
@@ -415,14 +420,19 @@ class RenderProfilesStep(Step):
                                 treatments.append(treatment)
                 return treatments
 
-        # --overrides creates a single treatment
+        # --overrides creates a single treatment. Values are parsed as YAML,
+        # same as --set, so a map or list value works too.
         if context.profile_overrides:
-            overrides: dict[str, str] = {}
-            for pair in context.profile_overrides.split(","):
-                pair = pair.strip()
-                if "=" in pair:
-                    key, value = pair.split("=", 1)
-                    overrides[key.strip()] = value.strip()
+            overrides: dict[str, Any] = {}
+            for pair in split_override_pairs(context.profile_overrides):
+                if "=" not in pair:
+                    continue
+                key, value = pair.split("=", 1)
+                coerced = coerce_value(value)
+                warning = surprising_coercion(value, coerced)
+                if warning:
+                    context.logger.log_warning(f"-o {key.strip()}: {warning}")
+                overrides[key.strip()] = coerced
             if overrides:
                 treatments.append(
                     {

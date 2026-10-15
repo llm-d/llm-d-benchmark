@@ -93,7 +93,9 @@ def add_subcommands(
         "-o",
         "--overrides",
         default=env("LLMDBENCH_OVERRIDES"),
-        help="Comma-separated list of workload profile parameter overrides (param=value,...).",
+        help="Comma-separated list of workload profile parameter overrides "
+        "(param=value,...). Values are parsed as YAML, so {a: 1} and [1, 2] "
+        "work.",
     )
     run_parser.add_argument(
         "-r",
