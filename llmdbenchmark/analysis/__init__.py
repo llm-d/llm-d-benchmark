@@ -313,6 +313,7 @@ def _convert_via_api(
                 import_inference_perf,
                 import_inference_perf_session,
                 import_guidellm,
+                import_guidellm_all,
                 import_vllm_benchmark,
                 import_inference_max,
             )
@@ -321,6 +322,7 @@ def _convert_via_api(
                 import_inference_perf,
                 import_inference_perf_session,
                 import_guidellm,
+                import_guidellm_all,
                 import_vllm_benchmark,
                 import_inference_max,
             )
@@ -339,6 +341,15 @@ def _convert_via_api(
             convert_fn = converters.get(writer_name)
             if not convert_fn:
                 return f"No API converter for writer '{writer_name}'"
+
+        if writer_name == "guidellm":
+            # One report per benchmark (a sweep runs several), named as the
+            # benchmark-report CLI names them when no index is given.
+            for index, br in enumerate(import_guidellm_all(str(result_file))):
+                br.export_yaml(
+                    str(output_file.with_stem(f"{output_file.stem}_{index}"))
+                )
+            return None
 
         br = convert_fn(str(result_file))
         br.export_yaml(str(output_file))
