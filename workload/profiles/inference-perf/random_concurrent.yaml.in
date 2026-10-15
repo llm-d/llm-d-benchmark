@@ -29,12 +29,12 @@ data:
     min: 5000           # min length of the synthetic prompts
     max: 10000          # max length of the synthetic prompts
     mean: 10000         # mean length of the synthetic prompts
-    std: 500            # standard deviation of the length of the synthetic prompts
+    std_dev: 500        # standard deviation of the length of the synthetic prompts
   output_distribution:
     min: 500            # min length of the output to be generated
     max: 1000           # max length of the output to be generated
     mean: 1000          # mean length of the output to be generated
-    std: 100            # standard deviation of the length of the output to be generated
+    std_dev: 100        # standard deviation of the length of the output to be generated
 report:
   request_lifecycle:
     summary: true

@@ -36,11 +36,11 @@ data:
   shared_prefix:
     multimodal:
       image:
-      count: { type: fixed, min: 4, max: 4, mean: 4 }  # items per request
-      insertion_point: 0.0
-      resolutions:
-        - resolution: "720p"
-          weight: 1
+        count: { type: fixed, min: 4, max: 4, mean: 4 }  # items per request
+        insertion_point: 0.0
+        resolutions:
+          - resolution: "720p"
+            weight: 1
     num_groups: 600
     num_prompts_per_group: 5
     system_prompt_len: 100
