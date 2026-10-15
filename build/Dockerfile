@@ -1,4 +1,4 @@
-FROM docker.io/library/python:3.13.5-slim-bookworm
+FROM docker.io/library/python:3.14.8-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
