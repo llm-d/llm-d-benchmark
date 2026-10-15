@@ -77,6 +77,20 @@ re-render the plan. See
 `kustomization.yaml` (base = the guide's modelserver dir) is written to
 `workspace/setup/kustomize-overlay/` and applied with `kubectl apply -k`.
 
+## Render Services
+
+When a guide README has a "Deploy ... Render ... Service" section, kustomize
+standup applies its render command after the model server pods are ready. It
+then calls `/v1/completions/render` through the guide's render Service and
+requires token IDs before allowing the benchmark to run. The probe discovers
+the deployed model through `/v1/models`; the scenario's `model.name` may
+describe a different model in kustomize mode.
+
+The vLLM overlays of `precise-prefix-cache-routing` and
+`p2p-kv-cache-sharing` use their default render Service. The separate
+`render/standalone` deployment for SGLang in the precise-prefix guide is
+marked as a CI skip region and is not selected automatically.
+
 ## Examples
 
 ```yaml
