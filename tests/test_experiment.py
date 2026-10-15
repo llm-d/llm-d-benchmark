@@ -911,3 +911,27 @@ class TestReadResetCaches:
 
         assert read_reset_caches(None) is False
         assert read_reset_caches(str(tmp_path / "nope.yaml")) is False
+
+
+def test_run_treatment_count_includes_groups(tmp_path: Path):
+    """A ``groups`` block holds the run treatments step 05 renders."""
+    p = tmp_path / "grouped.yaml"
+    p.write_text(
+        textwrap.dedent(
+            """\
+            experiment:
+              name: grouped
+            groups:
+              - name: shapes
+                treatments:
+                  - name: prefill_heavy
+                  - name: decode_heavy
+              - name: mixed
+                treatments:
+                  - name: symmetrical
+            """
+        )
+    )
+    plan = parse_experiment(p)
+    assert plan.run_treatments_count == 3
+    assert plan.total_matrix == 3

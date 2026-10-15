@@ -158,6 +158,14 @@ def _parse_setup_treatments(setup_data: dict) -> list[SetupTreatment]:
 
 def _count_run_treatments(exp_data: dict) -> int:
     """Count the number of run treatments in the experiment file."""
+    # A ``groups`` block takes precedence over ``treatments`` (as in step_05).
+    groups = exp_data.get("groups")
+    if isinstance(groups, list):
+        return sum(
+            len(g["treatments"])
+            for g in groups
+            if isinstance(g, dict) and isinstance(g.get("treatments"), list)
+        )
     raw = exp_data.get("treatments")
     if raw is None:
         raw = exp_data.get("run", [])
