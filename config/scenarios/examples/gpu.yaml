@@ -190,33 +190,27 @@ scenario:
         tokenizer:
           enabled: true
         epp:
-          pluginsConfigFile: "context-length-aware-config.yaml"
+          pluginsConfigFile: "example.yaml"
           flags:
             v: "4"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
           pluginsCustomConfig:
-            context-length-aware-config.yaml: |
+            example.yaml: |
               apiVersion: llm-d.ai/v1alpha1
               kind: EndpointPickerConfig
+              # Plugins run with their built-in defaults: the prefix-cache-affinity-filter's
+              # peakPrefillThroughput default (15928) is calibrated for this guide's reference
+              # setup (Qwen3-32B on H100 80 GB, TP=2). For other hardware/models, measure your
+              # own value with guides/recipes/router/calibration and set it on the filter.
               plugins:
-                - type: token-producer
-                  parameters:
-                    modelName: "${model.name}"
-                    vllm:
-                      url: http://localhost:8000
-                - type: decode-filter
-                - type: context-length-aware
-                  parameters:
-                    label: llm-d.ai/context-length-range
-                    enableFiltering: true
-                - type: max-score-picker
-                - type: single-profile-handler
+              - type: approx-prefix-cache-producer
+              - type: inflight-load-producer
+              - type: prefix-cache-affinity-filter
+              - type: token-load-scorer
               schedulingProfiles:
-                - name: default
-                  plugins:
-                    - pluginRef: token-producer
-                    - pluginRef: decode-filter
-                    - pluginRef: context-length-aware
-                    - pluginRef: max-score-picker
+              - name: default
+                plugins:
+                - pluginRef: prefix-cache-affinity-filter
+                - pluginRef: token-load-scorer
 
       # -------------------------------------------------------------------------
       # Prefill Configuration

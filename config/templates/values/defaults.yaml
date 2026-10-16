@@ -112,17 +112,17 @@ _anchors:
   # `inferencepool` / `standalone` charts onto the llm-d-owned
   # `llm-d-router-{gateway,standalone}-dev` charts in ghcr.io/llm-d/charts).
   # Used for both the standalone and gateway router charts.
-  router_chart_version:              &router_chart_version              v0.11.0
+  router_chart_version:              &router_chart_version              v1.0.0
   # Latest version of llm-d-modelservice looks broken
   modelservice_chart_version:        &modelservice_chart_version        v0.4.16
   vllm-openai_version:               &vllm-openai_version               v0.31.0
-  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v0.11.0
-  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.11.0
+  llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v1.0.0
+  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v1.0.0
   # Just use vllm-openai image for tokenizer
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.31.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v1.0.0
-  llm-d-benchmark_version:           &llm-d-benchmark_version           nightly
-  llm-d-prism_version:               &llm-d-prism_version               latest
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v1.0.0
+  llm-d-prism_version:               &llm-d-prism_version               v1.0.0
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
