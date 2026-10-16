@@ -15,9 +15,8 @@
 # variant), so the dual-pods CR cleanup and requester-only readiness check apply.
 # See https://github.com/llm-d/llm-d/tree/main/guides/fast-model-actuation-keda
 #
-# monitoring MUST be true: the guide's KEDA step copies the prometheus-token
-# secret and waits for the ScaledObject to go Ready, which requires KEDA to reach
-# Prometheus and scrape the EPP flow-control queue-depth metric.
+# monitoring MUST be true: KEDA's ScaledObject needs Prometheus (Thanos on
+# OpenShift) for the EPP flow-control queue-depth metric.
 #
 # Run with:
 #   llmdbenchmark --spec guides/fast-model-actuation-keda standup   -t kustomize -p "$NS"
@@ -67,5 +66,8 @@ scenario:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic_heavy.yaml
       executable: llm-d-benchmark.sh
+      # Smoketest wait for the scale-from-zero cold start (seconds, default 600).
+      # smoketest:
+      #   coldStartTimeout: 600
 
     workDir: "~/data/fast-model-actuation-keda"
