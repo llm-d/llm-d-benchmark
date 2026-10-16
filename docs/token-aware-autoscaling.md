@@ -363,13 +363,42 @@ Dynamo planner): replicas = token rate / per-replica throughput per phase.
   Static pools for the busiest stage: 2 prefill, 1 decode
 ```
 
-**Setting `V_D`.** Set `eppKedaSaturation.scaledObject.peakDecodeThroughput` (for example
-`--set eppKedaSaturation.scaledObject.peakDecodeThroughput=<tok/s>`) to the output-token rate one
-decode replica sustains with TPOT at its target. To measure it, run a decode-bound shape at a rate
-that saturates a fixed decode pool, then read `output_token_rate` / decode replicas from that stage.
-If `V_D` is not set, the report uses the busiest per-replica decode rate the run achieved and says
-so. Unless decode was saturated, that understates capacity, so the decode counts are upper bounds.
-As with `V_P`, re-measure `V_D` whenever the model, accelerator, TP or vLLM version changes.
+**Measuring `V_D`.** `V_D` is the output-token rate one decode replica sustains with TPOT at its
+target. The benchmark measures it with a decode-heavy rate ladder against the live stack. Keep the
+decode pool fixed while measuring (stand up with `--set eppKedaSaturation.dryRun=true`):
+
+```bash
+make calibrate-peak-decode NAMESPACE=<ns> SPEC=guides/keda-epp-token-aware-pd-disaggregation \
+  RATES=0.5,1,2,4 TPOT_TARGET=0.1 RUN_ARGS="--set eppKedaSaturation.dryRun=true"
+#  stage 0: ... out tok/s, p90 TPOT ...ms
+#  ...
+# ✅ PEAK_DECODE_THROUGHPUT=<tok/s>
+#    --set eppKedaSaturation.scaledObject.peakDecodeThroughput=<tok/s>
+```
+
+The target runs `random_decode_heavy` at each rate in `RATES` for `STAGE_SECONDS` seconds. It then
+takes the busiest stage whose p90 TPOT stayed within `TPOT_TARGET` and divides that stage's output
+token rate by the number of decode replicas. If even the highest rate met the target, the target
+says decode never saturated, and you should raise `RATES`. It fails if the decode replica count
+changed during the run, because a live autoscaler would invalidate the measurement. Use
+`OVERRIDES=k=v,...` to adjust the profile (for example `data.output_distribution` for a model with
+a short context).
+
+Write the value into the scenario (`eppKedaSaturation.scaledObject.peakDecodeThroughput`) or pass it
+with `--set`. If it is not set, the report uses the busiest per-replica decode rate the run achieved,
+and says so. Unless decode was saturated, that understates capacity, so the decode counts are
+upper bounds. As with `V_P`, re-measure whenever the model, accelerator, TP or vLLM version changes.
+
+**Relation to llm-d's xPyD guidance.** llm-d's
+[P/D disaggregation architecture doc](https://github.com/llm-d/llm-d/blob/main/docs/architecture/disaggregation/pd-disaggregation.md#when-to-use-pd-and-how-to-tune-it)
+advises tuning the ratio of prefill to decode workers "to ensure balance for your ISL|OSL ratio".
+Its example is 8 TP=1 prefill and 2 TP=4 decode pods for a 5k ISL / 250 OSL workload on
+gpt-oss-120b. This report computes that balance from a run instead of tuning by hand. As a
+cross-check, that 4:1 example combined with the reference `V_P` of 33821 tok/s per TP=1 prefill pod
+(from the upstream P/D token-aware guide) implies
+`V_D = 4 x 250 x 33821 / 5000 ≈ 6764` decode tok/s per TP=4 decode pod. That is a reasonable
+starting `peakDecodeThroughput` for that configuration until you measure your own; it is derived,
+not measured.
 
 For the P/D scenario, the report also shows what the token-aware triggers asked of each role, so
 you can compare the analytic ratio with what the autoscaler would have provisioned. Prompt tokens

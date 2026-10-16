@@ -59,6 +59,7 @@ class Stage:
     request_rate: float | None = None
     input_token_rate: float | None = None
     output_token_rate: float | None = None
+    tpot_p90: float | None = None
 
 
 def _ts(value: str) -> float:
@@ -77,11 +78,13 @@ def stage_windows(results_dir: Path, exp_id: str) -> list[Stage]:
             if not (match and window.get("start") and window.get("end")):
                 continue
             name = f"stage {match.group(1)}"
-            throughput = (
-                ((data.get("results") or {}).get("request_performance") or {})
-                .get("aggregate", {})
-                .get("throughput", {})
-            )
+            aggregate = (
+                (data.get("results") or {}).get("request_performance") or {}
+            ).get("aggregate", {})
+            throughput = aggregate.get("throughput", {})
+            tpot = (
+                (aggregate.get("latency") or {}).get("time_per_output_token") or {}
+            ).get("p90")
             rate, tokens_in, tokens_out = (
                 (throughput.get(key) or {}).get("mean")
                 for key in ("request_rate", "input_token_rate", "output_token_rate")
@@ -95,6 +98,7 @@ def stage_windows(results_dir: Path, exp_id: str) -> list[Stage]:
                     rate,
                     tokens_in,
                     tokens_out,
+                    tpot,
                 ),
             )
         metadata = result_dir / "run_metadata.yaml"
@@ -445,9 +449,33 @@ def explain_pd_ratio(pd: dict) -> str:
     if pd["vDSource"] != "peakDecodeThroughput":
         lines.append(
             "  ! V_D was not set: the observed per-replica decode rate understates capacity"
-            " unless decode was saturated, so decode counts are upper bounds."
+            " unless decode was saturated, so decode counts are upper bounds.\n"
+            "    Measure it: make calibrate-peak-decode NAMESPACE=<ns> SPEC=<spec>"
         )
     return "\n".join(lines) + "\n"
+
+
+def peak_decode_throughput(
+    stages: list[Stage], decode_replicas: int, tpot_target: float
+) -> tuple[float, Stage] | None:
+    """V_D: decode tok/s per replica in the busiest stage whose p90 TPOT met the target.
+
+    A rate ladder of decode-bound traffic against a fixed decode pool makes this a
+    measurement: below saturation the rate grows with load, past it TPOT breaks
+    the target and the stage no longer counts.
+    """
+    within = [
+        s
+        for s in stages
+        if s.name != "whole run"
+        and s.output_token_rate
+        and s.tpot_p90 is not None
+        and s.tpot_p90 <= tpot_target
+    ]
+    if not within or decode_replicas < 1:
+        return None
+    best = max(within, key=lambda s: s.output_token_rate)
+    return round(best.output_token_rate / decode_replicas, 1), best
 
 
 def write_sizing(
@@ -482,3 +510,27 @@ def write_sizing(
     text = explain(rows) + ("\n" + explain_pd_ratio(pd) if pd else "")
     (out_dir / "autoscaling-sizing.txt").write_text(text, encoding="utf-8")
     return ["autoscaling-sizing.json", "autoscaling-sizing.txt"]
+
+
+if __name__ == "__main__":
+    # make calibrate-peak-decode: python -m llmdbenchmark.run.autoscaling_sizing
+    #   peak-decode <results_dir> <decode_replicas> <tpot_target_seconds>
+    import sys
+
+    _, command, results, replicas, target = sys.argv
+    assert command == "peak-decode", command
+    stages = stage_windows(Path(results), "")
+    for s in stages[:-1] if stages and stages[-1].name == "whole run" else stages:
+        tpot = f"{s.tpot_p90 * 1000:.0f}ms" if s.tpot_p90 is not None else "n/a"
+        rate = f"{s.output_token_rate:.0f}" if s.output_token_rate else "n/a"
+        print(f"   {s.name}: {rate} out tok/s, p90 TPOT {tpot}")
+    found = peak_decode_throughput(stages, int(replicas), float(target))
+    if found is None:
+        sys.exit(f"no stage met p90 TPOT <= {target}s; lower RATES")
+    print(
+        f"PEAK_DECODE_THROUGHPUT={found[0]:g} ({found[1].name}, {replicas} decode replica(s))"
+    )
+    measured = [s for s in stages if s.name != "whole run" and s.output_token_rate]
+    if found[1] is max(measured, key=lambda s: s.output_token_rate):
+        print("! the busiest stage still met the TPOT target: decode never saturated,")
+        print("  so V_D may be higher -- raise RATES and re-run")

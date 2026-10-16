@@ -392,6 +392,49 @@ calibrate-peak-prefill: check-kubectl check-envsubst ## Measure peakPrefillThrou
 	      || { echo "❌ deployment/$$d did not become ready after the restart"; exit 7; }; \
 	    echo "   deployment/$$d ready"; done; fi
 
+# peakDecodeThroughput (V_D): decode tok/s one decode replica sustains with p90
+# TPOT within TPOT_TARGET -- the decode half of the prefill:decode ratio in the
+# run's autoscaling-sizing report. There is no upstream recipe for it, so the
+# measurement is the benchmark itself: random_decode_heavy over a rate ladder
+# against the live stack, then the busiest stage that still met the TPOT target,
+# divided by the decode replicas. Keep the decode pool fixed while measuring
+# (stand up with --set eppKedaSaturation.dryRun=true, or without an autoscaler).
+SPEC ?=
+RATES ?= 0.5,1,2,4
+STAGE_SECONDS ?= 300
+TPOT_TARGET ?= 0.1
+OVERRIDES ?=
+RUN_ARGS ?=
+LLMDBENCH ?= llmdbenchmark
+comma := ,
+
+.PHONY: calibrate-peak-decode
+calibrate-peak-decode: check-kubectl ## Measure peakDecodeThroughput with a decode-heavy rate ladder. NAMESPACE=<ns> SPEC=<spec> [RATES=0.5,1,2,4] [STAGE_SECONDS=300] [TPOT_TARGET=0.1] [OVERRIDES=k=v,...] [RUN_ARGS=...]
+	@test -n "$(NAMESPACE)" -a -n "$(SPEC)" || { \
+	  echo "❌ usage: make calibrate-peak-decode NAMESPACE=<ns> SPEC=<spec> [RATES=0.5,1,2,4] [TPOT_TARGET=0.1]"; exit 1; }
+	@set -e; \
+	NS="$(NAMESPACE)"; WS=$$(mktemp -d); \
+	decode_replicas() { kubectl get pods -n "$$NS" -l llm-d.ai/role=decode --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' '; }; \
+	BEFORE=$$(decode_replicas); \
+	test "$$BEFORE" -ge 1 || { echo "❌ no running llm-d.ai/role=decode pods in ns/$$NS"; exit 2; }; \
+	STAGES=$$(echo "$(RATES)" | tr ',' '\n' | awk -v d=$(STAGE_SECONDS) 'NF{printf "%s{rate: %s, duration: %s}", (n++ ? ", " : ""), $$1, d}'); \
+	echo "▶️  random_decode_heavy at $(RATES) req/s, $(STAGE_SECONDS)s each, against $$BEFORE decode replica(s)"; \
+	$(LLMDBENCH) --spec "$(SPEC)" --ws "$$WS" run -p "$$NS" -l inference-perf -w random_decode_heavy.yaml \
+	  -o "load.stages=[$$STAGES]$(if $(OVERRIDES),$(comma)$(OVERRIDES))" $(RUN_ARGS); \
+	AFTER=$$(decode_replicas); \
+	test "$$BEFORE" = "$$AFTER" || { \
+	  echo "❌ decode replicas changed during the run ($$BEFORE -> $$AFTER): an autoscaler is live."; \
+	  echo "   Re-run with the decode pool fixed (eppKedaSaturation.dryRun=true)."; exit 3; }; \
+	PY=$$(head -1 "$$(command -v $(LLMDBENCH))" | sed 's/^#!//'); \
+	echo "📊 per stage (a stage counts only while p90 TPOT <= $(TPOT_TARGET)s):"; \
+	"$$PY" -m llmdbenchmark.run.autoscaling_sizing peak-decode "$$(ls -d "$$WS"/*/results | head -1)" "$$BEFORE" "$(TPOT_TARGET)" \
+	  | tee "$$WS/peak-decode.txt"; \
+	VD=$$(sed -n 's/^PEAK_DECODE_THROUGHPUT=\([0-9.]*\).*/\1/p' "$$WS/peak-decode.txt"); \
+	echo "✅ PEAK_DECODE_THROUGHPUT=$$VD"; \
+	echo "   Set it for the prefill:decode ratio report:"; \
+	echo "     --set eppKedaSaturation.scaledObject.peakDecodeThroughput=$$VD"; \
+	echo "   Results: $$WS"
+
 .PHONY: check-envsubst
 check-envsubst:
 	@command -v envsubst >/dev/null 2>&1 || { \

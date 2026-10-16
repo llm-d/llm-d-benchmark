@@ -24,6 +24,7 @@ import yaml
 from llmdbenchmark.run.autoscaling_sizing import (
     explain_pd_ratio,
     pd_ratio,
+    peak_decode_throughput,
     STEP_SECONDS,
     Stage,
     size_stage,
@@ -393,3 +394,38 @@ def test_write_sizing_adds_the_ratio(tmp_path):
         "prefillReplicas": 3,
         "decodeReplicas": 6,
     }
+
+
+# --- peakDecodeThroughput (make calibrate-peak-decode) ----------------------
+
+
+def _ladder(*points):
+    """Stages of (output tok/s, p90 TPOT seconds) at increasing rate."""
+    return [
+        Stage(f"stage {i}", T0 + i * 60, T0 + (i + 1) * 60, None, 1.0, out, tpot)
+        for i, (out, tpot) in enumerate(points)
+    ] + [Stage("whole run", T0, T0 + 60 * len(points), None, 1.0, 9e9, 0.0)]
+
+
+def test_v_d_is_the_busiest_stage_within_the_tpot_target():
+    # 2 decode replicas; the 4th stage is past saturation (TPOT broke the target).
+    v_d, stage = peak_decode_throughput(
+        _ladder((400, 0.03), (800, 0.05), (1500, 0.09), (1600, 0.2)), 2, 0.1
+    )
+    assert (v_d, stage.name) == (750.0, "stage 2")
+
+
+def test_no_v_d_when_no_stage_met_the_target():
+    assert peak_decode_throughput(_ladder((400, 0.3)), 1, 0.1) is None
+    assert peak_decode_throughput(_ladder((400, 0.03)), 0, 0.1) is None
+
+
+def test_stage_windows_read_p90_tpot(tmp_path):
+    results = _results(tmp_path)
+    report = next(results.glob("exp_1/*stage_1*"))
+    data = yaml.safe_load(report.read_text())
+    data["results"]["request_performance"]["aggregate"]["latency"] = {
+        "time_per_output_token": {"p90": 0.042}
+    }
+    report.write_text(yaml.safe_dump(data))
+    assert stage_windows(results, "exp")[1].tpot_p90 == 0.042

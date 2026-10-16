@@ -498,8 +498,9 @@ scenario:
         # Keep equal to the router plugin's peakPrefillThroughput above.
         peakPrefillThroughput: 15845
         # Decode tok/s one decode replica sustains at the TPOT target. Not used by the
-        # triggers; it makes the run's prefill:decode ratio report exact (see
-        # docs/token-aware-autoscaling.md "Prefill:decode ratio").
+        # triggers; it makes the run's prefill:decode ratio report exact. Measure it with
+        #   make calibrate-peak-decode NAMESPACE=<ns> SPEC=guides/keda-epp-token-aware-pd-disaggregation
+        # (see docs/token-aware-autoscaling.md "Prefill:decode ratio").
         # peakDecodeThroughput: <tok/s>
 
         minReplicas: 1
