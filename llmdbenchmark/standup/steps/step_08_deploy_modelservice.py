@@ -21,9 +21,11 @@ def decode_autoscaled(plan_config: dict) -> bool:
     """Whether an autoscaler owns the decode replica count."""
     if plan_config.get("multinode", {}).get("enabled", False):
         return False
+    # A dry-run ScaledObject scales a shadow Deployment, never the decode pods.
+    epp_keda = plan_config.get("eppKedaSaturation", {})
     return bool(
         plan_config.get("wva", {}).get("enabled", False)
-        or plan_config.get("eppKedaSaturation", {}).get("enabled", False)
+        or (epp_keda.get("enabled", False) and not epp_keda.get("dryRun", False))
         or plan_config.get("keda", {}).get("scaledObjects")
     )
 
@@ -361,6 +363,7 @@ class DeployModelserviceStep(Step):
         epp_keda_config = plan_config.get("eppKedaSaturation", {})
         if epp_keda_config.get("enabled", False) and context.is_openshift:
             self._apply_epp_keda_stack_resources(cmd, stack_path, errors)
+            self._delete_stale_dry_run_shadows(cmd, plan_config)
             self._log_epp_keda_stack_state(cmd, context, plan_config)
 
         # Generic KEDA path — not gated on is_openshift
@@ -757,6 +760,38 @@ class DeployModelserviceStep(Step):
             result = cmd.kube("apply", "-f", str(yaml_path))
             if not result.success:
                 errors.append(f"Failed to apply {stem}: {result.stderr}")
+
+    def _delete_stale_dry_run_shadows(
+        self,
+        cmd: CommandExecutor,
+        plan_config: dict,
+    ) -> None:
+        """Delete this stack's autoscaling dry-run shadow once dryRun is off.
+
+        30_keda-scaledobject renders the shadow Deployment only while
+        ``eppKedaSaturation.dryRun`` is true, so re-applying the live template
+        retargets the ScaledObject but leaves the old shadow (and its gated
+        pods) behind. Scoped by model so sibling stacks keep theirs.
+        """
+        epp_keda_cfg = plan_config.get("eppKedaSaturation", {}) or {}
+        if epp_keda_cfg.get("dryRun", False):
+            return
+        namespace = epp_keda_cfg.get("namespace") or plan_config.get(
+            "namespace", {}
+        ).get("name", "")
+        model_id_label = plan_config.get("model_id_label", "")
+        if not (namespace and model_id_label):
+            return
+        cmd.kube(
+            "delete",
+            "deployment",
+            "-l",
+            f"llm-d.ai/autoscaling-dry-run-model={model_id_label}",
+            "--namespace",
+            namespace,
+            "--ignore-not-found=true",
+            check=False,
+        )
 
     def _apply_keda_stack_resources(
         self,

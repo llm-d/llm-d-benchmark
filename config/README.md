@@ -30,6 +30,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Monitoring and Metrics](#monitoring-and-metrics)
 - [KEDA Autoscaling](#keda-autoscaling)
   - [Generic KEDA ScaledObjects (`keda`)](#generic-keda-scaledobjects-keda)
+  - [Autoscaling Dry-Run (`eppKedaSaturation.dryRun`)](#autoscaling-dry-run-eppkedasaturationdryrun)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -1563,6 +1564,64 @@ keda:
     authMode: bearer-secret
     secretName: prometheus-bearer
 ```
+
+### Autoscaling Dry-Run (`eppKedaSaturation.dryRun`)
+
+Runs a KEDA autoscaling strategy against live traffic and records the replica
+count it would set, without scaling the model servers. Use it to compare
+autoscaling guides, or retune thresholds, before they control any GPUs. KEDA's
+own `autoscaling.keda.sh/paused` annotation does not help here: it deletes the
+generated HPA, so no decision is computed at all.
+
+It applies to every scenario that autoscales through `eppKedaSaturation`
+(`guides/epp-keda-saturation`, `guides/keda-epp-token-aware`,
+`guides/keda-epp-token-aware-pd-disaggregation`, `cicd/ocp-keda`), and to each
+target of a multi-target (P/D) ScaledObject. It is not available for WVA.
+
+```bash
+llmdbenchmark --spec guides/epp-keda-saturation standup -p <ns> --set eppKedaSaturation.dryRun=true
+llmdbenchmark --spec guides/epp-keda-saturation run     -p <ns> ...
+```
+
+**What changes.** `30_keda-scaledobject.yaml.j2` renders one extra Deployment,
+`<scaleTarget>-dryrun`, per ScaledObject, and points the ScaledObject's
+`scaleTargetRef` at it. Triggers, thresholds, min/max, behavior and the
+ScaledObject/HPA names are unchanged. The shadow's pods carry the scheduling gate
+`llm-d.ai/autoscaling-dry-run`, which nothing removes. KEDA and the HPA scale the
+shadow, and its pods are created but stay `Pending` (`SchedulingGated`): they get
+no node or GPU, and cluster autoscalers ignore them. The model servers keep
+`decode.replicas` / `prefill.replicas`, and standup waits for that count as for a
+scenario without an autoscaler. With `dryRun: false` (the default) the rendered
+output is identical to before.
+
+You can switch modes on a running stack by re-running `standup` (or `update`) with
+the other value. Switching to dry-run retargets the ScaledObject to a new shadow.
+Switching back retargets it to the model servers and deletes that stack's shadow.
+Teardown deletes shadows whatever the configuration at teardown time.
+
+Gated pods still count in the Deployment's `status.replicas`. So the HPA divides
+per-replica metrics by the replica count it chose, and applies its 10% tolerance
+band, exactly as it would on the real pool. The shadow has its own selector, so
+its HPA cannot collide with another HPA on the model servers (`AmbiguousSelector`).
+It has no `llm-d.ai/inferenceServing` label, so no InferencePool, PodMonitor or
+pod wait selects it.
+
+**Reading the decisions.**
+
+| Where | What |
+|---|---|
+| `kubectl get deploy -n <ns> -l llm-d.ai/autoscaling-dry-run-of` | `READY 0/N`: `N` is the current decision |
+| `kubectl get hpa -n <ns>` | the usual KEDA HPA: targets, desired replicas, `SuccessfulRescale` events |
+| run results `metrics/processed/replica_status_timeseries.json` (with `monitoring.metricsScrapeEnabled: true`) | the shadow is recorded with role `<role>-dryrun`: `desired_replicas` is the decision over time, next to the real pool. Needs a harness image built with this change; on OpenShift the harness runs non-root and cannot replace its baked-in scripts unless `harness.runAsUser: 0` |
+| run results `cluster-state` capture (step 09a) | HPA describe/events and the shadow Deployment |
+
+**Limits.** The loop is open: the real pool does not grow, so its per-replica
+load does not fall the way it would after a real scale-up. Each decision means
+"what KEDA would do for this traffic now". Model load time is not modelled.
+Triggers that count pods (`metricType: Value`, `cpu`, `memory`) see the shadow's
+gated pods rather than the model servers. The guides' triggers are all
+`AverageValue` and do not depend on pods. A namespace `ResourceQuota` on `pods`
+counts the gated pods.
 
 ---
 

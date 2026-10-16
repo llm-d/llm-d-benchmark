@@ -150,9 +150,12 @@ for item in data.get("items", []):
     # Its a serving replica source if either:
     #   * its pod template is labelled inferenceServing=true OR
     #   * it is the FMA requester Deployment (llm-d.ai/role=requester).
+    # An autoscaling dry-run shadow (role <role>-dryrun) is recorded too: its
+    # desired_replicas is the decision KEDA made; it never has ready replicas.
     is_serving = tmpl_labels.get("llm-d.ai/inferenceServing") == "true"
     is_fma_requester = tmpl_labels.get("llm-d.ai/role") == "requester"
-    if not (is_serving or is_fma_requester):
+    is_dry_run = tmpl_labels.get("llm-d.ai/autoscaling-dry-run") == "true"
+    if not (is_serving or is_fma_requester or is_dry_run):
         continue
 
     # Filter by model if LLMDBENCH_HARNESS_STACK_NAME is set

@@ -1809,6 +1809,11 @@ keda:
 # directly (see scaledObject.triggers below).
 eppKedaSaturation:
   enabled: false
+  # Compute replica decisions without actuating them: the ScaledObject scales a
+  # shadow Deployment of scheduling-gated pods (never scheduled) instead of the
+  # model servers, which stay at their configured replicas. See
+  # 30_keda-scaledobject.yaml.j2. Enable per run: --set eppKedaSaturation.dryRun=true
+  dryRun: false
   namespace: ""                 # defaults to namespace.name at render time
   prometheus:
     baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local

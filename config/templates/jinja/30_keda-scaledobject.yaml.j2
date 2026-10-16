@@ -49,9 +49,64 @@
    every existing eppKedaSaturation consumer leaves `targets` unset, so their
    rendered output stays byte-for-byte identical to before this branch existed.
 
+   DRY-RUN (eppKedaSaturation.dryRun: true)
+   -----------------------------------------
+   KEDA's own pause (autoscaling.keda.sh/paused) deletes the HPA, so nothing
+   computes a replica count. Dry-run instead keeps the whole loop running --
+   same triggers, thresholds, min/max, tolerance, stabilization and behavior --
+   and redirects only where the decision is written: each ScaledObject targets
+   a shadow Deployment <scaleTarget>-dryrun whose pods carry a scheduling gate
+   nothing removes. The HPA scales the shadow; its pods are created but stay
+   Pending/SchedulingGated (no node, no GPU, ignored by cluster autoscalers),
+   so the shadow's spec.replicas is the decision and the real model servers are
+   never touched. Gated pods still count in status.replicas, which keeps the
+   HPA's per-replica averaging and 10% tolerance band exact. The shadow has its
+   own selector (never the real pods'), so it cannot collide with a live HPA,
+   and no llm-d.ai/inferenceServing label, so no InferencePool or PodMonitor
+   selects it. Toggle per run: --set eppKedaSaturation.dryRun=true.
+
    Only rendered when eppKedaSaturation.enabled is true.
    ============================================================================ #}
+{% macro dry_run_shadow(target_kind, target_name, ns, role, replicas) %}
+---
+# Dry-run shadow for {{ target_kind }}/{{ target_name }}: the ScaledObject's HPA
+# writes its decision to spec.replicas; the pods never pass the scheduling gate.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ target_name }}-dryrun
+  namespace: {{ ns }}
+  labels:
+    llm-d.ai/autoscaling-dry-run-of: {{ target_name }}
+    # Lets standup remove this stack's shadow once dryRun is turned off.
+    llm-d.ai/autoscaling-dry-run-model: {{ model_id_label }}
+  annotations:
+    llm-d.ai/managed: "true"
+    llm-d.ai/autoscaling-dry-run-target: "{{ target_kind }}/{{ target_name }}"
+spec:
+  replicas: {{ replicas }}
+  revisionHistoryLimit: 0
+  selector:
+    matchLabels:
+      llm-d.ai/autoscaling-dry-run-of: {{ target_name }}
+  template:
+    metadata:
+      labels:
+        llm-d.ai/autoscaling-dry-run-of: {{ target_name }}
+        llm-d.ai/autoscaling-dry-run: "true"
+        llm-d.ai/model: {{ model_id_label }}
+        llm-d.ai/role: {{ role }}-dryrun
+    spec:
+      schedulingGates:
+        - name: llm-d.ai/autoscaling-dry-run
+      containers:
+        - name: dry-run
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests: {cpu: 1m, memory: 1Mi}
+{% endmacro %}
 {% if eppKedaSaturation is defined and eppKedaSaturation.enabled | default(false) %}
+{% set dry_run = eppKedaSaturation.dryRun | default(false) %}
 {% set epp_targets = eppKedaSaturation.scaledObject.targets | default([], true) %}
 {% if epp_targets %}
 {% set fma_enabled = fma is defined and fma.enabled | default(false) %}
@@ -72,6 +127,10 @@
 {% set t_poll = target.pollingInterval | default(eppKedaSaturation.scaledObject.pollingInterval | default(15)) %}
 {% set t_behavior = target.behavior if target.behavior is defined else eppKedaSaturation.scaledObject.behavior %}
 {% set t_triggers = target.triggers | default([], true) %}
+{% if dry_run %}
+{% set real_replicas = (decode.replicas if role == 'decode' else (prefill.replicas if role == 'prefill' else 0)) | default(0, true) | int %}
+{{ dry_run_shadow(scale_kind, scale_name, epp_ns, role, [real_replicas, t_min | int] | max) }}
+{% endif %}
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -81,11 +140,14 @@ metadata:
   annotations:
     llm-d.ai/managed: "true"
     llm-d.ai/model-id: "{{ model.name }}"
+{% if dry_run %}
+    llm-d.ai/autoscaling-dry-run-target: "{{ scale_kind }}/{{ scale_name }}"
+{% endif %}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: {{ scale_kind }}
-    name: {{ scale_name }}
+    kind: {{ 'Deployment' if dry_run else scale_kind }}
+    name: {{ scale_name ~ '-dryrun' if dry_run else scale_name }}
   minReplicaCount: {{ t_min }}
   maxReplicaCount: {{ t_max }}
   pollingInterval: {{ t_poll }}
@@ -128,6 +190,12 @@ spec:
 {% set triggers = eppKedaSaturation.scaledObject.triggers | default([], true) %}
 {% set name_suffix = eppKedaSaturation.scaledObject.nameSuffix | default('saturation', true) %}
 {% set peak_prefill = eppKedaSaturation.scaledObject.peakPrefillThroughput | default('', true) %}
+{% if dry_run %}
+{% set so_min = eppKedaSaturation.scaledObject.minReplicas | default(1) | int %}
+{% set real_replicas = 0 if fma is defined and fma.enabled | default(false) else decode.replicas | default(0, true) | int %}
+{{ dry_run_shadow(scale_kind, scale_name, epp_ns, 'requester' if fma is defined and fma.enabled | default(false) else 'decode', [real_replicas, so_min] | max) }}
+---
+{% endif %}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -136,11 +204,14 @@ metadata:
   annotations:
     llm-d.ai/managed: "true"
     llm-d.ai/model-id: "{{ model.name }}"
+{% if dry_run %}
+    llm-d.ai/autoscaling-dry-run-target: "{{ scale_kind }}/{{ scale_name }}"
+{% endif %}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: {{ scale_kind }}
-    name: {{ scale_name }}
+    name: {{ scale_name ~ '-dryrun' if dry_run else scale_name }}
   minReplicaCount: {{ eppKedaSaturation.scaledObject.minReplicas | default(1) }}
   maxReplicaCount: {{ eppKedaSaturation.scaledObject.maxReplicas | default(10) }}
   pollingInterval: {{ eppKedaSaturation.scaledObject.pollingInterval | default(15) }}

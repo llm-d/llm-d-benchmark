@@ -308,6 +308,11 @@ class DeleteResourcesStep(Step):
                             .get("metadata", {})
                             .get("labels", {})
                         )
+                        # Autoscaling dry-run shadows carry no inferenceServing
+                        # label, but are workload controllers of this stack too.
+                        is_dry_run_shadow = (
+                            tmpl_labels.get("llm-d.ai/autoscaling-dry-run") == "true"
+                        )
                         if not tmpl_labels.get("llm-d.ai/inferenceServing"):
                             tmpl_labels = (
                                 spec.get("leaderWorkerTemplate", {})
@@ -315,7 +320,10 @@ class DeleteResourcesStep(Step):
                                 .get("metadata", {})
                                 .get("labels", {})
                             )
-                        if tmpl_labels.get("llm-d.ai/inferenceServing") != "true":
+                        if (
+                            not is_dry_run_shadow
+                            and tmpl_labels.get("llm-d.ai/inferenceServing") != "true"
+                        ):
                             continue
                         # Use apiVersion/kind to build the resource name
                         # that oc delete accepts (e.g.,
