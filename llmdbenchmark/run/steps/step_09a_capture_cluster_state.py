@@ -437,7 +437,9 @@ class CaptureClusterStateStep(Step):
                     for line in summary.splitlines():
                         # Headline only; the per-stage table stays in the file.
                         text = line.strip()
-                        if line.endswith("]") or text.startswith(("Max", "!")):
+                        if line.endswith("]") or text.startswith(
+                            ("Max", "!", "Ideal ratio", "Static pools")
+                        ):
                             context.logger.log_info(f"sizing: {text}")
 
         # 9. Pod logs for controllers and serving pods. Iterate over every pod

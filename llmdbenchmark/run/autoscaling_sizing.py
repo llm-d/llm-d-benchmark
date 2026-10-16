@@ -20,6 +20,17 @@ scale-down or a static pool sized for the peak as over.
 
 Only AverageValue triggers are sized (every guide trigger is); the HPA
 computes those as ceil(value / threshold) independent of pod counts.
+
+Prefill:decode ratio (pd_ratio) sizes the two pools by rate matching, the rule
+DistServe (OSDI'24), Splitwise (ISCA'24), DOPD (arXiv 2511.20982) and NVIDIA
+Dynamo's SLA planner share: each pool needs the token rate it must serve
+divided by what one replica serves within its SLO,
+
+  prefill replicas = input_token_rate  / V_P   (peakPrefillThroughput)
+  decode replicas  = output_token_rate / V_D   (peakDecodeThroughput)
+  P:D              = (ISL / V_P) : (OSL / V_D)   -- independent of the rate
+
+with both token rates measured by the harness per stage.
 """
 
 from __future__ import annotations
@@ -46,6 +57,8 @@ class Stage:
     start: float
     end: float
     request_rate: float | None = None
+    input_token_rate: float | None = None
+    output_token_rate: float | None = None
 
 
 def _ts(value: str) -> float:
@@ -69,9 +82,20 @@ def stage_windows(results_dir: Path, exp_id: str) -> list[Stage]:
                 .get("aggregate", {})
                 .get("throughput", {})
             )
-            rate = (throughput.get("request_rate") or {}).get("mean")
+            rate, tokens_in, tokens_out = (
+                (throughput.get(key) or {}).get("mean")
+                for key in ("request_rate", "input_token_rate", "output_token_rate")
+            )
             stages.setdefault(
-                name, Stage(name, _ts(window["start"]), _ts(window["end"]), rate)
+                name,
+                Stage(
+                    name,
+                    _ts(window["start"]),
+                    _ts(window["end"]),
+                    rate,
+                    tokens_in,
+                    tokens_out,
+                ),
             )
         metadata = result_dir / "run_metadata.yaml"
         if whole is None and metadata.exists():
@@ -283,6 +307,149 @@ def explain(rows: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _decode_replicas(rows: list[dict], stage: str, config: dict) -> float | None:
+    """Decode replicas that were running during *stage*, for an observed V_D."""
+    for r in rows:
+        if r["stage"] == stage and r["realTarget"].endswith("-decode"):
+            if r["provisioned"]["mean"]:
+                return r["provisioned"]["mean"]
+    return (config.get("decode") or {}).get("replicas") or None
+
+
+def pd_ratio(config: dict, stages: list[Stage], rows: list[dict]) -> dict | None:
+    """Rate-matched prefill and decode replica counts per stage, and their ratio."""
+    so_cfg = (config.get("eppKedaSaturation") or {}).get("scaledObject") or {}
+    v_p = so_cfg.get("peakPrefillThroughput") or None
+    if not v_p:
+        return None
+    measured = [
+        s
+        for s in stages
+        if s.name != "whole run" and s.input_token_rate and s.output_token_rate
+    ]
+    if not measured:
+        return None
+
+    v_d, v_d_source = so_cfg.get("peakDecodeThroughput") or None, "peakDecodeThroughput"
+    if not v_d:
+        # Fall back on the busiest per-replica decode rate the run achieved. Unless
+        # decode was saturated this understates capacity, so the decode count is
+        # an upper bound and the P:D ratio a lower bound.
+        observed = [
+            s.output_token_rate / n
+            for s in measured
+            if (n := _decode_replicas(rows, s.name, config))
+        ]
+        if not observed:
+            return None
+        v_d, v_d_source = round(max(observed), 1), "observed (lower bound)"
+    v_p, v_d = float(v_p), float(v_d)
+
+    def counts(name, seconds, tokens_in, tokens_out):
+        p, d = tokens_in / v_p, tokens_out / v_d
+        return {
+            "stage": name,
+            "durationSeconds": round(seconds),
+            "inputTokenRate": round(tokens_in, 1),
+            "outputTokenRate": round(tokens_out, 1),
+            "prefillReplicas": max(1, math.ceil(p - 1e-9)),
+            "decodeReplicas": max(1, math.ceil(d - 1e-9)),
+            "decodePerPrefill": round(d / p, 2) if p else None,
+        }
+
+    per_stage = [
+        counts(s.name, s.end - s.start, s.input_token_rate, s.output_token_rate)
+        for s in measured
+    ]
+    # Whole run: token-weighted over the stages, i.e. total tokens / total time.
+    seconds = sum(s.end - s.start for s in measured)
+    whole = counts(
+        "whole run",
+        seconds,
+        sum(s.input_token_rate * (s.end - s.start) for s in measured) / seconds,
+        sum(s.output_token_rate * (s.end - s.start) for s in measured) / seconds,
+    )
+    return {
+        "vP": v_p,
+        "vD": v_d,
+        "vDSource": v_d_source,
+        "stages": per_stage,
+        "wholeRun": whole,
+        "peak": {
+            "prefillReplicas": max(r["prefillReplicas"] for r in per_stage),
+            "decodeReplicas": max(r["decodeReplicas"] for r in per_stage),
+        },
+        "triggers": _trigger_ratio(rows),
+    }
+
+
+def _trigger_ratio(rows: list[dict]) -> list[dict]:
+    """What the token-aware triggers asked of each role, where both are scaled."""
+    by_role: dict[str, dict[str, dict]] = {}
+    for r in rows:
+        role = r["realTarget"].rsplit("-", 1)[-1]
+        if role in ("prefill", "decode"):
+            by_role.setdefault(r["stage"], {})[role] = r["demand"]
+    return [
+        {
+            "stage": stage,
+            "prefillPeak": roles["prefill"]["peak"],
+            "decodePeak": roles["decode"]["peak"],
+            "prefillMean": roles["prefill"]["mean"],
+            "decodeMean": roles["decode"]["mean"],
+        }
+        for stage, roles in by_role.items()
+        if {"prefill", "decode"} <= roles.keys()
+        and roles["prefill"]["peak"] is not None
+    ]
+
+
+def _ratio(decode_per_prefill: float | None) -> str:
+    """'1 prefill : 3.2 decode' or '8 prefill : 1 decode', whichever side is larger."""
+    if not decode_per_prefill:
+        return "n/a"
+    if decode_per_prefill >= 1:
+        return f"1 prefill : {decode_per_prefill:.3g} decode"
+    return f"{1 / decode_per_prefill:.3g} prefill : 1 decode"
+
+
+def explain_pd_ratio(pd: dict) -> str:
+    whole, peak = pd["wholeRun"], pd["peak"]
+    lines = [
+        "Prefill:decode ratio (rate matching, as in DistServe / Splitwise / DOPD /",
+        "Dynamo planner): replicas = token rate / per-replica throughput per phase.",
+        f"  V_P = {pd['vP']:g} prefill tok/s per replica (peakPrefillThroughput)",
+        f"  V_D = {pd['vD']:g} decode tok/s per replica ({pd['vDSource']})",
+        f"  Ideal ratio for this traffic: {_ratio(whole['decodePerPrefill'])} "
+        f"(whole run, {whole['inputTokenRate']:g} in / {whole['outputTokenRate']:g} out tok/s)",
+        f"  Static pools for the busiest stage: {peak['prefillReplicas']} prefill, "
+        f"{peak['decodeReplicas']} decode",
+    ]
+    for r in pd["stages"]:
+        lines.append(
+            f"  {r['stage']}: {r['inputTokenRate']:g} in / {r['outputTokenRate']:g} out tok/s"
+            f" -> {r['prefillReplicas']}P : {r['decodeReplicas']}D"
+            f" ({_ratio(r['decodePerPrefill'])})"
+        )
+    for t in pd["triggers"]:
+        lines.append(
+            f"  token-aware triggers, {t['stage']}: prefill peak {t['prefillPeak']} "
+            f"(mean {t['prefillMean']}), decode peak {t['decodePeak']} (mean {t['decodeMean']})"
+        )
+    lines += [
+        "  The ratio depends only on the token shape (ISL/OSL) and the two per-replica",
+        "  throughputs, not on the rate. V_D must be the decode rate one replica sustains",
+        "  within the TPOT target (set peakDecodeThroughput); prompt tokens served from",
+        "  prefix cache need no prefill, so shared-prefix traffic needs less prefill.",
+    ]
+    if pd["vDSource"] != "peakDecodeThroughput":
+        lines.append(
+            "  ! V_D was not set: the observed per-replica decode rate understates capacity"
+            " unless decode was saturated, so decode counts are upper bounds."
+        )
+    return "\n".join(lines) + "\n"
+
+
 def write_sizing(
     stack_path: Path, results_dir: Path, exp_id: str, out_dir: Path, fetch: Fetch
 ) -> list[str]:
@@ -292,13 +459,26 @@ def write_sizing(
     if not (sos and stages):
         return []
     rows = [size_stage(so, stage, fetch) for so in sos for stage in stages]
+    config_file = stack_path / "config.yaml"
+    config = (
+        yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
+        if config_file.exists()
+        else {}
+    )
+    pd = pd_ratio(config, stages, rows)
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
     (out_dir / "autoscaling-sizing.json").write_text(
         json.dumps(
-            {"generated": generated, "stepSeconds": STEP_SECONDS, "rows": rows},
+            {
+                "generated": generated,
+                "stepSeconds": STEP_SECONDS,
+                "rows": rows,
+                "pdRatio": pd,
+            },
             indent=2,
         ),
         encoding="utf-8",
     )
-    (out_dir / "autoscaling-sizing.txt").write_text(explain(rows), encoding="utf-8")
+    text = explain(rows) + ("\n" + explain_pd_ratio(pd) if pd else "")
+    (out_dir / "autoscaling-sizing.txt").write_text(text, encoding="utf-8")
     return ["autoscaling-sizing.json", "autoscaling-sizing.txt"]

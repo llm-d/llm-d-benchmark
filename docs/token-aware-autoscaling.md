@@ -331,3 +331,48 @@ dataset, or closed-loop load) — that is not a finding about token-awareness.
 
 Before trusting any number, check three things: failure count, achieved-vs-nominal ISL/OSL, and
 whether TTFT settled or climbed monotonically. A saturated run measures the queue, not the pool.
+
+### Prefill:decode ratio
+
+Every run of an `eppKedaSaturation` stack writes `autoscaling-sizing.txt`/`.json` to
+`results/<experiment>/` (see [Sizing a traffic shape](../config/README.md#autoscaling-dry-run-eppkedasaturationdryrun)).
+When `peakPrefillThroughput` is set, that report also gives the ideal prefill:decode ratio and the
+static pool sizes for the run's traffic.
+
+The method is **rate matching**, the rule that DistServe (OSDI '24), Splitwise (ISCA '24), DOPD
+(arXiv 2511.20982) and NVIDIA Dynamo's SLA planner all use. Each pool needs the token rate it must
+serve divided by what one replica serves within its SLO:
+
+```text
+prefill replicas = input_token_rate  / V_P      V_P = peakPrefillThroughput (tok/s per prefill replica)
+decode  replicas = output_token_rate / V_D      V_D = peakDecodeThroughput  (tok/s per decode replica, at the TPOT target)
+P:D              = (ISL / V_P) : (OSL / V_D)
+```
+
+Both token rates are the harness's measured per-stage `input_token_rate` and `output_token_rate`,
+so each stage gets its own ratio. The whole run is token-weighted across stages. The rate cancels
+out of the ratio, so **the ratio depends only on the token shape and the two per-replica
+capacities**; the replica counts scale with the rate.
+
+```text
+Prefill:decode ratio (rate matching, as in DistServe / Splitwise / DOPD /
+Dynamo planner): replicas = token rate / per-replica throughput per phase.
+  V_P = 4000 prefill tok/s per replica (peakPrefillThroughput)
+  V_D = 800 decode tok/s per replica (peakDecodeThroughput)
+  Ideal ratio for this traffic: 2.81 prefill : 1 decode (...)
+  Static pools for the busiest stage: 2 prefill, 1 decode
+```
+
+**Setting `V_D`.** Set `eppKedaSaturation.scaledObject.peakDecodeThroughput` (for example
+`--set eppKedaSaturation.scaledObject.peakDecodeThroughput=<tok/s>`) to the output-token rate one
+decode replica sustains with TPOT at its target. To measure it, run a decode-bound shape at a rate
+that saturates a fixed decode pool, then read `output_token_rate` / decode replicas from that stage.
+If `V_D` is not set, the report uses the busiest per-replica decode rate the run achieved and says
+so. Unless decode was saturated, that understates capacity, so the decode counts are upper bounds.
+As with `V_P`, re-measure `V_D` whenever the model, accelerator, TP or vLLM version changes.
+
+For the P/D scenario, the report also shows what the token-aware triggers asked of each role, so
+you can compare the analytic ratio with what the autoscaler would have provisioned. Prompt tokens
+served from prefix cache need no prefill, so shared-prefix traffic needs proportionally less
+prefill than the ratio shows.
+

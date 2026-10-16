@@ -497,6 +497,10 @@ scenario:
         # H100-80GB / TP=2, co-located), NOT measured through this P/D path.
         # Keep equal to the router plugin's peakPrefillThroughput above.
         peakPrefillThroughput: 15845
+        # Decode tok/s one decode replica sustains at the TPOT target. Not used by the
+        # triggers; it makes the run's prefill:decode ratio report exact (see
+        # docs/token-aware-autoscaling.md "Prefill:decode ratio").
+        # peakDecodeThroughput: <tok/s>
 
         minReplicas: 1
         maxReplicas: 4          # prefill TP=1 -> 4 accelerators; decode TP=2 -> 8

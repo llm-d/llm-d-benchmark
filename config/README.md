@@ -1652,6 +1652,11 @@ per-replica load and latency are higher than they would be at the demanded size,
 so treat demand as an upper bound. Sizing needs OpenShift's Thanos Querier and
 platform kube-state-metrics, the same as the rest of this path.
 
+When `eppKedaSaturation.scaledObject.peakPrefillThroughput` is set (the token-aware scenarios), the
+report also gives the ideal prefill:decode ratio and pool sizes, rate-matched from the measured token
+rates. Set `peakDecodeThroughput` to make the decode side exact. See
+[Prefill:decode ratio](../docs/token-aware-autoscaling.md#prefilldecode-ratio).
+
 **Limits.** The loop is open: the real pool does not grow, so its per-replica
 load does not fall the way it would after a real scale-up. Each decision means
 "what KEDA would do for this traffic now". Model load time is not modelled.

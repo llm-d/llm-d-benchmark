@@ -22,6 +22,8 @@ from pathlib import Path
 import yaml
 
 from llmdbenchmark.run.autoscaling_sizing import (
+    explain_pd_ratio,
+    pd_ratio,
     STEP_SECONDS,
     Stage,
     size_stage,
@@ -274,3 +276,120 @@ def test_a_peak_between_stages_is_still_the_max(tmp_path):
     assert "Max replicas for this traffic shape: 5 (between traffic stages" in text
     text = explain([row("stage 0", 5, 70), row("whole run", 5, 70)])
     assert "Max replicas for this traffic shape: 5 (in stage 0" in text
+
+
+# --- prefill:decode ratio (rate matching) -----------------------------------
+
+
+def _stage(name, seconds, tokens_in, tokens_out, start=T0):
+    return Stage(name, start, start + seconds, None, tokens_in, tokens_out)
+
+
+def _pd_config(v_p=10000, v_d=None, decode_replicas=1):
+    so = {"peakPrefillThroughput": v_p}
+    if v_d is not None:
+        so["peakDecodeThroughput"] = v_d
+    return {
+        "eppKedaSaturation": {"scaledObject": so},
+        "decode": {"replicas": decode_replicas},
+    }
+
+
+def test_pools_are_rate_matched_per_phase():
+    """10 req/s, ISL 2000, OSL 200: 20000 in / 2000 out tok/s."""
+    pd = pd_ratio(
+        _pd_config(v_p=10000, v_d=400), [_stage("stage 0", 60, 20000, 2000)], []
+    )
+    stage = pd["stages"][0]
+    assert (stage["prefillReplicas"], stage["decodeReplicas"]) == (2, 5)
+    assert stage["decodePerPrefill"] == 2.5
+    assert pd["vDSource"] == "peakDecodeThroughput"
+
+
+def test_the_ratio_depends_on_token_shape_not_rate():
+    stages = [
+        _stage("stage 0", 60, 20000, 2000),
+        _stage("stage 1", 60, 60000, 6000, T0 + 60),
+    ]
+    pd = pd_ratio(_pd_config(v_p=10000, v_d=400), stages, [])
+    assert [s["decodePerPrefill"] for s in pd["stages"]] == [2.5, 2.5]
+    assert pd["peak"] == {"prefillReplicas": 6, "decodeReplicas": 15}
+
+
+def test_the_whole_run_is_token_weighted():
+    # 300 s prefill-heavy, 100 s decode-heavy: total tokens / total time.
+    stages = [
+        _stage("stage 0", 300, 40000, 400),
+        _stage("stage 1", 100, 4000, 4000, T0 + 300),
+    ]
+    whole = pd_ratio(_pd_config(v_p=10000, v_d=400), stages, [])["wholeRun"]
+    assert whole["inputTokenRate"] == (40000 * 300 + 4000 * 100) / 400
+    assert whole["outputTokenRate"] == (400 * 300 + 4000 * 100) / 400
+
+
+def test_without_peak_decode_throughput_the_observed_rate_is_a_lower_bound():
+    rows = [
+        {
+            "stage": "stage 0",
+            "realTarget": "Deployment/m-decode",
+            "provisioned": {"mean": 2.0},
+            "demand": {"peak": 1, "mean": 1.0},
+        }
+    ]
+    pd = pd_ratio(_pd_config(v_p=10000), [_stage("stage 0", 60, 20000, 1000)], rows)
+    assert pd["vD"] == 500.0  # 1000 out tok/s over 2 running decode replicas
+    assert pd["vDSource"] == "observed (lower bound)"
+    assert "! V_D was not set" in explain_pd_ratio(pd)
+
+
+def test_no_ratio_without_a_calibrated_prefill_throughput():
+    assert pd_ratio({}, [_stage("stage 0", 60, 20000, 2000)], []) is None
+
+
+def test_the_triggers_view_reports_each_role():
+    def row(target, peak):
+        return {
+            "stage": "stage 0",
+            "realTarget": target,
+            "demand": {"peak": peak, "mean": peak},
+        }
+
+    pd = pd_ratio(
+        _pd_config(v_p=10000, v_d=400),
+        [_stage("stage 0", 60, 20000, 2000)],
+        [row("Deployment/m-prefill", 3), row("Deployment/m-decode", 4)],
+    )
+    assert pd["triggers"] == [
+        {
+            "stage": "stage 0",
+            "prefillPeak": 3,
+            "decodePeak": 4,
+            "prefillMean": 3,
+            "decodeMean": 4,
+        }
+    ]
+
+
+def test_write_sizing_adds_the_ratio(tmp_path):
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    (stack / "30_keda-scaledobject.yaml").write_text(yaml.safe_dump(_so()))
+    (stack / "config.yaml").write_text(yaml.safe_dump(_pd_config(v_p=1000, v_d=100)))
+    results = _results(tmp_path)
+    report = next(results.glob("exp_1/*stage_1*"))
+    data = yaml.safe_load(report.read_text())
+    data["results"]["request_performance"]["aggregate"]["throughput"].update(
+        {"input_token_rate": {"mean": 3000.0}, "output_token_rate": {"mean": 600.0}}
+    )
+    report.write_text(yaml.safe_dump(data))
+    out = tmp_path / "out"
+    out.mkdir()
+    write_sizing(stack, results, "exp", out, _fetch({"running": [20]}))
+    text = (out / "autoscaling-sizing.txt").read_text()
+    assert "Ideal ratio for this traffic: 1 prefill : 2 decode" in text
+    assert json.loads((out / "autoscaling-sizing.json").read_text())["pdRatio"][
+        "peak"
+    ] == {
+        "prefillReplicas": 3,
+        "decodeReplicas": 6,
+    }
