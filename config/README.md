@@ -1614,6 +1614,43 @@ pod wait selects it.
 | `kubectl get hpa -n <ns>` | the usual KEDA HPA: targets, desired replicas, `SuccessfulRescale` events |
 | run results `metrics/processed/replica_status_timeseries.json` (with `monitoring.metricsScrapeEnabled: true`) | the shadow is recorded with role `<role>-dryrun`: `desired_replicas` is the decision over time, next to the real pool. Needs a harness image built with this change; on OpenShift the harness runs non-root and cannot replace its baked-in scripts unless `harness.runAsUser: 0` |
 | run results `cluster-state` capture (step 09a) | HPA describe/events and the shadow Deployment |
+| run results `<experiment>/autoscaling-sizing.txt` / `.json` | replicas needed for the traffic shape (below) |
+
+**Sizing a traffic shape.** After each run of an `eppKedaSaturation` stack, step 09a
+writes `autoscaling-sizing.txt` (plain language) and `autoscaling-sizing.json` next
+to the run's cluster-state files, and logs the headline. For every ScaledObject,
+it replays the ScaledObject's own trigger queries from Thanos over each traffic
+stage the harness reported (plus the whole run). It then compares three replica
+counts:
+
+| Count | Meaning |
+|---|---|
+| demand | the most replicas any trigger asks for at each moment, `ceil(value / threshold)`, clamped to min/max. Its **peak is the max replicas this traffic shape needs**: the static size that keeps every trigger at or under its threshold |
+| KEDA decision | what the HPA chose, paced by `behavior`. It is *short* of demand while scale-up lags, and *over* it while scale-down lags |
+| provisioned | the replicas the real Deployment had |
+
+The decision and the provisioned count are both compared with demand in
+replica-seconds (1 replica short for 60s is 60 replica-s). That tells you how
+over- or under-provisioned a static size, or the strategy itself, would be for this
+traffic. An example from a run of `examples/sim` with the default EPP+KEDA triggers:
+
+```text
+facebook-47c08956-opt-125m-decode-saturation -> Deployment/facebook-47c08956-opt-125m-decode [dry-run (decisions not actuated)]
+  Max replicas for this traffic shape: 3 (in stage 1: running-requests reached 34 against 16 per replica)
+  stage 1 (727s, 11.9 req/s): demand peak 3, mean 2.39
+    KEDA decision peak 3, mean 2.27 -> short 240 replica-s (28% of the time), over by 150 replica-s
+    provisioned   peak 1, mean 1.0 -> short 1020 replica-s (98% of the time)
+  stage 2 (424s, 1.0 req/s): demand peak 1, mean 1.0
+    KEDA decision peak 3, mean 2.72 -> over by 750 replica-s
+```
+
+Here a static pool would need 3 replicas for the busy stage. The strategy's 1 pod
+per 180s scale-up leaves it short while ramping, and its 1 pod per 300s scale-down
+holds 2 extra replicas well into the quiet stage. Demand is measured against the
+pool that was actually running. In a dry-run, or while under-provisioned,
+per-replica load and latency are higher than they would be at the demanded size,
+so treat demand as an upper bound. Sizing needs OpenShift's Thanos Querier and
+platform kube-state-metrics, the same as the rest of this path.
 
 **Limits.** The loop is open: the real pool does not grow, so its per-replica
 load does not fall the way it would after a real scale-up. Each decision means

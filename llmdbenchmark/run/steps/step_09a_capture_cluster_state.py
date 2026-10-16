@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
+from llmdbenchmark.run.autoscaling_sizing import STEP_SECONDS, write_sizing
 
 # Kubelet/API-server transient errors when the
 # pod-log symlink path is being rotated mid-call.
@@ -46,6 +47,24 @@ def _kube_logs_with_retry(cmd, *args, attempts: int = 3, backoff: float = 2.0):
         if i < attempts - 1:
             time.sleep(backoff)
     return last
+
+
+def _thanos_range(cmd, host: str, token: str, query: str, start: float, end: float):
+    """One series of a Thanos range query as [(ts, value)], or [] on any failure."""
+    url = (
+        f"https://{host}/api/v1/query_range?query={quote(query, safe='')}"
+        f"&start={start:.0f}&end={end:.0f}&step={STEP_SECONDS}"
+    )
+    # Token via stdin, as for the instant queries below.
+    result = cmd.execute(
+        f'curl -sS -k -H @- "{url}"',
+        check=False,
+        stdin=f"Authorization: Bearer {token}",
+    )
+    if not result.success or _prometheus_api_status(result.stdout)[0] != "success":
+        return []
+    series = json.loads(result.stdout)["data"]["result"]
+    return [(float(t), float(v)) for t, v in series[0]["values"]] if series else []
 
 
 def _prometheus_api_status(stdout: str) -> tuple[str, str]:
@@ -401,6 +420,25 @@ class CaptureClusterStateStep(Step):
                         encoding="utf-8",
                     )
                     warnings.append(f"thanos query '{label}' failed: {detail[:200]}")
+
+            # 8. Replica sizing for this run's traffic shape (KEDA paths only):
+            # demand vs. KEDA decision vs. provisioned, per traffic stage.
+            if epp_keda_enabled:
+                sizing = write_sizing(
+                    stack_path,
+                    context.run_results_dir(),
+                    exp_id,
+                    out_dir,
+                    lambda q, s, e: _thanos_range(cmd, thanos_host, token, q, s, e),
+                )
+                captured += sizing
+                if sizing:
+                    summary = (out_dir / "autoscaling-sizing.txt").read_text("utf-8")
+                    for line in summary.splitlines():
+                        # Headline only; the per-stage table stays in the file.
+                        text = line.strip()
+                        if line.endswith("]") or text.startswith(("Max", "!")):
+                            context.logger.log_info(f"sizing: {text}")
 
         # 9. Pod logs for controllers and serving pods. Iterate over every pod
         # in deploy_ns (and the WVA ns if it differs) and dump --tail=5000 per container.
