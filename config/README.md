@@ -1674,13 +1674,14 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 
 | Key | Default | Used by |
 |-----|---------|---------|
-| `images.vllm` | `ghcr.io/llm-d/llm-d-cuda:auto` | Modelservice decode/prefill pods, standalone fallback |
+| `images.vllm` | `docker.io/vllm/vllm-openai:auto` | Modelservice decode/prefill pods, standalone fallback |
 | `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod, eval-containers report sidecar and run summary pod |
 | `images.routerEndpointPicker` | `ghcr.io/llm-d/llm-d-router-endpoint-picker-dev:auto` | llm-d-router EPP |
 | `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar (proxy in front of vLLM) |
 | `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | Legacy UDS tokenizer. **No longer wired to `router.tokenizer`** -- the llm-d-router chart runs its own `vllm-render` sidecar, configured via `router.tokenizer.image`. Retained only for scenarios that reference it as an init container via `imageKey: udsTokenizer`. |
 | `images.python` | `python:3.10` | Utility containers |
 | `images.vllmOpenai` | `docker.io/vllm/vllm-openai:auto` | Not currently used by any template (reserved) |
+| `images.inferenceSim` | `ghcr.io/llm-d/llm-d-inference-sim:<pinned>` | Not used by templates directly; sim scenarios point `images.vllm` at it via `${images.inferenceSim.repository}` / `${images.inferenceSim.tag}` |
 
 **Per-component images** (override the shared defaults):
 

@@ -215,6 +215,22 @@ def test_unknown_crd_version_preserves_existence_only_compatibility() -> None:
     assert _crds_match_version(GATEWAY_CRDS, inventory, "v1.5.1")
 
 
+def test_istio_1_29_crds_are_not_treated_as_1_30_install() -> None:
+    # Istio 1.29 lacks trafficextensions and labels its CRDs base-1.29.x.
+    istio_crds = _module.ISTIO_CRDS
+    old = [n for n in istio_crds if n != "trafficextensions.extensions.istio.io"]
+
+    assert not _crds_match_version(
+        istio_crds, dict.fromkeys(old, "base-1.29.2"), "1.30.6"
+    )
+    assert not _crds_match_version(
+        istio_crds, dict.fromkeys(istio_crds, "base-1.29.2"), "1.30.6"
+    )
+    assert _crds_match_version(
+        istio_crds, dict.fromkeys(istio_crds, "base-1.30.6"), "1.30.6"
+    )
+
+
 def test_helm_chart_version_is_normalized() -> None:
     inventory = {"example.test": "agentgateway-crds-1.2.3"}
 

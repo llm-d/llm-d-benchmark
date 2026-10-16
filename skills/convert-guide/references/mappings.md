@@ -219,7 +219,7 @@ export LLMDBENCH_LLMD_IMAGE_TAG="v0.5.0"          # Tag (after :)
 **When to Include:**
 
 - **Always include** `LLMDBENCH_LLMD_IMAGE_TAG` if the guide specifies an explicit version tag (not `latest` or unspecified)
-- **Only include** registry/repo/name if they differ from defaults (`ghcr.io/llm-d/llm-d-cuda`)
+- **Only include** registry/repo/name if they differ from the default (`docker.io/vllm/vllm-openai`, set by `images.vllm` in `config/templates/values/defaults.yaml`)
 - If decode and prefill use different images, use stage-specific variables (see Stage-Specific Image Overrides below)
 
 **Stage-Specific Image Overrides:**

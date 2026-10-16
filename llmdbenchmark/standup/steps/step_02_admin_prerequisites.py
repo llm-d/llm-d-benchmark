@@ -24,6 +24,8 @@ GATEWAY_API_EXTENSION_CRDS = (
     "inferencepoolimports.inference.networking.x-k8s.io",
 )
 
+# CRDs shipped by the agentgateway-crds chart (chartVersions.agentgateway,
+# v1.6.0). They carry no version label, so only presence is checked.
 AGENTGATEWAY_CRDS = [
     "agentgatewaybackends.agentgateway.dev",
     "agentgatewayparameters.agentgateway.dev",
@@ -31,6 +33,8 @@ AGENTGATEWAY_CRDS = [
     "agentgatewaypolicies.agentgateway.dev",
 ]
 
+# CRDs shipped by the istio `base` chart (chartVersions.istioBase, 1.30.6).
+# trafficextensions.extensions.istio.io is new in 1.30.
 ISTIO_CRDS = [
     "authorizationpolicies.security.istio.io",
     "destinationrules.networking.istio.io",
@@ -39,13 +43,18 @@ ISTIO_CRDS = [
     "peerauthentications.security.istio.io",
     "proxyconfigs.networking.istio.io",
     "requestauthentications.security.istio.io",
+    "serviceentries.networking.istio.io",
     "sidecars.networking.istio.io",
     "telemetries.telemetry.istio.io",
+    "trafficextensions.extensions.istio.io",
     "virtualservices.networking.istio.io",
     "wasmplugins.extensions.istio.io",
+    "workloadentries.networking.istio.io",
     "workloadgroups.networking.istio.io",
 ]
 
+# CRDs shipped by the lws chart (chartVersions.lws, v1.0.0). They carry no
+# version label, so only presence is checked.
 LWS_CRDS = [
     "leaderworkersets.leaderworkerset.x-k8s.io",
     "disaggregatedsets.disaggregatedset.x-k8s.io",

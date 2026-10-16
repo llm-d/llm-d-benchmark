@@ -3,8 +3,8 @@
 #
 # CI/CD scenario for Google Kubernetes Engine clusters with H100 GPUs.
 # Uses the default model (facebook/opt-125m) for fast validation.
-# PR 868: GKE fix for v0.5.1 llm-d-cuda image -- LD_LIBRARY_PATH
-# set inline in custom commands instead of via extraEnvVars.
+# PR 868: GKE fix -- LD_LIBRARY_PATH for the host-mounted CUDA driver
+# libraries is set inline in custom commands instead of via extraEnvVars.
 
 scenario:
   - name: "gke-cicd"
@@ -68,8 +68,8 @@ scenario:
             enabled: false
 
       # Decode configuration with GKE-specific custom command
-      # LD_LIBRARY_PATH is set inline because the llm-d-cuda image
-      # needs the CUDA compat library path on GKE nodes.
+      # LD_LIBRARY_PATH is set inline because GKE mounts the NVIDIA driver
+      # libraries (libcuda.so.1) at a host path the vLLM image does not search.
       decode:
         enabled: true
         acceleratorType:
