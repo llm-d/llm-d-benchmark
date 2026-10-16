@@ -25,13 +25,30 @@ class VersionResolver:
 
     @staticmethod
     def _latest_version_tag(tags: list[str]) -> str | None:
-        """Select the greatest tag using natural version-aware ordering."""
+        """Select the greatest tag using natural version-aware ordering.
+
+        Release-shaped tags (``v1.2.3``, ``1.2.3``, ``v1.2.3-rc.1``) always
+        outrank anything else (``main``, ``verify-<sha>``, a bare git SHA), and
+        a final release outranks its own release candidates.
+        """
 
         def version_key(tag: str) -> tuple:
-            return tuple(
-                (1, int(part), len(part)) if part.isdigit() else (0, part.casefold())
-                for part in re.split(r"(\d+)", tag)
-                if part
+            release = re.fullmatch(
+                r"v?(\d+(?:\.\d+)*)(?:[-.]?rc[-.]?(\d+))?", tag, re.IGNORECASE
+            )
+            if release:
+                numbers = tuple(int(p) for p in release.group(1).split("."))
+                rc = release.group(2)
+                return (1, numbers, (0, int(rc)) if rc else (1, 0))
+            return (
+                0,
+                tuple(
+                    (1, int(part), len(part))
+                    if part.isdigit()
+                    else (0, part.casefold())
+                    for part in re.split(r"(\d+)", tag)
+                    if part
+                ),
             )
 
         return max(tags, key=version_key) if tags else None

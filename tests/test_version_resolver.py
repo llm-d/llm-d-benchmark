@@ -169,6 +169,29 @@ class TestRegistryTagOrdering:
 
         assert resolver._resolve_via_registry("quay.io/vllm/vllm-openai") == "v0.20.1"
 
+    @pytest.mark.parametrize(
+        ("tags", "expected"),
+        [
+            # Non-release tags published next to the releases (ghcr.io, 2026-10).
+            (["v0.8.0", "v0.9.0", "verify-a3c779", "main"], "v0.9.0"),
+            (["v0.9.0", "vllm-v0.19.1"], "v0.9.0"),
+            (
+                [
+                    "v1.0.0",
+                    "7737841b01843d6a697c1531c11713e64d5e23ee",  # pragma: allowlist secret
+                ],
+                "v1.0.0",
+            ),
+            # An older unprefixed release does not outrank a newer v-release.
+            (["0.3.0", "v0.9.0"], "v0.9.0"),
+            # A final release outranks its own release candidate.
+            (["v0.9.0-rc1", "v0.9.0"], "v0.9.0"),
+            (["v0.9.0-rc1", "v0.9.0-rc2", "v0.8.5"], "v0.9.0-rc2"),
+        ],
+    )
+    def test_release_tags_outrank_other_tags(self, tags: list, expected: str) -> None:
+        assert VersionResolver._latest_version_tag(tags) == expected
+
     def test_a_token_is_reused_across_pages(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
