@@ -273,6 +273,18 @@ def test_scalar_yaml_document_yields_diagnostic_not_exception(tmp_path):
     assert any(d.code == "unreadable_report" for d in result.slo_scoring_diagnostics)
 
 
+def test_truncated_yaml_report_yields_diagnostic_not_exception(tmp_path):
+    # A report cut off mid-write, next to a complete one: the run still scores the complete one.
+    complete = tmp_path / "complete.yaml"
+    complete.write_text((BR_DIR / "br_v0_2_example.yaml").read_text())
+    truncated = tmp_path / "truncated.yaml"
+    truncated.write_text('version: "0.2"\nrun:\n  eid: "abc\n')
+    gate = SloGate(metric=SloMetric.TIME_TO_FIRST_TOKEN, threshold=10.0, units="s")
+    result = score_slo_goodput([complete, truncated], [gate])
+    assert result.reports[1].verdict == "indeterminate"
+    assert any(d.code == "unreadable_report" for d in result.slo_scoring_diagnostics)
+
+
 def test_empty_gates_is_indeterminate_not_pass():
     """The out-of-the-box, no-gates-supplied state must never stamp a
     report 'pass' -- that would publish an SLO Goodput number with zero

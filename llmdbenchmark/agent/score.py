@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+import yaml
 from pydantic import ValidationError
 
 from llmdbenchmark.agent.facts import (
@@ -159,9 +160,10 @@ def _score_report(
 
     try:
         report = import_benchmark_report(report_str)
-    except (OSError, AttributeError) as exc:
+    except (OSError, AttributeError, yaml.YAMLError) as exc:
         # A missing/unreadable path (FileNotFoundError, IsADirectoryError,
-        # PermissionError -- all OSError) or a YAML document whose top
+        # PermissionError -- all OSError), a file cut off mid-token
+        # (yaml.YAMLError), or a YAML document whose top
         # level isn't a mapping (AttributeError from core.py's dict-style
         # access): routine on a stale or mid-write artifact, never a
         # reason to kill the whole scoring run.
