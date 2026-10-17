@@ -128,6 +128,12 @@ def apply_patch() -> None:
             self._session_context = await self.user_session.get_context(
                 self.target_round
             )
+            # Think time before a follow-up turn. inference-perf starts the
+            # request clock after to_request_body returns and stops it after
+            # process_response, so waiting here keeps it out of the latency.
+            delay = _inter_turn_delay_seconds()
+            if delay and self.target_round > 0:
+                await asyncio.sleep(delay)
             messages = []
             if self.user_session.system_prompt:
                 messages.append(
@@ -161,9 +167,6 @@ def apply_patch() -> None:
                 self.user_session.history.append(
                     ChatMessage(role="assistant", content=assistant_content)
                 )
-            delay = _inter_turn_delay_seconds()
-            if delay:
-                await asyncio.sleep(delay)
             self.user_session.update_context(self._session_context)
             return inference_info
 

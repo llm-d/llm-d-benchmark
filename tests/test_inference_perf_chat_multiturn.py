@@ -111,3 +111,122 @@ def test_apply_patch_updates_shared_prefix_load_lazy_data_when_inference_perf_is
         SharedPrefixDataGenerator.load_lazy_data.__name__
         == "load_lazy_data_with_chat_sessions"
     )
+
+
+def _install_inference_perf_stubs(monkeypatch: pytest.MonkeyPatch):
+    """Just enough of inference_perf for apply_patch() to build a chat request."""
+    import sys
+    import types
+
+    from pydantic import BaseModel
+
+    class ChatMessage(BaseModel):
+        role: str
+        content: str
+
+    class ChatCompletionAPIData(BaseModel):
+        messages: list
+        max_tokens: int = 0
+
+        async def to_request_body(self, *_args):
+            return {}
+
+        async def process_response(self, *_args):
+            return InferenceInfo()
+
+    class InferenceInfo:
+        def __init__(self, request_metrics=None):
+            self.extra_info = {"raw_response": ""}
+
+    class LocalUserSession:
+        _instances: dict = {}
+
+        def __init__(self):
+            self.system_prompt = ""
+            self.history = []
+            self._current_round = 0
+
+        @classmethod
+        def get_instance(cls, session_id):
+            return cls._instances.setdefault(session_id, cls())
+
+        async def get_context(self, _round):
+            self._current_round += 1
+            return ""
+
+        def update_context(self, _context):
+            pass
+
+    class SharedPrefixDataGenerator:
+        def load_lazy_data(self, data):
+            raise AssertionError("multi-turn chat should use the patched loader")
+
+    def module(name, **attrs):
+        mod = types.ModuleType(name)
+        mod.__dict__.update(attrs)
+        monkeypatch.setitem(sys.modules, name, mod)
+        return mod
+
+    module("inference_perf")
+    module(
+        "inference_perf.apis",
+        ChatCompletionAPIData=ChatCompletionAPIData,
+        ChatMessage=ChatMessage,
+        InferenceInfo=InferenceInfo,
+    )
+    module("inference_perf.apis.user_session", LocalUserSession=LocalUserSession)
+    module("inference_perf.payloads", RequestMetrics=object, Text=lambda **_: None)
+    module("inference_perf.datagen")
+    module("inference_perf.datagen.synthetic")
+    module(
+        "inference_perf.datagen.synthetic.shared_prefix_datagen",
+        SharedPrefixDataGenerator=SharedPrefixDataGenerator,
+    )
+    return SharedPrefixDataGenerator
+
+
+def test_inter_turn_delay_stays_out_of_measured_request_latency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    delay = 0.3
+    generator_cls = _install_inference_perf_stubs(monkeypatch)
+    monkeypatch.setenv("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS", str(delay))
+    module = _load_module()
+    module.apply_patch()
+
+    generator = SimpleNamespace(
+        enable_multi_turn_chat=True,
+        api_config=SimpleNamespace(type=SimpleNamespace(name="Chat")),
+        prefix_multimodal=False,
+        payload_multimodal=False,
+        prompts=["question"],
+        user_sessions=[SimpleNamespace(user_session_id="session-0")],
+        flat_output_lens=[8],
+    )
+
+    async def turn(index: int) -> tuple[float, float]:
+        data = generator_cls.load_lazy_data(
+            generator, SimpleNamespace(data_index=index)
+        )
+        before = time.perf_counter()
+        await data.to_request_body("model", 8, True, True)
+        # inference-perf starts the request clock here and stops it after
+        # process_response, so that span is the reported request latency.
+        start = time.perf_counter()
+        await data.process_response(None, None, None)
+        return start - before, time.perf_counter() - start
+
+    async def conversation():
+        return [await turn(index) for index in range(2)]
+
+    (first_wait, first_latency), (second_wait, second_latency) = asyncio.run(
+        conversation()
+    )
+
+    assert first_latency < delay and second_latency < delay
+    assert first_wait < delay  # the opening turn has no previous turn to wait on
+    assert second_wait >= delay  # a follow-up turn still waits out the think time
