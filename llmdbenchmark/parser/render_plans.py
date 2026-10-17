@@ -2106,6 +2106,20 @@ class RenderPlans:
                 )
                 continue
 
+            # A `target` makes the entry a JSON6902 patch: one list of ops.
+            if entry.get("target"):
+                if not isinstance(entry["target"], dict):
+                    errors.append(
+                        f"[{stack_name}] kustomize.patches[{index}].target "
+                        "must be a mapping"
+                    )
+                if len(documents) != 1 or not isinstance(documents[0], list):
+                    errors.append(
+                        f"[{stack_name}] kustomize.patches[{index}].patch with a "
+                        "target must be a single list of JSON6902 operations"
+                    )
+                continue
+
             for doc_index, document in enumerate(documents):
                 if document is None:
                     continue

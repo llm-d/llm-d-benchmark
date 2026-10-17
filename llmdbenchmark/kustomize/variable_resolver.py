@@ -105,6 +105,13 @@ class GuideVariableResolver:
                 "GUIDE_NAME": guide_name,
                 "NAMESPACE": namespace,
                 "GAIE_VERSION": gaie_version,
+                # guides/env.sh derives GAIE_URL from GAIE_VERSION; READMEs
+                # apply the inference extension CRDs from .../${GAIE_URL}/...
+                "GAIE_URL": (
+                    "releases/latest/download"
+                    if gaie_version in ("", "latest")
+                    else f"releases/download/{gaie_version}"
+                ),
                 "ROUTER_CHART_VERSION": router_chart_version,
                 "ROUTER_STANDALONE_CHART": router_standalone_chart,
                 "ROUTER_GATEWAY_CHART": router_gateway_chart,
@@ -117,6 +124,11 @@ class GuideVariableResolver:
         # REPO_ROOT below.
         if variable_overrides:
             self._variables.update(variable_overrides)
+
+    @property
+    def variables(self) -> dict[str, str]:
+        """The resolved guide variables (README exports, forced values, overrides)."""
+        return dict(self._variables)
 
     @property
     def accelerator_backend(self) -> str:

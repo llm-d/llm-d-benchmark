@@ -29,6 +29,8 @@
 #     --harness inference-perf \
 #     --experiments experiments/token-aware-autoscaling.yaml \
 #     --monitoring
+# (or guides/keda-epp-token-aware-pd-disaggregation-disaggset, the same P/D
+# topology as a DisaggregatedSet scaled through its role scalers)
 #
 # `experiment` (standup/run/teardown per setup treatment) also works, but it
 # serves with the scenario's placeholder peakPrefillThroughput, because
