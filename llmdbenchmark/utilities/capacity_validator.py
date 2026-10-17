@@ -251,15 +251,18 @@ def validate_vllm_params(
                     )
                     per_req_kv = kv_details.per_request_kv_cache_gb
 
-                    if avail_kv < 0:
+                    # The planner clamps allocatable KV memory at 0, so 0 (not a
+                    # negative number) is how "the weights do not fit" comes back.
+                    if avail_kv <= 0:
                         msg(
                             "DEPLOYMENT WILL FAIL: Insufficient GPU memory "
                             "to load model."
                         )
                         msg(
-                            f"Model requires {abs(avail_kv):.2f} GB MORE "
-                            "memory than available after loading weights "
-                            "and activation memory."
+                            f"Model weights ({model_mem * params.dp:.2f} GB "
+                            f"for dp={params.dp}) plus activation "
+                            "memory leave no KV cache in the "
+                            f"{avail_mem * per_replica_gpus:.2f} GB available."
                         )
                         _log_config_suggestions(msg, params)
 
