@@ -429,3 +429,73 @@ def test_stage_windows_read_p90_tpot(tmp_path):
     }
     report.write_text(yaml.safe_dump(data))
     assert stage_windows(results, "exp")[1].tpot_p90 == 0.042
+
+
+def _treatment(results: Path, exp_id: str, start: str, end: str, rate: float):
+    run = results / f"{exp_id}_1"
+    run.mkdir(parents=True)
+    _report(run / "benchmark_report_v0.2,_stage_0_x.yaml", 0, start, end, rate)
+    (run / "run_metadata.yaml").write_text(
+        f'harness_start: "{start}"\nharness_stop: "{end}"\n'
+    )
+
+
+def test_every_treatment_of_a_run_is_sized(tmp_path):
+    """Each treatment has its own experiment id; all of them make up the run."""
+    results = tmp_path / "results"
+    _treatment(results, "ip-a-1", "2026-10-15T22:00:00Z", "2026-10-15T22:05:00Z", 1.0)
+    _treatment(results, "ip-b-2", "2026-10-15T22:10:00Z", "2026-10-15T22:15:00Z", 9.0)
+
+    stages = stage_windows(results, ["ip-a-1", "ip-b-2"])
+
+    assert [s.name for s in stages] == [
+        "ip-a-1 stage 0",
+        "ip-b-2 stage 0",
+        "whole run",
+    ]
+    assert stages[1].request_rate == 9.0
+    assert stages[-1].end - stages[-1].start == 900
+
+
+def test_step_09a_sizes_every_treatment_not_just_the_first(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from llmdbenchmark.run.steps import step_09a_capture_cluster_state as step
+
+    seen = []
+    monkeypatch.setattr(
+        step,
+        "write_sizing",
+        lambda stack, results, ids, out, fetch: seen.append(ids) or [],
+    )
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    (stack / "config.yaml").write_text(
+        yaml.safe_dump({"eppKedaSaturation": {"enabled": True}})
+    )
+
+    def kube(*args, check=False):
+        if args[:2] == ("get", "route"):
+            return _Result(True, "thanos.example")
+        if args[:2] == ("whoami", "-t"):
+            return _Result(True, "token")
+        return SimpleNamespace(success=False, stdout="", stderr="")
+
+    cmd = SimpleNamespace(
+        kube=kube,
+        execute=lambda *a, **k: _Result(True, '{"status": "success"}'),
+    )
+    ids = ["ip-a-1", "ip-b-2", "ip-c-3"]
+    context = SimpleNamespace(
+        namespace="bench",
+        experiment_ids=ids,
+        run_results_dir=lambda: tmp_path / "results",
+        require_cmd=lambda: cmd,
+        logger=SimpleNamespace(
+            log_info=lambda *a, **k: None, log_warning=lambda *a, **k: None
+        ),
+    )
+
+    step.CaptureClusterStateStep().execute(context, stack)
+
+    assert seen == [ids]

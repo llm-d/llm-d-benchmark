@@ -66,18 +66,28 @@ def _ts(value: str) -> float:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
 
 
-def stage_windows(results_dir: Path, exp_id: str) -> list[Stage]:
-    """Traffic stages from the harness's v0.2 benchmark reports, plus the whole run."""
+def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
+    """Traffic stages from the harness's v0.2 benchmark reports, plus the whole run.
+
+    A multi-treatment run passes every treatment's experiment id: each stage is
+    then named after its treatment, and the whole run spans all of them.
+    """
+    ids = [exp_ids] if isinstance(exp_ids, str) else list(exp_ids)
     stages: dict[str, Stage] = {}
-    whole: Stage | None = None
-    for result_dir in sorted(results_dir.glob(f"{exp_id}*")):
+    spans: list[tuple[float, float]] = []
+    result_dirs = [
+        (f"{exp_id} " if len(ids) > 1 else "", result_dir)
+        for exp_id in ids
+        for result_dir in sorted(results_dir.glob(f"{exp_id}*"))
+    ]
+    for label, result_dir in result_dirs:
         for report in sorted(result_dir.glob("benchmark_report_v0.2*stage_*.yaml")):
             match = re.search(r"stage_(\d+)", report.name)
             data = yaml.safe_load(report.read_text(encoding="utf-8")) or {}
             window = (data.get("run") or {}).get("time") or {}
             if not (match and window.get("start") and window.get("end")):
                 continue
-            name = f"stage {match.group(1)}"
+            name = f"{label}stage {match.group(1)}"
             aggregate = (
                 (data.get("results") or {}).get("request_performance") or {}
             ).get("aggregate", {})
@@ -102,14 +112,16 @@ def stage_windows(results_dir: Path, exp_id: str) -> list[Stage]:
                 ),
             )
         metadata = result_dir / "run_metadata.yaml"
-        if whole is None and metadata.exists():
+        if metadata.exists():
             data = yaml.safe_load(metadata.read_text(encoding="utf-8")) or {}
             if data.get("harness_start") and data.get("harness_stop"):
-                whole = Stage(
-                    "whole run", _ts(data["harness_start"]), _ts(data["harness_stop"])
-                )
+                spans.append((_ts(data["harness_start"]), _ts(data["harness_stop"])))
     ordered = sorted(stages.values(), key=lambda s: s.start)
-    return ordered + ([whole] if whole else [])
+    if spans:
+        ordered.append(
+            Stage("whole run", min(a for a, _ in spans), max(b for _, b in spans))
+        )
+    return ordered
 
 
 def scaled_objects(stack_path: Path) -> list[dict]:
@@ -479,11 +491,15 @@ def peak_decode_throughput(
 
 
 def write_sizing(
-    stack_path: Path, results_dir: Path, exp_id: str, out_dir: Path, fetch: Fetch
+    stack_path: Path,
+    results_dir: Path,
+    exp_ids: str | list[str],
+    out_dir: Path,
+    fetch: Fetch,
 ) -> list[str]:
     """Write autoscaling-sizing.{json,txt}; return the file names written."""
     sos = scaled_objects(stack_path)
-    stages = stage_windows(results_dir, exp_id)
+    stages = stage_windows(results_dir, exp_ids)
     if not (sos and stages):
         return []
     rows = [size_stage(so, stage, fetch) for so in sos for stage in stages]

@@ -427,7 +427,7 @@ class CaptureClusterStateStep(Step):
                 sizing = write_sizing(
                     stack_path,
                     context.run_results_dir(),
-                    exp_id,
+                    exp_ids or exp_id,  # every treatment of the run, not the first
                     out_dir,
                     lambda q, s, e: _thanos_range(cmd, thanos_host, token, q, s, e),
                 )
