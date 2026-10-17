@@ -23,6 +23,8 @@ how to run it, and the integration details that are easy to get wrong here.
 | [`config/specification/guides/keda-epp-token-aware.yaml.j2`](../config/specification/guides/keda-epp-token-aware.yaml.j2) | spec pointer (P+D co-located) |
 | [`config/scenarios/guides/keda-epp-token-aware-pd-disaggregation.yaml`](../config/scenarios/guides/keda-epp-token-aware-pd-disaggregation.yaml) | scenario (P/D-disaggregated): same triggers, split across two `ScaledObject`s |
 | [`config/specification/guides/keda-epp-token-aware-pd-disaggregation.yaml.j2`](../config/specification/guides/keda-epp-token-aware-pd-disaggregation.yaml.j2) | spec pointer (P/D-disaggregated) |
+| [`config/scenarios/guides/keda-epp-token-aware-pd-disaggregation-disaggset.yaml`](../config/scenarios/guides/keda-epp-token-aware-pd-disaggregation-disaggset.yaml) | scenario (P/D-disaggregated on a `DisaggregatedSet`): same triggers, each `ScaledObject` aimed at a `DisaggregatedSetRoleScaler` |
+| [`config/specification/guides/keda-epp-token-aware-pd-disaggregation-disaggset.yaml.j2`](../config/specification/guides/keda-epp-token-aware-pd-disaggregation-disaggset.yaml.j2) | spec pointer (P/D-disaggregated, `DisaggregatedSet`) |
 | `workload/profiles/inference-perf/random_{prefill_heavy,symmetrical,decode_heavy}.yaml.in` | the three token shapes (general-purpose, shared by both scenarios) |
 | [`experiments/token-aware-autoscaling.yaml`](../experiments/token-aware-autoscaling.yaml) | DoE sweeping the three shapes (shared by both scenarios) |
 
@@ -100,6 +102,61 @@ matched by `grep decode` and curls their port `8200` — it never inspects prefi
 separate role here and listen on port `8000`. A busy prefill pod would inflate the measured `V_P`
 without the idle guard catching it. Manually confirm prefill pods are idle (no in-flight requests, no
 queued KV) before trusting a calibration run against this scenario.
+
+### P/D-disaggregated variant on a DisaggregatedSet
+
+On NVIDIA GPUs the upstream [pd-disaggregation](https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation)
+guide deploys prefill and decode as the two roles of one
+[`DisaggregatedSet`](https://lws.sigs.k8s.io/docs/concepts/disaggregatedset/), and its
+token-aware overlay scales each role through a `DisaggregatedSetRoleScaler`. The
+`-disaggset` scenario runs that topology:
+
+```bash
+llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation-disaggset \
+  standup -p <namespace> --full-infra
+llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation-disaggset run \
+  --harness inference-perf --workload random_prefill_heavy.yaml \
+  --monitoring
+```
+
+It deploys the guide through `kustomize` (`--full-infra` so standup also creates the model PVC and
+downloads the model) and patches it to match the Deployment variant: same model, TP layout, vLLM
+flags and image. The ScaledObjects, triggers, thresholds and HPA behavior are identical; only the
+scale target moves:
+
+| | Deployment variant | DisaggregatedSet variant |
+|---|---|---|
+| model servers | `<model>-prefill`, `<model>-decode` Deployments | `pd-disagg-vllm` DisaggregatedSet, roles `prefill` and `decode` |
+| `scaleTargetRef` | `apps/v1` `Deployment` | `disaggregatedset.x-k8s.io/v1` `DisaggregatedSetRoleScaler` `pd-disagg-vllm-<role>` |
+| who sets replicas | the HPA, on the Deployment | the HPA, on the scaler; the DisaggregatedSet controller drives the role's LeaderWorkerSet |
+| a rollout | two independent Deployment rollouts | one rollout that moves both roles together |
+
+Three things make this work:
+
+- **`scaling.mode: External` on both roles**, set by a kustomize patch. The DisaggregatedSet
+  controller then creates one `DisaggregatedSetRoleScaler` per role, named `<disaggregatedset>-<role>`,
+  with a `/scale` subresource. The name never changes. The LeaderWorkerSets underneath are renamed
+  on every revision, so a ScaledObject aimed at one would be orphaned by the first rollout.
+- **`scaleTargetRef.kind` on a `scaledObject.targets` entry.** `apiVersion` defaults to
+  `disaggregatedset.x-k8s.io/v1` for `DisaggregatedSetRoleScaler` (override with
+  `scaleTargetRef.apiVersion`).
+- **JSON6902 patches.** A `kustomize.patches` entry with a `target` is written as a JSON6902 patch.
+  A DisaggregatedSet has no strategic-merge schema, so a strategic patch would replace its `roles`
+  list wholesale; JSON6902 ops address `roles/0` (prefill) and `roles/1` (decode) by index.
+
+The kustomize deploy step applies the EPP+KEDA resources (Prometheus auth Secret,
+`TriggerAuthentication`, ScaledObjects) once the guide's pods are Ready. The modelservice path does
+this in steps 03 and 08, which a kustomize-only standup skips. The guide's own router values provide
+the EPP `ServiceMonitor` (`MONITORING_VALUES`) and `kustomize.monitoring: true` applies its decode
+`PodMonitor`, which the decode trigger needs.
+
+Not covered yet:
+
+- `make calibrate-peak-prefill` looks for Deployments with a `vllm` container, so it does not find the
+  DisaggregatedSet's pods. Use the scenario's placeholder, or run the upstream `calibrate.sh` directly.
+- The guide's router keeps its own `peakPrefillThroughput` on the `prefix-cache-affinity-filter`
+  (a routing gate only). The ScaledObject divisor, which is what scaling reads, is the scenario value.
+- External scaling requires `spec.slices: 1` (KEP-849 alpha), which the guide already sets.
 
 ### Why calibration is a separate command
 

@@ -185,3 +185,24 @@ class TestInfraProviderSubpathHandling:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize(
+    "gaie_version, url",
+    [
+        ("v1.6.2", "releases/download/v1.6.2"),
+        ("latest", "releases/latest/download"),
+        ("", "releases/latest/download"),
+    ],
+)
+def test_gaie_url_is_derived_from_gaie_version(gaie_version, url):
+    # guides/env.sh derives GAIE_URL; without it the CRD URL resolves to
+    # `gateway-api-inference-extension//v1-manifests.yaml` (a 404).
+    resolver = GuideVariableResolver(
+        guide_name="pd-disaggregation",
+        namespace="llm-d-ns",
+        gaie_version=gaie_version,
+        repo_path=_REPO_PATH,
+    )
+    cmd = "kubectl apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/${GAIE_URL}/v1-manifests.yaml"
+    assert resolver.resolve(cmd).endswith(f"/{url}/v1-manifests.yaml")

@@ -69,6 +69,11 @@ class UninstallHelmStep(Step):
             return False
         if self._fma_guide_name(context):
             return False
+        # Likewise for EPP+KEDA on a kustomize-deployed guide: its ScaledObjects,
+        # TriggerAuthentication and Prometheus RBAC are not part of the guide,
+        # so the kustomize teardown leaves them behind.
+        if stacks_enabling_epp_keda_saturation(context.rendered_stacks or []):
+            return False
         return not self._any_stack_has_wva(context)
 
     @staticmethod
