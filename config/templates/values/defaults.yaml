@@ -119,7 +119,7 @@ _anchors:
   llm-d-router-endpoint-picker_version: &llm-d-router-endpoint-picker_version v1.0.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v1.0.0
   # Just use vllm-openai image for tokenizer
-  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.31.0
+  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.32.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v1.0.0
   llm-d-benchmark_version:           &llm-d-benchmark_version           v1.0.0
   llm-d-prism_version:               &llm-d-prism_version               v1.0.0
