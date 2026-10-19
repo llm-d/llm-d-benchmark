@@ -64,9 +64,9 @@ class BaseSmoketest:
     @staticmethod
     def _is_xpu_ci_wide_ep(plan_config: dict) -> bool:
         """Return whether the plan uses the aggregated XPU CI overlay."""
-        overrides = _nested_get(
-            plan_config, "kustomize", "guideVariableOverrides"
-        ) or {}
+        overrides = (
+            _nested_get(plan_config, "kustomize", "guideVariableOverrides") or {}
+        )
         return (
             _nested_get(plan_config, "kustomize", "guideName") == "wide-ep"
             and overrides.get("INFRA_PROVIDER") == "xpu-ci"
@@ -77,9 +77,7 @@ class BaseSmoketest:
         """Return the serving port used for direct pod-IP probes."""
         if cls._is_xpu_ci_wide_ep(plan_config):
             return "8200"
-        return str(
-            _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
-        )
+        return _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
 
     @staticmethod
     def _gateway_path_prefix_for_stack(
@@ -232,8 +230,7 @@ class BaseSmoketest:
         # 1. Check pods running for each configured role
         if is_kustomize:
             if guide_name == "pd-disaggregation" or (
-                guide_name == "wide-ep"
-                and not self._is_xpu_ci_wide_ep(plan_config)
+                guide_name == "wide-ep" and not self._is_xpu_ci_wide_ep(plan_config)
             ):
                 roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
             elif is_fma_guide(guide_name):
