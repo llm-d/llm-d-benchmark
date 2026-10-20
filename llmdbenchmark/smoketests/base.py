@@ -77,7 +77,7 @@ class BaseSmoketest:
         """Return the serving port used for direct pod-IP probes."""
         if cls._is_xpu_ci_wide_ep(plan_config):
             return "8200"
-        return _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
+        return str(_nested_get(plan_config, "vllmCommon", "inferencePort") or "8000")
 
     @staticmethod
     def _gateway_path_prefix_for_stack(
