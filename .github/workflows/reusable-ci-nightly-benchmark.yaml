@@ -29,7 +29,7 @@ on:
         type: 'string'
         default: 'auto'
       accelerator_type:
-        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, tpu/v6, tpu/v7) (ONLY VALID FOR "kustomize" standup method)'
+        description: 'Type of accelerator (gpu, cpu, sim, amd, xpu, tpu/v5p, tpu/v6, tpu/v7) (ONLY VALID FOR "kustomize" standup method)'
         required: false
         type: 'string'
         default: 'gpu'
@@ -186,6 +186,11 @@ on:
         required: false
         type: 'string'
         default: ''
+      tpu_provisioning:
+        description: 'How the TPU placeholder acquires capacity ("flex-start" (default), "spot", "any")'
+        required: false
+        type: 'string'
+        default: 'flex-start'
       data_access_timeout:
         description: 'Timeout in seconds for data access and harness run execution'
         required: false
@@ -409,6 +414,7 @@ jobs:
       TPU_TOPOLOGY: ${{ inputs.tpu_topology || '2x4' }}
       TPU_CHIPS: ${{ inputs.tpu_chips || '0' }}
       TPU_NODEPOOL: ${{ inputs.tpu_nodepool || '' }}
+      TPU_PROVISIONING: ${{ inputs.tpu_provisioning || 'flex-start' }}
 
     steps:
       - name: Checkout Code
@@ -611,9 +617,11 @@ jobs:
         run: |
           kubectl create namespace "$LLMDBENCH_CICD_NS" || echo "Namespace already exists"
 
-          # Map accelerator_type (tpu/v6, tpu-v6, tpu/v7, tpu-v7) to GKE accelerator resource name
+          # Map accelerator_type (tpu/v5p, tpu/v6, tpu/v7 or tpu-vX) to GKE accelerator resource name
           if [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu/v6" || "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v6" ]]; then
             ACCELERATOR="tpu-v6e-slice"
+          elif [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu/v5p" || "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v5p" ]]; then
+            ACCELERATOR="tpu-v5p-slice"
           elif [[ "$LLMDBENCH_CICD_ACCELERATOR" == "tpu/v7" || "$LLMDBENCH_CICD_ACCELERATOR" == "tpu-v7" ]]; then
             ACCELERATOR="tpu7x"
           else
@@ -625,8 +633,21 @@ jobs:
           CHIPS_TO_REQUEST="$TPU_CHIPS"
 
           CHIPS_PER_VM=8
-          if [[ "$ACCELERATOR" == "tpu7x" ]]; then
+          if [[ "$ACCELERATOR" == "tpu7x" || "$ACCELERATOR" == "tpu-v5p-slice" ]]; then
             CHIPS_PER_VM=4
+          fi
+
+          # Capacity type the placeholder pins to. Flex-start (DWS) is the default; "spot"
+          # targets Spot node pools; "any" lets the scheduler pick any matching pool.
+          case "$TPU_PROVISIONING" in
+            flex-start) PROVISIONING_SELECTOR='cloud.google.com/gke-flex-start: "true"' ;;
+            spot)       PROVISIONING_SELECTOR='cloud.google.com/gke-spot: "true"' ;;
+            any)        PROVISIONING_SELECTOR='' ;;
+            *) echo "::error::Unsupported tpu_provisioning: $TPU_PROVISIONING"; exit 1 ;;
+          esac
+          NODEPOOL_SELECTOR=''
+          if [ -n "$TPU_NODEPOOL" ]; then
+            NODEPOOL_SELECTOR="cloud.google.com/gke-nodepool: $TPU_NODEPOOL"
           fi
 
           VMS=$(( CHIPS_TO_REQUEST / CHIPS_PER_VM ))
@@ -640,6 +661,8 @@ jobs:
           echo "  TOPOLOGY: $TOPOLOGY"
           echo "  CHIPS_PER_VM: $CHIPS_PER_VM"
           echo "  VMS: $VMS"
+          echo "  PROVISIONING: $TPU_PROVISIONING"
+          echo "  NODEPOOL: ${TPU_NODEPOOL:-<any>}"
 
           cat <<EOF | kubectl apply -n "$LLMDBENCH_CICD_NS" -f -
           apiVersion: batch/v1
@@ -656,7 +679,8 @@ jobs:
                 # on scarce TPU capacity (llm-d/llm-d#1677).
                 priorityClassName: $LLMDBENCH_CICD_PRIORITY_CLASS
                 nodeSelector:
-                  cloud.google.com/gke-flex-start: "true"
+                  ${PROVISIONING_SELECTOR}
+                  ${NODEPOOL_SELECTOR}
                   cloud.google.com/gke-tpu-accelerator: $ACCELERATOR
                   cloud.google.com/gke-tpu-topology: "$TOPOLOGY"
                 containers:
@@ -671,11 +695,10 @@ jobs:
                 restartPolicy: OnFailure
           EOF
 
-          kubectl wait pod \
-            --for=condition=Ready \
-            -l job-name=tpu-request-job \
+          kubectl wait job/tpu-request-job \
+            --for=jsonpath='{.status.ready}'="$VMS" \
             -n "$LLMDBENCH_CICD_NS" \
-            --timeout=$LLMDBENCH_CICD_JOB_TIMEOUT
+            --timeout="$LLMDBENCH_CICD_JOB_TIMEOUT"
           # Export topology and accelerator so subsequent steps (like scenario overrides) can read them
           echo "TPU_ACCELERATOR=$ACCELERATOR" >> $GITHUB_ENV
           echo "TPU_TOPOLOGY=$TOPOLOGY" >> $GITHUB_ENV
@@ -970,9 +993,9 @@ jobs:
           echo "### llm-d source SHA: $(git -C "$LLMDBENCH_CICD_REPO_PATH" rev-parse HEAD)"
           echo "### Rendered images:"
           kubectl kustomize "$LLMDBENCH_CICD_KUSTOMIZE_PATH" | yq -r '.. | select(has("image")) | .image' | sort -u
-          detected_model=$(kubectl kustomize "$LLMDBENCH_CICD_KUSTOMIZE_PATH" | yq .spec.template.spec.containers[0].args | sed 's^--model-path=^^g' | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
+          detected_model=$(kubectl kustomize "$LLMDBENCH_CICD_KUSTOMIZE_PATH" | yq .spec.template.spec.containers[0].args | sed 's^--model-path=^^g' | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec (vllm|sglang)|'|null|#|\"|find|START_RANK|^- [0-9]+$" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
           if [[ -z $detected_model ]]; then
-            detected_model=$(kubectl kustomize "$LLMDBENCH_CICD_KUSTOMIZE_PATH" | yq .spec.leaderWorkerTemplate.workerTemplate.spec.containers[0].args | sed 's^--model-path=^^g' | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec vllm|'|null|#|\"|find|START_RANK" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
+            detected_model=$(kubectl kustomize "$LLMDBENCH_CICD_KUSTOMIZE_PATH" | yq .spec.leaderWorkerTemplate.workerTemplate.spec.containers[0].args | sed 's^--model-path=^^g' | grep -Ev "\- \--|\- '|\---|\- \||    \--|.*exec (vllm|sglang)|'|null|#|\"|find|START_RANK|^- [0-9]+$" | sed -e 's^ ^^g' -e 's|^-||g' -e 's^\\^^g' -e '/^$/d' | uniq || true)
           fi
           if [[ -z $detected_model ]]; then
             echo "### ERROR: unable to detect model"
@@ -983,7 +1006,7 @@ jobs:
           if [[ $LLMDBENCH_CICD_SCENARIO == "predicted-latency-routing" || $LLMDBENCH_CICD_SCENARIO == "flow-control" ]]; then
             find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/" -type f -name "kustomization.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
             find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/" -type f -name "kustomization.yaml" -exec bash -c 'echo -n $1:; yq ".namePrefix" $1' _ {} \;
-            find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/" -type f -name "patch-vllm.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
+            find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/optimized-baseline/modelserver/" -type f \( -name "patch-vllm.yaml" -o -name "patch-sglang.yaml" \) -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
             find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/$LLMDBENCH_CICD_CONNECTOR/router/" -type f -name "*.yaml" -exec sed -i "s/optimized-baseline/$LLMDBENCH_CICD_SCENARIO/g" {} \;
           fi
           echo "### Setting priority class \"$LLMDBENCH_CICD_PRIORITY_CLASS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
@@ -1016,7 +1039,7 @@ jobs:
           done
           if [[ $LLMDBENCH_CICD_DECODE_PODS != "auto" ]]; then
             echo "### Setting decode pods to \"$LLMDBENCH_CICD_DECODE_PODS\" on scenario \"$LLMDBENCH_CICD_SCENARIO\""
-            for i in vllm decode; do
+            for i in vllm sglang decode; do
               find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f -name "patch-$i.yaml" -exec yq ".spec.replicas=$LLMDBENCH_CICD_DECODE_PODS" -i {} \;
               find "$LLMDBENCH_CICD_REPO_PATH/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_SCENARIO/modelserver/" -type f -name "patch-$i.yaml" -exec bash -c 'echo -n $1:; yq ".spec.replicas" $1' _ {} \;
             done

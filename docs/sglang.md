@@ -27,6 +27,10 @@ guides/<guideName>/modelserver/
     trtllm/
   amd/
     sglang/
+  tpu/
+    v5p/sglang/
+    v6/sglang/
+    v7/sglang/
   ...
 ```
 
@@ -50,7 +54,7 @@ benchmarked with SGLang today:
 
 | Guide (`guideName`) | Model (from overlay) | Notes |
 |---|---|---|
-| `optimized-baseline` | Qwen3-32B | Single-engine baseline. Simplest starting point. Overlays: `base`, `gke`, `amd`. |
+| `optimized-baseline` | Qwen3-32B (TPU v7: Qwen3.5-397B-A17B-FP8) | Single-engine baseline. Simplest starting point. Overlays: `gpu/sglang/{base,gke}`, `amd/sglang/base`, `tpu/{v5p,v6,v7}/sglang/gke`. |
 | `precise-prefix-cache-routing` | Qwen3-32B | Prefix-cache-aware routing. **Flat** overlay (`gpu/sglang/`, no provider split). |
 | `tiered-prefix-cache` | Qwen3-32B | Tiered KV cache (HiCache). Overlays under `gpu/sglang/native/cpu/{base,gke}`. |
 
@@ -100,8 +104,10 @@ phase that misses it renders a vLLM plan for an SGLang deployment. See
 [standup.md](standup.md#overriding-scenario-values-from-the-cli---set).
 
 To benchmark a different guide, swap the `--spec` (e.g.
-`guides/tiered-prefix-cache`). For AMD accelerators on `optimized-baseline`,
-use `--set kustomize.acceleratorBackend=amd/sglang`.
+`guides/tiered-prefix-cache`). For AMD or Google TPU accelerators on
+`optimized-baseline`, use `--set kustomize.acceleratorBackend=amd/sglang` or
+`--set kustomize.acceleratorBackend=tpu/v5p/sglang` (or `tpu/v6/sglang`,
+`tpu/v7/sglang`).
 
 ## Comparing SGLang vs vLLM
 
@@ -270,7 +276,7 @@ The nightly benchmark workflow already accepts SGLang as a backend:
 [`.github/workflows/reusable-ci-nightly-benchmark.yaml`](../.github/workflows/reusable-ci-nightly-benchmark.yaml)
 exposes a `backend_type` input (`vllm`, `sglang`; valid only for the `kustomize`
 standup method) and injects it into the scenario via
-`yq -i '.scenario[0].kustomize.acceleratorBackend = "<gpu-or-amd>/<backend>"'`
+`yq -i '.scenario[0].kustomize.acceleratorBackend = "<accelerator>/<backend>"'`
 before standup. Use `backend_type: sglang` when dispatching the workflow to run
 an SGLang benchmark in CI.
 
