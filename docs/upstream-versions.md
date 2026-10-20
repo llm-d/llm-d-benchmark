@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-10-16 22:50:21` (UTC)
-- Generated against git ref: `1d7d27a7339a88481fa5b15ea9f2c462b5c20b2b`
+- Generated at: `2026-10-20 00:45:25` (UTC)
+- Generated against git ref: `3b26fa6c6501ff9b8be00b82484b4e73d8e0616c`
 
 ## System Tool Dependencies
 
@@ -81,7 +81,7 @@ captured in the snapshot table below.
 | **kubernetes** | `==35.0.0` | constraint | `pyproject.toml` line 11 | [kubernetes (PyPI)](https://pypi.org/project/kubernetes/) |
 | **llmd-benchmark-report** | `>=0.2.1,<0.3` | constraint | `pyproject.toml` line 19 | [llmd-benchmark-report (PyPI)](https://pypi.org/project/llmd-benchmark-report/) |
 | **packaging** | `(unpinned)` | (unpinned) | `pyproject.toml` line 10 | [packaging (PyPI)](https://pypi.org/project/packaging/) |
-| **pydantic** | `>=2.0` | constraint | `pyproject.toml` line 16 | [pydantic (PyPI)](https://pypi.org/project/pydantic/) |
+| **pydantic** | `>=2.0,<3` | constraint | `pyproject.toml` line 16 | [pydantic (PyPI)](https://pypi.org/project/pydantic/) |
 | **pykube-ng** | `(unpinned)` | (unpinned) | `pyproject.toml` line 12 | [pykube-ng (PyPI)](https://pypi.org/project/pykube-ng/) |
 | **PyYAML** | `(unpinned)` | (unpinned) | `pyproject.toml` line 7 | [PyYAML (PyPI)](https://pypi.org/project/pyyaml/) |
 | **requests** | `(unpinned)` | (unpinned) | `pyproject.toml` line 9 | [requests (PyPI)](https://pypi.org/project/requests/) |
