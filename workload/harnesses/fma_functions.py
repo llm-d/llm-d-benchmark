@@ -789,7 +789,7 @@ def write_controller_log(
                     name=pod_name,
                     container=container_name,
                     namespace=pod.metadata.namespace,
-                    pretty=False,
+                    pretty="false",
                     _preload_content=False,
                 )
                 logs_filepath = os.path.join(
