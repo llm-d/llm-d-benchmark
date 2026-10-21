@@ -20,6 +20,27 @@ from llmdbenchmark.utilities.kube_helpers import (
     wait_for_pods_deleted,
 )
 
+_RELEASE_RECORD_PREFIX = "sh.helm.release.v1."
+
+
+# kube() runs through a shell, so the jsonpath is single-quoted the way
+# CommandExecutor._jsonpath quotes it, or its spaces and backslashes are lost.
+_RELEASE_RECORDS_QUERY = "'jsonpath={range .items[*]}{.metadata.name}{\"\\n\"}{end}'"
+_ANNOTATED_SECRETS_QUERY = (
+    '\'jsonpath={range .items[*]}{.metadata.name}{" "}'
+    '{.metadata.annotations.meta\\.helm\\.sh/release-name}{" "}'
+    '{.metadata.annotations.meta\\.helm\\.sh/release-namespace}{"\\n"}{end}\''
+)
+
+
+def _release_name_from_record(secret_name: str) -> str:
+    """sh.helm.release.v1.<release>.v<rev> -> <release>; "" when not a record."""
+    if not secret_name.startswith(_RELEASE_RECORD_PREFIX):
+        return ""
+    body = secret_name[len(_RELEASE_RECORD_PREFIX) :]
+    head, _, _tail = body.rpartition(".v")
+    return head or body
+
 
 class UninstallHelmStep(Step):
     """Uninstall Helm releases and associated routes."""
@@ -144,7 +165,12 @@ class UninstallHelmStep(Step):
             self._unlabel_launcher_nodes(cmd, context)
 
         for ns in namespaces:
-            self._uninstall_releases(cmd, context, ns, release, model_labels, errors)
+            seen_releases = self._uninstall_releases(
+                cmd, context, ns, release, model_labels, errors
+            )
+            self._delete_blocking_secrets(
+                cmd, context, ns, release, model_labels, seen_releases, errors
+            )
             if not is_fma_enabled:
                 self._delete_openshift_routes(cmd, context, ns, release)
                 self._delete_download_job(cmd, context, ns)
@@ -315,8 +341,12 @@ class UninstallHelmStep(Step):
         release: str,
         model_labels: list[str],
         errors: list,
-    ):
+    ) -> set[str] | None:
         """Find and uninstall Helm releases matching the release name or model labels.
+
+        Returns the names of the releases ``helm list`` reported, or None
+        when the listing itself failed -- callers must then not touch
+        release records, or they would delete records of live releases.
 
         Enumerates every release status explicitly so releases stuck in a
         transitional state (``uninstalling`` / ``pending-*`` / ``failed``)
@@ -341,7 +371,11 @@ class UninstallHelmStep(Step):
             ],
         )
         if releases is None:
-            return
+            errors.append(
+                f"Could not list Helm releases in {namespace}: stale release "
+                "records were left untouched"
+            )
+            return None
 
         # Full-scenario teardowns (no --stack filter) are allowed to match
         # releases by chart identity alone -- see _release_matches. A
@@ -350,6 +384,7 @@ class UninstallHelmStep(Step):
         # preserved.
         full_teardown = not context.stack_filter
 
+        seen: set[str] = set()
         for rel in releases:
             release_name = rel.get("name", "")
             if not release_name or not self._release_matches(
@@ -364,7 +399,7 @@ class UninstallHelmStep(Step):
                     f'state "{status}" (interrupted teardown); deleting its '
                     "release secret(s) directly."
                 )
-                cmd.kube(
+                wedged = cmd.kube(
                     "delete",
                     "secret",
                     "-l",
@@ -373,8 +408,13 @@ class UninstallHelmStep(Step):
                     namespace=namespace,
                     check=False,
                 )
+                # on failure the record stays, so the name-based fallback
+                # in _delete_blocking_secrets retries it
+                if wedged.success:
+                    seen.add(release_name)
                 continue
 
+            seen.add(release_name)
             context.logger.log_info(
                 f'Uninstalling Helm release "{release_name}" from {namespace}'
             )
@@ -386,6 +426,121 @@ class UninstallHelmStep(Step):
             )
             if not uninstall.success:
                 errors.append(f"Failed to uninstall {release_name}: {uninstall.stderr}")
+        return seen
+
+    def _delete_blocking_secrets(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        release: str,
+        model_labels: list[str],
+        seen_releases: set[str] | None,
+        errors: list,
+    ) -> None:
+        """Helm cannot reinstall over a record it cannot list, and refuses
+        to adopt a secret an old release owns.
+        """
+        full_teardown = not context.stack_filter
+
+        if seen_releases is not None:
+            records = cmd.kube(
+                "get",
+                "secret",
+                "--field-selector",
+                "type=helm.sh/release.v1",
+                "-o",
+                _RELEASE_RECORDS_QUERY,
+                namespace=namespace,
+                check=False,
+            )
+            if not records.success:
+                context.logger.log_warning(
+                    f"Could not list Helm release records in {namespace}: "
+                    f"{records.stderr}"
+                )
+            for name in (records.stdout or "").strip().splitlines():
+                release_name = _release_name_from_record(name)
+                # seen releases belong to the uninstall above
+                if not release_name or release_name in seen_releases:
+                    continue
+                # a secret name carries no chart, so chart-identity
+                # matching is off here
+                if not self._release_matches(
+                    release_name, release, model_labels, "", full_teardown
+                ):
+                    continue
+                context.logger.log_info(
+                    f"  Deleting stale Helm release record secret/{name}",
+                    emoji="🗑️",
+                )
+                deleted = cmd.kube(
+                    "delete",
+                    "secret",
+                    name,
+                    "--ignore-not-found=true",
+                    namespace=namespace,
+                    check=False,
+                )
+                if not deleted.success:
+                    errors.append(
+                        f"Failed to delete release record {name} in "
+                        f"{namespace}: {deleted.stderr}"
+                    )
+
+        annotated = cmd.kube(
+            "get",
+            "secret",
+            "-o",
+            _ANNOTATED_SECRETS_QUERY,
+            namespace=namespace,
+            check=False,
+        )
+        if not annotated.success:
+            context.logger.log_warning(
+                f"Could not list annotated secrets in {namespace}: {annotated.stderr}"
+            )
+        for line in (annotated.stdout or "").strip().splitlines():
+            parts = line.split()
+            if len(parts) != 3:
+                continue
+            name, rel_name, rel_ns = parts
+            # the same model can run in other namespaces; delete only ours
+            if rel_ns != namespace:
+                continue
+            if not self._release_matches(
+                rel_name, release, model_labels, "", full_teardown
+            ):
+                continue
+            context.logger.log_info(
+                f"  Deleting orphaned secret/{name} (release={rel_name})",
+                emoji="🗑️",
+            )
+            deleted = cmd.kube(
+                "delete",
+                "secret",
+                name,
+                "--ignore-not-found=true",
+                namespace=namespace,
+                check=False,
+            )
+            if not deleted.success:
+                errors.append(
+                    f"Failed to delete orphaned secret {name} in "
+                    f"{namespace}: {deleted.stderr}"
+                )
+
+        # fixed name: an old release annotation on it blocks the next one;
+        # a partial teardown may share the namespace with a live run
+        if full_teardown or context.deep_clean:
+            cmd.kube(
+                "delete",
+                "secret",
+                "inference-gateway-sa-metrics-reader-secret",
+                "--ignore-not-found=true",
+                namespace=namespace,
+                check=False,
+            )
 
     @staticmethod
     def _release_matches(
