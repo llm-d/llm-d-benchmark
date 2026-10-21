@@ -266,7 +266,7 @@ jobs:
       - name: Ensure image is already built
         id: prepare_ensure_benchmark_nightly_image
         run: |
-          IMAGE="ghcr.io/llm-d/llm-d-benchmark:nightly"
+          IMAGE="ghcr.io/llm-d/llm-d-benchmark:test-harness-pretty"  # TEMPORARY (revert before merge): branch-built image
           POLL=30
           while true; do
             creation_date=$(skopeo inspect docker://${IMAGE} | yq -r .Created) && \
