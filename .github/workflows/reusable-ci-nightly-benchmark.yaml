@@ -1305,9 +1305,13 @@ jobs:
             RUN_DATE=$(date +'%Y-%m-%d')
             POLL=30
             while true; do
-              # Match different standalone outputs
-              brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/*/results/*/benchmark_report*" 2>/dev/null)
-              if [[ $? -ne 0 ]]; then
+              # Match different standalone outputs: a completed run uploads a compressed
+              # workspace.tar.zst; older / --no-compress runs leave a loose benchmark_report*.
+              brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/*/results/*/workspace.tar.zst" 2>/dev/null) || true
+              if [[ -z "$brl" ]]; then
+                brl=$(gcloud storage ls -l -r "gs://${GCS_BASE_PATH}/$LLMDBENCH_CICD_SCENARIO/standalone/$RUN_DATE/*/results/*/benchmark_report*" 2>/dev/null) || true
+              fi
+              if [[ -z "$brl" ]]; then
                 echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
                 sleep $POLL
               else
