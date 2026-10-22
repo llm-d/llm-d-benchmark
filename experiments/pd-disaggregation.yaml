@@ -158,23 +158,25 @@ setup:
     # scenario default has modelservice.enabled=true, and deep_merge keeps it
     # unless the treatment overrides it. Without ``modelservice.enabled: false``
     # both deploy methods get applied and conflict on the same model PVC.
+    # The standalone Deployment reads standalone.replicas and
+    # standalone.parallelism.tensor; decode.* only reaches modelservice pods.
     - name: sa-d1xTP2
       standalone.enabled: true
       modelservice.enabled: false
-      decode.replicas: 1
-      decode.parallelism.tensor: 2
+      standalone.replicas: 1
+      standalone.parallelism.tensor: 2
 
     - name: sa-d1xTP4
       standalone.enabled: true
       modelservice.enabled: false
-      decode.replicas: 1
-      decode.parallelism.tensor: 4
+      standalone.replicas: 1
+      standalone.parallelism.tensor: 4
 
     - name: sa-d1xTP8
       standalone.enabled: true
       modelservice.enabled: false
-      decode.replicas: 1
-      decode.parallelism.tensor: 8
+      standalone.replicas: 1
+      standalone.parallelism.tensor: 8
 
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #
