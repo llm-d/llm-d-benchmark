@@ -604,6 +604,7 @@ class DeployHarnessStep(Step):
                         "profile_mounts": spec.profile_mounts,
                         "treatment_label_value": treatment_label_value,
                         "no_pvc": context.no_pvc,
+                        "load_parallelism": spec.parallelism,
                     }
                 )
                 if is_summary:
