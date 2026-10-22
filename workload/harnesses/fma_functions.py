@@ -705,12 +705,14 @@ def calculate_vllm_ttft(base_url: str, model: str, timeout: float) -> float:
 
     headers = {"Content-Type": "application/json"}
 
-    # Send the request and measure TTFT
+    # Send the request and measure TTFT. The clock starts before the request is
+    # sent: post() returns once the headers arrive, which a streaming server sends
+    # before the first token, so starting after it misses everything up to then.
     try:
+        start = time.perf_counter()
         with requests.post(
             url, json=payload, headers=headers, timeout=timeout, stream=True
         ) as response:
-            start = time.perf_counter()
             first_token_time = None
 
             # Iterate over streamed response
