@@ -15,6 +15,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from llmdbenchmark.parser.render_plans import RenderPlans
@@ -135,3 +136,30 @@ def test_network_overrides_scenario_value(tmp_path: Path) -> None:
 def test_network_is_an_annotations_change_for_update() -> None:
     assert FLAG_KEYS["network"] == "annotations"
     assert INVOCATION_FIELDS["invocation_network"] == "network"
+
+
+def test_network_braces_expand_in_annotation(tmp_path: Path) -> None:
+    plan = _render(tmp_path, {}, cli_network="compute-p{1..4}v0")
+    expected = "compute-p1v0,compute-p2v0,compute-p3v0,compute-p4v0"
+    for annotation_map in _annotation_maps(_config(plan)):
+        assert annotation_map[_KEY] == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("compute-p{1..4}v0", "compute-p1v0,compute-p2v0,compute-p3v0,compute-p4v0"),
+        ("net-{a,b,c}", "net-a,net-b,net-c"),
+        ("p{3..1}", "p3,p2,p1"),
+        ("p{08..10}", "p08,p09,p10"),
+        ("p{1..2}v{0,1}", "p1v0,p1v1,p2v0,p2v1"),
+        ("mgmt,compute-p{1..2}v0", "mgmt,compute-p1v0,compute-p2v0"),
+        ("ns/net-{1..2}", "ns/net-1,ns/net-2"),
+        ("multi-nic-compute", "multi-nic-compute"),
+        ("a,b", "a,b"),
+        ("odd{x}", "odd{x}"),
+        ("empty{}", "empty{}"),
+    ],
+)
+def test_expand_networks(value: str, expected: str) -> None:
+    assert RenderPlans.expand_networks(value) == expected

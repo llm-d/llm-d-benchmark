@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-10-20 00:45:25` (UTC)
-- Generated against git ref: `3b26fa6c6501ff9b8be00b82484b4e73d8e0616c`
+- Generated at: `2026-10-22 15:45:57` (UTC)
+- Generated against git ref: `3ea94552db2dc545b7b07e60964ef4a7290365e7`
 
 ## System Tool Dependencies
 
@@ -54,7 +54,7 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 384 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **benchmark** | `nightly` | tag | `config/templates/values/defaults.yaml` line 384 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **inferenceSim** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 404 (`images.inferenceSim`) | [llm-d/llm-d-inference-sim](https://github.com/llm-d/llm-d-inference-sim) (`ghcr.io/llm-d/llm-d-inference-sim`) |
 | **prism** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 410 (`images.prism`) | [llm-d/llm-d-prism](https://github.com/llm-d/llm-d-prism) (`ghcr.io/llm-d/llm-d-prism`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 441 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |

@@ -123,3 +123,18 @@ def add_subcommands(
         default=env("LLMDBENCH_LLMD_REPO_PATH"),
         help="Path to a local llm-d repository clone (used by the kustomize method).",
     )
+    # Accepted so a standup command line can be reused verbatim for
+    # teardown. Stored under dedicated dests (not ``hostpath``/``network``)
+    # so the teardown re-render never applies them.
+    teardown_parser.add_argument(
+        "--hostpath",
+        dest="ignored_hostpath",
+        metavar="PATH",
+        help="Accepted for compatibility with standup; ignored by teardown.",
+    )
+    teardown_parser.add_argument(
+        "--network",
+        dest="ignored_network",
+        metavar="NETWORKS",
+        help="Accepted for compatibility with standup; ignored by teardown.",
+    )

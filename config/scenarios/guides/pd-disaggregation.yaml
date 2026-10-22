@@ -61,14 +61,14 @@ scenario:
       #   - deepseek-ai/DeepSeek-R1-0528
       # -------------------------------------------------------------------------
       model:
-        name: Qwen/Qwen3-32B
-        shortName: qwen-qwen3-32b
-        path: models/Qwen/Qwen3-32B
-        huggingfaceId: Qwen/Qwen3-32B
-  #      name: openai/gpt-oss-120b
-  #      shortName: openai-gpt-oss-120b
-  #      path: models/openai/gpt-oss-120b
-  #      huggingfaceId: openai/gpt-oss-120b
+#        name: Qwen/Qwen3-32B
+#        shortName: qwen-qwen3-32b
+#        path: models/Qwen/Qwen3-32B
+#        huggingfaceId: Qwen/Qwen3-32B
+        name: openai/gpt-oss-120b
+        shortName: openai-gpt-oss-120b
+        path: models/openai/gpt-oss-120b
+        huggingfaceId: openai/gpt-oss-120b
         size: 1Ti
         maxModelLen: 16384
         blockSize: 128

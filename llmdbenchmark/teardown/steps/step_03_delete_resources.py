@@ -44,6 +44,10 @@ STANDALONE_PATTERNS = [
 DOWNLOAD_KINDS = ("job.batch/", "job/", "daemonset.apps/", "daemonset/")
 DOWNLOAD_NAME_PREFIX = "download-model"
 
+# Standup creates this ConfigMap in the model namespace; a kustomize-deployed
+# guide keeps using it across teardowns, so normal teardown leaves it in place.
+PREPROCESS_CONFIGMAP = "configmap/llm-d-benchmark-preprocesses"
+
 MODELSERVICE_PATTERNS = [
     "llm-d-benchmark-preprocesses",
     "p2p",
@@ -344,6 +348,14 @@ class DeleteResourcesStep(Step):
                             existing.add(resource)
                 except json.JSONDecodeError, KeyError:
                     pass
+
+            if "kustomize" in context.deployed_methods and (
+                PREPROCESS_CONFIGMAP in filtered
+            ):
+                filtered.remove(PREPROCESS_CONFIGMAP)
+                context.logger.log_info(
+                    f"  Preserving {PREPROCESS_CONFIGMAP} in {ns} (kustomize method)"
+                )
 
             # Preserve persistent llm-d-prism resources (skipped on deep clean);
             # --prism deletes them below by label.

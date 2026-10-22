@@ -177,6 +177,21 @@ as the `--set`s listed below.
 deploy method: modelservice decode and prefill, standalone, and the FMA
 launcher. It only touches that one key, so other annotations are kept.
 
+Long network lists can be written with bash-style brace groups, which are
+expanded before the annotation is set:
+
+| `--network` value | Annotation |
+|---|---|
+| `'compute-p{1..4}v0'` | `compute-p1v0,compute-p2v0,compute-p3v0,compute-p4v0` |
+| `'net-{a,b,c}'` | `net-a,net-b,net-c` |
+| `'p{08..10}'` | `p08,p09,p10` (zero padding kept) |
+| `'p{1..2}v{0,1}'` | `p1v0,p1v1,p2v0,p2v1` (groups multiply) |
+| `'mgmt,compute-p{1..2}v0'` | `mgmt,compute-p1v0,compute-p2v0` |
+
+Quote the value. Unquoted, the shell expands the braces itself into several
+`--network` arguments, and only the last one takes effect. A group that is
+neither a range nor a comma list (`{x}`) is kept as written.
+
 Two differences from typing the `--set`s yourself:
 
 - **The flag wins.** Like the other dedicated flags, these are applied after

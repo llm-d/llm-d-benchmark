@@ -121,7 +121,7 @@ _anchors:
   # Just use vllm-openai image for tokenizer
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.31.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v1.0.0
-  llm-d-benchmark_version:           &llm-d-benchmark_version           v1.0.0
+  llm-d-benchmark_version:           &llm-d-benchmark_version           nightly
   llm-d-prism_version:               &llm-d-prism_version               v1.0.0
 
   # Common labels

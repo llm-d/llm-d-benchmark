@@ -704,21 +704,88 @@ class RenderPlans:
         ("fma", "launcher", "podTemplate", "metadata", "annotations"),
     )
 
+    #: One ``{...}`` group with no nested braces.
+    _BRACE_GROUP = re.compile(r"\{([^{}]*)\}")
+    #: Integer range inside a brace group: ``1..4``, ``01..12``, ``4..1``.
+    _BRACE_RANGE = re.compile(r"^(-?\d+)\.\.(-?\d+)$")
+
+    @classmethod
+    def expand_networks(cls, value: str) -> str:
+        """Expand bash-style brace groups in a ``--network`` value.
+
+        ``compute-p{1..4}v0`` becomes
+        ``compute-p1v0,compute-p2v0,compute-p3v0,compute-p4v0``, and
+        ``net-{a,b}`` becomes ``net-a,net-b``. Ranges keep zero padding
+        (``{01..03}`` -> ``01,02,03``) and may count down. Several groups
+        in one entry expand as a cross product. A group that is neither a
+        range nor a comma list (``{x}``, ``{}``) is kept as written. Each
+        comma-separated entry of the value expands on its own, and the
+        results are joined with commas.
+        """
+
+        def alternatives(body: str) -> list[str] | None:
+            match = cls._BRACE_RANGE.match(body)
+            if match:
+                start_text, end_text = match.groups()
+                start, end = int(start_text), int(end_text)
+                width = max(len(start_text.lstrip("-")), len(end_text.lstrip("-")))
+                padded = any(
+                    t.lstrip("-").startswith("0") and len(t.lstrip("-")) > 1
+                    for t in (start_text, end_text)
+                )
+                step = 1 if end >= start else -1
+                return [
+                    f"{n:0{width}d}" if padded else str(n)
+                    for n in range(start, end + step, step)
+                ]
+            if "," in body:
+                return body.split(",")
+            return None
+
+        def expand(entry: str) -> list[str]:
+            for match in cls._BRACE_GROUP.finditer(entry):
+                options = alternatives(match.group(1))
+                if options is None:
+                    continue
+                head, tail = entry[: match.start()], entry[match.end() :]
+                return [
+                    expanded
+                    for option in options
+                    for expanded in expand(f"{head}{option}{tail}")
+                ]
+            return [entry]
+
+        # Split on top-level commas only; commas inside braces belong to
+        # the group.
+        entries, depth, current = [], 0, ""
+        for char in value:
+            if char == "," and depth == 0:
+                entries.append(current)
+                current = ""
+                continue
+            depth += {"{": 1, "}": -1}.get(char, 0)
+            current += char
+        entries.append(current)
+
+        return ",".join(expanded for entry in entries for expanded in expand(entry))
+
     def _resolve_network(self, values: dict) -> dict:
         """Set the Multus networks annotation from ``--network``.
 
         ``--network <value>`` sets ``k8s.v1.cni.cncf.io/networks: <value>``
         on the modelservice decode/prefill pods, the standalone pods and
         the FMA launcher pods -- the same as a ``--set`` of each of those
-        annotation maps. ``--network none`` removes the annotation from
-        all of them. When the flag is not given (``cli_network is None``),
-        scenario/defaults values are used unchanged.
+        annotation maps. Brace groups in the value are expanded first (see
+        :meth:`expand_networks`). ``--network none`` removes the annotation
+        from all of them. When the flag is not given (``cli_network is
+        None``), scenario/defaults values are used unchanged.
         """
         if self.cli_network is None:
             return values
 
         result = deepcopy(values)
         remove = self.cli_network.strip().lower() == "none"
+        networks = None if remove else self.expand_networks(self.cli_network)
         for path in self.NETWORK_ANNOTATION_PATHS:
             node = result
             for key in path:
@@ -729,14 +796,17 @@ class RenderPlans:
             if remove:
                 node.pop(self.NETWORK_ANNOTATION, None)
             else:
-                node[self.NETWORK_ANNOTATION] = self.cli_network
+                node[self.NETWORK_ANNOTATION] = networks
 
         if remove:
             self.logger.log_info("Pod networks annotation removed from CLI")
-        else:
+        elif networks != self.cli_network:
             self.logger.log_info(
-                f"Pod networks annotation set from CLI ({self.cli_network})"
+                f"Pod networks annotation set from CLI "
+                f"({self.cli_network} -> {networks})"
             )
+        else:
+            self.logger.log_info(f"Pod networks annotation set from CLI ({networks})")
         return result
 
     def _resolve_wva(self, values: dict) -> dict:
