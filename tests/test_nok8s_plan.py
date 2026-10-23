@@ -608,6 +608,40 @@ def test_nok8s_rollback_dumps_logs_before_removing(tmp_path: Path) -> None:
         assert (ctx.setup_logs_dir() / f"nok8s-{name}.log").exists()
 
 
+def test_nok8s_readiness_timeout_keeps_failing_vllm_logs(tmp_path: Path) -> None:
+    """A worker readiness failure must preserve the worker's diagnostic logs."""
+    from llmdbenchmark.standup.steps.step_05_nok8s_deploy import NoK8sDeployStep
+
+    stack = _nok8s_stack(tmp_path)
+    spec_path = stack / "34_nok8s-containers.yaml"
+    spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    spec["readiness"] = {"vllmPorts": [8000], "envoyPort": 8081}
+    spec_path.write_text(yaml.safe_dump(spec), encoding="utf-8")
+    # A zero timeout deliberately reaches the readiness-failure path without a
+    # real polling delay; the assertion below is about preserving diagnostics
+    # during rollback, not curl's failure behavior.
+    cmd = _RecordingCmd()
+    ctx = _nok8s_ctx(tmp_path, cmd)
+    ctx.nok8s_deploy_timeout = 0
+
+    result = NoK8sDeployStep().execute(ctx, stack)
+
+    assert result.success is False
+    assert "8000" in result.message
+    for name in ("vllm-0", "epp", "envoy"):
+        assert (ctx.setup_logs_dir() / f"nok8s-{name}.log").exists()
+        logs = cmd.commands.index(f"docker logs {name} --tail 100")
+        removals = [
+            i
+            for i, command in enumerate(cmd.commands)
+            if command == f"docker rm -f {name}"
+        ]
+        # The first removal is the idempotency wipe before launch. The rollback
+        # removal must follow the log capture, or the timeout's diagnostics are
+        # lost.
+        assert removals[-1] > logs, f"{name} removed before its logs were dumped"
+
+
 def test_resolve_deploy_method_forces_nok8s() -> None:
     """--methods nok8s wins and disables the other methods (mutual exclusion)."""
     rp = RenderPlans(
