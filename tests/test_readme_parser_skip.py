@@ -294,3 +294,49 @@ def test_no_markers_behaves_identically(tmp_path: Path):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ---------------------------------------------------------------------------
+# "only when" guard tests
+# ---------------------------------------------------------------------------
+
+
+class TestOnlyWhenGuard:
+    """A ``# only when VAR=value:`` comment guards the commands after it in
+    the same block (e.g. pd-disaggregation's CoreWeave-only model-cache PVC)."""
+
+    README = """\
+        # Prerequisites
+
+        ```bash
+        kubectl create namespace ${NAMESPACE}
+        # only when INFRA_PROVIDER=coreweave,aws:
+        kubectl apply -f model-cache-pvc.yaml
+        ```
+
+        ```bash
+        kubectl apply -f crds.yaml
+        ```
+        """
+
+    def test_guard_attaches_to_following_commands_only(self, tmp_path: Path):
+        parsed = parse_guide_readme(_write_readme(tmp_path, self.README))
+        cmds = parsed.get_commands(CommandPhase.PREREQUISITES)
+        assert [(c.raw, c.when) for c in cmds] == [
+            ("kubectl create namespace ${NAMESPACE}", None),
+            (
+                "kubectl apply -f model-cache-pvc.yaml",
+                ("INFRA_PROVIDER", ("coreweave", "aws")),
+            ),
+            ("kubectl apply -f crds.yaml", None),
+        ]
+
+    @pytest.mark.parametrize(
+        "provider, applies",
+        [("coreweave", True), ("aws", True), ("base", False), ("", False)],
+    )
+    def test_guard_matches_resolved_variable(self, tmp_path: Path, provider, applies):
+        parsed = parse_guide_readme(_write_readme(tmp_path, self.README))
+        guarded = parsed.get_commands(CommandPhase.PREREQUISITES)[1]
+        assert guarded.applies({"INFRA_PROVIDER": provider}) is applies
+        assert parsed.get_commands(CommandPhase.PREREQUISITES)[0].applies({})

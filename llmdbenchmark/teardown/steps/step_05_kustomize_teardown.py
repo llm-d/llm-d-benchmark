@@ -187,8 +187,18 @@ class KustomizeTeardownStep(Step):
 
         cmd.kube(
             "delete",
-            "deployment,service,configmap,serviceaccount",
+            "deployment,service,serviceaccount",
             "--all",
+            "--namespace",
+            namespace,
+            check=False,
+        )
+        # Keep the preprocesses ConfigMap that standup created for the guide.
+        cmd.kube(
+            "delete",
+            "configmap",
+            "--field-selector",
+            "metadata.name!=llm-d-benchmark-preprocesses",
             "--namespace",
             namespace,
             check=False,

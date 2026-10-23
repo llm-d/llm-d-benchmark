@@ -21,6 +21,8 @@ from llmdbenchmark.kustomize.variable_resolver import (
     DEFAULT_ACCEL_BACKEND,
     GuideVariableResolver,
 )
+from llmdbenchmark.standup import keda_saturation as keda_sat_mod
+from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
 from llmdbenchmark.utilities.standup_parameters import (
     write as write_standup_parameters,
 )
@@ -155,6 +157,12 @@ class KustomizeDeployStep(Step):
         # --- 1. Prerequisites ---
         prereq_cmds = parsed.get_commands(CommandPhase.PREREQUISITES)
         for gc in prereq_cmds:
+            if not gc.applies(resolver.variables):
+                context.logger.log_info(
+                    f"Skipping prerequisite (only when {gc.when[0]}="
+                    f"{','.join(gc.when[1])}): {gc.raw[:80]}"
+                )
+                continue
             resolved = resolver.resolve(gc.raw)
             if "create namespace" in resolved:
                 ns_check = cmd.kube(
@@ -316,6 +324,17 @@ class KustomizeDeployStep(Step):
         cmd.kube(
             "get", "deployment,service,pods", "--namespace", namespace, check=False
         )
+
+        # --- 7. EPP+KEDA autoscaling ---
+        if plan_config.get("eppKedaSaturation", {}).get("enabled", False):
+            self._apply_epp_keda_saturation(cmd, context, stack_path, errors)
+            if errors:
+                return self._fail(
+                    errors,
+                    stack_path,
+                    "EPP+KEDA autoscaling setup failed",
+                    context=context,
+                )
 
         self._propagate_standup_parameters(cmd, context, plan_config, guide_name)
 
@@ -707,6 +726,51 @@ class KustomizeDeployStep(Step):
         return " ".join(parts)
 
     @staticmethod
+    def _apply_epp_keda_saturation(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        stack_path: Path,
+        errors: list[str],
+    ) -> None:
+        """Wire EPP+KEDA autoscaling onto a guide deployed by kustomize.
+
+        The modelservice path does this across steps 03 and 08, both of which
+        a kustomize-only standup skips. Applied after the guide's pods are
+        Ready so the ScaledObjects' targets exist -- for a DisaggregatedSet
+        role with ``scaling.mode: External``, the controller creates the
+        DisaggregatedSetRoleScaler only once it reconciles the set.
+        """
+        if not context.is_openshift:
+            context.logger.log_info(
+                "EPP+KEDA autoscaling is enabled but platform is not OpenShift -- "
+                "skipping (not yet verified on non-OCP)"
+            )
+            return
+
+        keda_sat_mod.verify_keda_installed(cmd, context)
+        cfg = yaml.safe_load((stack_path / "config.yaml").read_text()) or {}
+        epp_keda_ns = cfg.get("eppKedaSaturation", {}).get("namespace") or cfg.get(
+            "namespace", {}
+        ).get("name", "")
+        keda_sat_mod.install_epp_keda_saturation_for_namespace(
+            cmd=cmd,
+            context=context,
+            stack_path=stack_path,
+            epp_keda_namespace=epp_keda_ns,
+            prom_ca_cert=keda_sat_mod.extract_prometheus_ca_cert(cmd, context.logger),
+            errors=errors,
+        )
+
+        scaledobject_yaml = _find_yaml(stack_path, "30_keda-scaledobject")
+        if scaledobject_yaml and _has_yaml_content(scaledobject_yaml):
+            context.logger.log_info(
+                f"[autoscaling] kubectl apply -f {scaledobject_yaml.name}"
+            )
+            result = cmd.kube("apply", "-f", str(scaledobject_yaml), check=False)
+            if not result.success:
+                errors.append(f"Failed to apply ScaledObjects: {result.stderr}")
+
+    @staticmethod
     def _build_overlay_wrapper(
         context: ExecutionContext,
         guide_ms_path: Path,
@@ -745,7 +809,14 @@ class KustomizeDeployStep(Step):
                     continue
                 patch_file = overlay_dir / f"patch-{i:02d}.yaml"
                 patch_file.write_text(patch_yaml, encoding="utf-8")
-                patch_entries.append({"path": f"patch-{i:02d}.yaml"})
+                patch_entry: dict = {"path": f"patch-{i:02d}.yaml"}
+                # A `target` makes this a JSON6902 patch. Custom resources such
+                # as a DisaggregatedSet have no strategic-merge schema, so a
+                # strategic patch replaces their lists wholesale; JSON6902 ops
+                # address one role by index instead.
+                if entry.get("target"):
+                    patch_entry["target"] = entry["target"]
+                patch_entries.append(patch_entry)
             context.logger.log_info(
                 f"Wrote {len(patches_config)} inline patch(es) to {overlay_dir}"
             )

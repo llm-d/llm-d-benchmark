@@ -77,10 +77,11 @@ class CleanHarnessStep(Step):
                 "--ignore-not-found",
             )
 
-            for cm_name in [
-                "llm-d-benchmark-preprocesses",
-                "llm-d-benchmark-standup-parameters",
-            ]:
+            configmaps = ["llm-d-benchmark-standup-parameters"]
+            # A kustomize-deployed guide keeps using the preprocesses ConfigMap.
+            if "kustomize" not in context.deployed_methods:
+                configmaps.insert(0, "llm-d-benchmark-preprocesses")
+            for cm_name in configmaps:
                 context.logger.log_info(f"    Deleting configmap/{cm_name}", emoji="🗑️")
                 cmd.kube(
                     "delete",

@@ -62,6 +62,24 @@ class BaseSmoketest:
     """
 
     @staticmethod
+    def _is_xpu_ci_wide_ep(plan_config: dict) -> bool:
+        """Return whether the plan uses the aggregated XPU CI overlay."""
+        overrides = (
+            _nested_get(plan_config, "kustomize", "guideVariableOverrides") or {}
+        )
+        return (
+            _nested_get(plan_config, "kustomize", "guideName") == "wide-ep"
+            and overrides.get("INFRA_PROVIDER") == "xpu-ci"
+        )
+
+    @classmethod
+    def _direct_inference_port(cls, plan_config: dict) -> str:
+        """Return the serving port used for direct pod-IP probes."""
+        if cls._is_xpu_ci_wide_ep(plan_config):
+            return "8200"
+        return str(_nested_get(plan_config, "vllmCommon", "inferencePort") or "8000")
+
+    @staticmethod
     def _gateway_path_prefix_for_stack(
         plan_config: dict,
         is_standalone: bool,
@@ -211,7 +229,9 @@ class BaseSmoketest:
 
         # 1. Check pods running for each configured role
         if is_kustomize:
-            if guide_name in ("pd-disaggregation", "wide-ep"):
+            if guide_name == "pd-disaggregation" or (
+                guide_name == "wide-ep" and not self._is_xpu_ci_wide_ep(plan_config)
+            ):
                 roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
             elif is_fma_guide(guide_name):
                 # Every FMA variant (base guide + derivatives like
@@ -490,9 +510,7 @@ class BaseSmoketest:
             )
 
         # 5. Test pod IPs directly (use the first role -- decode for ms, standalone for standalone)
-        inference_port = (
-            _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
-        )
+        inference_port = self._direct_inference_port(plan_config)
         primary_role = ("decode", "decode")
         if roles_to_check:
             for role_info in roles_to_check:

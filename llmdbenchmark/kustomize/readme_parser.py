@@ -30,6 +30,16 @@ class GuideCommand:
     raw: str
     phase: CommandPhase
     mode: DeployMode = DeployMode.ANY
+    # From a preceding ``# only when VAR=value[,value]:`` comment: the command
+    # runs only when the guide variable VAR resolves to one of the values.
+    when: tuple[str, tuple[str, ...]] | None = None
+
+    def applies(self, variables: dict[str, str]) -> bool:
+        """Whether this command's ``only when`` guard (if any) holds."""
+        if self.when is None:
+            return True
+        name, values = self.when
+        return variables.get(name, "") in values
 
     def __str__(self) -> str:
         return self.raw
@@ -217,6 +227,20 @@ def _should_keep_command(line: str) -> bool:
     return False
 
 
+# ``# only when INFRA_PROVIDER=coreweave:`` guards the commands after it in
+# the same code block.
+_ONLY_WHEN_RE = re.compile(
+    r"^\s*#\s*only when\s+(\w+)=([\w./,-]+)\s*:?\s*$", re.IGNORECASE
+)
+
+
+def _only_when(line: str) -> tuple[str, tuple[str, ...]] | None:
+    m = _ONLY_WHEN_RE.match(line)
+    if not m:
+        return None
+    return m.group(1), tuple(v for v in m.group(2).split(",") if v)
+
+
 def _join_continuations(lines: list[str]) -> list[str]:
     """Join lines ending with ``\\`` into single commands."""
     result: list[str] = []
@@ -354,13 +378,17 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
             pm = _section_to_phase_mode(section)
             if pm is not None:
                 phase, default_mode = pm
+                when = None
                 for cmd_text in joined:
+                    when = _only_when(cmd_text) or when
                     if _should_keep_command(cmd_text):
                         mode = (
                             details_mode if details_mode is not None else default_mode
                         )
                         parsed.commands.append(
-                            GuideCommand(raw=cmd_text, phase=phase, mode=mode)
+                            GuideCommand(
+                                raw=cmd_text, phase=phase, mode=mode, when=when
+                            )
                         )
             code_lines = []
             continue

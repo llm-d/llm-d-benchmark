@@ -177,7 +177,7 @@ class VllmInfo(ABC):
                 name=self.pod_name,
                 container=self.container_name,
                 namespace=self.namespace,
-                pretty=False,
+                pretty="false",
                 _preload_content=False,
             )
             data = response.data

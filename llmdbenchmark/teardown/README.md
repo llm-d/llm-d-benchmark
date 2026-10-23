@@ -26,6 +26,15 @@ Skipped when `modelservice` is not in `context.deployed_methods` and no rendered
 
 For each target namespace:
 - Uninstalls Helm releases matching the release prefix and model labels.
+  Records of releases `helm list` reported are kept — a failed uninstall is
+  retried, not orphaned — and a failed listing skips record cleanup entirely.
+- Deletes secrets that would fail the next standup: Helm release records
+  invisible to `helm list` (left by a killed uninstall — the next standup
+  collides on the release name) and secrets annotated
+  `meta.helm.sh/release-name` of one of our releases (Helm refuses to adopt
+  objects another release owns, and a new standup renders its own release
+  name). On full teardowns (no `--stack` filter) or `--deep`, the fixed-name
+  `inference-gateway-sa-metrics-reader-secret` is deleted as well.
 - Deletes OpenShift routes (if on OpenShift) matching the release prefix.
 - Deletes model download jobs.
 

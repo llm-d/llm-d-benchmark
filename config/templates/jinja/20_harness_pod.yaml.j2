@@ -30,6 +30,10 @@
       value: "{{ stack_type }}"
     - name: LLMDBENCH_HARNESS_NAME
       value: "{{ harness.name }}"
+    # Pods running this treatment's workload (-j); the report records it as
+    # scenario.load.standardized.parallelism.
+    - name: LLMDBENCH_HARNESS_LOAD_PARALLELISM
+      value: "{{ load_parallelism | default(1) }}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "{{ experiment_id }}"
     - name: LLMDBENCH_DESCRIPTION_TEXT

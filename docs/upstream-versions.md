@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-10-16 22:50:21` (UTC)
-- Generated against git ref: `1d7d27a7339a88481fa5b15ea9f2c462b5c20b2b`
+- Generated at: `2026-10-22 15:45:57` (UTC)
+- Generated against git ref: `3ea94552db2dc545b7b07e60964ef4a7290365e7`
 
 ## System Tool Dependencies
 
@@ -54,15 +54,16 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 384 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **benchmark** | `nightly` | tag | `config/templates/values/defaults.yaml` line 384 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **inferenceSim** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 404 (`images.inferenceSim`) | [llm-d/llm-d-inference-sim](https://github.com/llm-d/llm-d-inference-sim) (`ghcr.io/llm-d/llm-d-inference-sim`) |
 | **prism** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 410 (`images.prism`) | [llm-d/llm-d-prism](https://github.com/llm-d/llm-d-prism) (`ghcr.io/llm-d/llm-d-prism`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 441 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routerEndpointPicker** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 418 (`images.routerEndpointPicker`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-endpoint-picker`) |
 | **routingSidecar** | `v1.0.0` | tag | `config/templates/values/defaults.yaml` line 424 (`images.routingSidecar`) | [llm-d/llm-d-router](https://github.com/llm-d/llm-d-router) (`ghcr.io/llm-d/llm-d-router-disagg-sidecar`) |
 | **udsTokenizer** | `v0.32.0` | tag | `config/templates/values/defaults.yaml` line 430 (`images.udsTokenizer`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllm** | `v0.31.0` | tag | `config/templates/values/defaults.yaml` line 390 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
-| **vllmOpenai** | `v0.31.0` | tag | `config/templates/values/defaults.yaml` line 396 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllm** | `v0.31.0` | tag | `config/templates/values/defaults.yaml` line 390 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |=======
+| **vllm** | `v0.32.0` | tag | `config/templates/values/defaults.yaml` line 390 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.32.0` | tag | `config/templates/values/defaults.yaml` line 396 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)
@@ -81,7 +82,7 @@ captured in the snapshot table below.
 | **kubernetes** | `==35.0.0` | constraint | `pyproject.toml` line 11 | [kubernetes (PyPI)](https://pypi.org/project/kubernetes/) |
 | **llmd-benchmark-report** | `>=0.2.1,<0.3` | constraint | `pyproject.toml` line 19 | [llmd-benchmark-report (PyPI)](https://pypi.org/project/llmd-benchmark-report/) |
 | **packaging** | `(unpinned)` | (unpinned) | `pyproject.toml` line 10 | [packaging (PyPI)](https://pypi.org/project/packaging/) |
-| **pydantic** | `>=2.0` | constraint | `pyproject.toml` line 16 | [pydantic (PyPI)](https://pypi.org/project/pydantic/) |
+| **pydantic** | `>=2.0,<3` | constraint | `pyproject.toml` line 16 | [pydantic (PyPI)](https://pypi.org/project/pydantic/) |
 | **pykube-ng** | `(unpinned)` | (unpinned) | `pyproject.toml` line 12 | [pykube-ng (PyPI)](https://pypi.org/project/pykube-ng/) |
 | **PyYAML** | `(unpinned)` | (unpinned) | `pyproject.toml` line 7 | [PyYAML (PyPI)](https://pypi.org/project/pyyaml/) |
 | **requests** | `(unpinned)` | (unpinned) | `pyproject.toml` line 9 | [requests (PyPI)](https://pypi.org/project/requests/) |

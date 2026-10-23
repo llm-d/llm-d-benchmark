@@ -230,6 +230,7 @@ class DeployHarnessLocalStep(Step):
                     f"-e LLMDBENCH_DEPLOY_CURRENT_MODEL={model_name} "
                     f"-e LLMDBENCH_DEPLOY_CURRENT_TOKENIZER={model_name} "
                     f"-e LLMDBENCH_HARNESS_NAME={harness_name} "
+                    f"-e LLMDBENCH_HARNESS_LOAD_PARALLELISM={parallelism} "
                     f"-e LLMDBENCH_RUN_EXPERIMENT_ID={experiment_id} "
                     f"-e LLMDBENCH_DEPLOY_METHODS={deploy_method} "
                     f"-e LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX=/requests "

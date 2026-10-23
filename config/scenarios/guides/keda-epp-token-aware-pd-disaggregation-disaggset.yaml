@@ -1,0 +1,289 @@
+# [EXPERIMENTAL] TOKEN-AWARE AUTOSCALING GUIDE -- P/D-DISAGGREGATED, DISAGGREGATEDSET VARIANT
+#
+# Same two triggers, thresholds and HPA behavior as
+# guides/keda-epp-token-aware-pd-disaggregation, but the model servers are the
+# upstream llm-d pd-disaggregation guide's DisaggregatedSet (deployed through
+# kustomize) instead of two modelservice Deployments:
+#
+#   prefill  sum(llm_d_epp_inflight_tokens{endpoint_name=~".*prefill.*"})
+#              / peakPrefillThroughput        -> DisaggregatedSetRoleScaler pd-disagg-vllm-prefill
+#   decode   sum(vllm:kv_cache_usage_perc{pod=~".*decode.*"})
+#                                             -> DisaggregatedSetRoleScaler pd-disagg-vllm-decode
+#
+# Both roles are patched to `scaling.mode: External`, so the DisaggregatedSet
+# controller creates one DisaggregatedSetRoleScaler per role and each
+# ScaledObject drives a role through that scaler's /scale subresource. The
+# scaler name is stable across rollouts: the LeaderWorkerSets underneath are
+# renamed per revision, so a ScaledObject aimed at them would be orphaned by
+# the first image or config change. See KEP-849 in kubernetes-sigs/lws.
+#
+# The patches below also align the guide with the Deployment variant -- same
+# model (Qwen3-32B, served from the benchmark's model PVC), TP layout (prefill
+# TP=1, decode TP=2), vLLM flags and image -- so the two variants differ only
+# in the workload controller. What still differs: the guide's own router
+# (chart v0 and its EPP plugin set, including peakPrefillThroughput on the
+# prefix-cache-affinity-filter; the ScaledObject divisor below is the same
+# value as the Deployment variant's), and the guide's kv_producer/kv_consumer
+# KV roles.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/tree/main/guides/workload-autoscaling/keda-epp-token-aware/pd-disaggregation
+#   https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation
+#
+# Requires LWS >= v0.11.1 with the DisaggregatedSet API (standup installs it
+# when lws.enabled is true and the CRDs are missing), KEDA, and OpenShift user
+# workload monitoring (same as the Deployment variant).
+#
+# Running -- --full-infra so standup also creates the model PVC and downloads
+# the model, which this scenario's patches mount:
+#
+#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation-disaggset \
+#     standup -p <namespace> --full-infra
+#   llmdbenchmark --spec guides/keda-epp-token-aware-pd-disaggregation-disaggset run \
+#     --harness inference-perf --workload random_prefill_heavy.yaml --monitoring
+#
+# BEFORE YOU RUN: peakPrefillThroughput is the same PLACEHOLDER as the
+# Deployment variant -- see that scenario's "BEFORE YOU RUN" note.
+
+scenario:
+  - name: "keda-epp-token-aware-pd-disaggregation-disaggset"
+
+    common:
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16384
+        blockSize: 128
+        gpuMemoryUtilization: 0.90
+        cacheBase: /model-cache
+        maxNumBatchedTokens: 8192
+
+      storage:
+        modelPvc:
+          size: 1Ti
+
+      # The model servers are a DisaggregatedSet, so standup installs the
+      # LeaderWorkerSet controller when it is missing.
+      lws:
+        enabled: true
+
+      timeouts:
+        controlWait: 900000
+        harnessWait: 900000
+
+    # =========================================================================
+    # KUSTOMIZE -- the upstream pd-disaggregation guide, patched
+    # =========================================================================
+    modelservice:
+      enabled: false
+
+    # The model servers come from the guide, so the modelservice role sections
+    # deploy nothing. Disable them so standup does not validate their
+    # (unused) accelerator node selectors.
+    decode:
+      enabled: false
+    prefill:
+      enabled: false
+
+    kustomize:
+      enabled: true
+      guideName: "pd-disaggregation"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      # The guide's router values use EndpointPickerConfig llm-d.ai/v1, which
+      # needs the guide's default router chart (v0), not the Deployment
+      # variant's v0.11.0 (v1alpha1 only).
+      routerChartVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      # Applies the guide's decode PodMonitor: the decode trigger reads
+      # vllm:kv_cache_usage_perc, which only reaches Prometheus if the decode
+      # pods are scraped.
+      monitoring: true
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides:
+        # Router ServiceMonitor without metrics auth, so Prometheus can scrape
+        # the EPP's llm_d_epp_inflight_tokens (the prefill trigger's metric).
+        MONITORING_VALUES: "-f ${REPO_ROOT}/guides/recipes/router/features/monitoring.values.yaml"
+
+      # JSON6902 patches (a `target` selects the object). A DisaggregatedSet has
+      # no strategic-merge schema, so ops address its roles by index:
+      # roles[0] is prefill, roles[1] is decode.
+      patches:
+        # -- Both roles: hand replica counts to KEDA ----------------------------
+        - target:
+            group: disaggregatedset.x-k8s.io
+            version: v1
+            kind: DisaggregatedSet
+            name: pd-disagg-vllm
+          patch: |-
+            - op: add
+              path: /spec/roles/0/scaling
+              value: {mode: External}
+            - op: add
+              path: /spec/roles/1/scaling
+              value: {mode: External}
+
+        # -- Prefill: Qwen3-32B, TP=1, same flags as the Deployment variant -----
+        - target:
+            group: disaggregatedset.x-k8s.io
+            version: v1
+            kind: DisaggregatedSet
+            name: pd-disagg-vllm
+          patch: |-
+            - op: replace
+              path: /spec/roles/0/spec/leaderWorkerTemplate/workerTemplate/metadata/labels/llm-d.ai~1model
+              value: qwen3-32b
+            - op: replace
+              path: /spec/roles/0/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/image
+              value: docker.io/vllm/vllm-openai:v0.31.0
+            - op: replace
+              path: /spec/roles/0/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/args
+              value:
+                - /model-cache/models/Qwen/Qwen3-32B
+                - --served-model-name=Qwen/Qwen3-32B
+                - --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+                - --tensor-parallel-size=1
+                - --block-size=128
+                - --max-model-len=16384
+                - --max-num-seqs=256
+                - --max-num-batched-tokens=8192
+                - --gpu-memory-utilization=0.90
+                - --no-enable-prefix-caching
+                - --dtype=bfloat16
+                - --kv-transfer-config
+                - '{"kv_connector":"NixlConnector","kv_role":"kv_producer","kv_buffer_device":"cuda","kv_connector_extra_config":{"backends":["UCX"]}}'
+                - --no-disable-hybrid-kv-cache-manager
+                - --shutdown-timeout=45
+            - op: add
+              path: /spec/roles/0/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/env/-
+              value: {name: UCX_TLS, value: "sm,cuda_ipc,cuda_copy,tcp"}
+            - op: add
+              path: /spec/roles/0/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/volumeMounts/-
+              value: {name: model-storage, mountPath: /model-cache, readOnly: true}
+            - op: add
+              path: /spec/roles/0/spec/leaderWorkerTemplate/workerTemplate/spec/volumes/-
+              value: {name: model-storage, persistentVolumeClaim: {claimName: model-pvc, readOnly: true}}
+
+        # -- Decode: Qwen3-32B, TP=2 ----------------------------------------------
+        - target:
+            group: disaggregatedset.x-k8s.io
+            version: v1
+            kind: DisaggregatedSet
+            name: pd-disagg-vllm
+          patch: |-
+            - op: replace
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/metadata/labels/llm-d.ai~1model
+              value: qwen3-32b
+            - op: replace
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/image
+              value: docker.io/vllm/vllm-openai:v0.31.0
+            - op: replace
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/args
+              value:
+                - /model-cache/models/Qwen/Qwen3-32B
+                - --served-model-name=Qwen/Qwen3-32B
+                - --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+                - --tensor-parallel-size=2
+                - --block-size=128
+                - --max-model-len=16384
+                - --max-num-seqs=256
+                - --max-num-batched-tokens=8192
+                - --gpu-memory-utilization=0.90
+                - --no-enable-prefix-caching
+                - --dtype=bfloat16
+                - --kv-transfer-config
+                - '{"kv_connector":"NixlConnector","kv_role":"kv_consumer","kv_buffer_device":"cuda","kv_connector_extra_config":{"backends":["UCX"]}}'
+                - --no-disable-hybrid-kv-cache-manager
+                - --port=8200
+                - --shutdown-timeout=45
+            - op: replace
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/resources
+              value:
+                limits: {cpu: "32", memory: 128Gi, nvidia.com/gpu: "2"}
+                requests: {cpu: "32", memory: 128Gi, nvidia.com/gpu: "2"}
+            - op: add
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/env/-
+              value: {name: UCX_TLS, value: "sm,cuda_ipc,cuda_copy,tcp"}
+            - op: add
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/spec/containers/0/volumeMounts/-
+              value: {name: model-storage, mountPath: /model-cache, readOnly: true}
+            - op: add
+              path: /spec/roles/1/spec/leaderWorkerTemplate/workerTemplate/spec/volumes/-
+              value: {name: model-storage, persistentVolumeClaim: {claimName: model-pvc, readOnly: true}}
+
+    # =========================================================================
+    # EPP+KEDA TOKEN-AWARE AUTOSCALING -- one ScaledObject per role, aimed at
+    # the role's DisaggregatedSetRoleScaler (<disaggregatedset>-<role>).
+    # Thresholds, bounds and behavior are identical to the Deployment variant.
+    # =========================================================================
+    eppKedaSaturation:
+      enabled: true
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      scaledObject:
+        nameSuffix: token-aware
+
+        # PLACEHOLDER -- same value as the Deployment variant.
+        peakPrefillThroughput: 15845
+
+        minReplicas: 1
+        maxReplicas: 4          # prefill TP=1 -> 4 accelerators; decode TP=2 -> 8
+
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 300
+
+        targets:
+          - role: prefill
+            scaleTargetRef:
+              kind: DisaggregatedSetRoleScaler
+              name: pd-disagg-vllm-prefill
+            triggers:
+              - name: prefill-backlog-seconds
+                metricType: AverageValue
+                query: |
+                  (
+                    sum(llm_d_epp_inflight_tokens{namespace="${namespace}",
+                                                  producer_name="inflight-load-producer",
+                                                  endpoint_name=~".*prefill.*"})
+                    / ${peakPrefillThroughput}
+                  ) or vector(0)
+                threshold: "1.5"
+                activationThreshold: "0"
+
+          - role: decode
+            scaleTargetRef:
+              kind: DisaggregatedSetRoleScaler
+              name: pd-disagg-vllm-decode
+            triggers:
+              - name: decode-kv-utilization
+                metricType: AverageValue
+                query: |
+                  sum(vllm:kv_cache_usage_perc{namespace="${namespace}", pod=~".*decode.*"}) or vector(0)
+                threshold: "0.8"
+                activationThreshold: "0"
+
+    harness:
+      name: inference-perf
+      experimentProfile: random_symmetrical.yaml
+
+    workDir: "~/data/keda-epp-token-aware-pd-disaggregation-disaggset"

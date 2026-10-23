@@ -93,7 +93,10 @@ def add_subcommands(
         "annotations.decode.pod, annotations.prefill.pod, "
         "standalone.podAnnotations and "
         "fma.launcher.podTemplate.metadata.annotations. 'none' removes the "
-        "annotation. Wins over --set and DoE treatments for these keys. "
+        "annotation. Brace groups expand like bash: quote the value, e.g. "
+        "'compute-p{1..4}v0' -> compute-p1v0,...,compute-p4v0 and "
+        "'net-{a,b}' -> net-a,net-b. "
+        "Wins over --set and DoE treatments for these keys. "
         "Omitted: the scenario's annotations are used "
         "(env: LLMDBENCH_NETWORK). Default: none.",
     )

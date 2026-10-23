@@ -67,3 +67,26 @@ def test_connector_surrounding_slashes_are_trimmed():
         "guideVariableOverrides": {"CONNECTOR": "/moriio/"},
     }
     assert GuideVariableResolver.effective_backend(kust) == "amd/vllm/moriio"
+
+
+def test_tpu_v5p_sglang_resolves_modelserver_overlay_path(tmp_path):
+    kust = {"acceleratorBackend": "tpu/v5p/sglang"}
+    resolver = GuideVariableResolver(
+        guide_name="optimized-baseline",
+        namespace="test-ns",
+        gaie_version="v1.6.1",
+        repo_path=str(tmp_path),
+        accelerator_backend=GuideVariableResolver.effective_backend(kust),
+        variable_overrides={"INFRA_PROVIDER": "gke"},
+        readme_variables={
+            "ACCELERATOR_TYPE": "gpu",
+            "MODEL_SERVER": "vllm",
+            "INFRA_PROVIDER": "base",
+        },
+    )
+    resolved = resolver.resolve(
+        "kubectl apply -n ${NAMESPACE} -k ${REPO_ROOT}/guides/${GUIDE_NAME}/modelserver/${ACCELERATOR_TYPE}/${MODEL_SERVER}/${INFRA_PROVIDER}/"
+    )
+    assert resolved.endswith(
+        "guides/optimized-baseline/modelserver/tpu/v5p/sglang/gke/"
+    )

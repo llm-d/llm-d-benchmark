@@ -153,7 +153,9 @@ class WideEpValidator(BaseSmoketest):
                     )
                 )
 
-        prefill_enabled = _nested_get(config, "prefill", "enabled")
+        prefill_enabled = _nested_get(
+            config, "prefill", "enabled"
+        ) and not self._is_xpu_ci_wide_ep(config)
         if prefill_enabled:
             prefill_pods = self.validate_role_pods(
                 cmd,

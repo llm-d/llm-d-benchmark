@@ -13,7 +13,7 @@ dependencies = [
     "GitPython",
     "huggingface_hub",
     "transformers",
-    "pydantic>=2.0",
+    "pydantic>=2.0,<3",
     "google-auth",
     "google-cloud-storage>=2.10.0",
     "llmd-benchmark-report>=0.2.1,<0.3",

@@ -2133,6 +2133,25 @@ kustomize:
 
 Multiple patches can be combined in a single list -- they are applied in order.
 
+Add a `target` to make an entry a JSON6902 patch: the `patch` is then a list of
+operations applied to the object `target` selects. Use it for custom resources,
+which have no strategic-merge schema -- a strategic patch on a `DisaggregatedSet`
+replaces its whole `roles` list, while JSON6902 ops address one role by index:
+
+```yaml
+kustomize:
+  patches:
+    - target:
+        group: disaggregatedset.x-k8s.io
+        version: v1
+        kind: DisaggregatedSet
+        name: pd-disagg-vllm
+      patch: |-
+        - op: add
+          path: /spec/roles/0/scaling
+          value: {mode: External}
+```
+
 ##### Environment Variables
 
 | Variable | Effect |

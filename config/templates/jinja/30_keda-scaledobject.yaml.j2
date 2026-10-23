@@ -39,7 +39,10 @@
                       name (<model_id_label>-<role>) and the HPA name
                       (<model_id_label>-<role>-<nameSuffix>).
      triggers      -- required; same shape as the single-object `triggers` above.
-     scaleTargetRef.name/.kind -- optional override of the computed default.
+     scaleTargetRef.name/.kind/.apiVersion -- optional override of the computed
+                      default. apiVersion defaults to disaggregatedset.x-k8s.io/v1
+                      for kind DisaggregatedSetRoleScaler (a DisaggregatedSet role
+                      with scaling.mode: External) and to apps/v1 otherwise.
      minReplicas/maxReplicas/pollingInterval/nameSuffix/behavior -- optional
                       per-target overrides; fall back to the shared
                       scaledObject.* keys of the same name when omitted.
@@ -119,6 +122,8 @@ spec:
 {% set role = target.role | default('decode', true) %}
 {% set override_name = target.scaleTargetRef.name | default('', true) if target.scaleTargetRef is defined else '' %}
 {% set scale_kind = (target.scaleTargetRef.kind | default('Deployment', true)) if target.scaleTargetRef is defined else 'Deployment' %}
+{% set scale_api = (target.scaleTargetRef.apiVersion | default('', true)) if target.scaleTargetRef is defined else '' %}
+{% set scale_api = scale_api or ('disaggregatedset.x-k8s.io/v1' if scale_kind == 'DisaggregatedSetRoleScaler' else 'apps/v1') %}
 {% set scale_name = override_name if override_name else ('fma-requester-' ~ model_id_label if fma_enabled else (model_id_label ~ '-' ~ role)) %}
 {% set hpa_name = (model_id_label ~ '-fma') if fma_enabled else (model_id_label ~ '-' ~ role) %}
 {% set name_suffix = target.nameSuffix | default(eppKedaSaturation.scaledObject.nameSuffix | default('saturation', true), true) %}
@@ -145,7 +150,7 @@ metadata:
 {% endif %}
 spec:
   scaleTargetRef:
-    apiVersion: apps/v1
+    apiVersion: {{ 'apps/v1' if dry_run else scale_api }}
     kind: {{ 'Deployment' if dry_run else scale_kind }}
     name: {{ scale_name ~ '-dryrun' if dry_run else scale_name }}
   minReplicaCount: {{ t_min }}
