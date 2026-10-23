@@ -8,6 +8,12 @@ from pathlib import Path
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.kustomize.guides import is_fma_guide
+from llmdbenchmark.smoketests.autoscaling import (
+    ScaleTarget,
+    discover_scale_targets,
+    targets_matching,
+    zeroed_matching,
+)
 from llmdbenchmark.smoketests.nok8s import (
     health_check as nok8s_health_check,
     inference_test as nok8s_inference_test,
@@ -274,6 +280,9 @@ class BaseSmoketest:
                 )
             )
 
+        # A role an autoscaler holds at zero has no pods by design.
+        scale_targets = discover_scale_targets(cmd, namespace, context.logger)
+        zeroed_roles: list[str] = []
         for pod_type, role_label in roles_to_check:
             if is_kustomize and guide_name:
                 role_selector = (
@@ -302,7 +311,25 @@ class BaseSmoketest:
             if not pod_check.dry_run:
                 if pod_check.success:
                     phases = pod_check.stdout.strip().split()
-                    if not phases:
+                    zeroed = zeroed_matching(scale_targets, role_selector)
+                    if zeroed:
+                        # spec.replicas is 0: listed pods are draining.
+                        zeroed_roles.append(pod_type)
+                        draining = (
+                            f"; {len(phases)} pod(s) still draining" if phases else ""
+                        )
+                        report.add(
+                            CheckResult(
+                                f"{pod_type}_scaled_to_zero",
+                                True,
+                                message=(
+                                    f"{pod_type} scaled to 0 by "
+                                    f"{'; '.join(t.describe() for t in zeroed)}"
+                                    f"{draining}"
+                                ),
+                            )
+                        )
+                    elif not phases:
                         report.add(
                             CheckResult(
                                 f"{pod_type}_pods_exist",
@@ -379,6 +406,23 @@ class BaseSmoketest:
                             message=f"Failed to check {pod_type} pod status: {pod_check.stderr}",
                         )
                     )
+
+        primary_role = self._primary_role(roles_to_check)
+        if primary_role[0] in zeroed_roles:
+            # The serving role is at zero: serving probes would only time out.
+            # The inference test's request triggers the scale-up.
+            report.add(
+                CheckResult(
+                    "serving_checks_deferred",
+                    True,
+                    message=(
+                        f"Serving role '{primary_role[0]}' is scaled to 0 by its "
+                        f"autoscaler (roles at 0: {', '.join(zeroed_roles)}); "
+                        f"the inference test exercises scale-from-zero"
+                    ),
+                )
+            )
+            return report
 
         if not service_ip:
             report.add(
@@ -656,6 +700,34 @@ class BaseSmoketest:
         )
         base_url = f"{protocol}://{service_ip}:{gateway_port}{prefix}"
 
+        # At zero, this request triggers the scale-up: send it once through the
+        # router and let it wait out the cold start (a retry would restart it).
+        cold_targets = self._scaled_to_zero_targets(
+            cmd, context, namespace, plan_config
+        )
+        max_retries: int | None = None
+        timeout_seconds: int | None = None
+        cold_hint = ""
+        if cold_targets:
+            max_retries = 1
+            timeout_seconds = self._resolve_wait_setting(
+                plan_config,
+                "coldStartTimeout",
+                None,
+                self._DEFAULT_COLD_START_TIMEOUT,
+            )
+            cold_hint = (
+                f" (scale-from-zero: {', '.join(t.key for t in cold_targets)} at "
+                f"0 replicas did not serve within {timeout_seconds}s; raise "
+                f"harness.smoketest.coldStartTimeout for slower cold starts)"
+            )
+            context.logger.log_info(
+                f"Scaled to zero: {'; '.join(t.describe() for t in cold_targets)}. "
+                f"Sending one request through the router (timeout "
+                f"{timeout_seconds}s) to trigger the scale-up..."
+            )
+        start = time.time()
+
         context.logger.log_info(f"Running sample inference against {base_url}...")
 
         # Try /v1/completions first
@@ -667,6 +739,8 @@ class BaseSmoketest:
             base_url,
             model_name,
             plan_config,
+            max_retries=max_retries,
+            timeout_seconds=timeout_seconds,
         )
 
         if result["success"]:
@@ -688,6 +762,9 @@ class BaseSmoketest:
                     message=f'Inference passed via /v1/completions -- Generated: "{result["generated_text"]}"',
                 )
             )
+            self._report_scale_from_zero(
+                report, cmd, context, namespace, cold_targets, time.time() - start
+            )
             return report
 
         # Fallback to /v1/chat/completions
@@ -703,6 +780,8 @@ class BaseSmoketest:
                 base_url,
                 model_name,
                 plan_config,
+                max_retries=max_retries,
+                timeout_seconds=timeout_seconds,
             )
             if chat_result["success"]:
                 self._print_demo_command(
@@ -723,6 +802,9 @@ class BaseSmoketest:
                         message=f'Inference passed via /v1/chat/completions -- Generated: "{chat_result["generated_text"]}"',
                     )
                 )
+                self._report_scale_from_zero(
+                    report, cmd, context, namespace, cold_targets, time.time() - start
+                )
                 return report
 
             report.add(
@@ -732,6 +814,7 @@ class BaseSmoketest:
                     message=(
                         f"/v1/completions failed: {result['error']}; "
                         f"/v1/chat/completions also failed: {chat_result['error']}"
+                        f"{cold_hint}"
                     ),
                 )
             )
@@ -740,11 +823,121 @@ class BaseSmoketest:
                 CheckResult(
                     "inference_test",
                     False,
-                    message=result.get("error", "Inference test failed"),
+                    message=result.get("error", "Inference test failed") + cold_hint,
                 )
             )
 
         return report
+
+    @staticmethod
+    def _primary_role(
+        roles_to_check: list[tuple[str, str | None]],
+    ) -> tuple[str, str | None]:
+        """The role that answers requests: decode or standalone when present,
+        else the first role checked."""
+        for role_info in roles_to_check:
+            if role_info[0] in ("decode", "standalone"):
+                return role_info
+        return roles_to_check[0] if roles_to_check else ("decode", "decode")
+
+    @staticmethod
+    def _stack_pod_selector(plan_config: dict, context: ExecutionContext) -> str:
+        """A label selector matching this stack's serving workloads' pods."""
+        guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
+        if "kustomize" in (context.deployed_methods or []) and guide_name:
+            return f"llm-d.ai/guide={guide_name.split('/')[-1]}"
+        model_id_label = _model_id_label(plan_config)
+        return f"llm-d.ai/model={model_id_label}" if model_id_label else ""
+
+    def _is_stack_target(
+        self, target: ScaleTarget, plan_config: dict, context: ExecutionContext
+    ) -> bool:
+        """True when *target* is one of this stack's serving workloads."""
+        selector = self._stack_pod_selector(plan_config, context)
+        return bool(selector) and target.matches(selector)
+
+    def _scaled_to_zero_targets(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        plan_config: dict,
+    ) -> list[ScaleTarget]:
+        """This stack's autoscaled workloads currently held at zero."""
+        targets = discover_scale_targets(cmd, namespace, context.logger)
+        return [
+            t
+            for t in targets.values()
+            if t.scaled_to_zero and self._is_stack_target(t, plan_config, context)
+        ]
+
+    @staticmethod
+    def _no_serving_pods_check(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        selectors: list[str],
+    ) -> CheckResult:
+        """For a config validator that found no serving pods: passes when an
+        autoscaler holds a serving workload at zero, else fails."""
+        targets = discover_scale_targets(cmd, namespace, context.logger)
+        zeroed = dict.fromkeys(
+            t.describe() for s in selectors for t in zeroed_matching(targets, s)
+        )
+        if not zeroed:
+            return CheckResult(
+                "deploy_method", False, message="No decode or standalone pods found"
+            )
+        return CheckResult(
+            "serving_scaled_to_zero",
+            True,
+            message=(
+                f"No serving pods to inspect: scaled to 0 by "
+                f"{'; '.join(zeroed)}; pod config checks skipped"
+            ),
+        )
+
+    @staticmethod
+    def _report_scale_from_zero(
+        report: SmoketestReport,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        cold_targets: list[ScaleTarget],
+        elapsed: float,
+    ) -> None:
+        """Check each target left zero; an unreadable count fails."""
+        if not cold_targets:
+            return
+        live = discover_scale_targets(cmd, namespace, context.logger)
+        for target in cold_targets:
+            now = live.get(target.key)
+            replicas = now.current_replicas if now is not None else None
+            if replicas is None:
+                message = (
+                    f"Could not read {target.key}'s replicas after the request "
+                    f"(autoscaler or workload not found) -- scale-up from 0 "
+                    f"not verified"
+                )
+            elif replicas == 0:
+                message = (
+                    f"{target.key} still at 0 replicas although the request "
+                    f"succeeded -- the response did not come from a scale-up"
+                )
+            else:
+                message = (
+                    f"{target.key} scaled 0 -> {replicas} by {target.autoscaler}; "
+                    f"first response after {elapsed:.0f}s"
+                )
+            report.add(
+                CheckResult(
+                    f"scale_from_zero_{target.name}",
+                    replicas is not None and replicas >= 1,
+                    expected=">=1",
+                    actual="unknown" if replicas is None else str(replicas),
+                    message=message,
+                )
+            )
 
     def run_config_validation(
         self,
@@ -1195,27 +1388,44 @@ class BaseSmoketest:
                 or "none"
             )
 
-            # If WVA + HPA owns the replica count for this role, the
-            # actual pod count is HPA-driven and may legitimately differ
-            # from the scenario's static `<role>.replicas` (e.g. with
-            # `decode.replicas: 2` and `wva.hpa.minReplicas: 1`, an idle
-            # cluster ends up at 1 pod, which is correct, not a regression).
-            #
-            # In that case we relax the check to "actual count is within
-            # the HPA's [minReplicas, maxReplicas] window" and surface
-            # both the scenario value and the HPA bounds in the message
-            # so a reader can still tell what's happening.
-            #
-            # Multinode (LWS) deployments scale via LeaderWorkerSet, not
-            # HPA, so the relaxation must not apply to them - keep strict
-            # equality there.
+            # An autoscaled role may legitimately differ from `<role>.replicas`,
+            # so check the pod count against the autoscaler's [min, max] window:
+            # bounds found on the cluster first, else the WVA plan config.
+            # Multinode (LWS) scales via LeaderWorkerSet: keep strict equality.
+            autoscaled = (
+                []
+                if multinode_enabled
+                else targets_matching(
+                    discover_scale_targets(cmd, namespace, logger), role_selector
+                )
+            )
             hpa_managed = (
                 _nested_get(config, "wva", "enabled")
                 and _nested_get(config, "wva", "hpa", "enabled")
                 and role in _WVA_HPA_MANAGED_ROLES
                 and not multinode_enabled
             )
-            if hpa_managed:
+            if autoscaled:
+                target = autoscaled[0]
+                in_range = target.min_replicas <= len(pods) <= target.max_replicas
+                report.add(
+                    CheckResult(
+                        f"{prefix}_replicas",
+                        in_range,
+                        expected=(
+                            f"{target.min_replicas}..{target.max_replicas} "
+                            f"({target.autoscaler} window)"
+                        ),
+                        actual=str(len(pods)),
+                        message=(
+                            f"{role} pods in ns/{namespace}: {len(pods)} "
+                            f"(autoscaled by {target.describe()}, "
+                            f"scenario.{role}.replicas={expected_pods}) "
+                            f"[{pod_details}]"
+                        ),
+                    )
+                )
+            elif hpa_managed:
                 hpa_min = int(_nested_get(config, "wva", "hpa", "minReplicas") or 1)
                 hpa_max = int(
                     _nested_get(config, "wva", "hpa", "maxReplicas") or expected_pods
@@ -1985,6 +2195,10 @@ class BaseSmoketest:
     #   harness.smoketest.inferenceRetryBaseInterval
     #   harness.smoketest.inferenceRetryMaxInterval
     _DEFAULT_INFERENCE_MAX_RETRIES = 5
+    # Per-request curl --max-time.
+    _DEFAULT_INFERENCE_REQUEST_TIMEOUT = 120
+    # Scale-from-zero request timeout (harness.smoketest.coldStartTimeout).
+    _DEFAULT_COLD_START_TIMEOUT = 600
     _DEFAULT_INFERENCE_RETRY_BASE = 15
     _DEFAULT_INFERENCE_RETRY_MAX = 120
 
@@ -2011,6 +2225,7 @@ class BaseSmoketest:
         max_retries: int | None = None,
         retry_interval: int | None = None,
         retry_max_interval: int | None = None,
+        timeout_seconds: int | None = None,
     ) -> dict:
         url = f"{base_url}/v1/completions"
         payload = {
@@ -2042,7 +2257,14 @@ class BaseSmoketest:
         )
 
         for attempt in range(1, max_retries + 1):
-            stdout, err = self._curl_post(cmd, namespace, url, payload, plan_config)
+            stdout, err = self._curl_post(
+                cmd,
+                namespace,
+                url,
+                payload,
+                plan_config,
+                timeout_seconds or self._DEFAULT_INFERENCE_REQUEST_TIMEOUT,
+            )
 
             if cmd.dry_run:
                 return {
@@ -2170,6 +2392,7 @@ class BaseSmoketest:
         max_retries: int | None = None,
         retry_interval: int | None = None,
         retry_max_interval: int | None = None,
+        timeout_seconds: int | None = None,
     ) -> dict:
         url = f"{base_url}/v1/chat/completions"
         payload = {
@@ -2203,7 +2426,14 @@ class BaseSmoketest:
         )
 
         for attempt in range(1, max_retries + 1):
-            stdout, err = self._curl_post(cmd, namespace, url, payload, plan_config)
+            stdout, err = self._curl_post(
+                cmd,
+                namespace,
+                url,
+                payload,
+                plan_config,
+                timeout_seconds or self._DEFAULT_INFERENCE_REQUEST_TIMEOUT,
+            )
 
             if err:
                 if _is_retryable(err) and attempt < max_retries:
@@ -2451,6 +2681,14 @@ class BaseSmoketest:
         protocol = "https" if tls_termination else "http"
 
         return f"{protocol}://{route_host}/{model_id_label}{endpoint}"
+
+
+def _model_id_label(plan_config: dict) -> str:
+    return (
+        plan_config.get("model_id_label", "")
+        or _nested_get(plan_config, "model", "shortName")
+        or ""
+    )
 
 
 def _nested_get(d: dict, *keys: str):
