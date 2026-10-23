@@ -164,6 +164,7 @@ class InferenceTestStep(Step):
                 "/v1/completions",
                 completions_result.payload,
                 completions_result.generated_text,
+                stack_name=stack_name,
             )
             return StepResult(
                 step_number=self.number,
@@ -199,6 +200,7 @@ class InferenceTestStep(Step):
                     "/v1/chat/completions",
                     chat_result.payload,
                     chat_result.generated_text,
+                    stack_name=stack_name,
                 )
                 return StepResult(
                     step_number=self.number,
@@ -535,12 +537,14 @@ class InferenceTestStep(Step):
         endpoint: str,
         payload: dict,
         generated_text: str,
+        stack_name: str = "",
     ):
         """Log a reproducible curl command the user can copy-paste to demo.
 
         Detects the OpenShift route (if available) and prints an
         externally-accessible URL.  Falls back to the cluster-internal
-        URL with a note when no route is found.
+        URL with a note when no route is found, or when standup could not
+        create one for *stack_name*.
         """
         payload_compact = json.dumps(payload, separators=(",", ":"))
 
@@ -550,12 +554,14 @@ class InferenceTestStep(Step):
         context.logger.log_info("")
 
         # Try to detect the OpenShift route for an external URL
-        external_url = self._detect_external_url(
-            cmd,
-            namespace,
-            plan_config,
-            endpoint,
-        )
+        external_url = None
+        if stack_name not in context.route_failed_stacks:
+            external_url = self._detect_external_url(
+                cmd,
+                namespace,
+                plan_config,
+                endpoint,
+            )
 
         if external_url:
             context.logger.log_info("   To reproduce or demo, run:")

@@ -75,6 +75,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     deployed_endpoints: dict[str, str] = field(default_factory=dict)
     # stack -> URL reachable from outside the cluster (standup step 09).
     external_endpoints: dict[str, str] = field(default_factory=dict)
+    # Stacks whose OpenShift Route could not be created (standup step 09);
+    # later steps skip their route checks.
+    route_failed_stacks: set[str] = field(default_factory=set)
     deployed_methods: list[str] = field(default_factory=list)
 
     # Node resource discovery (populated during step 03)

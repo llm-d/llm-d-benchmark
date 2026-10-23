@@ -109,6 +109,8 @@ class ExposeEndpointStep(Step):
                     self._exposed[key] = url
 
         if not url:
+            if context.is_openshift:
+                context.route_failed_stacks.add(stack_name)
             return self._ok(stack_name, "could not expose endpoint (non-fatal)")
 
         context.external_endpoints[stack_name] = url

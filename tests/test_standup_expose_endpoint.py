@@ -9,6 +9,8 @@ Behavior under test:
 - Gateway classes resolve to the data-plane Service (``<gateway>-istio``).
 - Stacks sharing one Service share one exposure.
 - nok8s is skipped; FMA-only is a non-fatal no-op.
+- A Route that cannot be created marks the stack in ``route_failed_stacks``
+  so later steps skip their route checks.
 """
 
 from __future__ import annotations
@@ -57,6 +59,7 @@ class _StubCmd:
     services: dict[str, dict] = field(default_factory=dict)
     routes: list[dict] = field(default_factory=list)
     kube_calls: list[tuple] = field(default_factory=list)
+    expose_stderr: str = ""
 
     def kube(self, *args: str, **_: Any) -> _StubResult:
         self.kube_calls.append(args)
@@ -71,6 +74,8 @@ class _StubCmd:
             return _StubResult(True, f"10.0.0.1:{svc['metadata']['name']}:{port}")
         if args[:2] == ("get", "route"):
             return _StubResult(True, json.dumps({"items": self.routes}))
+        if args[0] == "expose" and self.expose_stderr:
+            return _StubResult(False, stderr=self.expose_stderr)
         if args[0] == "expose":
             svc = args[1].split("/", 1)[1]
             name = args[2].split("=", 1)[1]
@@ -96,6 +101,7 @@ class _StubContext:
     release: str = "llmdbench"
     logger: _StubLogger = field(default_factory=_StubLogger)
     external_endpoints: dict[str, str] = field(default_factory=dict)
+    route_failed_stacks: set[str] = field(default_factory=set)
 
     def require_cmd(self) -> _StubCmd:
         return self.cmd
@@ -255,3 +261,27 @@ def test_fma_only_is_a_noop(tmp_path, openshift):
     assert result.success
     assert cmd.kube_calls == []
     assert ctx.external_endpoints == {}
+
+
+def test_failed_route_marks_stack(tmp_path):
+    cmd = _StubCmd(
+        work_dir=tmp_path,
+        services={"m1-router-epp": _svc("m1-router-epp", [{"port": 80}])},
+        expose_stderr="spec.host: Invalid value: must be no more than 63 characters",
+    )
+    ctx = _StubContext(cmd=cmd)
+    result = _step(EPPONLY).execute(ctx, tmp_path / "stack-a")
+    assert result.success
+    assert ctx.external_endpoints == {}
+    assert ctx.route_failed_stacks == {"stack-a"}
+
+
+def test_created_route_does_not_mark_stack(tmp_path):
+    cmd = _StubCmd(
+        work_dir=tmp_path,
+        services={"m1-router-epp": _svc("m1-router-epp", [{"port": 80}])},
+    )
+    ctx = _StubContext(cmd=cmd)
+    _step(EPPONLY).execute(ctx, tmp_path / "stack-a")
+    assert "stack-a" in ctx.external_endpoints
+    assert ctx.route_failed_stacks == set()

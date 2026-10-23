@@ -590,7 +590,12 @@ class BaseSmoketest:
                     context.logger.log_info(f"Pod {pod_ip} responding (ok)")
 
         # 6. OpenShift route (only for modelservice -- standalone/kustomize have no gateway route)
-        if context.is_openshift and not is_standalone and not is_kustomize:
+        route_failed = stack_path.name in context.route_failed_stacks
+        if context.is_openshift and route_failed:
+            context.logger.log_info(
+                "No OpenShift route was created for this stack -- skipping route test"
+            )
+        elif context.is_openshift and not is_standalone and not is_kustomize:
             context.logger.log_info("Testing OpenShift route...")
             self._test_openshift_route(
                 cmd,
@@ -674,6 +679,7 @@ class BaseSmoketest:
                 "/v1/completions",
                 result["payload"],
                 result["generated_text"],
+                stack_name=stack_path.name,
             )
             report.add(
                 CheckResult(
@@ -708,6 +714,7 @@ class BaseSmoketest:
                     "/v1/chat/completions",
                     chat_result["payload"],
                     chat_result["generated_text"],
+                    stack_name=stack_path.name,
                 )
                 report.add(
                     CheckResult(
@@ -2372,6 +2379,7 @@ class BaseSmoketest:
         endpoint: str,
         payload: dict,
         generated_text: str,
+        stack_name: str = "",
     ):
         payload_compact = json.dumps(payload, separators=(",", ":"))  # noqa: F841
 
@@ -2380,12 +2388,15 @@ class BaseSmoketest:
             context.logger.log_info(f'   Generated: "{generated_text[:80]}"')
         context.logger.log_info("")
 
-        external_url = self._detect_external_url(
-            cmd,
-            namespace,
-            plan_config,
-            endpoint,
-        )
+        # Standup could not create a route for this stack: none to look up.
+        external_url = None
+        if stack_name not in context.route_failed_stacks:
+            external_url = self._detect_external_url(
+                cmd,
+                namespace,
+                plan_config,
+                endpoint,
+            )
 
         demo_url = external_url or f"{base_url}{endpoint}"
         payload_pretty = json.dumps(payload, indent=2)

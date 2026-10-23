@@ -243,7 +243,11 @@ class SmoketestStep(Step):
 
         # Non-fatal if either the service or pod-IP test passed.
         any_passed = service_test_passed or pod_test_passed
-        if context.is_openshift:
+        if context.is_openshift and stack_name in context.route_failed_stacks:
+            context.logger.log_info(
+                "No OpenShift route was created for this stack -- skipping route test"
+            )
+        elif context.is_openshift:
             context.logger.log_info("Testing OpenShift route...")
             route_errors: list[str] = []
             self._test_openshift_route(
