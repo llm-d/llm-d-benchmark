@@ -281,3 +281,40 @@ class TestTimeoutReturnsError:
         # And the helper logged the error (so it's visible even if caller
         # ignores the return value).
         logger.log_error.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Verbose: "Model not ready yet" names the last probe failure
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cls,module",
+    [
+        (BaseSmoketest, "llmdbenchmark.smoketests.base"),
+        (SmoketestStep, "llmdbenchmark.standup.steps.step_10_smoketest"),
+    ],
+)
+@pytest.mark.parametrize("verbose", [True, False])
+def test_not_ready_message_reason_only_when_verbose(cls, module, verbose, monkeypatch):
+    reason = "Curl to svc:80 failed: curl: (7) Failed to connect"
+    polls = iter([reason, None])
+    monkeypatch.setattr(f"{module}.test_model_serving", lambda *a, **kw: next(polls))
+    monkeypatch.setattr(f"{module}.time.sleep", lambda _: None)
+
+    cmd = MagicMock()
+    cmd.dry_run = False
+    cmd.verbose = verbose
+    ctx = MagicMock()
+    inst = cls.__new__(cls)
+    assert (
+        inst._wait_for_model_ready(cmd, ctx, "ns", "svc", 80, "m", timeout=60) is None
+    )
+
+    lines = [
+        c.args[0]
+        for c in ctx.logger.log_info.call_args_list
+        if c.args[0].startswith("Model not ready yet")
+    ]
+    assert len(lines) == 1
+    assert (f"Last probe: {reason}" in lines[0]) is verbose

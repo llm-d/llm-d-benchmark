@@ -468,10 +468,14 @@ class SmoketestStep(Step):
             if attempt <= verbose_attempts or (
                 elapsed - last_progress_log >= progress_interval
             ):
-                context.logger.log_info(
+                msg = (
                     f"Model not ready yet (attempt {attempt}, "
                     f"{int(elapsed)}s elapsed, {remaining}s remaining)..."
                 )
+                # Verbose: say why the last /v1/models probe failed.
+                if cmd.verbose:
+                    msg += f" Last probe: {result}"
+                context.logger.log_info(msg)
                 last_progress_log = elapsed
             time.sleep(poll_interval)
 
