@@ -645,6 +645,10 @@ and the pipeline is **generate, compress, copy**:
 * the archive is copied down as-is. Nothing is compressed, expanded, or re-analysed on the
   driver.
 
+The one exception is `--data-collect fast` for a set that was *not* compressed on the PVC
+(`--no-compress`, `--no-pvc`, or no zstd in the pod): the stream then uses zstd (gzip without
+it) only to cross the tunnel, and the driver decodes it on arrival. The collected tree is plain.
+
 A small keep-plain set is left as real files so the collected tree stays usable without
 touching the archive:
 

@@ -73,30 +73,8 @@ if find . -mindepth 1 \( -name '*
     exit 3
 fi
 
-# -T0 reads the *host* core count, ignoring the pod's cgroup quota, and zstd's worker
-# buffers scale with it. Ask the cgroup instead -- in-pod, so it cannot drift from the
-# pod actually running. 0 means unlimited, where -T0 is right.
-#
-# Top-level, not inside $(...): bash 3.2 (macOS /bin/bash, where the tests run this
-# script) cannot parse a `case` inside command substitution -- "syntax error near
-# unexpected token `;;'" -- and the parse failure aborts the whole script.
-q=; p=
-if [ -r /sys/fs/cgroup/cpu.max ]; then
-    read -r q p < /sys/fs/cgroup/cpu.max
-elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
-    q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)
-    p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)
-fi
-# Both numeric and a positive period, or fall back to 0 (= all cores). An
-# unexpected cgroup format must not divide by zero: that aborts the whole
-# script here, leaving the set uncompressed with a clean exit.
-threads=0
-case "$q$p" in
-    *[!0-9]* | '') ;;
-    *) if [ "$q" -gt 0 ] && [ "$p" -gt 0 ]; then
-           threads=$(( (q + p - 1) / p ))
-       fi ;;
-esac
+# cgroup-aware thread count: see _CGROUP_ZSTD_THREADS.
+{cgroup_threads}
 
 # In the results dir, not /tmp: the pod's /tmp is small, the tar is multi-GB.
 pack=$(mktemp ./.pack.XXXXXX.tar)
@@ -163,6 +141,56 @@ def remote_compress_script(remote_dir: str, level: int = DEFAULT_LEVEL) -> str:
         archive=REMOTE_ARCHIVE_NAME,
         keep_tests=keep_tests,
         level=level,
+        cgroup_threads=_CGROUP_ZSTD_THREADS,
+    )
+
+
+#: A transfer codec, not storage: the stream is consumed once on arrival, so
+#: zstd's speed knee rather than the archival DEFAULT_LEVEL.
+STREAM_LEVEL = 3
+
+# -T0 reads the host core count, ignoring the pod's cgroup quota, and zstd's
+# worker buffers scale with it: ask the cgroup instead, in-pod. Top-level, not
+# inside $(...): bash 3.2 (macOS /bin/bash, where the tests run these scripts)
+# cannot parse a `case` inside command substitution.
+#
+# Shared by the in-place compressor above and remote_stream_wrap below.
+_CGROUP_ZSTD_THREADS = """q=; p=
+if [ -r /sys/fs/cgroup/cpu.max ]; then
+    read -r q p < /sys/fs/cgroup/cpu.max
+elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
+    q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)
+    p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)
+fi
+# Both numeric and a positive period, or fall back to 0 (= all cores). An
+# unexpected cgroup format must not divide by zero: that would abort the
+# whole script.
+threads=0
+case "$q$p" in
+    *[!0-9]* | '') ;;
+    *) if [ "$q" -gt 0 ] && [ "$p" -gt 0 ]; then
+           threads=$(( (q + p - 1) / p ))
+       fi ;;
+esac
+"""
+
+
+def remote_stream_wrap(pipeline: str, level: int = STREAM_LEVEL) -> str:
+    """Shell that runs a tar-to-stdout *pipeline* and compresses its output.
+
+    zstd where the pod has it, gzip otherwise. The check runs in the same
+    container as the stream, so the two cannot disagree. The result is a
+    multi-line script meant for ``bash -c`` over ``kubectl exec`` -- bash,
+    because pipefail is what keeps a broken tar from reading as a clean stream.
+    """
+    return (
+        f"set -o pipefail\n"
+        f"{_CGROUP_ZSTD_THREADS}"
+        f"if command -v zstd >/dev/null 2>&1; then\n"
+        f'    {pipeline} | zstd -{level} -T"$threads" -q\n'
+        f"else\n"
+        f"    {pipeline} | gzip\n"
+        f"fi"
     )
 
 

@@ -115,7 +115,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_debug: bool = False
     harness_skip_run: bool = False
     # How much result data crosses the exec tunnel: "default" (``oc cp``), "fast"
-    # (a gzip'd ``oc exec | tar`` stream -- same files, quicker, retried), "results"
+    # (a compressed ``oc exec | tar`` stream -- same files, quicker, retried), "results"
     # (KEEP_PLAIN only) or "skip" (nothing; it stays on the PVC). See step_07.
     harness_data_collect: str = "default"
     # Compress each result set on the PVC before collecting, so the archive crosses

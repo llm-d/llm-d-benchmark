@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
+import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -247,41 +250,125 @@ def test_remote_reads_match_local_ones(tmp_path, compressed) -> None:
     assert read_members_remote(_reader(), str(d), pattern) == matches
 
 
-@pytest.mark.parametrize(
-    "dir_compressed,members,expect_flags,expect_mode",
-    [
-        (False, None, "cz", "r|gz"),
-        (True, None, "cf", "r|"),
-        (False, ("benchmark_report*.yaml",), "cz", "r|gz"),
-        (True, ("benchmark_report*.yaml",), "cz", "r|gz"),
-    ],
-)
-def test_remote_tar_flags_and_extraction_mode_agree(
-    monkeypatch, tmp_path, dir_compressed, members, expect_flags, expect_mode
-) -> None:
-    """A gzip'd stream read as plain (or the reverse) fails extraction outright."""
+def _capture_argv(monkeypatch, src, local, dir_compressed, members) -> list[str]:
+    """The kube argv _copy_dir_from_pod would stream from, without running it."""
     from llmdbenchmark.run.steps import step_07_deploy_harness as dh
 
     seen: dict = {}
 
-    def _stream(argv, local_path, mode="r|gz"):
-        seen["argv"], seen["mode"] = argv, mode
+    def _capture(argv, _local_path):
+        seen["argv"] = argv
         return type("R", (), {"success": True, "exit_code": 0, "stderr": ""})()
 
-    monkeypatch.setattr(dh.DeployHarnessStep, "_fast_collect_stream", _stream)
-    dh.DeployHarnessStep._copy_dir_from_pod(
-        _FakeCmd(),
-        "pod",
-        "ns",
-        "/requests/exp_1",
-        tmp_path,
-        _context(harness_data_collect="results" if members else "fast"),
-        fast_collect=True,
-        dir_compressed=dir_compressed,
-        members=members,
+    with monkeypatch.context() as patch:
+        patch.setattr(dh.DeployHarnessStep, "_fast_collect_stream", _capture)
+        dh.DeployHarnessStep._copy_dir_from_pod(
+            _FakeCmd(),
+            "pod",
+            "ns",
+            str(src),
+            local,
+            _context(harness_data_collect="results" if members else "fast"),
+            fast_collect=True,
+            dir_compressed=dir_compressed,
+            members=members,
+        )
+    return seen["argv"]
+
+
+@requires_compress_tools
+@pytest.mark.parametrize("pod_zstd", [True, False])
+@pytest.mark.parametrize(
+    "dir_compressed,members",
+    [
+        (False, None),
+        (True, None),
+        (False, ("benchmark_report*.yaml", "run_metadata.yaml")),
+        (True, ("benchmark_report*.yaml", "run_metadata.yaml")),
+    ],
+)
+def test_fast_collect_stream_round_trips_a_real_pod_pipeline(
+    tmp_path, monkeypatch, dir_compressed, members, pod_zstd
+):
+    """Every remote command _copy_dir_from_pod builds, run by a real shell,
+    extracts on the driver -- zstd or gzip, plain tree or compressed set.
+
+    A real tar catches `tar cf -C dir .`: it writes a file named `-C` and
+    streams nothing.
+    """
+    from llmdbenchmark.run.steps import step_07_deploy_harness as dh
+
+    src = _result_set(tmp_path)
+    (src / "benchmark_report_v0.2.yaml").write_text("report: yes", encoding="utf-8")
+    (src / "run_metadata.yaml").write_text("meta: yes", encoding="utf-8")
+    if dir_compressed:
+        _compress(src)
+
+    argv = _capture_argv(monkeypatch, src, tmp_path / "unused", dir_compressed, members)
+    remote = argv[argv.index("--") + 1 :]
+    remote[0] = shutil.which(remote[0])
+    if not pod_zstd:
+        # A pod without zstd: everything on PATH but zstd.
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        for tool in ("tar", "gzip", "find", "cat"):
+            (bin_dir / tool).symlink_to(shutil.which(tool))
+        monkeypatch.setenv("PATH", str(bin_dir))
+
+    out = tmp_path / "collected"
+    out.mkdir()
+    result = dh.DeployHarnessStep._fast_collect_stream(remote, out)
+    assert result.success, result.stderr
+
+    assert (out / "benchmark_report_v0.2.yaml").read_text(
+        encoding="utf-8"
+    ) == "report: yes"
+    if members:
+        assert sorted(p.name for p in out.iterdir()) == [
+            "benchmark_report_v0.2.yaml",
+            "run_metadata.yaml",
+        ]
+    elif dir_compressed:
+        assert (out / "workspace.tar.zst").is_file()
+        assert not (out / "analysis").exists()
+    else:
+        assert (out / "analysis" / "stage_1_session_lifecycle_metrics.json").is_file()
+
+
+def test_fast_collect_stream_survives_a_noisy_stderr(tmp_path):
+    """Far more stderr than a pipe buffer holds, written before any stdout."""
+    from llmdbenchmark.run.steps import step_07_deploy_harness as dh
+
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("a", encoding="utf-8")
+    script = (
+        "head -c 1000000 /dev/zero | tr '\\0' x >&2; "
+        f"tar cf - -C {shlex.quote(str(src))} ."
     )
-    assert seen["mode"] == expect_mode
-    assert expect_flags in " ".join(seen["argv"])
+    out = tmp_path / "out"
+    out.mkdir()
+
+    def _run():
+        return dh.DeployHarnessStep._fast_collect_stream(["bash", "-c", script], out)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(_run).result(timeout=60)
+
+    assert result.success, result.stderr[:200]
+    assert len(result.stderr) == 1_000_000
+    assert (out / "a.txt").read_text(encoding="utf-8") == "a"
+
+
+def test_fast_collect_stream_reports_a_failed_remote(tmp_path):
+    from llmdbenchmark.run.steps import step_07_deploy_harness as dh
+
+    result = dh.DeployHarnessStep._fast_collect_stream(
+        ["bash", "-c", "echo 'tar: boom' >&2; exit 2"], tmp_path
+    )
+
+    assert not result.success
+    assert "tar: boom" in result.stderr
 
 
 def test_remote_reader_builds_a_valid_exec_argv() -> None:

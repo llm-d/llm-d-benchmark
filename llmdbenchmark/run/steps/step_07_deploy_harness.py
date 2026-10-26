@@ -18,6 +18,7 @@ import shutil
 import string
 import subprocess
 import tarfile
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -54,6 +55,7 @@ from llmdbenchmark.utilities.archive import (
     read_members,
     read_members_remote,
     remote_compress_script,
+    remote_stream_wrap,
 )
 from llmdbenchmark.utilities.cloud_upload import upload_results_dir
 from llmdbenchmark.utilities.endpoint import reset_caches_pods
@@ -140,9 +142,7 @@ class _RemoteResultReader:
         return f"{self.reader.pod}:{self._path(subdir)}"
 
 
-def _remote_select_script(
-    remote_dir: str, members: tuple[str, ...], tar_flags: str
-) -> str:
+def _remote_select_script(remote_dir: str, members: tuple[str, ...]) -> str:
     # find selects and tar packs what it is handed: patterns passed to `tar c` are
     # operands to stat, not filters. No match yields a valid empty archive.
     tests = " -o ".join(f"-name {shlex.quote(pattern)}" for pattern in members)
@@ -150,7 +150,7 @@ def _remote_select_script(
     return (
         f"cd {quoted_dir} && "
         f"find . -maxdepth 1 -type f \\( {tests} \\) -print "
-        f"| tar {tar_flags}f - --no-recursion -T -"
+        f"| tar cf - --no-recursion -T -"
     )
 
 
@@ -1341,11 +1341,11 @@ class DeployHarnessStep(Step):
     ) -> CommandResult:
         """Copy one remote results directory from ``source_pod`` to ``local_path``.
 
-        ``fast_collect`` swaps ``kubectl cp`` for a gzip'd ``exec | tar``
-        stream -- same files, much faster for large trees. The stream is
-        retried because dropped apiserver exec streams (``tar: Unexpected
-        EOF``) are transient, and extractall overwrites so a partial
-        extraction from a failed attempt is harmless.
+        ``fast_collect`` swaps ``kubectl cp`` for a compressed ``exec | tar``
+        stream (zstd, or gzip where the pod has no zstd) -- same files, much
+        faster for large trees. The stream is retried because dropped apiserver
+        exec streams (``tar: Unexpected EOF``) are transient, and extractall
+        overwrites so a partial extraction from a failed attempt is harmless.
 
         ``members`` forces the stream path: ``kubectl cp`` copies a whole directory
         or nothing.
@@ -1360,9 +1360,9 @@ class DeployHarnessStep(Step):
                 namespace=namespace,
                 check=False,
             )
-        # A selected set is KEEP_PLAIN, never already-compressed bytes, so it gzips.
+        # A selected set is never already-compressed bytes, so it takes the
+        # transfer codec like any other plain tree.
         streaming_archive = dir_compressed and not members
-        tar_flags = "cf" if streaming_archive else "cz"
         # Auto-detected binary + kubeconfig/context/namespace flags.
         kube_argv = [
             cmd._kube_bin,
@@ -1374,26 +1374,23 @@ class DeployHarnessStep(Step):
             *(("-c", container) if container else ()),
             "--",
         ]
-        if members:
-            # `sh -c` is safe despite kube()'s hazard: this argv goes straight to
-            # Popen, so no local shell ever re-parses it.
-            kube_argv.extend(
-                [
-                    "sh",
-                    "-c",
-                    _remote_select_script(remote_dir, members, tar_flags),
-                ]
-            )
+        # tar must name stdout explicitly: in `tar cf -C dir .` the f flag
+        # swallows `-C` as the archive *name* and streams nothing.
+        if streaming_archive:
+            kube_argv.extend(["tar", "cf", "-", "-C", remote_dir, "."])
         else:
-            kube_argv.extend(["tar", tar_flags, "-C", remote_dir, "."])
+            pipeline = (
+                _remote_select_script(remote_dir, members)
+                if members
+                else f"tar cf - -C {shlex.quote(remote_dir)} ."
+            )
+            # bash, not sh: the wrap needs pipefail. The script goes straight
+            # to Popen as argv, so no local shell ever re-parses it.
+            kube_argv.extend(["bash", "-c", remote_stream_wrap(pipeline)])
         max_attempts = 5
         cp_result = CommandResult(command=" ".join(kube_argv), exit_code=1)
         for cp_attempt in range(1, max_attempts + 1):
-            cp_result = DeployHarnessStep._fast_collect_stream(
-                kube_argv,
-                local_path,
-                mode="r|" if streaming_archive else "r|gz",
-            )
+            cp_result = DeployHarnessStep._fast_collect_stream(kube_argv, local_path)
             if cp_result.success:
                 break
             context.logger.log_warning(
@@ -1608,7 +1605,7 @@ class DeployHarnessStep(Step):
         local_analysis_dir = context.run_analysis_dir()
 
         copy_method = (
-            "a gzip'd 'exec | tar' stream (--data-collect fast)"
+            "a compressed 'exec | tar' stream (--data-collect fast)"
             if context.collect_fast
             else "'kubectl cp --retries=5'"
         )
@@ -1870,41 +1867,42 @@ class DeployHarnessStep(Step):
         return True
 
     @staticmethod
-    def _fast_collect_stream(
-        kube_argv: list[str], local_path: Path, mode: str = "r|gz"
-    ) -> CommandResult:
+    def _fast_collect_stream(kube_argv: list[str], local_path: Path) -> CommandResult:
         """Stream ``<kube> exec ... -- tar c*`` stdout into local ``tarfile``.
 
-        Pure-Python replacement for a ``kube exec ... | tar xz -C`` shell pipe:
+        Pure-Python replacement for a ``kube exec ... | tar x -C`` shell pipe:
         no shell, no local ``tar`` binary, no quoting. Returns a CommandResult
-        so the caller keeps its uniform success/stderr handling. ``mode`` must
-        match the remote tar's compression (``r|`` for a plain ``tar cf``).
+        so the caller keeps its uniform success/stderr handling. The pod picks
+        the codec, so the stream is read with ``r|*``, which detects it.
         """
         cmd_str = " ".join(kube_argv)
         try:
-            with subprocess.Popen(
-                kube_argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-            ) as proc:
+            # stderr goes to a file: a pipe nobody reads while stdout drains
+            # fills up, and then the child and the reader wait for each other.
+            with (
+                tempfile.TemporaryFile() as err,
+                subprocess.Popen(kube_argv, stdout=subprocess.PIPE, stderr=err) as proc,
+            ):
                 # ``r|*`` = streaming read; tarfile consumes bytes as they land
                 # on stdout without seeking, so it works on a live pipe.
                 try:
-                    with tarfile.open(fileobj=proc.stdout, mode=mode) as tar:
+                    with tarfile.open(fileobj=proc.stdout, mode="r|*") as tar:
                         # ``filter="data"`` rejects absolute paths, ``..`` and
                         # device entries (default in Py 3.14+, safe elsewhere).
                         tar.extractall(path=local_path, filter="data")
-                    stderr = proc.stderr.read().decode("utf-8", errors="replace")
                     exit_code = proc.wait()
+                    error = None
                 except Exception as exc:  # noqa: BLE001 -- must not leak the child
                     proc.kill()
-                    stderr = proc.stderr.read().decode("utf-8", errors="replace")
                     proc.wait()
-                    return CommandResult(
-                        command=cmd_str,
-                        exit_code=proc.returncode or 1,
-                        stderr=f"{exc}\n{stderr}",
-                    )
+                    exit_code = proc.returncode or 1
+                    error = exc
+                err.seek(0)
+                stderr = err.read().decode("utf-8", errors="replace")
         except OSError as exc:
             return CommandResult(command=cmd_str, exit_code=1, stderr=str(exc))
+        if error is not None:
+            stderr = f"{error}\n{stderr}"
         return CommandResult(command=cmd_str, exit_code=exit_code, stderr=stderr)
 
     # ------------------------------------------------------------------

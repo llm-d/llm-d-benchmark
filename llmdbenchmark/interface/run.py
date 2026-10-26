@@ -317,7 +317,7 @@ def add_subcommands(
         choices=("default", "fast", "results", "skip"),
         default=None,
         help="How much result data to copy to this machine: 'default' via "
-        "'oc cp'; 'fast' via a gzip'd 'oc exec | tar' stream (same files, much "
+        "'oc cp'; 'fast' via a compressed 'oc exec | tar' stream (same files, much "
         "faster for large trees); 'results' only the small reports and "
         "metadata; 'skip' nothing at all, leaving everything on the PVC. "
         "Under 'results' and 'skip', --validate-failures reads the PVC "
