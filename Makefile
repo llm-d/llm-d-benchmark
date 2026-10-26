@@ -435,6 +435,55 @@ calibrate-peak-decode: check-kubectl ## Measure peakDecodeThroughput with a deco
 	echo "     --set eppKedaSaturation.scaledObject.peakDecodeThroughput=$$VD"; \
 	echo "   Results: $$WS"
 
+# --- R: SLO-bounded serving capacity (make calibrate-serving-capacity) ----------
+# R is the request rate ONE replica serves while its p90 TTFT stays within the SLO
+# and no request fails -- the number an autoscaler needs to turn an arrival rate
+# into replicas (replicas = arrivals / R). It is lower than the saturation rate:
+# past the SLO knee a pod still completes requests, but too slowly to count.
+#
+# The target runs a rate ladder of the guide's OWN workload profile (only the load
+# stages change, so the token shape is the guide's) against a pool held at
+# REPLICAS, then picks the highest offered rate that met TTFT_TARGET with zero
+# failures and divides it by REPLICAS. Any ScaledObject is paused at REPLICAS for
+# the run and restored afterwards, so a live autoscaler cannot change the pool.
+R_RATES ?= 0.25,0.5,1,1.5,2,3
+R_STAGE_SECONDS ?= 120
+REPLICAS ?= 1
+TTFT_TARGET ?= 2
+
+.PHONY: calibrate-serving-capacity
+calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s one replica serves, with the guide's own profile. NAMESPACE=<ns> SPEC=<spec> [R_RATES=0.25,0.5,1,1.5,2,3] [R_STAGE_SECONDS=120] [TTFT_TARGET=2] [REPLICAS=1] [WORKLOAD=<profile>] [OVERRIDES=k=v,...] [RUN_ARGS=...]
+	@test -n "$(NAMESPACE)" -a -n "$(SPEC)" || { \
+	  echo "❌ usage: make calibrate-serving-capacity NAMESPACE=<ns> SPEC=<spec> [R_RATES=...] [TTFT_TARGET=2]"; exit 1; }
+	@set -e; \
+	NS="$(NAMESPACE)"; WS=$$(mktemp -d); \
+	PAUSED=$$(kubectl get scaledobject -n "$$NS" -o name 2>/dev/null); \
+	for so in $$PAUSED; do \
+	  kubectl annotate -n "$$NS" "$$so" autoscaling.keda.sh/paused-replicas=$(REPLICAS) --overwrite >/dev/null; done; \
+	trap 'for so in $$PAUSED; do kubectl annotate -n "$$NS" "$$so" autoscaling.keda.sh/paused-replicas- >/dev/null 2>&1 || true; done' EXIT; \
+	test -z "$$PAUSED" || echo "🅿️  paused $$(echo $$PAUSED | wc -w | tr -d ' ') ScaledObject(s) at $(REPLICAS) replica(s) for the measurement"; \
+	ready() { kubectl get pods -n "$$NS" -l llm-d.ai/role=decode --field-selector=status.phase=Running \
+	  -o jsonpath='{range .items[*]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null | grep -c True || true; }; \
+	for i in $$(seq 1 120); do [ "$$(ready)" = "$(REPLICAS)" ] && break; sleep 10; done; \
+	BEFORE=$$(ready); \
+	test "$$BEFORE" = "$(REPLICAS)" || { echo "❌ expected $(REPLICAS) Ready llm-d.ai/role=decode pod(s) in ns/$$NS, found $$BEFORE"; exit 2; }; \
+	STAGES=$$(echo "$(R_RATES)" | tr ',' '\n' | awk -v d=$(R_STAGE_SECONDS) 'NF{printf "%s{rate: %s, duration: %s}", (n++ ? ", " : ""), $$1, d}'); \
+	echo "▶️  $(if $(WORKLOAD),$(WORKLOAD),the guide's own profile) at $(R_RATES) req/s, $(R_STAGE_SECONDS)s each, against $$BEFORE replica(s)"; \
+	$(LLMDBENCH) --spec "$(SPEC)" --ws "$$WS" run -p "$$NS" -l inference-perf $(if $(WORKLOAD),-w $(WORKLOAD)) \
+	  -o "load.type=poisson$(comma)load.stages=[$$STAGES]$(if $(OVERRIDES),$(comma)$(OVERRIDES))" $(RUN_ARGS); \
+	AFTER=$$(ready); \
+	test "$$BEFORE" = "$$AFTER" || { \
+	  echo "❌ Ready replicas changed during the run ($$BEFORE -> $$AFTER); re-run with the pool fixed."; exit 3; }; \
+	PY=$$(head -1 "$$(command -v $(LLMDBENCH))" | sed 's/^#!//'); \
+	echo "📊 per stage (a stage counts only while p90 TTFT <= $(TTFT_TARGET)s and nothing failed):"; \
+	"$$PY" -m llmdbenchmark.run.autoscaling_sizing serving-capacity "$$(ls -d "$$WS"/*/results | head -1)" "$$BEFORE" "$(TTFT_TARGET)" \
+	  | tee "$$WS/serving-capacity.txt"; \
+	R=$$(sed -n 's/^SERVING_CAPACITY=\([0-9.]*\).*/\1/p' "$$WS/serving-capacity.txt"); \
+	echo "✅ SERVING_CAPACITY (R)=$$R req/s per replica"; \
+	echo "   Use it in a ScaledObject trigger query as \$${servingCapacity}:"; \
+	echo "     --set eppKedaSaturation.scaledObject.servingCapacity=$$R"; \
+	echo "   Results: $$WS"
+
 .PHONY: check-envsubst
 check-envsubst:
 	@command -v envsubst >/dev/null 2>&1 || { \

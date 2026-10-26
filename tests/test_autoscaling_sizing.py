@@ -25,6 +25,7 @@ from llmdbenchmark.run.autoscaling_sizing import (
     explain_pd_ratio,
     pd_ratio,
     peak_decode_throughput,
+    serving_capacity,
     STEP_SECONDS,
     Stage,
     size_stage,
@@ -499,3 +500,80 @@ def test_step_09a_sizes_every_treatment_not_just_the_first(tmp_path, monkeypatch
     step.CaptureClusterStateStep().execute(context, stack)
 
     assert seen == [ids]
+
+
+# --- R, SLO-bounded serving capacity (make calibrate-serving-capacity) -------
+
+
+def _rate_ladder(*points):
+    """Stages of (offered req/s, p90 TTFT seconds, failures) at increasing rate."""
+    return [
+        Stage(
+            f"stage {i}",
+            T0 + i * 60,
+            T0 + (i + 1) * 60,
+            rate,
+            1.0,
+            1.0,
+            None,
+            ttft,
+            rate,
+            fail,
+        )
+        for i, (rate, ttft, fail) in enumerate(points)
+    ] + [
+        Stage("whole run", T0, T0 + 60 * len(points), 9.0, 1.0, 1.0, None, 0.0, None, 0)
+    ]
+
+
+def test_r_is_the_highest_offered_rate_within_the_ttft_slo():
+    # Throughput keeps rising past the knee; the SLO, not saturation, sets R.
+    r, stage = serving_capacity(
+        _rate_ladder(
+            (0.61, 0.33, 0), (1.22, 0.46, 0), (1.83, 3.03, 0), (3.66, 56.9, 16)
+        ),
+        1,
+        2.0,
+    )
+    assert (r, stage.name) == (1.22, "stage 1")
+
+
+def test_a_stage_with_failed_requests_never_counts():
+    r, stage = serving_capacity(_rate_ladder((0.5, 0.2, 0), (1.0, 0.3, 4)), 1, 2.0)
+    assert (r, stage.name) == (0.5, "stage 0")
+
+
+def test_r_is_per_replica():
+    r, _ = serving_capacity(_rate_ladder((2.0, 0.4, 0), (4.0, 0.9, 0)), 2, 2.0)
+    assert r == 2.0
+
+
+def test_no_r_when_no_stage_met_the_slo():
+    assert serving_capacity(_rate_ladder((0.5, 3.0, 0)), 1, 2.0) is None
+    assert serving_capacity(_rate_ladder((0.5, 0.2, 0)), 0, 2.0) is None
+
+
+def test_stage_windows_read_ttft_failures_and_the_offered_rate(tmp_path):
+    results = _results(tmp_path)
+    report = next(results.glob("exp_1/*stage_1*"))
+    data = yaml.safe_load(report.read_text())
+    aggregate = data["results"]["request_performance"]["aggregate"]
+    aggregate["latency"] = {"time_to_first_token": {"p90": 0.46}}
+    aggregate["requests"] = {"failures": 3}
+    data["scenario"] = {
+        "load": {
+            "native": {
+                "config": {
+                    "load": {
+                        "stages": [
+                            {"rate": 0.61, "duration": 120},
+                            {"rate": 1.22, "duration": 120},
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    report.write_text(yaml.safe_dump(data))
+    stage = stage_windows(results, "exp")[1]
+    assert (stage.ttft_p90, stage.failures, stage.offered_rate) == (0.46, 3, 1.22)

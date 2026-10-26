@@ -7,8 +7,8 @@
    Triggers come entirely from scaledObject.triggers (see defaults.yaml); a
    scenario can redefine the whole list. Each entry: query (required),
    threshold, optional name/metricType/activationThreshold. In `query`,
-   ${poolName}, ${modelName}, ${namespace} and ${peakPrefillThroughput} are
-   substituted at render time.
+   ${poolName}, ${modelName}, ${namespace}, ${peakPrefillThroughput} and
+   ${servingCapacity} are substituted at render time.
 
    ${namespace} exists because a token-aware query MUST pin the namespace label:
    on a cluster-wide store (OpenShift Thanos, or any Prometheus scraping several
@@ -28,6 +28,10 @@
                               `kubectl get hpa`.
      peakPrefillThroughput -- substituted into `query` as above; measure it with
                               `make calibrate-peak-prefill NAMESPACE=<ns>`.
+     servingCapacity       -- R, requests/s one replica serves within its TTFT SLO,
+                              substituted into `query` as ${servingCapacity} (e.g. a
+                              trigger that turns the arrival rate into replicas);
+                              measure it with `make calibrate-serving-capacity`.
 
    MULTI-TARGET (P/D-disaggregated) VARIANT
    -----------------------------------------
@@ -46,7 +50,7 @@
      minReplicas/maxReplicas/pollingInterval/nameSuffix/behavior -- optional
                       per-target overrides; fall back to the shared
                       scaledObject.* keys of the same name when omitted.
-   ${poolName}/${modelName}/${namespace}/${peakPrefillThroughput} substitute the
+   ${poolName}/${modelName}/${namespace}/${peakPrefillThroughput}/${servingCapacity} substitute the
    same way as the single-object path. When `targets` is unset or empty, this
    whole branch is skipped and the single-object shape below is unchanged --
    every existing eppKedaSaturation consumer leaves `targets` unset, so their
@@ -118,6 +122,7 @@ spec:
 {% set prom_url = eppKedaSaturation.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local', true) %}
 {% set prom_url = prom_url ~ ':' ~ (eppKedaSaturation.prometheus.port | default(9091, true)) %}
 {% set peak_prefill = eppKedaSaturation.scaledObject.peakPrefillThroughput | default('', true) %}
+{% set serving_capacity = eppKedaSaturation.scaledObject.servingCapacity | default('', true) %}
 {% for target in epp_targets %}
 {% set role = target.role | default('decode', true) %}
 {% set override_name = target.scaleTargetRef.name | default('', true) if target.scaleTargetRef is defined else '' %}
@@ -167,7 +172,7 @@ spec:
       serverAddress: "{{ prom_url }}"
       authModes: bearer
       query: |
-        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) | replace('${namespace}', epp_ns) | replace('${peakPrefillThroughput}', peak_prefill | string) | indent(8) }}
+        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) | replace('${namespace}', epp_ns) | replace('${peakPrefillThroughput}', peak_prefill | string) | replace('${servingCapacity}', serving_capacity | string) | indent(8) }}
       threshold: "{{ t.threshold | default('1') }}"
       activationThreshold: "{{ t.activationThreshold | default('0') }}"
 {% endfor %}
@@ -195,6 +200,7 @@ spec:
 {% set triggers = eppKedaSaturation.scaledObject.triggers | default([], true) %}
 {% set name_suffix = eppKedaSaturation.scaledObject.nameSuffix | default('saturation', true) %}
 {% set peak_prefill = eppKedaSaturation.scaledObject.peakPrefillThroughput | default('', true) %}
+{% set serving_capacity = eppKedaSaturation.scaledObject.servingCapacity | default('', true) %}
 {% if dry_run %}
 {% set so_min = eppKedaSaturation.scaledObject.minReplicas | default(1) | int %}
 {% set real_replicas = 0 if fma is defined and fma.enabled | default(false) else decode.replicas | default(0, true) | int %}
@@ -231,7 +237,7 @@ spec:
       serverAddress: "{{ prom_url }}"
       authModes: bearer
       query: |
-        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) | replace('${namespace}', epp_ns) | replace('${peakPrefillThroughput}', peak_prefill | string) | indent(8) }}
+        {{ t.query | replace('${poolName}', pool_name) | replace('${modelName}', model.name) | replace('${namespace}', epp_ns) | replace('${peakPrefillThroughput}', peak_prefill | string) | replace('${servingCapacity}', serving_capacity | string) | indent(8) }}
       threshold: "{{ t.threshold | default('1') }}"
       activationThreshold: "{{ t.activationThreshold | default('0') }}"
 {% endfor %}

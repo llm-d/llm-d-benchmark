@@ -60,10 +60,23 @@ class Stage:
     input_token_rate: float | None = None
     output_token_rate: float | None = None
     tpot_p90: float | None = None
+    ttft_p90: float | None = None
+    offered_rate: float | None = None
+    failures: int | None = None
 
 
 def _ts(value: str) -> float:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+
+
+def _offered_rate(report: dict, stage: int) -> float | None:
+    """The rate the harness was configured to offer in this stage (inference-perf load.stages)."""
+    config = (
+        ((report.get("scenario") or {}).get("load") or {}).get("native") or {}
+    ).get("config") or {}
+    stages = (config.get("load") or {}).get("stages") or []
+    rate = stages[stage].get("rate") if stage < len(stages) else None
+    return float(rate) if isinstance(rate, (int, float)) else None
 
 
 def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
@@ -92,9 +105,11 @@ def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
                 (data.get("results") or {}).get("request_performance") or {}
             ).get("aggregate", {})
             throughput = aggregate.get("throughput", {})
-            tpot = (
-                (aggregate.get("latency") or {}).get("time_per_output_token") or {}
-            ).get("p90")
+            latency = aggregate.get("latency") or {}
+            tpot = (latency.get("time_per_output_token") or {}).get("p90")
+            ttft = (latency.get("time_to_first_token") or {}).get("p90")
+            failures = (aggregate.get("requests") or {}).get("failures")
+            offered = _offered_rate(data, int(match.group(1)))
             rate, tokens_in, tokens_out = (
                 (throughput.get(key) or {}).get("mean")
                 for key in ("request_rate", "input_token_rate", "output_token_rate")
@@ -109,6 +124,9 @@ def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
                     tokens_in,
                     tokens_out,
                     tpot,
+                    ttft,
+                    offered,
+                    failures,
                 ),
             )
         metadata = result_dir / "run_metadata.yaml"
@@ -490,6 +508,31 @@ def peak_decode_throughput(
     return round(best.output_token_rate / decode_replicas, 1), best
 
 
+def serving_capacity(
+    stages: list[Stage], replicas: int, ttft_target: float
+) -> tuple[float, Stage] | None:
+    """R: requests/s per replica at the highest offered rate that met the SLO.
+
+    A rate ladder against a fixed pool makes this a measurement. A stage counts
+    only while its p90 TTFT is within the target and no request failed. Past
+    that, latency or errors break the SLO before throughput stops rising, so R
+    is an SLO-bounded capacity, below the saturation rate.
+    """
+    within = [
+        s
+        for s in stages
+        if s.name != "whole run"
+        and s.offered_rate
+        and s.ttft_p90 is not None
+        and s.ttft_p90 <= ttft_target
+        and not s.failures
+    ]
+    if not within or replicas < 1:
+        return None
+    best = max(within, key=lambda s: s.offered_rate)
+    return round(best.offered_rate / replicas, 3), best
+
+
 def write_sizing(
     stack_path: Path,
     results_dir: Path,
@@ -531,12 +574,41 @@ def write_sizing(
 if __name__ == "__main__":
     # make calibrate-peak-decode: python -m llmdbenchmark.run.autoscaling_sizing
     #   peak-decode <results_dir> <decode_replicas> <tpot_target_seconds>
+    # make calibrate-serving-capacity: python -m llmdbenchmark.run.autoscaling_sizing
+    #   serving-capacity <results_dir> <replicas> <ttft_target_seconds>
     import sys
 
     _, command, results, replicas, target = sys.argv
-    assert command == "peak-decode", command
+    assert command in ("peak-decode", "serving-capacity"), command
     stages = stage_windows(Path(results), "")
-    for s in stages[:-1] if stages and stages[-1].name == "whole run" else stages:
+    ladder = stages[:-1] if stages and stages[-1].name == "whole run" else stages
+    if command == "serving-capacity":
+        print(
+            f"   {'stage':<9} {'offered req/s':>13} {'failed':>6} {'p90 TTFT':>9}  within {target}s?"
+        )
+        for s in ladder:
+            ttft = f"{s.ttft_p90:.2f}s" if s.ttft_p90 is not None else "n/a"
+            ok = (
+                s.ttft_p90 is not None
+                and s.ttft_p90 <= float(target)
+                and not s.failures
+            )
+            print(
+                f"   {s.name:<9} {s.offered_rate if s.offered_rate is not None else 'n/a':>13} "
+                f"{s.failures if s.failures is not None else 'n/a':>6} {ttft:>9}  {'yes' if ok else 'no'}"
+            )
+        found = serving_capacity(stages, int(replicas), float(target))
+        if found is None:
+            sys.exit(
+                f"no stage met p90 TTFT <= {target}s with zero failures; lower RATES"
+            )
+        print(f"SERVING_CAPACITY={found[0]:g} ({found[1].name}, {replicas} replica(s))")
+        offered = [s for s in ladder if s.offered_rate]
+        if found[1] is max(offered, key=lambda s: s.offered_rate):
+            print("! the highest offered rate still met the SLO, so R may be higher --")
+            print("  raise RATES and re-run")
+        sys.exit(0)
+    for s in ladder:
         tpot = f"{s.tpot_p90 * 1000:.0f}ms" if s.tpot_p90 is not None else "n/a"
         rate = f"{s.output_token_rate:.0f}" if s.output_token_rate else "n/a"
         print(f"   {s.name}: {rate} out tok/s, p90 TPOT {tpot}")
