@@ -37,10 +37,18 @@ import pytest
 if "planner" not in sys.modules:
     planner_stub = types.ModuleType("planner")
     capacity_stub = types.ModuleType("planner.capacity_planner")
+
     # Module-level __getattr__ catches any name lookup (PEP 562), so we
     # don't have to enumerate the planner exports capacity_validator.py
-    # uses -- future additions stay covered without test churn.
-    capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
+    # uses -- future additions stay covered without test churn. Dunder
+    # lookups (``__file__``) must still fail: inspect/coverage call
+    # ``__file__.endswith`` and crash on a function.
+    def _stub_attr(name: str):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return lambda *a, **kw: None
+
+    capacity_stub.__getattr__ = _stub_attr  # type: ignore[attr-defined]
     sys.modules["planner"] = planner_stub
     sys.modules["planner.capacity_planner"] = capacity_stub
 
