@@ -275,7 +275,7 @@ def test_parse_gcs_uri():
     assert prefix == ""
 
 
-@patch("llmdbenchmark.results_store.client.gcs.storage.Client")
+@patch("google.cloud.storage.Client")
 def test_gcs_client_push(mock_storage, tmp_path):
     mock_bucket = MagicMock()
     mock_storage.return_value.bucket.return_value = mock_bucket

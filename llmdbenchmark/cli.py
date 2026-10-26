@@ -52,12 +52,6 @@ from llmdbenchmark.parser.cluster_resource_resolver import ClusterResourceResolv
 from llmdbenchmark.executor.step import Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step_executor import StepExecutor
-from llmdbenchmark.standup.steps import get_standup_steps
-from llmdbenchmark.update import runner as update_runner
-from llmdbenchmark.smoketests.steps import get_smoketest_steps
-from llmdbenchmark.teardown.steps import get_teardown_steps
-
-from llmdbenchmark.run.steps import get_run_steps
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.archive import DEFAULT_LEVEL as DEFAULT_COMPRESS_LEVEL
 from llmdbenchmark.utilities.standup_parameters import (
@@ -194,6 +188,8 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     # Before the render, so a refused update does not first render a plan.
     update_components = None
     if args.command == Command.UPDATE.value:
+        from llmdbenchmark.update import runner as update_runner
+
         update_components = update_runner.resolve_scope(args, logger)
 
     # Experiment command manages its own rendering per setup treatment
@@ -272,6 +268,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             # is reserved for DoE treatments, which must win over --set.
             setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         ).eval()
+        version_resolver.close()
 
         try:
             if render_plan_errors.has_errors:
@@ -733,6 +730,9 @@ def _build_standup_context(args, logger, render_plan_errors, phase=Phase.STANDUP
 
 def _do_standup(args, logger, render_plan_errors):
     """Core standup logic. Returns (context, result). Raises PhaseError on failure."""
+    # Lazy: the steps module pulls in the whole phase graph.
+    from llmdbenchmark.standup.steps import get_standup_steps
+
     context, all_stacks_info = _build_standup_context(args, logger, render_plan_errors)
 
     # Announce PVC-less standup up front, mirroring the run phase.
@@ -844,6 +844,9 @@ def _chain_smoketest(args, logger, render_plan_errors, context):
 
 def _do_update(args, logger, render_plan_errors, components):
     """Core update logic. Returns (context, result). Raises PhaseError on failure."""
+    from llmdbenchmark.standup.steps import get_standup_steps
+    from llmdbenchmark.update import runner as update_runner
+
     context, all_stacks_info = _build_standup_context(
         args, logger, render_plan_errors, phase=Phase.UPDATE
     )
@@ -928,6 +931,8 @@ def _execute_update(args, logger, render_plan_errors, components):
 
 def _do_smoketest(args, logger, render_plan_errors, step_spec=None):
     """Core smoketest logic. Returns (context, result). Raises PhaseError on failure."""
+    from llmdbenchmark.smoketests.steps import get_smoketest_steps
+
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
     plan_info = all_stacks_info[0] if all_stacks_info else {}
@@ -1144,6 +1149,8 @@ def _print_standup_summary(context, result, logger):
 
 def _do_teardown(args, logger, render_plan_errors):
     """Core teardown logic. Returns (context, result). Raises PhaseError on failure."""
+    from llmdbenchmark.teardown.steps import get_teardown_steps
+
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     plan_info = _load_plan_info(rendered_paths)
     deployed_methods = _resolve_deploy_methods(
@@ -1229,6 +1236,8 @@ def _execute_teardown(args, logger, render_plan_errors):
 
 def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     """Core run logic. Returns (context, result). Raises PhaseError on failure."""
+    from llmdbenchmark.run.steps import get_run_steps
+
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
     plan_info = all_stacks_info[0] if all_stacks_info else {}
@@ -1928,6 +1937,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         setup_overrides_by_stack=getattr(args, "setup_overrides_by_stack", None),
         cli_non_admin=getattr(args, "non_admin", False),
     ).eval()
+    version_resolver.close()
 
     if render_plan_errors.has_errors:
         error_dump = json.dumps(render_plan_errors.to_dict(), indent=2)

@@ -2,28 +2,14 @@
 
 from __future__ import annotations
 
-import sys
-import types
 
 import pytest
 
-# See test_kustomize_hf_token.py: stub ``planner`` so the steps package imports.
-if "planner.capacity_planner" not in sys.modules:
-
-    class _PermissiveModule(types.ModuleType):
-        def __getattr__(self, name: str):  # type: ignore[override]
-            return type(name, (), {})
-
-    sys.modules.setdefault("planner", _PermissiveModule("planner"))
-    sys.modules["planner.capacity_planner"] = _PermissiveModule(
-        "planner.capacity_planner"
-    )
-
-from llmdbenchmark.kustomize.readme_parser import (  # noqa: E402
+from llmdbenchmark.kustomize.readme_parser import (
     CommandPhase,
     GuideCommand,
 )
-from llmdbenchmark.standup.steps.step_05_kustomize_deploy import (  # noqa: E402
+from llmdbenchmark.standup.steps.step_05_kustomize_deploy import (
     KustomizeDeployStep,
 )
 

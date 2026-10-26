@@ -9,21 +9,10 @@ bound launcher must still fail it.
 from __future__ import annotations
 
 import json
-import sys
-import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
-# Stub planner so we can import smoketest modules (see
-# test_smoketest_inference.py for the same pattern + rationale).
-if "planner" not in sys.modules:
-    planner_stub = types.ModuleType("planner")
-    capacity_stub = types.ModuleType("planner.capacity_planner")
-    capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
-    sys.modules["planner"] = planner_stub
-    sys.modules["planner.capacity_planner"] = capacity_stub
 
 from llmdbenchmark.smoketests.validators import fma
 

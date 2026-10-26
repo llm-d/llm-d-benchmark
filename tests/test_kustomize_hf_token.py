@@ -12,8 +12,6 @@ Three behaviours are covered:
 from __future__ import annotations
 
 import base64
-import sys
-import types
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,23 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-# ``llmdbenchmark.standup.steps.__init__`` eagerly imports a sibling
-# (``step_03_workload_monitoring``) that transitively depends on a
-# ``planner`` package not installed in this test environment.  Stub it
-# permissively (any attribute resolves to a no-op callable) so the
-# import chain reaches ``step_05_kustomize_deploy``.
-if "planner.capacity_planner" not in sys.modules:
-
-    class _PermissiveModule(types.ModuleType):
-        def __getattr__(self, name: str):  # type: ignore[override]
-            return type(name, (), {})
-
-    sys.modules.setdefault("planner", _PermissiveModule("planner"))
-    sys.modules["planner.capacity_planner"] = _PermissiveModule(
-        "planner.capacity_planner"
-    )
-
-from llmdbenchmark.standup.steps.step_05_kustomize_deploy import (  # noqa: E402
+from llmdbenchmark.standup.steps.step_05_kustomize_deploy import (
     KustomizeDeployStep,
 )
 

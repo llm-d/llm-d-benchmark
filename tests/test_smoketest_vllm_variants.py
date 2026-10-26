@@ -25,21 +25,10 @@ was correct. These tests pin:
 
 from __future__ import annotations
 
-import sys
-import types
 
 import pytest
 
-# Stub planner so we can import smoketest modules (see
-# test_smoketest_inference.py for the same pattern + rationale).
-if "planner" not in sys.modules:
-    planner_stub = types.ModuleType("planner")
-    capacity_stub = types.ModuleType("planner.capacity_planner")
-    capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
-    sys.modules["planner"] = planner_stub
-    sys.modules["planner.capacity_planner"] = capacity_stub
-
-from llmdbenchmark.smoketests.base import BaseSmoketest  # noqa: E402
+from llmdbenchmark.smoketests.base import BaseSmoketest
 
 
 # ---------------------------------------------------------------------------

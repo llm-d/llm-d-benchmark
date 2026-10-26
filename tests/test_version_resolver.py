@@ -120,12 +120,6 @@ class _StubSession:
         assert index < len(self.routes), f"unexpected extra GET: {url}"
         return self.routes[index]
 
-    def __enter__(self) -> "_StubSession":
-        return self
-
-    def __exit__(self, *exc: Any) -> None:
-        return None
-
 
 def _stub_session(monkeypatch: pytest.MonkeyPatch, *routes: _StubResponse):
     session = _StubSession(list(routes))
@@ -263,6 +257,53 @@ class TestRegistryTagOrdering:
         resolver = VersionResolver(_StubLogger())
 
         assert resolver._resolve_via_registry("quay.io/x/y") is None
+
+    def test_a_resolved_tag_is_memorized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """resolve_all runs per stack; the second stack must not re-fetch."""
+        session = _stub_session(monkeypatch, _StubResponse({"tags": ["v1.0.0"]}))
+        resolver = VersionResolver(_StubLogger())
+
+        assert resolver.resolve_image_tag("", "quay.io/x/y") == "v1.0.0"
+        calls = len(session.calls)
+        assert resolver.resolve_image_tag("", "quay.io/x/y") == "v1.0.0"
+        assert len(session.calls) == calls
+
+    def test_close_drops_the_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        closed: list[bool] = []
+
+        class _Closable(_StubSession):
+            def close(self) -> None:
+                closed.append(True)
+
+        monkeypatch.setattr(
+            "llmdbenchmark.parser.version_resolver.requests.Session",
+            lambda: _Closable([_StubResponse({"tags": ["v1.0.0"]})]),
+        )
+        resolver = VersionResolver(_StubLogger())
+        resolver.resolve_image_tag("", "quay.io/x/y")
+        resolver.close()
+        resolver.close()
+
+        assert closed == [True]
+        assert resolver.resolve_image_tag("", "quay.io/x/z") == "v1.0.0"
+
+    def test_a_failed_resolution_is_not_memorized(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _stub_session(
+            monkeypatch,
+            _StubResponse(status_code=500),
+            _StubResponse({"tags": ["v1.0.0"]}),
+        )
+        monkeypatch.setattr(
+            VersionResolver, "_resolve_via_podman", staticmethod(lambda _ref: None)
+        )
+        resolver = VersionResolver(_StubLogger())
+
+        with pytest.raises(RuntimeError):
+            resolver.resolve_image_tag("", "quay.io/x/y")
+
+        assert resolver.resolve_image_tag("", "quay.io/x/y") == "v1.0.0"
 
     def test_podman_covers_a_registry_that_cannot_be_queried(
         self, monkeypatch: pytest.MonkeyPatch

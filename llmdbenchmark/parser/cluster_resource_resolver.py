@@ -10,8 +10,6 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
-from kubernetes import client as k8s_client
-
 
 def effective_accelerator_count(method_config: dict) -> tuple[int, str]:
     """Resolve the per-pod accelerator count for a method section.
@@ -325,6 +323,9 @@ class ClusterResourceResolver:
             self._node_resources = resources
             return resources
 
+        # Lazy: heavy import, keeps the CLI start fast.
+        from kubernetes import client as k8s_client
+
         try:
             v1 = k8s_client.CoreV1Api(self._api_client)
             nodes = v1.list_node()
@@ -397,6 +398,8 @@ class ClusterResourceResolver:
 
     def _scan_dra_drivers(self) -> list[str]:
         """Driver names from ResourceSlices (resource.k8s.io). Empty if none/unsupported."""
+        from kubernetes import client as k8s_client
+
         drivers: set[str] = set()
         for version in ("v1", "v1beta2", "v1beta1"):
             try:

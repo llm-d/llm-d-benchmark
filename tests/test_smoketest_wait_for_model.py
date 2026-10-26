@@ -24,37 +24,12 @@ We test both to keep them in sync.
 
 from __future__ import annotations
 
-import sys
-import types
 from unittest.mock import MagicMock
 
 import pytest
 
-# `llmdbenchmark.standup.steps.__init__` eagerly imports
-# step_03_workload_monitoring, which depends on an external `planner`
-# package not installed in this test env. We don't exercise capacity
-# planning here, so stub it.
-if "planner" not in sys.modules:
-    planner_stub = types.ModuleType("planner")
-    capacity_stub = types.ModuleType("planner.capacity_planner")
-
-    # Module-level __getattr__ catches any name lookup (PEP 562), so we
-    # don't have to enumerate the planner exports capacity_validator.py
-    # uses -- future additions stay covered without test churn. Dunder
-    # lookups (``__file__``) must still fail: inspect/coverage call
-    # ``__file__.endswith`` and crash on a function.
-    def _stub_attr(name: str):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return lambda *a, **kw: None
-
-    capacity_stub.__getattr__ = _stub_attr  # type: ignore[attr-defined]
-    sys.modules["planner"] = planner_stub
-    sys.modules["planner.capacity_planner"] = capacity_stub
-
-from llmdbenchmark.smoketests.base import BaseSmoketest  # noqa: E402
-from llmdbenchmark.standup.steps.step_10_smoketest import SmoketestStep  # noqa: E402
-
+from llmdbenchmark.smoketests.base import BaseSmoketest
+from llmdbenchmark.standup.steps.step_10_smoketest import SmoketestStep
 
 # ---------------------------------------------------------------------------
 # _resolve_wait_setting -- priority chain

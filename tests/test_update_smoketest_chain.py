@@ -27,7 +27,8 @@ def _patch_smoketest(monkeypatch, tmp_path, captured):
     monkeypatch.setattr(cli, "_load_all_stacks_info", lambda paths: [{}])
     monkeypatch.setattr(cli, "_resolve_deploy_methods", lambda *a, **kw: ["nok8s"])
     monkeypatch.setattr(cli, "_parse_namespaces", lambda *a, **kw: ("llmdbench", None))
-    monkeypatch.setattr(cli, "get_smoketest_steps", list)
+    # Patched on the source module: _do_smoketest imports it at call time.
+    monkeypatch.setattr("llmdbenchmark.smoketests.steps.get_smoketest_steps", list)
 
     class _Result:
         has_errors = False
@@ -259,15 +260,17 @@ def test_guard_fails_when_the_workload_is_missing(method):
 
 def test_a_failed_cluster_check_is_a_phase_error(monkeypatch):
     from llmdbenchmark import cli
+    from llmdbenchmark.update import runner
 
     context = SimpleNamespace(deployed_methods=["modelservice"])
     monkeypatch.setattr(cli, "_build_standup_context", lambda *a, **k: (context, []))
-    monkeypatch.setattr(cli.update_runner, "step_spec", lambda *a: "8")
+    # Patched on the source module: _do_update imports it at call time.
+    monkeypatch.setattr(runner, "step_spec", lambda *a: "8")
 
     def _boom(*a):
         raise RuntimeError("cluster unreachable")
 
-    monkeypatch.setattr(cli.update_runner, "missing_stacks", _boom)
+    monkeypatch.setattr(runner, "missing_stacks", _boom)
     with pytest.raises(cli.PhaseError, match="cluster unreachable"):
         cli._do_update(SimpleNamespace(), MagicMock(), _plan(), {"vllm"})
 

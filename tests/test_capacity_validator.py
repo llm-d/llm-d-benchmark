@@ -12,6 +12,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
+
 # The external `planner` package is not installed in the unit-test env; every
 # planner call the validator makes is replaced below.
 if "planner" not in sys.modules:
@@ -28,7 +30,6 @@ def _validate(monkeypatch, allocatable_kv_gb: float) -> list[str]:
     planner = {
         "gpus_required": lambda tp=1, pp=1, dp=1: tp * pp * dp,
         "available_gpu_memory": lambda memory, util: memory * util,
-        "_get_model_config": lambda *a, **kw: SimpleNamespace(),
         "get_text_config": lambda config: config,
         "find_possible_tp": lambda config: [1, 2, 4, 8],
         "max_context_len": lambda config: 32768,
@@ -41,8 +42,11 @@ def _validate(monkeypatch, allocatable_kv_gb: float) -> list[str]:
         "KVCacheDetail": lambda *a, **kw: SimpleNamespace(per_request_kv_cache_gb=0.75),
         "max_concurrent_requests": lambda *a, **kw: 0,
     }
+    # Patched on the stub module: the validator imports the planner at call time.
+    capacity_planner = sys.modules["planner.capacity_planner"]
     for name, fake in planner.items():
-        monkeypatch.setattr(cv, name, fake)
+        monkeypatch.setattr(capacity_planner, name, fake)
+    monkeypatch.setattr(cv, "_get_model_config", lambda *a, **kw: SimpleNamespace())
 
     params = cv.ValidationParams(
         models=["Qwen/Qwen2.5-14B-Instruct"],
@@ -73,3 +77,21 @@ def test_model_that_loads_without_room_for_one_request(monkeypatch):
 
     assert any("Model loads but cannot serve any requests" in m for m in messages)
     assert not any("Insufficient GPU memory" in m for m in messages)
+
+
+_STANDALONE_PLAN = {"standalone": {"enabled": True, "replicas": 1}}
+
+
+@pytest.mark.parametrize(("ignore", "tag"), [(True, "WARNING"), (False, "ERROR")])
+def test_missing_planner_follows_ignore_failures(monkeypatch, ignore, tag):
+    monkeypatch.setitem(sys.modules, "planner.capacity_planner", None)
+    monkeypatch.setattr(
+        cv, "_extract_params", lambda *a, **kw: pytest.fail("validation ran")
+    )
+
+    messages = cv.run_capacity_planner(
+        _STANDALONE_PLAN, logging.getLogger(), ignore_failures=ignore
+    )
+
+    assert len(messages) == 1
+    assert messages[0].startswith(f"{tag}: Capacity planner not available")

@@ -210,6 +210,8 @@ Image tag resolution order: the registry's `/v2/<repo>/tags/list` then podman `s
 
 Chart version resolution order: `helm search repo`, then for repo URLs: OCI uses `helm show chart`, traditional repos temporarily add/search/remove.
 
+Successful image tag and chart version lookups are cached for the life of the resolver, so stacks that share an `auto` value resolve it once. Failures are not cached.
+
 Resolved fields: `images.*.tag`, `standalone.image.tag`, `wva.image.tag`, `chartVersions.*`, `gateway.version` (from istio version), and init container images with `:auto` suffix across decode/prefill/standalone.
 
 ## Cluster Resource Resolver (`cluster_resource_resolver.py`)

@@ -22,6 +22,16 @@ class VersionResolver:
     def __init__(self, logger, dry_run: bool = False):
         self.logger = logger
         self.dry_run = dry_run
+        # resolve_all runs once per stack over the same "auto" values.
+        self._image_tags: dict[str, str] = {}
+        self._chart_versions: dict[tuple[str, str | None], str] = {}
+        self._session: requests.Session | None = None
+
+    def close(self) -> None:
+        """Close the registry session; a later lookup opens a new one."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     @staticmethod
     def _latest_version_tag(tags: list[str]) -> str | None:
@@ -59,16 +69,22 @@ class VersionResolver:
         if registry and not repository.startswith(registry):
             image_ref = f"{registry}/{repository}"
 
+        cached = self._image_tags.get(image_ref)
+        if cached is not None:
+            return cached
+
         self.logger.log_info(f"🔍 Resolving image tag for: {image_ref}")
 
         tag = self._resolve_via_registry(image_ref)
         if tag:
             self.logger.log_info(f"📦 Resolved {image_ref} to {tag}")
+            self._image_tags[image_ref] = tag
             return tag
 
         tag = self._resolve_via_podman(image_ref)
         if tag:
             self.logger.log_info(f"📦 Resolved {image_ref} to {tag} (via podman)")
+            self._image_tags[image_ref] = tag
             return tag
 
         raise RuntimeError(
@@ -97,32 +113,36 @@ class VersionResolver:
         host, repo = self._registry_endpoint(image_ref)
         url = f"https://{host}/v2/{repo}/tags/list?n=1000"
         tags: list = []
+        if self._session is None:
+            # Kept for the resolver's life, so later resolutions reuse its
+            # connections instead of a fresh TLS handshake each.
+            self._session = requests.Session()
+        session = self._session
         try:
-            with requests.Session() as session:
-                headers: dict[str, str] = {}
-                response = session.get(url, timeout=30)
-                if response.status_code == 401:
-                    token = self._anonymous_token(
-                        session, response.headers.get("www-authenticate", ""), repo
-                    )
-                    if not token:
-                        return None
-                    headers["Authorization"] = f"Bearer {token}"
-                    response = session.get(url, headers=headers, timeout=30)
-                while True:
-                    response.raise_for_status()
-                    page = response.json().get("tags") or []
-                    if not isinstance(page, list):
-                        return None
-                    tags.extend(page)
-                    next_link = response.links.get("next", {}).get("url")
-                    if not next_link:
-                        break
-                    response = session.get(
-                        requests.compat.urljoin(url, next_link),
-                        headers=headers,
-                        timeout=30,
-                    )
+            headers: dict[str, str] = {}
+            response = session.get(url, timeout=30)
+            if response.status_code == 401:
+                token = self._anonymous_token(
+                    session, response.headers.get("www-authenticate", ""), repo
+                )
+                if not token:
+                    return None
+                headers["Authorization"] = f"Bearer {token}"
+                response = session.get(url, headers=headers, timeout=30)
+            while True:
+                response.raise_for_status()
+                page = response.json().get("tags") or []
+                if not isinstance(page, list):
+                    return None
+                tags.extend(page)
+                next_link = response.links.get("next", {}).get("url")
+                if not next_link:
+                    break
+                response = session.get(
+                    requests.compat.urljoin(url, next_link),
+                    headers=headers,
+                    timeout=30,
+                )
         except requests.RequestException, ValueError:
             return None
         return self._latest_version_tag(
@@ -169,11 +189,16 @@ class VersionResolver:
         self, chart_name: str, repo_url: str | None = None
     ) -> str:
         """Resolve chart version via ``helm search repo``, with repo URL fallback."""
+        cached = self._chart_versions.get((chart_name, repo_url))
+        if cached is not None:
+            return cached
+
         self.logger.log_info(f"🔍 Resolving chart version for: {chart_name}")
 
         version = self._search_helm_repo(chart_name)
         if version:
             self.logger.log_info(f"📦 Resolved chart {chart_name} to {version}")
+            self._chart_versions[(chart_name, repo_url)] = version
             return version
 
         if repo_url:
@@ -182,6 +207,7 @@ class VersionResolver:
                 self.logger.log_info(
                     f"📦 Resolved chart {chart_name} to {version} (via repo URL)"
                 )
+                self._chart_versions[(chart_name, repo_url)] = version
                 return version
 
         raise RuntimeError(

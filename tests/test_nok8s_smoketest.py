@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import socket
-import sys
 import threading
 import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,16 +24,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Stub planner so we can import smoketest modules (see
-# test_smoketest_inference.py for the same pattern + rationale).
-if "planner" not in sys.modules:
-    planner_stub = types.ModuleType("planner")
-    capacity_stub = types.ModuleType("planner.capacity_planner")
-    capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
-    sys.modules["planner"] = planner_stub
-    sys.modules["planner.capacity_planner"] = capacity_stub
-
-from llmdbenchmark.smoketests import nok8s  # noqa: E402
+from llmdbenchmark.smoketests import nok8s
 
 MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
@@ -314,7 +304,10 @@ def test_do_smoketest_sets_container_only(monkeypatch, tmp_path):
             return _Result()
 
     monkeypatch.setattr(cli, "StepExecutor", _Executor)
-    monkeypatch.setattr(cli, "get_smoketest_steps", lambda: [])
+    # Patched on the source module: _do_smoketest imports it at call time.
+    monkeypatch.setattr(
+        "llmdbenchmark.smoketests.steps.get_smoketest_steps", lambda: []
+    )
 
     args = types.SimpleNamespace()
     cli._do_smoketest(args, MagicMock(), types.SimpleNamespace(rendered_paths=[]))

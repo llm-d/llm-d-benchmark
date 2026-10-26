@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-from google.cloud import storage
 from llmdbenchmark.results_store.client.base import StorageClient
 
 
@@ -20,6 +19,9 @@ class GCSClient(StorageClient):
     """Handles pure GCS operations using standard credentials."""
 
     def __init__(self):
+        # Lazy: heavy import, keeps the CLI start fast.
+        from google.cloud import storage
+
         self.client = storage.Client()
 
     def ls(self, uri: str) -> list[str]:

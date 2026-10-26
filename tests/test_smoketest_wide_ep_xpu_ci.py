@@ -2,17 +2,7 @@
 
 from __future__ import annotations
 
-import sys
-import types
-
-if "planner" not in sys.modules:
-    planner_stub = types.ModuleType("planner")
-    capacity_stub = types.ModuleType("planner.capacity_planner")
-    capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
-    sys.modules["planner"] = planner_stub
-    sys.modules["planner.capacity_planner"] = capacity_stub
-
-from llmdbenchmark.smoketests.base import BaseSmoketest  # noqa: E402
+from llmdbenchmark.smoketests.base import BaseSmoketest
 
 
 def _config(provider: str, guide: str = "wide-ep") -> dict:

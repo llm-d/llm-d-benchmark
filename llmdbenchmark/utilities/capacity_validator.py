@@ -8,23 +8,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Protocol, TYPE_CHECKING
 
-from planner.capacity_planner import (
-    KVCacheDetail,
-    allocatable_kv_cache_memory,
-    available_gpu_memory,
-    estimate_vllm_activation_memory,
-    estimate_vllm_cuda_graph_memory,
-    estimate_vllm_non_torch_memory,
-    find_possible_tp,
-    get_model_config_from_hf,
-    get_text_config,
-    gpus_required,
-    max_concurrent_requests,
-    max_context_len,
-    model_memory_req,
-    model_total_params,
-)
-
 if TYPE_CHECKING:
     from transformers import AutoConfig
 
@@ -82,6 +65,8 @@ def _get_model_config(
     ignore_failures: bool = False,
 ) -> "AutoConfig | None":
     """Fetch model config from HuggingFace, with error handling."""
+    from planner.capacity_planner import get_model_config_from_hf
+
     tag = "WARNING" if ignore_failures else "ERROR"
     try:
         return get_model_config_from_hf(model_name, hf_token)
@@ -131,6 +116,23 @@ def validate_vllm_params(
         full = f"{prefix}{text}"
         messages.append(full)
         logger.log_info(full)
+
+    # Lazy: heavy import, keeps the CLI start fast.
+    from planner.capacity_planner import (
+        KVCacheDetail,
+        allocatable_kv_cache_memory,
+        available_gpu_memory,
+        estimate_vllm_activation_memory,
+        estimate_vllm_cuda_graph_memory,
+        estimate_vllm_non_torch_memory,
+        find_possible_tp,
+        get_text_config,
+        gpus_required,
+        max_concurrent_requests,
+        max_context_len,
+        model_memory_req,
+        model_total_params,
+    )
 
     per_replica_gpus = gpus_required(tp=params.tp, pp=params.pp, dp=params.dp)
     if params.replicas == 0:
@@ -421,6 +423,19 @@ def run_capacity_planner(
     if is_fma:
         log.log_info("Deployment method is fma -- skipping vLLM capacity validation")
         return all_messages
+
+    # Not a declared dependency: when it is missing, ignoreFailedValidation
+    # decides, not an import error.
+    try:
+        import planner.capacity_planner  # noqa: F401
+    except ImportError as exc:
+        tag = "WARNING" if ignore_failures else "ERROR"
+        text = (
+            f"{tag}: Capacity planner not available ({exc}). "
+            "Install llm-d-planner with install.sh"
+        )
+        log.log_warning(text)
+        return [text]
 
     standalone = plan_config.get("standalone", {})
     is_standalone = (
