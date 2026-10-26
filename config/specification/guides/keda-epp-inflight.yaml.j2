@@ -1,0 +1,19 @@
+# Inflight-Requests Autoscaling Guide Specification
+# Thin pointer to the template directory, values defaults, and scenario YAML.
+# Benchmarks the keda-epp guide's inflight_requests signal.
+
+# [REQUIRED]
+{% set base_dir = base_dir | default('../') -%}
+base_dir: {{ base_dir }}
+
+# [REQUIRED]
+values_file:
+  path: {{ base_dir }}/config/templates/values/defaults.yaml
+
+# [REQUIRED]
+template_dir:
+  path: {{ base_dir }}/config/templates/jinja
+
+# [OPTIONAL]
+scenario_file:
+  path: {{ base_dir }}/config/scenarios/guides/keda-epp-inflight.yaml

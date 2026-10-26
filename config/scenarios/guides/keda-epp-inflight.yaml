@@ -1,0 +1,331 @@
+# [EXPERIMENTAL] INFLIGHT-REQUESTS AUTOSCALING - benchmark scenario
+#
+# Benchmarks the keda-epp guide's:
+# `llm_d_epp_inflight_requests` (per-replica in-flight request count).
+#
+# One trigger, one Deployment (P+D co-located):
+#   inflight  sum(llm_d_epp_inflight_requests) -> per-replica request concurrency, AverageValue @16
+#
+#
+# Reuses the eppKedaSaturation plumbing (Thanos auth, TriggerAuthentication, EPP
+# ServiceMonitor, per-stack ScaledObject) with a single inflight_requests trigger.
+# No new standup step, no new controller, NO calibration step.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/tree/main/guides/workload-autoscaling/keda-epp (inflight overlay)
+#
+# Running:
+#
+#   llmdbenchmark --spec guides/keda-epp-inflight standup -p <namespace>
+#   llmdbenchmark --spec guides/keda-epp-inflight run \
+#     --harness inference-perf --workload random_prefill_heavy.yaml \
+#     --monitoring
+#   (sweep all three shapes for #1599; symmetrical / decode_heavy / prefill_heavy)
+#
+# NOTE: inflight_requests threshold is 16 (the guide default, per-replica). This
+# benchmarks the signal AS SHIPPED. Per-workload offered rate may need tuning so
+# each shape actually crosses the threshold and scales (a request-count signal
+# behaves differently under few-but-huge prefill-heavy vs many decode-heavy).
+
+scenario:
+  # =========================================================================
+  # EPP+KEDA INFLIGHT-REQUESTS AUTOSCALING
+  # =========================================================================
+  - name: "keda-epp-inflight"
+
+    common:
+      # =========================================================================
+      # MODEL CONFIGURATION
+      # =========================================================================
+      model:
+        name: Qwen/Qwen3-32B
+        shortName: qwen-qwen3-32b
+        path: models/Qwen/Qwen3-32B
+        huggingfaceId: Qwen/Qwen3-32B
+        size: 1Ti
+        maxModelLen: 16000
+        blockSize: 64
+        gpuMemoryUtilization: 0.95
+
+        # The prefill chunk. Unset, _macros.j2 falls back to a hardcoded '256',
+        # which turns an 8192-token prompt into 32 chunked prefill passes and
+        # makes the prefill-heavy shape measure chunking overhead instead of
+        # prefill capacity. Set it to the largest prompt so prefill runs in one
+        # pass. (The inflight path has no calibration / peakPrefillThroughput;
+        # this is purely so the prefill-heavy workload shape is measured fairly.)
+        # NOTE: this key is only valid on `model` (ModelConfig in
+        # parser/config_schema.py). _macros.j2 also probes
+        # `vllmCommon.maxNumBatchedTokens`, but STRICT_CONFIG rejects that path,
+        # so the model-level key is the only usable one.
+        maxNumBatchedTokens: 8192
+
+      # =========================================================================
+      # STORAGE
+      # =========================================================================
+      storage:
+        modelPvc:
+          size: 1Ti
+        hostPath:
+          enabled: false
+          path: /mnt/models
+          # Target the GPU nodes where decode pods will schedule.
+          # Replace with your cluster's actual node labels.
+          nodeSelector:
+            nvidia.com/gpu.present: "true"
+          tolerations: []
+          daemonSetTimeout: 3600
+
+      # =========================================================================
+      # VLLM COMMON CONFIGURATION
+      # =========================================================================
+      vllmCommon:
+        kvTransfer:
+          enabled: true
+          connector: NixlConnector
+          role: kv_both
+
+        flags:
+          enforceEager: true
+          disableLogRequests: true
+          disableUvicornAccessLog: true
+          allowLongMaxModelLen: "1"
+          serverDevMode: "1"
+
+        volumes:
+          - name: shared-config
+            type: emptyDir
+            emptyDir: {}
+          - name: dshm
+            type: emptyDir
+            emptyDir:
+              medium: Memory
+              sizeLimit: 16Gi
+
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: shared-config
+            mountPath: /shared-config
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, router, and gateway.
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+      # epponly to match the base guide this path autoscales (optimized-baseline):
+      # no Gateway pod to provision or wait for, and the EPP is reached directly.
+      # Inherited from epp-keda-saturation as `agentgateway` + externallyManaged,
+      # which requires a Gateway to already exist in the target namespace.
+      gateway:
+        className: epponly
+
+      # =========================================================================
+      # ROUTING / GAIE CONFIGURATION
+      #
+      # The inflight_requests signal is published by the `inflight-load-producer`
+      # plugin. This is NOT a stock-EPP default - the optimized-baseline guide
+      # CONFIGURES it in its EndpointPickerConfig (optimized-baseline.values.yaml),
+      # which is why llm_d_epp_inflight_requests exists on that deployment. A bare
+      # EPP with no plugin config does NOT run the producer (verified: the metric
+      # is absent, EPP logs "no producer ... InFlightLoadDataKey/inflight-load-producer").
+      # So we mirror optimized-baseline's EPP config here.
+      #
+      # Structure matters (a producer is NOT a Filter/Scorer/Picker): the producers
+      # go in the top-level `plugins` list; only the filter/scorer go in
+      # schedulingProfiles. Listing a producer under schedulingProfiles crashloops
+      # the EPP ("must implement Filter, Scorer, or Picker").
+      # Flow Control is NOT used on this path (that is the queue/saturation paths).
+      # =========================================================================
+      router:
+        epp:
+          # MUST stay at 1: the inflight-load-producer's request accounting is local
+          # to each EPP process, so N replicas each publish only a fraction of the
+          # true per-endpoint load and the inflight trigger under-scales forever.
+          replicas: 1
+          pluginsConfigFile: "inflight-plugins.yaml"
+          pluginsCustomConfig:
+            inflight-plugins.yaml: |
+              apiVersion: llm-d.ai/v1
+              kind: EndpointPickerConfig
+              # Mirrors guides/optimized-baseline/router/optimized-baseline.values.yaml.
+              # inflight-load-producer publishes llm_d_epp_inflight_requests (the trigger's
+              # source). The other plugins are optimized-baseline's defaults for routing.
+              plugins:
+              - type: approx-prefix-cache-producer
+              - type: inflight-load-producer
+              - type: prefix-cache-affinity-filter
+              - type: token-load-scorer
+              schedulingProfiles:
+              - name: default
+                plugins:
+                - pluginRef: prefix-cache-affinity-filter
+                - pluginRef: token-load-scorer
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+            limits:
+              memory: 16Gi
+
+      # =========================================================================
+      # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+      # =========================================================================
+      prefill:
+        enabled: false
+        replicas: 0
+
+      decode:
+        # Start at 1 so the autoscaler has room to act: the ScaledObject's
+        # minReplicaCount is also 1, so a run begins with a single replica and any
+        # scale-up is the trigger's doing rather than a pre-provisioned fleet.
+        # KEDA/HPA owns the count once the ScaledObject exists, so this is the
+        # starting point, not a ceiling (maxReplicaCount: 4 is the ceiling).
+        replicas: 1
+
+        initContainers:
+          - name: preprocess
+            imageKey: benchmark
+            imagePullPolicy: Always
+            command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+            volumeMounts:
+              - name: shared-config
+                mountPath: /shared-config
+
+        parallelism:
+          tensor: 2
+          data: 1
+          dataLocal: 1
+          workers: 1
+
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "16"
+          requests:
+            memory: 64Gi
+            cpu: "16"
+
+        extraEnvVars: []
+
+        extraContainerConfig:
+          ports:
+            - containerPort: 5557
+              protocol: TCP
+            - containerPort: 8200
+              name: metrics
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add:
+                - "IPC_LOCK"
+                - "SYS_RAWIO"
+            runAsGroup: 0
+            runAsUser: 0
+          imagePullPolicy: Always
+
+        additionalVolumeMounts: []
+        additionalVolumes: []
+
+        probes:
+          startup:
+            path: /v1/models
+            failureThreshold: 60
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          liveness:
+            path: /health
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readiness:
+            path: /v1/models
+            failureThreshold: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+
+        # Leave this chart-level PodMonitor OFF: the inflight path scales on the
+        # EPP metric llm_d_epp_inflight_requests (scraped via the EPP
+        # ServiceMonitor), not on a per-pod vLLM metric, so no extra decode
+        # PodMonitor is needed. The top-level monitoring already renders the EPP
+        # ServiceMonitor that feeds the inflight trigger.
+        monitoring:
+          podmonitor:
+            enabled: false
+
+
+    # =========================================================================
+    # EPP+KEDA SATURATION CONFIGURATION
+    #
+    # Direct KEDA autoscaling using EPP pool metrics. All thresholds and
+    # behavior parameters are spelled out below so users can tweak them
+    # per-experiment without editing defaults.yaml.
+    # =========================================================================
+    eppKedaSaturation:
+      # Reused as the inflight transport: same Thanos auth, same
+      # TriggerAuthentication, same EPP ServiceMonitor, same ScaledObject
+      # renderer -- only the trigger list below (a single inflight_requests
+      # trigger) differs from the saturation/token-aware guides.
+      enabled: true
+
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      scaledObject:
+        # Distinguishes this from other variants in `kubectl get hpa`.
+        nameSuffix: inflight
+
+        # NO peakPrefillThroughput: this is the request-count default path, not
+        # token-aware. No V_P, no calibration step.
+
+        minReplicas: 1
+        maxReplicas: 8          # match the shipped inflight overlay (maxReplicaCount: 8)
+
+        triggers:
+          # -- INFLIGHT REQUESTS (the guide's DEFAULT signal) -----------------
+          # llm_d_epp_inflight_requests = per-endpoint in-flight request count,
+          # published by the inflight-load-producer plugin (needs no Flow Control).
+          # This is the signal the keda-epp guide ships as the default `inflight`
+          # overlay; #1599 benchmarks it AS SHIPPED.
+          #
+          # sum(), not max(): with metricType AverageValue the HPA computes
+          # ceil(sum/threshold), so the numerator must GROW with the pool or the
+          # replica count is structurally capped. `or vector(0)` collapses to the
+          # single series KEDA requires when the metric is absent (e.g. at idle).
+          #
+          # threshold 16 = the guide default (per-replica concurrency target).
+          - name: epp-inflight-requests
+            metricType: AverageValue
+            query: |
+              sum(llm_d_epp_inflight_requests{namespace="${namespace}",
+                                              producer_name="inflight-load-producer"}) or vector(0)
+            threshold: "16"
+            activationThreshold: "0"
+
+        behavior:
+          # Weights take minutes to load, so a replica bought on a burst that
+          # drains in seconds is pure cost.
+          scaleUp:
+            stabilizationWindowSeconds: 0
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 180
+          scaleDown:
+            stabilizationWindowSeconds: 300
+            policies:
+              - type: Pods
+                value: 1
+                periodSeconds: 300
+
+    harness:
+      name: inference-perf
+      # Swap with
+      # random_prefill_heavy.yaml / random_decode_heavy.yaml
+      experimentProfile: random_symmetrical.yaml
+
+    workDir: "~/data/keda-epp-inflight"
