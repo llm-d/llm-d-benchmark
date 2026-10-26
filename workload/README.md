@@ -48,6 +48,7 @@ This directory contains the benchmark workloads that `llmdbenchmark` deploys and
 ```
 experiments/                                # DoE experiment definitions (repo root)
   concurrent-sessions-sweep.yaml
+  inflight-autoscaling.yaml
   max-concurrency-sweep.yaml
   mixed-workload-contention.yaml
   optimized-baseline.yaml                   # Scheduling strategy comparison

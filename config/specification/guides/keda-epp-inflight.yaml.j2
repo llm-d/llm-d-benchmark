@@ -17,3 +17,7 @@ template_dir:
 # [OPTIONAL]
 scenario_file:
   path: {{ base_dir }}/config/scenarios/guides/keda-epp-inflight.yaml
+
+# Experiment definitions live in experiments/inflight-autoscaling.yaml -- the
+# three token-shape treatments sweep the request-count signal across workload
+# shapes. See docs/inflight-autoscaling.md for how to run it.
