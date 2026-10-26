@@ -6,9 +6,9 @@
 # autoscaled stack. The shape is the independent variable; whether a request-count
 # signal crosses its threshold on each shape is the result.
 #
-#   random_prefill_heavy  ISL/OSL 8192/256   32:1  -> few long requests, low concurrency
+#   random_prefill_heavy  ISL/OSL 8192/256   32:1  -> short service time, low concurrency
 #   random_symmetrical    ISL/OSL 2048/2048   1:1  -> middle of the range
-#   random_decode_heavy   ISL/OSL 256/4096   1:16  -> many short requests, high concurrency
+#   random_decode_heavy   ISL/OSL 256/4096   1:16  -> long service time (4096 decode steps), high concurrency
 #
 # The profiles themselves are general-purpose token-shape workloads, not specific
 # to autoscaling -- this experiment is one consumer of them.

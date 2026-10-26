@@ -22,10 +22,13 @@
 #     --monitoring
 #   (sweep all three shapes for #1599; symmetrical / decode_heavy / prefill_heavy)
 #
-# NOTE: inflight_requests threshold is 16 (the guide default, per-replica). This
-# benchmarks the signal AS SHIPPED. Per-workload offered rate may need tuning so
-# each shape actually crosses the threshold and scales (a request-count signal
-# behaves differently under few-but-huge prefill-heavy vs many decode-heavy).
+# NOTE: the inflight_requests SIGNAL and its threshold (per-replica) are the
+# guide default, benchmarked as shipped. The HPA behavior policies below are NOT
+# as shipped: the upstream inflight overlay reacts with a 300s window + Percent
+# 100/15s, this scenario deliberately uses 1-pod-at-a-time (see the behavior
+# comment for why). Per-workload offered rate may need tuning so each shape
+# actually crosses the threshold and scales (a request-count signal behaves
+# differently under few-but-huge prefill-heavy vs many decode-heavy).
 
 scenario:
   # =========================================================================
@@ -142,8 +145,11 @@ scenario:
       router:
         epp:
           # MUST stay at 1: the inflight-load-producer's request accounting is local
-          # to each EPP process, so N replicas each publish only a fraction of the
-          # true per-endpoint load and the inflight trigger under-scales forever.
+          # to each EPP process. With N replicas the summed trigger can under-count
+          # the true per-endpoint load (e.g. a scrape or series-label collision drops
+          # one replica's contribution), so the inflight trigger under-scales. One EPP
+          # keeps the accounting whole; the safe choice regardless of the exact
+          # multi-replica aggregation behavior.
           replicas: 1
           pluginsConfigFile: "inflight-plugins.yaml"
           pluginsCustomConfig:
@@ -182,7 +188,7 @@ scenario:
         # minReplicaCount is also 1, so a run begins with a single replica and any
         # scale-up is the trigger's doing rather than a pre-provisioned fleet.
         # KEDA/HPA owns the count once the ScaledObject exists, so this is the
-        # starting point, not a ceiling (maxReplicaCount: 4 is the ceiling).
+        # starting point, not a ceiling (maxReplicaCount: 8 is the ceiling).
         replicas: 1
 
         initContainers:
@@ -286,11 +292,9 @@ scenario:
         maxReplicas: 8          # match the shipped inflight overlay (maxReplicaCount: 8)
 
         triggers:
-          # -- INFLIGHT REQUESTS (the guide's DEFAULT signal) -----------------
+          # -- INFLIGHT REQUESTS -----------------
           # llm_d_epp_inflight_requests = per-endpoint in-flight request count,
           # published by the inflight-load-producer plugin (needs no Flow Control).
-          # This is the signal the keda-epp guide ships as the default `inflight`
-          # overlay; #1599 benchmarks it AS SHIPPED.
           #
           # sum(), not max(): with metricType AverageValue the HPA computes
           # ceil(sum/threshold), so the numerator must GROW with the pool or the

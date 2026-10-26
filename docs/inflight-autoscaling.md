@@ -78,6 +78,15 @@ scenario so it can be tuned per experiment without editing `defaults.yaml`.
 `scaledObject.nameSuffix` renders the object as `<model>-decode-inflight`, so this and the
 token-aware and saturation variants can be told apart in `kubectl get hpa`.
 
+Two deliberate divergences from the upstream inflight overlay, so "as shipped" is precise:
+the **signal and threshold are as shipped**, but the **HPA behavior policies are not** --
+the overlay reacts with a 300s stabilization window and `Percent 100/15s`, while this scenario
+uses 1 pod per 180s with no scale-up window, because model weights take minutes to load and a
+replica bought on a burst that drains in seconds is pure cost. The query also adds `or vector(0)`
+(not in the overlay), a defensive collapse of an empty/idle result to the single 0-series KEDA
+requires. Neither changes whether steady-state in-flight crosses 16; both change the scale
+trajectory, which is intended.
+
 ## Integration details that fail silently
 
 ### The EPP must run `inflight-load-producer`
@@ -95,8 +104,10 @@ Structure matters: a producer is **not** a Filter/Scorer/Picker. The producers g
 ### EPP replicas must stay at 1
 
 The `inflight-load-producer`'s request accounting is local to each EPP process. With N replicas
-each EPP publishes only a fraction of the true per-endpoint load, so the summed trigger under-counts
-and the autoscaler under-scales. The scenario pins `router.epp.replicas: 1`.
+the summed trigger can under-count the true per-endpoint load (for example when a scrape gap or a
+series-label collision drops one replica's contribution), so the autoscaler under-scales. A single
+EPP keeps the accounting whole and sidesteps the question of whether a cross-replica `sum()` would
+recover the total, so the scenario pins `router.epp.replicas: 1`.
 
 ### The signal is in-flight concurrency, not offered rate
 
