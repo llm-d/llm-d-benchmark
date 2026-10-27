@@ -652,8 +652,13 @@ def _build_epp_entries(
             components = [
                 {
                     "component_id": comp_id,
-                    "statistics": _make_stats_dict(
-                        comp_data, comp_data.get("unit", default_units)
+                    # One request count per endpoint, not a distribution.
+                    "statistics": (
+                        {"count": comp_data.get("count", 0), "units": default_units}
+                        if summary_key == "request_distribution"
+                        else _make_stats_dict(
+                            comp_data, comp_data.get("unit", default_units)
+                        )
                     ),
                 }
                 for comp_id, comp_data in data.items()
