@@ -1573,7 +1573,11 @@ fma:
     stood-up-via: "fma"
 
   chart:
-    version: 0.6.5
+    # FMA release tag (drives install-fma.sh --release and the image tags
+    # below). v0.7.1 ships the LauncherConfig inferencePorts pool (PR #790)
+    # and makes InferenceServerConfig's modelServerConfig.port optional
+    # (PR #798).
+    version: 0.7.1
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
@@ -1581,7 +1585,7 @@ fma:
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.5
+      tag: v0.7.1
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1593,6 +1597,12 @@ fma:
 
   launcher:
     maxInstances: 4
+    # Port pool for inference-engine instances per launcher pod (FMA v0.7.1,
+    # upstream PR #790). Deliberately unset per upstream guidance: the
+    # dual-pods controller doesn't consume it yet (#779) and still reads the
+    # InferenceServerConfig port. When set, it must hold >= maxInstances
+    # ports, excluding 8001 (the launcher service port).
+    inferencePorts: []
     # Opt-in: pass the download job's staged local copy
     # (<modelMountPath>/<model.path>, a complete copy by construction) as
     # the launcher's --model instead of the repo ID. The repo ID resolves
@@ -1629,7 +1639,7 @@ fma:
     enforceEager: false
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.5
+      tag: v0.7.1
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:
