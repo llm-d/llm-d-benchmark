@@ -90,14 +90,45 @@ With `metricType: AverageValue` the HPA computes `ceil(value / threshold)`, so t
   that could generate `R_RATES` automatically. GuideLLM's `goodput` profile is prior art for an
   SLO-bounded search.
 
-## Pending-aware scaling
+## Pending-aware scaling: a dynamic stabilization window
 
-Any `eppKedaSaturation` guide can turn on pending-aware scaling: a dynamic stabilization window. While
-a replica is starting, the guide's own signal can hold or shrink the pool but not grow it, because the
-starting replica will soon absorb the load. Only a real rise in the arrival rate can add replicas during
-that time (`arrivals / R`). With nothing pending, scaling is exactly the guide's. A fixed scale-up
-window delays every scale-up, real spikes included. This waits only while a replica starts, and only
-for load that replica will absorb.
+### The problem it solves
+
+A model-server replica takes minutes to start (model load, warmup). During that time KEDA's HPA keeps
+re-reading the guide's demand signal (queue depth, running requests, KV usage, in-flight tokens). The
+signal stays high, because the new replica serves nothing yet and the backlog grows. The HPA sees the
+same high reading every cycle and asks for more replicas each time. This is **pod overshoot**: the
+pool is sized for the backlog of the startup gap, not for the traffic.
+
+The HPA has its own correction for pods that are not Ready, but only for `Pods` and `Resource` metrics.
+KEDA serves every trigger as an `External` metric, which the HPA sizes as `ceil(value / target)`
+without looking at pod readiness.
+
+The guides' answer today is a **fixed scale-up stabilization window** (for example 300 s, about the
+replica start time). It stops the overshoot by delaying every scale-up for that long. It cannot tell a
+backlog that a starting replica will absorb from a real traffic spike, so a **spike also waits** the
+full window, and requests queue, slow down or fail in the meantime.
+
+### What it does
+
+`pendingAware` replaces that fixed window with one that applies only when it should:
+
+| Situation | Fixed 300 s scale-up window | Pending-aware |
+|---|---|---|
+| No replica starting | Every scale-up still waits 300 s | Scales on the guide's own signal immediately |
+| Replica starting, traffic unchanged (backlog) | Waits | **Holds:** the guide's signal can hold or shrink the pool but not grow it. No overshoot. |
+| Replica starting, traffic jumps (spike) | Waits 300 s | **Scales now** to `arrivals / R`, the replicas the new arrival rate needs |
+| Load drops | Scales down (scale-down window) | Scales down (the guide's scale-down behavior is kept) |
+
+The arrival rate tells a backlog from a spike. A backlog raises the guide's signal but not the rate of
+incoming requests. A spike raises both. R is the request rate one replica serves within its SLO, so
+`arrivals / R` is how many replicas the new traffic needs. Measure it with
+`make calibrate-serving-capacity`.
+
+It applies to any `eppKedaSaturation` guide (saturation, token-aware, inflight, P/D): the guide's
+triggers are kept as the demand signal, and each P/D role is gated on its own pods.
+
+### Use it
 
 It is off by default. To turn it on for a stood-up guide:
 
