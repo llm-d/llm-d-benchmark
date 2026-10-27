@@ -325,7 +325,8 @@ for item in data.get("items", []):
         "model": labels.get("llm-d.ai/model", labels.get("app", "")),
         "role": labels.get("llm-d.ai/role", "unknown"),
         "creation_timestamp": creation_ts,
-        "ready_timestamp": ready_ts,
+        # null until Ready: the v0.2 report types it as a datetime or null
+        "ready_timestamp": ready_ts or None,
         "startup_seconds": startup_seconds,
     })
     seen_idx[pod_name] = len(existing["pods"]) - 1
