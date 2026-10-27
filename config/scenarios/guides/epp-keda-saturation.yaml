@@ -244,12 +244,12 @@ scenario:
         # (metricType + activationThreshold optional, default AverageValue/"0"):
         # triggers:
         #   - name: pool-saturation
-        #     query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
+        #     query: 'max(llm_d_epp_flow_control_pool_saturation{namespace="${namespace}",inference_pool="${poolName}"})'
         #     threshold: "0.7"
         #     metricType: AverageValue
         #     activationThreshold: "0"
         #   - name: running-requests
-        #     query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        #     query: 'sum(llm_d_epp_request_running{namespace="${namespace}",model_name="${modelName}"})'
         #     threshold: "16"
         #     metricType: AverageValue
         #     activationThreshold: "0"

@@ -1838,14 +1838,18 @@ eppKedaSaturation:
     # workload-autoscaling keda-epp-saturation guide; a scenario may redefine
     # this entire list (e.g. the keda-epp-queue guide). Per entry: query
     # (required), threshold, and optional name/metricType/activationThreshold.
-    # In `query`, ${poolName} and ${modelName} are substituted at render time.
+    # In `query`, ${poolName}, ${modelName} and ${namespace} are substituted at
+    # render time. Every query pins namespace="${namespace}": on a cluster-wide
+    # store (OpenShift Thanos, or any Prometheus scraping several namespaces) an
+    # unpinned query aggregates every EPP serving the same model or pool name,
+    # so the autoscaler would scale on another tenant's traffic.
     triggers:
       - name: pool-saturation
-        query: 'max(llm_d_epp_flow_control_pool_saturation{inference_pool="${poolName}"})'
+        query: 'max(llm_d_epp_flow_control_pool_saturation{namespace="${namespace}",inference_pool="${poolName}"})'
         threshold: "0.7"
         activationThreshold: "0"
       - name: running-requests
-        query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        query: 'sum(llm_d_epp_request_running{namespace="${namespace}",model_name="${modelName}"})'
         threshold: "16"
         activationThreshold: "0"
     behavior:

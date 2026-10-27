@@ -76,7 +76,7 @@ scenario:
         #     query: 'sum(llm_d_epp_flow_control_queue_size{model_name="${modelName}"})'
         #     threshold: "1"
         #   - name: running-requests
-        #     query: 'sum(llm_d_epp_request_running{model_name="${modelName}"})'
+        #     query: 'sum(llm_d_epp_request_running{namespace="${namespace}",model_name="${modelName}"})'
         #     threshold: "16"
         behavior:
           scaleUp:
