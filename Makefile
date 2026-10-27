@@ -484,6 +484,56 @@ calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s on
 	echo "     --set eppKedaSaturation.scaledObject.servingCapacity=$$R"; \
 	echo "   Results: $$WS"
 
+# --- Pending-aware scaling (make pending-aware-standup) ------------------------
+# Turns any eppKedaSaturation guide's autoscaler into pending-aware scaling, a
+# dynamic stabilization window: while a replica is starting, the guide's own
+# signal can hold or shrink the pool but not grow it; only a real rise in the
+# arrival rate can (arrivals / R). It is off by default; this target turns it on.
+#
+#   1. R: reuse SERVING_CAPACITY=<R> if given, else measure it with
+#      calibrate-serving-capacity against the stood-up stack.
+#   2. Reset, so the benchmark starts clean: remove the calibration's
+#      ScaledObject pause, restart the router so its in-flight gauges start at 0
+#      (left-over in-flight counts would otherwise make the guide's own triggers
+#      ask for replicas before any traffic arrives), and wait for a Ready replica.
+#   3. Re-run standup with pendingAware=true and servingCapacity=R. Only the
+#      ScaledObject changes; the model servers keep running.
+SERVING_CAPACITY ?=
+
+.PHONY: pending-aware-standup
+pending-aware-standup: check-kubectl ## Turn on pending-aware scaling (R-based dynamic stabilization window) for a stood-up eppKedaSaturation guide. NAMESPACE=<ns> SPEC=<spec> [SERVING_CAPACITY=<R>] [R_RATES=...] [TTFT_TARGET=2] [RUN_ARGS=...]
+	@test -n "$(NAMESPACE)" -a -n "$(SPEC)" || { \
+	  echo "❌ usage: make pending-aware-standup NAMESPACE=<ns> SPEC=<spec> [SERVING_CAPACITY=<R>]"; exit 1; }
+	@set -e; \
+	NS="$(NAMESPACE)"; R="$(SERVING_CAPACITY)"; \
+	kubectl get scaledobject -n "$$NS" -o name 2>/dev/null | grep -q . || { \
+	  echo "❌ no ScaledObject in ns/$$NS: stand the guide up first: $(LLMDBENCH) --spec $(SPEC) standup -p $$NS"; exit 2; }; \
+	if [ -z "$$R" ]; then \
+	  LOG=$$(mktemp); \
+	  $(MAKE) --no-print-directory calibrate-serving-capacity NAMESPACE="$$NS" SPEC="$(SPEC)" REPLICAS=1 \
+	    R_RATES="$(R_RATES)" R_STAGE_SECONDS="$(R_STAGE_SECONDS)" TTFT_TARGET="$(TTFT_TARGET)" RUN_ARGS="$(RUN_ARGS)" | tee "$$LOG"; \
+	  R=$$(sed -n 's/^SERVING_CAPACITY=\([0-9.]*\).*/\1/p' "$$LOG"); rm -f "$$LOG"; \
+	  test -n "$$R" || { echo "❌ calibrate-serving-capacity did not produce R"; exit 2; }; \
+	fi; \
+	echo "🧹 resetting before the benchmark: no paused ScaledObject, fresh router, a Ready replica"; \
+	for so in $$(kubectl get scaledobject -n "$$NS" -o name 2>/dev/null); do \
+	  kubectl annotate -n "$$NS" "$$so" autoscaling.keda.sh/paused-replicas- >/dev/null 2>&1 || true; done; \
+	EPP=$$(kubectl get deploy -n "$$NS" -o name | grep -- '-epp$$' | head -1); \
+	if [ -n "$$EPP" ]; then \
+	  echo "   restarting $$EPP so the router's in-flight gauges start at 0 (they can carry over from the calibration)"; \
+	  kubectl rollout restart -n "$$NS" "$$EPP" >/dev/null; kubectl rollout status -n "$$NS" "$$EPP" --timeout=600s >/dev/null; \
+	fi; \
+	ready() { kubectl get pods -n "$$NS" -l llm-d.ai/role=decode --field-selector=status.phase=Running \
+	  -o jsonpath='{range .items[*]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null | grep -c True || true; }; \
+	for i in $$(seq 1 60); do [ "$$(ready)" -ge 1 ] && break; sleep 10; done; \
+	[ "$$(ready)" -ge 1 ] || { echo "❌ no Ready llm-d.ai/role=decode pod in ns/$$NS after 10 min"; exit 3; }; \
+	echo "▶️  standup with pendingAware=true, servingCapacity=$$R"; \
+	$(LLMDBENCH) --spec "$(SPEC)" standup -p "$$NS" \
+	  --set eppKedaSaturation.scaledObject.pendingAware=true \
+	  --set eppKedaSaturation.scaledObject.servingCapacity="$$R" $(RUN_ARGS); \
+	echo "✅ pending-aware scaling on (R=$$R req/s per replica). Run the benchmark as usual:"; \
+	echo "     $(LLMDBENCH) --spec $(SPEC) run -p $$NS"
+
 .PHONY: check-envsubst
 check-envsubst:
 	@command -v envsubst >/dev/null 2>&1 || { \

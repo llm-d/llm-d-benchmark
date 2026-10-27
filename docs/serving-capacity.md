@@ -89,3 +89,49 @@ With `metricType: AverageValue` the HPA computes `ceil(value / threshold)`, so t
 - **A future source for R:** kubernetes-sigs/inference-perf#904 plans a measured saturation rate
   that could generate `R_RATES` automatically. GuideLLM's `goodput` profile is prior art for an
   SLO-bounded search.
+
+## Pending-aware scaling
+
+Any `eppKedaSaturation` guide can turn on pending-aware scaling: a dynamic stabilization window. While
+a replica is starting, the guide's own signal can hold or shrink the pool but not grow it, because the
+starting replica will soon absorb the load. Only a real rise in the arrival rate can add replicas during
+that time (`arrivals / R`). With nothing pending, scaling is exactly the guide's. A fixed scale-up
+window delays every scale-up, real spikes included. This waits only while a replica starts, and only
+for load that replica will absorb.
+
+It is off by default. To turn it on for a stood-up guide:
+
+```bash
+llmdbenchmark --spec guides/<guide> standup -p <ns>
+make pending-aware-standup NAMESPACE=<ns> SPEC=guides/<guide>     # measures R, then turns it on
+llmdbenchmark --spec guides/<guide> run -p <ns>
+```
+
+`pending-aware-standup` measures R with `calibrate-serving-capacity`, or reuses `SERVING_CAPACITY=<R>`
+if given. It then cleans up before the benchmark: it removes the calibration's ScaledObject pause,
+restarts the router so its in-flight counts start at 0, and waits for a Ready replica. Finally it re-runs
+standup with the flag on. Only the ScaledObject changes; the model servers keep running. To set it
+directly instead:
+
+```yaml
+eppKedaSaturation:
+  scaledObject:
+    pendingAware: true     # off by default
+    servingCapacity: 1.8   # R; required when pendingAware is true
+```
+
+What the template renders for each ScaledObject (each role of a P/D guide gets its own):
+
+```
+need     = max over the guide's triggers of (value / threshold)    # what the HPA would ask
+pods     = pods of the role that exist           (kube-state-metrics, llm-d.ai/role)
+pending  = pods not yet Ready, held 2 min after Ready, ignored after 15 min stuck
+arrivals = requests/s reaching the router        (dispatched + shed + queued)
+
+replicas = pending > 0 ?  max(min(need, pods), arrivals / R)  :  need
+```
+
+It renders as one `AverageValue` trigger with threshold 1, so the HPA asks for `ceil(replicas)`. The
+scale-up stabilization window becomes 0 s, since the rule does the waiting. The guide's scale-up
+policies and scale-down behavior are kept. It needs kube-state-metrics in the same Prometheus, which
+OpenShift monitoring provides.

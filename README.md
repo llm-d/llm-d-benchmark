@@ -342,7 +342,7 @@ See [workload/README.md](workload/README.md) for the full experiment file format
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
 | Multi-model scenarios and the `shared:` block | [docs/multi-model.md](docs/multi-model.md), [config/README.md](config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config), [developer-guide](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block) |
 | Workload-variant-autoscaler & EPP+KEDA saturation autoscaling | [docs/workload-variant-autoscaler.md](docs/workload-variant-autoscaler.md) |
-| Serving capacity R (SLO-bounded req/s per replica, `make calibrate-serving-capacity`) | [docs/serving-capacity.md](docs/serving-capacity.md) |
+| Serving capacity R and pending-aware scaling (`make calibrate-serving-capacity`, `make pending-aware-standup`) | [docs/serving-capacity.md](docs/serving-capacity.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
 | Smoketests, per-scenario validation, adding validators | [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) |
