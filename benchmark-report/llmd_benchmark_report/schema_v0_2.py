@@ -1073,6 +1073,8 @@ class PodStartupTimes(BaseModel):
     """Per-pod startup information."""
     aggregate: Statistics | None = None
     """Aggregate statistics (mean, p50, p99, etc.) across all pod startup times."""
+    requester_runtime_aggregate: Statistics | None = None
+    """Aggregate statistics across FMA requester pods that became ready during the run."""
     graph_path: str | None = None
     """Path to pod startup times visualization."""
 

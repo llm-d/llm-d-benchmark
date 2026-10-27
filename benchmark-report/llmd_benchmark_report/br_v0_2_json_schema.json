@@ -1525,6 +1525,18 @@
           "default": null,
           "description": "Aggregate statistics (mean, p50, p99, etc.) across all pod startup times."
         },
+        "requester_runtime_aggregate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate statistics across FMA requester pods that became ready during the run."
+        },
         "graph_path": {
           "anyOf": [
             {

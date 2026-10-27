@@ -8,7 +8,10 @@ import json
 import runpy
 from pathlib import Path
 
-from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import Statistics
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
+    PodStartupTimes,
+    Statistics,
+)
 
 
 def test_embedded_aggregates_validate_as_statistics(
@@ -47,3 +50,39 @@ def test_embedded_aggregates_validate_as_statistics(
     ]
     assert Statistics.model_validate(startup).mean == 70.5
     assert Statistics.model_validate(replicas).mean == 2
+
+
+def test_requester_runtime_aggregate_validates_in_pod_startup_times(
+    tmp_path: Path, monkeypatch
+) -> None:
+    processed = tmp_path / "metrics" / "processed"
+    processed.mkdir(parents=True)
+    (processed / "replica_status_timeseries.json").write_text(
+        json.dumps({"snapshots": [{"timestamp": "2026-10-01T00:01:00Z"}]})
+    )
+    (processed / "pod_startup_times.json").write_text(
+        json.dumps(
+            {
+                "pods": [
+                    {
+                        "name": "fma-requester-0",
+                        "role": "requester",
+                        "ready_timestamp": "2026-10-01T00:05:30Z",
+                        "startup_seconds": 30.0,
+                    }
+                ]
+            }
+        )
+    )
+    monkeypatch.setenv("METRICS_DIR", str(tmp_path / "metrics"))
+
+    module = runpy.run_path(
+        "workload/harnesses/process_metrics.py", run_name="process_metrics_test"
+    )
+    module["aggregate_pod_startup_stats"]()
+    module["aggregate_requester_startup_stats"]()
+
+    startup = PodStartupTimes.model_validate(
+        json.loads((processed / "pod_startup_times.json").read_text())
+    )
+    assert startup.requester_runtime_aggregate.mean == 30.0
