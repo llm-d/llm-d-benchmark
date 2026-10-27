@@ -31,6 +31,11 @@ DATE_PATTERN = re.compile(r"\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(?:\.\d{3})?")
 
 PROCESS_PATTERN = re.compile(r"\(.*?\)")
 
+# vLLM before 0.17.1 logs "torch.compile takes 17.88 s in total"; since then
+# "torch.compile took 17.88 s in total" or "torch.compile and initial
+# profiling/warmup run together took 17.88 s in total", optionally "[tag] "-prefixed.
+TORCH_COMPILE_TOTAL = r"torch\.compile .*?(?:takes|took) ([\d.]+) s in total"
+
 DEFINED_CATEGORIES = [
     {
         "title": "Detect Platform",
@@ -60,7 +65,7 @@ DEFINED_CATEGORIES = [
     {
         "title": "Pytorch Compilation",
         "start": "Start compiling function|torch/_dynamo",
-        "end": "torch.compile takes",
+        "end": TORCH_COMPILE_TOTAL,
         "children": [
             {
                 "title": "Dynamo",
@@ -70,18 +75,18 @@ DEFINED_CATEGORIES = [
             {
                 "title": "Inductor",
                 "start": "Dynamo bytecode transform",
-                "end": "torch.compile takes",
+                "end": TORCH_COMPILE_TOTAL,
             },
         ],
     },
     {
         "title": "CUDA Graph Capture",
-        "start": "torch.compile takes",
+        "start": TORCH_COMPILE_TOTAL,
         "end": "init engine",
     },
     {
         "title": "API Server Starts",
-        "start": "Starting vLLM API server",
+        "start": "Starting vLLM (API )?server",
         "end": "Route: /metrics",
     },
 ]
@@ -1321,9 +1326,6 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
     # Compiling a graph for shape %s takes %.2f s
     compiled_graph = "Compiling a graph for "
 
-    # torch.compile takes 17.88 s in total
-    torch_compile = "torch.compile takes"
-
     # Initial free memory: 43.90 GiB; Requested memory: 0.95 (util), 42.17 GiB
     initial_free_memory = "Initial free memory:"
     # Free memory after profiling: 42.85 GiB (total), 41.12 GiB (within requested)
@@ -1424,9 +1426,9 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
                 continue
 
         if metrics.torch_compile == 0:
-            floats = find_floats_in_line(torch_compile, line)
-            if len(floats) > 0:
-                metrics.torch_compile = floats[0]
+            match = re.search(TORCH_COMPILE_TOTAL, line)
+            if match:
+                metrics.torch_compile = float(match.group(1))
                 continue
 
         if metrics.memory_profiling.initial_free == 0:
