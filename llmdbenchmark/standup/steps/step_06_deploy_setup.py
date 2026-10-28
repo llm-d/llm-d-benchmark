@@ -62,18 +62,33 @@ class DeploySetupStep(Step):
         # This ensures helmfile resolves release namespaces (istio-system)
         # from the helmfile itself, not from the kubeconfig context namespace
         # which may be set to the benchmark namespace (e.g., llmdbenchcicd).
+        #
+        # The provider (istio-base/istiod, agentgateway) is a cluster-scoped
+        # control plane in a shared namespace. Step 02 skips installing it
+        # under --non-admin, so this step must not install or upgrade it
+        # either: on a shared cluster that would change the gateway every
+        # other tenant uses, or fail for lack of rights in that namespace.
         gw_helmfile = self._find_yaml(stack_path, "09_helmfile-gateway-provider")
         if gw_helmfile and self._has_yaml_content(gw_helmfile):
-            result = cmd.helmfile(
-                "apply",
-                "-f",
-                str(gw_helmfile),
-                "--skip-diff-on-install",
-                "--skip-schema-validation",
-                use_kubeconfig=False,
-            )
-            if not result.success:
-                errors.append(f"Failed to install Istio via helmfile: {result.stderr}")
+            if context.non_admin:
+                context.logger.log_info(
+                    f"ℹ️  Non-admin: skipping gateway provider install "
+                    f"(gateway.className={gateway_class}); it must already "
+                    f"be installed in the cluster"
+                )
+            else:
+                result = cmd.helmfile(
+                    "apply",
+                    "-f",
+                    str(gw_helmfile),
+                    "--skip-diff-on-install",
+                    "--skip-schema-validation",
+                    use_kubeconfig=False,
+                )
+                if not result.success:
+                    errors.append(
+                        f"Failed to install Istio via helmfile: {result.stderr}"
+                    )
 
         # Helmfile is copied to helm working dir so relative value paths resolve
         main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")

@@ -697,7 +697,7 @@ gateway:
   name: infra-llmdbench-inference-gateway
   namespace: auto  # Synced with namespace.name; resolved at plan time
   # Gateway implementation. Supported values:
-  #   istio                      - default; istio-base + istiod control plane
+  #   istio                      - istio-base + istiod control plane
   #   agentgateway               - agentgateway-crds + agentgateway controller
   #   gke                        - GKE-managed Gateway
   #   data-science-gateway-class - OpenDataHub / OpenShift AI managed Gateway
@@ -710,6 +710,12 @@ gateway:
   className: epponly
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
+  # Set true when the gateway (provider control plane and CRDs) is managed
+  # outside this tool, e.g. by ArgoCD or a platform operator: standup then
+  # installs neither the Gateway API / inference extension CRDs nor the
+  # istio or agentgateway provider. --non-admin skips the provider install
+  # too, so with either one the provider must already be in the cluster.
+  # externallyManaged: false
   logLevel: error
   # Optional: override the Gateway's HTTP listener port. When unset (default)
   # the chart's built-in listener is used. Not supported for
