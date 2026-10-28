@@ -20,7 +20,7 @@ import numpy as np
 import yaml
 
 from . import guidellm_native
-from .base import Units, WorkloadGenerator
+from .artifacts.benchmark_report.base import Units, WorkloadGenerator
 from .core import (
     check_file,
     get_nested,
@@ -28,14 +28,14 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_2 import (
+from .artifacts.benchmark_report.v0_2.schema import (
     VERSION,
     BenchmarkReportV02,
     Component,
     Distribution,
     LoadSource,
 )
-from .schema_v0_2_components import HostType
+from .artifacts.benchmark_report.v0_2.components import HostType
 
 
 def _normalize_concurrency(value: Any, zero_fallback: Any = None) -> Any:
