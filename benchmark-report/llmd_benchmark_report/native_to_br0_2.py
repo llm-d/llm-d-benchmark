@@ -989,6 +989,7 @@ def _populate_benchmark_report_from_envars() -> dict:
     """
     # Start benchmark report
     br_dict = {
+        "kind": "benchmark-report",
         "version": VERSION,
         "run": {
             "uid": str(uuid.uuid4()),  # Initial UID, may be updated

@@ -2,6 +2,7 @@
 Benchmark Report standardized reporting format.
 """
 
+from .artifacts import Artifact, load_artifact
 from .artifacts.benchmark_report.base import BenchmarkReport
 from .core import (
     get_nested,
@@ -19,6 +20,7 @@ from .artifacts.benchmark_report.v0_2.schema import (
 )
 
 __all__ = [
+    "Artifact",
     "BenchmarkReport",
     "BenchmarkReportV01",
     "BenchmarkReportV02",
@@ -26,6 +28,7 @@ __all__ = [
     "get_nested",
     "import_benchmark_report",
     "import_yaml",
+    "load_artifact",
     "load_benchmark_report",
     "make_json_schema",
     "update_dict",

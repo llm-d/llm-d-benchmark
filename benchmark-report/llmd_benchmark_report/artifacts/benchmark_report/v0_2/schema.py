@@ -15,11 +15,19 @@ Revision history:
 """
 
 import datetime
-from typing import Any, Annotated, ClassVar
+from typing import Any, Annotated, ClassVar, Literal
 from enum import StrEnum, auto
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validator
+from pydantic import BaseModel, Discriminator, Field, model_validator
 
+from ...base import Artifact, ValidationIssue
+
+# These moved to the shared header. The `as` re-exports them for importers of
+# this module, which strict type checkers otherwise refuse.
+from ...base import MODEL_CONFIG as MODEL_CONFIG
+from ...base import Run as Run
+from ...base import RunTime as RunTime
+from ...registry import register
 from ..base import (
     BenchmarkReport,
     Units,
@@ -39,14 +47,6 @@ from .components import COMPONENTS
 
 # BenchmarkReport schema version
 VERSION = "0.2.1"
-
-# Default model_config to apply to Pydantic classes
-MODEL_CONFIG = ConfigDict(
-    extra="forbid",  # Do not allow fields that are not part of this schema
-    use_attribute_docstrings=True,  # Use docstrings for JSON schema
-    populate_by_name=False,  # Must use alias name, not internal field name
-    validate_assignment=True,  # Validate field assignment after init
-)
 
 ###############################################################################
 # Stack details
@@ -1305,42 +1305,6 @@ class SessionPerformance(BaseModel):
 ###############################################################################
 
 
-class RunTime(BaseModel):
-    """Time details of experiment."""
-
-    model_config = MODEL_CONFIG.copy()
-
-    start: datetime.datetime | None = None
-    """ISO-8601 timestamp for experiment start."""
-    end: datetime.datetime | None = None
-    """ISO-8601 timestamp for experiment end."""
-    duration: str | None = None
-    """ISO-8601 duration for experiment."""
-
-
-class Run(BaseModel):
-    """Benchmark run details."""
-
-    model_config = MODEL_CONFIG.copy()
-
-    uid: str
-    """Unique ID for this specific benchmark report."""
-    eid: str | None = None
-    """Experiment ID, common across benchmark reports from a particular experiment."""
-    cid: str | None = None
-    """Cluster ID, unique to a particular cluster."""
-    pid: str | None = None
-    """Pod ID, unique to a workload generating and/or data collecting pod."""
-    time: RunTime | None = None
-    """Time details of experiment."""
-    user: str | None = None
-    """Username that executed experiment."""
-    description: str | None = None
-    """User-provided description of the experiment."""
-    keywords: list[str] | None = None
-    """User-provided keywords/tags for the experiment."""
-
-
 class Scenario(BaseModel):
     """Benchmark run details."""
 
@@ -1378,12 +1342,19 @@ class Results(BaseModel):
 # ------------------------------------------------------------------------------
 
 
-class BenchmarkReportV02(BenchmarkReport):
+@register
+class BenchmarkReportV02(BenchmarkReport, Artifact):
     """Base class for a benchmark report."""
 
     model_config = MODEL_CONFIG.copy()
     model_config["title"] = f"Benchmark Report v{VERSION}"
 
+    # One model reads the whole 0.2 line, all of it written before `kind` existed.
+    VERSIONS: ClassVar[tuple[str, ...]] = ("0.2", "0.2.1")
+    LEGACY_VERSIONS: ClassVar[frozenset[str]] = frozenset(VERSIONS)
+
+    kind: Literal["benchmark-report"]
+    """Artifact kind. Reports at 0.2 and 0.2.1 may omit it."""
     version: str = VERSION
     """Version of the schema."""
     run: Run
@@ -1392,6 +1363,10 @@ class BenchmarkReportV02(BenchmarkReport):
     """Stack configuration and workload details of experiment"""
     results: Results
     """Experiment results."""
+
+    def validate(self) -> list[ValidationIssue]:  # type: ignore[override]
+        # the 0.2 rules still run as pydantic validators at load, #2098 moves them here
+        return []
 
 
 # 0.2.1 used to be a separate subclass; the name stays for existing imports.
