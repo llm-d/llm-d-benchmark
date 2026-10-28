@@ -68,6 +68,36 @@ EVAL_HARNESS = "eval-containers"
 EVAL_ANALYZER = f"{EVAL_HARNESS}-analyze_results.sh"
 REPORT_CONTAINER = "report"
 
+#: Script extensions a harness entry script may ship with under
+#: ``workload/harnesses/`` (``nop`` is Python, the rest are shell).
+HARNESS_SCRIPT_SUFFIXES = (".sh", ".py")
+
+
+def resolve_harness_executable(
+    harness_name: str, executable: str, harnesses_dir: Path
+) -> str:
+    """Return the ``executable`` suffix that names a shipped harness script.
+
+    The pod runs ``{harness_name}-{executable}``. A scenario's
+    ``harness.executable`` is written for its own default harness, so a
+    ``--harness`` override can pair it with a harness that ships under the
+    other extension (``nop`` is ``.py``, ``inference-perf`` is ``.sh``) and
+    the pod fails with "No such file or directory". When the configured
+    script is missing but the same stem exists with the other extension,
+    use that; otherwise keep the configured value.
+    """
+    if (
+        not harnesses_dir.is_dir()
+        or (harnesses_dir / f"{harness_name}-{executable}").is_file()
+    ):
+        return executable
+    stem = Path(executable).stem
+    for suffix in HARNESS_SCRIPT_SUFFIXES:
+        candidate = f"{stem}{suffix}"
+        if (harnesses_dir / f"{harness_name}-{candidate}").is_file():
+            return candidate
+    return executable
+
 
 @dataclass(frozen=True)
 class _TreatmentSpec:
@@ -271,6 +301,13 @@ class DeployHarnessStep(Step):
             plan_config,
             "harness.executable",
             default="llm-d-benchmark.sh",
+        )
+        harness_executable = resolve_harness_executable(
+            harness_name,
+            harness_executable,
+            (context.base_dir or Path(__file__).resolve().parents[3])
+            / "workload"
+            / "harnesses",
         )
 
         # Determine experiment profile name

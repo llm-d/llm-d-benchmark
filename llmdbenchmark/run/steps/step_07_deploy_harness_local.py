@@ -34,6 +34,7 @@ from llmdbenchmark.run.steps.step_07_deploy_harness import (
     EVAL_ANALYZER,
     EVAL_HARNESS,
     DeployHarnessStep,
+    resolve_harness_executable,
 )
 from llmdbenchmark.utilities.container_host import (
     ContainerHost,
@@ -97,8 +98,14 @@ class DeployHarnessLocalStep(Step):
         if not endpoint_url:
             return self._fail(stack_path, "No endpoint URL resolved for nok8s run")
 
-        harness_executable = self._resolve(
-            plan_config, "harness.executable", default="llm-d-benchmark.sh"
+        harness_executable = resolve_harness_executable(
+            harness_name,
+            self._resolve(
+                plan_config, "harness.executable", default="llm-d-benchmark.sh"
+            ),
+            (context.base_dir or Path(__file__).resolve().parents[3])
+            / "workload"
+            / "harnesses",
         )
         entrypoint = (plan_config.get("harness") or {}).get(
             "entrypoint", "llm-d-benchmark.sh"
