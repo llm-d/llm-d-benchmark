@@ -371,6 +371,10 @@ class ModelConfig(BaseModel):
     maxNumSeq: int | None = None
     maxNumBatchedTokens: int | None = None
 
+    revision: str | None = None
+    """HuggingFace revision (commit SHA, tag or branch) the step 04 download
+    fetches; unset downloads the repo's default branch."""
+
     # Computed at render time by RenderPlans._resolve_model_id_label and
     # injected for ${model.idLabel} template use -- not user-set.
     idLabel: str | None = None
