@@ -12,6 +12,16 @@ inference_perf_final_stage_id() {
   fi
 }
 
+# inference-perf serves its own /metrics from v1.0.0 on. Harness scripts also run
+# on older images, so ask the install whether it takes the flag before passing it.
+# --help goes to a variable first so a caller with pipefail set cannot fail on SIGPIPE.
+inference_perf_serves_metrics() {
+  local help_text
+
+  help_text="$(python -c 'import inference_perf; inference_perf.main_cli()' --help 2>/dev/null)" || return 1
+  [[ "${help_text}" == *"--observability.metrics.port"* ]]
+}
+
 inference_perf_capture_stream() {
   local results_dir="$1" log_name="$2" final_stage_id="$3" experiment_id="$4"
   local line marker_tmp safe_experiment
