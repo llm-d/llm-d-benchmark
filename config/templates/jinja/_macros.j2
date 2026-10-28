@@ -59,13 +59,17 @@
 {% endif %}
 {%- endmacro %}
 
-{# Macro to build kv-transfer-config JSON #}
+{# Macro to build kv-transfer-config JSON.
+   extraTopLevel keys become siblings of kv_connector / kv_role (e.g.
+   kv_load_failure_policy); extraConfig becomes kv_connector_extra_config. #}
 {% macro build_kv_transfer_config() -%}
-{% if vllmCommon.kvTransfer.extraConfig is defined and vllmCommon.kvTransfer.extraConfig -%}
-{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}","kv_connector_extra_config":{{ vllmCommon.kvTransfer.extraConfig | tojson }}}
-{%- else -%}
-{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}"}
+{% set kv = vllmCommon.kvTransfer -%}
+{"kv_connector":"{{ kv.connector }}","kv_role":"{{ kv.role }}"
+{%- if kv.extraTopLevel is defined and kv.extraTopLevel %}
+{%- for key, value in kv.extraTopLevel.items() %},{{ key | tojson }}:{{ value | tojson }}{% endfor %}
 {%- endif %}
+{%- if kv.extraConfig is defined and kv.extraConfig %},"kv_connector_extra_config":{{ kv.extraConfig | tojson }}{% endif -%}
+}
 {%- endmacro %}
 
 {# Macro to build kv-events-config JSON #}

@@ -623,10 +623,11 @@ The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument
 | `kvTransfer.connector` | `str` | `NixlConnector` | KV connector class name (e.g. `NixlConnector`, `OffloadingConnector`, `FileSystemConnector`) |
 | `kvTransfer.role` | `str` | `kv_both` | KV role: `kv_both`, `kv_producer`, or `kv_consumer` |
 | `kvTransfer.extraConfig` | `dict\|null` | `null` | Arbitrary key-value pairs passed as `kv_connector_extra_config` |
+| `kvTransfer.extraTopLevel` | `dict\|null` | `null` | Extra top-level fields of the JSON (siblings of `kv_connector`/`kv_role`), e.g. `kv_load_failure_policy`. Must not repeat `kv_connector`, `kv_role` or `kv_connector_extra_config` |
 
 #### How it works
 
-The `build_kv_transfer_config()` macro in `_macros.j2` assembles the JSON from these fields. When `extraConfig` is omitted or `null`, the output contains only `kv_connector` and `kv_role`. When `extraConfig` is set, it is serialized as `kv_connector_extra_config` inside the same JSON object.
+The `build_kv_transfer_config()` macro in `_macros.j2` assembles the JSON from these fields. When `extraConfig` and `extraTopLevel` are omitted or `null`, the output contains only `kv_connector` and `kv_role`. Each `extraTopLevel` entry is added as a top-level field after `kv_role`. When `extraConfig` is set, it is serialized as `kv_connector_extra_config` inside the same JSON object.
 
 The macro is called automatically when `kvTransfer.enabled: true` --both in the default vLLM serve command and when using `customCommand`.
 
@@ -674,6 +675,20 @@ vllmCommon:
 
 Produces: `--kv-transfer-config '{"kv_connector":"FileSystemConnector","kv_role":"kv_both","kv_connector_extra_config":{"storage_path":"/mnt/kv-cache"}}'`
 
+**KV load failure policy (top-level field):**
+
+```yaml
+vllmCommon:
+  kvTransfer:
+    enabled: true
+    connector: MooncakeStoreConnector
+    role: kv_both
+    extraTopLevel:
+      kv_load_failure_policy: recompute
+```
+
+Produces: `--kv-transfer-config '{"kv_connector":"MooncakeStoreConnector","kv_role":"kv_both","kv_load_failure_policy":"recompute"}'`
+
 **Disabling KV transfer (default):**
 
 ```yaml
@@ -703,6 +718,7 @@ vllmCommon:
     connector: *kv_connector    # NixlConnector
     role: *kv_role              # kv_both
     # extraConfig: null         # not set by default
+    # extraTopLevel: null       # not set by default
 ```
 
 A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The override is a full merge --you must include `enabled`, `connector`, and `role` in your scenario if you want them to differ from defaults.

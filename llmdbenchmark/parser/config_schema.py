@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 # ---------------------------------------------------------------------------
 # Shared ConfigDict presets
@@ -270,6 +270,13 @@ class PrefillConfig(DeploymentBaseConfig):
 # ---------------------------------------------------------------------------
 
 
+# --kv-transfer-config keys the template derives from connector, role and
+# extraConfig; extraTopLevel must not emit them a second time.
+_KV_TRANSFER_RESERVED_KEYS = frozenset(
+    {"kv_connector", "kv_role", "kv_connector_extra_config"}
+)
+
+
 class KvTransferConfig(BaseModel):
     """KV cache transfer configuration (NIXL connector)."""
 
@@ -279,6 +286,20 @@ class KvTransferConfig(BaseModel):
     connector: str
     role: str
     extraConfig: dict | None = None
+    extraTopLevel: dict | None = None
+    """Extra top-level ``--kv-transfer-config`` fields (e.g.
+    ``kv_load_failure_policy``), emitted next to ``kv_connector``/``kv_role``."""
+
+    @field_validator("extraTopLevel")
+    @classmethod
+    def _extra_top_level_not_reserved(cls, value: dict | None) -> dict | None:
+        reserved = sorted(_KV_TRANSFER_RESERVED_KEYS & set(value or {}))
+        if reserved:
+            raise ValueError(
+                f"{', '.join(reserved)} cannot be set here: use connector, "
+                f"role or extraConfig instead"
+            )
+        return value
 
 
 class KvEventsConfig(BaseModel):

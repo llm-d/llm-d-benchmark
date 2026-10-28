@@ -863,6 +863,10 @@ vllmCommon:
     # extraConfig:
     #   num_cpu_blocks: 5000
     #   cpu_bytes_to_use: 1000000000
+    # Extra top-level fields in the --kv-transfer-config JSON, emitted next to
+    # kv_connector/kv_role (e.g. vLLM's kv_load_failure_policy).
+    # extraTopLevel:
+    #   kv_load_failure_policy: recompute
   # KV Events Configuration (for precise prefix cache aware routing)
   # When enabled, adds --kv-events-config to vllm serve command
   # Generates endpoint: tcp://<serviceName>.<namespace>.svc.cluster.local:<port>
