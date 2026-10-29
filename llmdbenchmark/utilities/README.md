@@ -109,7 +109,7 @@ class ValidationParams:
 
 ### Model Verification
 
-- `test_model_serving(cmd, namespace, host, port, expected_model, ...) -> str | None` -- Query `/v1/models` via ephemeral curl pod. Retries up to `max_retries` (default 12) with `retry_interval` (default 15s) on transient failures (503, "not ready", "still loading"). Returns `None` on success.
+- `test_model_serving(cmd, namespace, host, port, expected_model, ...) -> str | None` -- Query `/v1/models` via ephemeral curl pod. Retries up to `max_retries` (default 12) with `retry_interval` (default 15s) on transient failures (503, "not ready", "still loading"). A curl pod that never starts (image pull failure) is retried with a fresh pod up to 3 times before the step fails. Returns `None` on success.
 - `validate_model_response(stdout, expected_model, host, port) -> str | None` -- Check that the `/v1/models` response JSON contains the expected model ID.
 
 ## kube_helpers.py -- Pod Lifecycle Helpers

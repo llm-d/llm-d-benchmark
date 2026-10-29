@@ -24,6 +24,7 @@ from llmdbenchmark.utilities.endpoint import (
     _ephemeral_label_args,
     _normalize_url_prefix,
     _rand_suffix,
+    CURL_IMAGE,
     compute_gateway_path_prefix,
     find_custom_endpoint,
     find_direct_modelservice_endpoint,
@@ -31,6 +32,7 @@ from llmdbenchmark.utilities.endpoint import (
     find_gateway_endpoint,
     find_kustomize_endpoint,
     find_standalone_endpoint,
+    is_pod_start_failure,
     resolve_direct_service_namespace,
     test_model_serving,
 )
@@ -1916,7 +1918,7 @@ class BaseSmoketest:
         protocol = "https" if str(port) == "443" else "http"
         prefix = _normalize_url_prefix(url_path_prefix)
         url = f"{protocol}://{host}:{port}{prefix}/health"
-        curl_image = "quay.io/fedora/fedora"
+        curl_image = CURL_IMAGE
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
@@ -2544,8 +2546,7 @@ class BaseSmoketest:
         timeout_seconds: int = 120,
     ) -> tuple[str, str | None]:
         override_args = _build_overrides(plan_config)
-        curl_image = "quay.io/fedora/fedora"
-        pod_name = f"inference-test-{_rand_suffix()}"
+        curl_image = CURL_IMAGE
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
 
@@ -2562,30 +2563,46 @@ class BaseSmoketest:
             f"-d @- 2>&1'"
         )
 
-        kubectl_args = (
-            [
-                "run",
-                pod_name,
-                "--rm",
-                "--attach",
-                "--quiet",
-                "--restart=Never",
-                "--namespace",
-                namespace,
-                f"--image={curl_image}",
-            ]
-            + _ephemeral_label_args()
-            + override_args
-            + ["--command", "--", "sh", "-c", curl_cmd]
-        )
+        # A failed pull is often transient; a new pod may land on a
+        # node that already has the image.
+        max_pod_attempts = 3
+        result = None
+        for attempt in range(1, max_pod_attempts + 1):
+            pod_name = f"inference-test-{_rand_suffix()}"
 
-        result = cmd.kube(*kubectl_args, check=False)
+            kubectl_args = (
+                [
+                    "run",
+                    pod_name,
+                    "--rm",
+                    "--attach",
+                    "--quiet",
+                    "--restart=Never",
+                    "--namespace",
+                    namespace,
+                    f"--image={curl_image}",
+                ]
+                + _ephemeral_label_args()
+                + override_args
+                + ["--command", "--", "sh", "-c", curl_cmd]
+            )
 
-        if result.dry_run:
-            return "", None
+            result = cmd.kube(*kubectl_args, check=False)
 
-        if not result.success:
+            if result.dry_run:
+                return "", None
+
+            if result.success:
+                break
+
             detail = result.stderr[:300] or result.stdout[:300]
+            if is_pod_start_failure(detail) and attempt < max_pod_attempts:
+                cmd.logger.log_info(
+                    f"Attempt {attempt}/{max_pod_attempts}: curl pod "
+                    f"never started, retrying in 15s..."
+                )
+                time.sleep(15)
+                continue
             return "", f"Curl to {url} failed: {detail}"
 
         # Split the trailing HTTP status off from the body. Curl writes

@@ -25,6 +25,7 @@ from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
     _ephemeral_label_args,
+    CURL_IMAGE,
     find_standalone_endpoint,
     find_gateway_endpoint,
     find_direct_modelservice_endpoint,
@@ -459,7 +460,7 @@ class InferenceTestStep(Step):
         avoid shell quoting issues when passing through kubectl to sh -c.
         """
         override_args = _build_overrides(plan_config)
-        curl_image = "quay.io/fedora/fedora"
+        curl_image = CURL_IMAGE
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
