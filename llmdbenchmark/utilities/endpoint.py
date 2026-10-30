@@ -20,6 +20,27 @@ def _rand_suffix(length: int = 8) -> str:
 EPHEMERAL_POD_LABEL = "llm-d-benchmark/ephemeral=true"
 """Label applied to all ephemeral curl/smoketest pods for cleanup."""
 
+CURL_IMAGE = "quay.io/fedora/fedora:45"
+"""Image for every ephemeral curl pod.
+
+Pinned on purpose: the API server only defaults the pull policy to
+IfNotPresent when the tag is not ``:latest``. No tag or ``:latest``
+asks the registry for every pod, and that lookup fails often enough
+to kill runs.
+"""
+
+# kubectl run --attach gave up before the pod started. --quiet hides
+# the pull events, so this timeout is the only failure marker that
+# reaches us.
+POD_START_FAILURE_INDICATORS = ("timed out waiting for the condition",)
+
+
+def is_pod_start_failure(text: str) -> bool:
+    """Return True if the text says an ephemeral pod never started."""
+    if not text:
+        return False
+    return any(indicator in text for indicator in POD_START_FAILURE_INDICATORS)
+
 
 def resolve_direct_service_namespace(
     plan_config: dict | None, fallback_namespace: str
@@ -781,44 +802,62 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "quay.io/fedora/fedora"
+    curl_image = CURL_IMAGE
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):
-        pod_name = f"smoketest-{_rand_suffix()}"
-
         curl_cmd = (
             f"'curl -sk --retry 3 --retry-delay 3 "
             f"--retry-all-errors --max-time 30 {url} 2>&1'"
         )
 
-        kubectl_args = (
-            [
-                "run",
-                pod_name,
-                "--rm",
-                "--attach",
-                "--quiet",
-                "--restart=Never",
-                "--namespace",
-                namespace,
-                f"--image={curl_image}",
-            ]
-            + _ephemeral_label_args()
-            + override_args
-            + [
-                "--command",
-                "--",
-                "sh",
-                "-c",
-                curl_cmd,
-            ]
-        )
+        # A failed pull is often transient; a new pod may land on a
+        # node that already has the image.
+        max_pod_attempts = 3
+        result = None
+        for pod_attempt in range(1, max_pod_attempts + 1):
+            pod_name = f"smoketest-{_rand_suffix()}"
 
-        result = cmd.kube(*kubectl_args, check=False)
+            kubectl_args = (
+                [
+                    "run",
+                    pod_name,
+                    "--rm",
+                    "--attach",
+                    "--quiet",
+                    "--restart=Never",
+                    "--namespace",
+                    namespace,
+                    f"--image={curl_image}",
+                ]
+                + _ephemeral_label_args()
+                + override_args
+                + [
+                    "--command",
+                    "--",
+                    "sh",
+                    "-c",
+                    curl_cmd,
+                ]
+            )
 
-        if result.dry_run:
-            return None  # Command logged, skip retries
+            result = cmd.kube(*kubectl_args, check=False)
+
+            if result.dry_run:
+                return None  # Command logged, skip retries
+
+            if result.success:
+                break
+
+            detail = result.stderr[:200] or result.stdout[:200]
+            if is_pod_start_failure(detail) and pod_attempt < max_pod_attempts:
+                cmd.logger.log_info(
+                    f"Attempt {pod_attempt}/{max_pod_attempts}: curl pod "
+                    f"never started, retrying in 15s..."
+                )
+                time.sleep(15)
+                continue
+            break
 
         if not result.success:
             detail = result.stderr[:200] or result.stdout[:200]
@@ -997,7 +1036,7 @@ def reset_caches_pods(
         return warnings
 
     override_args = _build_overrides(plan_config)
-    curl_image = "quay.io/fedora/fedora"
+    curl_image = CURL_IMAGE
 
     def _run_curl_pod(ips: list[str], endpoints: tuple[str, ...]) -> CommandResult:
         # Batch every pod IP x endpoint into a single ephemeral curl pod.
@@ -1019,25 +1058,52 @@ def reset_caches_pods(
             f"done"
         )
         curl_cmd = f"'{inner}'"
-        pod_name = f"reset-caches-{_rand_suffix()}"
 
-        kubectl_args = (
-            [
-                "run",
-                pod_name,
-                "--rm",
-                "--attach",
-                "--quiet",
-                "--restart=Never",
-                "--namespace",
-                namespace,
-                f"--image={curl_image}",
-            ]
-            + _ephemeral_label_args()
-            + override_args
-            + ["--command", "--", "sh", "-c", curl_cmd]
-        )
-        return cmd.kube(*kubectl_args, check=False)
+        # A failed pull is often transient; a new pod may land on a node
+        # that already has the image. reset_caches_required makes any
+        # warning here fatal, so the strict path must not trip on one.
+        max_pod_attempts = 3
+        result = None
+        for attempt in range(1, max_pod_attempts + 1):
+            pod_name = f"reset-caches-{_rand_suffix()}"
+
+            kubectl_args = (
+                [
+                    "run",
+                    pod_name,
+                    "--rm",
+                    "--attach",
+                    "--quiet",
+                    "--restart=Never",
+                    "--namespace",
+                    namespace,
+                    f"--image={curl_image}",
+                ]
+                + _ephemeral_label_args()
+                + override_args
+                + ["--command", "--", "sh", "-c", curl_cmd]
+            )
+            result = cmd.kube(*kubectl_args, check=False)
+
+            if result.dry_run:
+                return result
+
+            if result.success:
+                break
+
+            detail = result.stderr[:200] or result.stdout[:200]
+            if is_pod_start_failure(detail) and attempt < max_pod_attempts:
+                if logger:
+                    logger.log_info(
+                        f"reset_caches: curl pod never started "
+                        f"(attempt {attempt}/{max_pod_attempts}), "
+                        f"retrying in 15s..."
+                    )
+                time.sleep(15)
+                continue
+            break
+
+        return result
 
     result = _run_curl_pod(pod_ips, _CACHE_RESET_ENDPOINTS)
 

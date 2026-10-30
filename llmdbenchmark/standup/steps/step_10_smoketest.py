@@ -10,6 +10,7 @@ from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
     _ephemeral_label_args,
+    CURL_IMAGE,
     cleanup_ephemeral_pods,
     find_standalone_endpoint,
     find_gateway_endpoint,
@@ -310,7 +311,7 @@ class SmoketestStep(Step):
         """
         protocol = "https" if str(port) == "443" else "http"
         url = f"{protocol}://{host}:{port}/health"
-        curl_image = "quay.io/fedora/fedora"
+        curl_image = CURL_IMAGE
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
