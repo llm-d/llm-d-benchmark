@@ -511,25 +511,31 @@ def peak_decode_throughput(
 def serving_capacity(
     stages: list[Stage], replicas: int, ttft_target: float
 ) -> tuple[float, Stage] | None:
-    """R: requests/s per replica at the highest offered rate that met the SLO.
+    """R: requests/s per replica at the top of the SLO-bounded part of the ladder.
 
     A rate ladder against a fixed pool makes this a measurement. A stage counts
     only while its p90 TTFT is within the target and no request failed. Past
     that, latency or errors break the SLO before throughput stops rising, so R
     is an SLO-bounded capacity, below the saturation rate.
+
+    Capacity only falls as the offered rate rises, so R is the highest rate
+    that passed with every lower rate passing too: a stage that passes above a
+    failing one is measurement noise (a short stage of long requests can pass
+    or miss on timing luck), not capacity.
     """
-    within = [
-        s
-        for s in stages
-        if s.name != "whole run"
-        and s.offered_rate
-        and s.ttft_p90 is not None
-        and s.ttft_p90 <= ttft_target
-        and not s.failures
-    ]
-    if not within or replicas < 1:
+    ladder = sorted(
+        (s for s in stages if s.name != "whole run" and s.offered_rate),
+        key=lambda s: s.offered_rate,
+    )
+    best = None
+    for s in ladder:
+        if not (
+            s.ttft_p90 is not None and s.ttft_p90 <= ttft_target and not s.failures
+        ):
+            break
+        best = s
+    if best is None or replicas < 1:
         return None
-    best = max(within, key=lambda s: s.offered_rate)
     return round(best.offered_rate / replicas, 3), best
 
 

@@ -553,6 +553,42 @@ def test_no_r_when_no_stage_met_the_slo():
     assert serving_capacity(_rate_ladder((0.5, 0.2, 0)), 0, 2.0) is None
 
 
+def test_a_stage_passing_above_a_failing_one_does_not_raise_r():
+    # Measured on epp-keda-saturation with 120 s stages of ~80 s requests:
+    # 0.16 broke the SLO, 0.19 passed again. Capacity does not recover with
+    # load, so the 0.19 pass is noise and R stays at the last rate below the
+    # first failure.
+    r, stage = serving_capacity(
+        _rate_ladder(
+            (0.10, 0.29, 0),
+            (0.13, 0.30, 0),
+            (0.16, 14.5, 0),
+            (0.19, 0.29, 0),
+            (0.25, 22.8, 0),
+        ),
+        1,
+        2.0,
+    )
+    assert (r, stage.name) == (0.13, "stage 1")
+
+
+def test_r_ignores_ladder_order():
+    # Stages may arrive in any order (report glob order); the knee is taken
+    # over rates sorted ascending.
+    r, _ = serving_capacity(
+        _rate_ladder(
+            (1.5, 0.31, 0),
+            (0.5, 0.21, 0),
+            (2.0, 27.8, 0),
+            (1.0, 0.27, 0),
+            (0.25, 0.21, 0),
+        ),
+        1,
+        2.0,
+    )
+    assert r == 1.5
+
+
 def test_stage_windows_read_ttft_failures_and_the_offered_rate(tmp_path):
     results = _results(tmp_path)
     report = next(results.glob("exp_1/*stage_1*"))
