@@ -523,6 +523,8 @@ Controls how the modelservice Helm chart locates and loads model weights. Set vi
 
 This is the recommended protocol for production - models are pre-cached and startup is fast.
 
+Without `model.revision`, the download fetches the HuggingFace repo's default branch, so a later standup can stage different weights, config or tokenizer files. Set `model.revision` to a commit SHA (or a tag or branch) to pin what the download Job and the hostPath download DaemonSet fetch; it is passed to `hf download --revision`. It covers the step 04 download only: pods that fetch the model from HuggingFace themselves at startup (`uriProtocol: hf`, a standalone `vllm serve <model id>`) are not pinned by it. On hostPath, a node whose copy already has the `.download-complete` marker is not downloaded again, so use a new `model.path` when changing the revision there.
+
 **`hf://` protocol:**
 
 1. Step 04 skips PVC creation and download job entirely

@@ -319,6 +319,11 @@ class TestScenarioOnlyFields:
         warnings = validate_config(defaults_copy)
         assert warnings == [], f"model.maxNumSeq should be accepted: {warnings}"
 
+    def test_model_revision(self, defaults_copy: dict) -> None:
+        defaults_copy["model"]["revision"] = "main"
+        warnings = validate_config(defaults_copy)
+        assert warnings == [], f"model.revision should be accepted: {warnings}"
+
     def test_flags_no_prefix_caching(self, defaults_copy: dict) -> None:
         defaults_copy["vllmCommon"]["flags"]["noPrefixCaching"] = True
         warnings = validate_config(defaults_copy)

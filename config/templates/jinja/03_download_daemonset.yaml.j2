@@ -48,7 +48,7 @@ spec:
               fi
               echo "Downloading model to ${TARGET_DIR}..."
               mkdir -p "${TARGET_DIR}"
-              hf download "${HF_MODEL_ID}" --local-dir "${TARGET_DIR}" --max-workers {{ downloadJob.maxWorkers }}
+              hf download "${HF_MODEL_ID}"{% if model.revision is defined and model.revision %} --revision "${HF_MODEL_REVISION}"{% endif %} --local-dir "${TARGET_DIR}" --max-workers {{ downloadJob.maxWorkers }}
               # Serving pods mount the node directory directly, so on SELinux
               # nodes the files need a label non-spc_t containers can read.
               # Non-SELinux nodes reject chcon; that is not an error there.
@@ -72,6 +72,10 @@ spec:
               value: {{ model.path }}
             - name: HF_MODEL_ID
               value: {{ model.huggingfaceId }}
+{% if model.revision is defined and model.revision %}
+            - name: HF_MODEL_REVISION
+              value: "{{ model.revision }}"
+{% endif %}
             - name: HF_HOME
               value: /tmp/huggingface
             - name: HOME
