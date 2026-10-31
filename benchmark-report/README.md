@@ -26,7 +26,7 @@ Releases are published to PyPI by the `br-release` GitHub workflow, triggered by
 
 A benchmark report describes the inference service configuration, workload, and performance results. Individual traces from single inference executions are not captured, but time-series or statistical results may be captured.
 
-See [`br_v0_2_example.yaml`](llmd_benchmark_report/br_v0_2_example.yaml) for a dummy example report (values may be non-sensical). A [JSON Schema](https://json-schema.org/draft/2020-12) for the current `0.2.x` revision is at [`br_v0_2_json_schema.json`](llmd_benchmark_report/br_v0_2_json_schema.json). 
+See [`br_v0_2_example.yaml`](https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark-report/llmd_benchmark_report/br_v0_2_example.yaml) for a dummy example report (values may be non-sensical). A [JSON Schema](https://json-schema.org/draft/2020-12) for the current `0.2.x` revision is at [`br_v0_2_json_schema.json`](https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark-report/llmd_benchmark_report/br_v0_2_json_schema.json). 
 
 The top-level fields for the benchmark report are `version`, `run`, `scenario`, and `results`.
 
@@ -45,7 +45,7 @@ Two fields are populated from the experiment ID (`LLMDBENCH_RUN_EXPERIMENT_ID`, 
 
 The schema documents `run.description` as submitter-provided, so the generated label is only a default. Set your own with `--run-description`, `LLMDBENCH_DESCRIPTION_TEXT`, or `description.text` under a scenario's `common:` block, and it is used verbatim. A submitter-supplied description and keywords are recorded even when no experiment ID resolves, since neither needs one to be meaningful.
 
-`run.keywords` is populated only from `--run-keywords`, `LLMDBENCH_DESCRIPTION_KEYWORDS`, or `description.keywords` (comma-separated). It is never auto-populated -- see [SUBMISSION_POLICY.md](../llmdbenchmark/results_store/SUBMISSION_POLICY.md) -- and the key is omitted entirely when the submitter sets nothing.
+`run.keywords` is populated only from `--run-keywords`, `LLMDBENCH_DESCRIPTION_KEYWORDS`, or `description.keywords` (comma-separated). It is never auto-populated -- see [SUBMISSION_POLICY.md](https://github.com/llm-d/llm-d-benchmark/blob/main/llmdbenchmark/results_store/SUBMISSION_POLICY.md) -- and the key is omitted entirely when the submitter sets nothing.
 
 ### `scenario` Field
 
@@ -101,7 +101,7 @@ Server-side multi-modal metrics (vision token counts, encoding time, multimodal 
 
 A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
 
-See [`br_v0_1_example.yaml`](llmd_benchmark_report/br_v0_1_example.yaml) for a dummy example report (values may be non-sensical). The [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report version `0.1` is at [`br_v0_1_json_schema.json`](llmd_benchmark_report/br_v0_1_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
+See [`br_v0_1_example.yaml`](https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark-report/llmd_benchmark_report/br_v0_1_example.yaml) for a dummy example report (values may be non-sensical). The [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report version `0.1` is at [`br_v0_1_json_schema.json`](https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark-report/llmd_benchmark_report/br_v0_1_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
 
 While each of these fields is required, some subfields may be optional or not apply to the specific benchmark being performed. For example, some metrics may not be captured or supported by a certain benchmarking toolset. In cases where one desires to capture information that is not part of the standard benchmark report schema, a `metadata` field may be placed almost anywhere under `scenario` or `metrics` to add arbitrary data.
 
@@ -228,7 +228,7 @@ br = llmd_benchmark_report.BenchmarkReportV02(
 print(br.get_yaml_str())
 ```
 
-The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br0_2.py](llmd_benchmark_report/native_to_br0_2.py), or using the CLI defined in `cli.py`.
+The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br0_2.py](https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark-report/llmd_benchmark_report/native_to_br0_2.py), or using the CLI defined in `cli.py`.
 
 To run the converter CLI, execute the module using `python -m` from the root of this repository:
 
