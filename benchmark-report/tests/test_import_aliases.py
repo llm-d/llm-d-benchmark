@@ -54,3 +54,28 @@ def test_v0_2_1_modules_alias_v0_2() -> None:
         "import_vllm_benchmark",
     ):
         assert getattr(native_to_br0_2_1, name) is getattr(native_to_br0_2, name)
+
+
+# Each module that moved under artifacts/ keeps its old path. Every public name in
+# artifacts/benchmark_report/v0_2/schema.py is the same object at schema_v0_2,
+# including RunTime, which moved to the shared header. Likewise for base,
+# schema_v0_1 and schema_v0_2_components.
+def test_moved_modules_keep_their_old_paths() -> None:
+    import importlib
+
+    moves = {
+        "base": "artifacts.benchmark_report.base",
+        "schema_v0_1": "artifacts.benchmark_report.v0_1.schema",
+        "schema_v0_2": "artifacts.benchmark_report.v0_2.schema",
+        "schema_v0_2_components": "artifacts.benchmark_report.v0_2.components",
+    }
+    for old, new in moves.items():
+        old_mod = importlib.import_module(f"llmd_benchmark_report.{old}")
+        new_mod = importlib.import_module(f"llmd_benchmark_report.{new}")
+        public = [name for name in vars(new_mod) if not name.startswith("_")]
+        assert public
+        for name in public:
+            assert getattr(old_mod, name) is getattr(new_mod, name), f"{old}.{name}"
+    assert llmd_benchmark_report.schema_v0_2.RunTime is (
+        importlib.import_module("llmd_benchmark_report.artifacts").RunTime
+    )

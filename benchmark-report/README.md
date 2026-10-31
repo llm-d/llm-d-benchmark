@@ -16,7 +16,7 @@ The canonical import name is `llmd_benchmark_report`. Two aliases exist for back
 
 ## Versioning and compatibility
 
-`llmd-benchmark-report` package versions track the Benchmark Report schema version: package `0.2.x` implements BR v0.2.x (and still parses earlier report versions). Within a minor line, releases are strictly additive: new optional fields and new component kinds may be added, but existing fields are never removed, renamed, retyped, or given stricter validation that rejects previously valid reports. A report valid against `0.2.x` validates against every later `0.2.y`. Breaking changes require a new minor line. Each minor line has a single implementation: `schema_v0_2.py` and `native_to_br0_2.py` hold the latest `0.2.x` revision, and a new revision changes them in place rather than adding modules. Packaging-only fixes with no schema change ship as post-releases (e.g. `0.2.1.post1`). Consumers should depend on `llmd-benchmark-report>=0.2.1,<0.3`.
+`llmd-benchmark-report` package versions track the Benchmark Report schema version: package `0.2.x` implements BR v0.2.x (and still parses earlier report versions). Within a minor line, releases are strictly additive: new optional fields and new component kinds may be added, but existing fields are never removed, renamed, retyped, or given stricter validation that rejects previously valid reports. A report valid against `0.2.x` validates against every later `0.2.y`. Breaking changes require a new minor line. Each minor line has a single implementation: `artifacts/benchmark_report/v0_2/schema.py` and `native_to_br0_2.py` hold the latest `0.2.x` revision, and a new revision changes them in place rather than adding modules. Packaging-only fixes with no schema change ship as post-releases (e.g. `0.2.1.post1`). Consumers should depend on `llmd-benchmark-report>=0.2.1,<0.3`.
 
 ## Releasing
 
@@ -28,7 +28,11 @@ A benchmark report describes the inference service configuration, workload, and 
 
 See [`br_v0_2_example.yaml`](llmd_benchmark_report/br_v0_2_example.yaml) for a dummy example report (values may be non-sensical). A [JSON Schema](https://json-schema.org/draft/2020-12) for the current `0.2.x` revision is at [`br_v0_2_json_schema.json`](llmd_benchmark_report/br_v0_2_json_schema.json). 
 
-The top-level fields for the benchmark report are `version`, `run`, `scenario`, and `results`.
+The top-level fields for the benchmark report are `kind`, `version`, `run`, `producer`, `derived_from`, `scenario`, and `results`. The first five are the header every artifact kind shares.
+
+### `kind` Field
+
+The `kind` field is always `benchmark-report`. It names the artifact kind, so `load_artifact()` can read every typed run output by its header. Reports at `0.2` and `0.2.1` written before the field existed omit it, and every loader reads those as a benchmark report.
 
 ### `version` Field
 
@@ -46,6 +50,10 @@ Two fields are populated from the experiment ID (`LLMDBENCH_RUN_EXPERIMENT_ID`, 
 The schema documents `run.description` as submitter-provided, so the generated label is only a default. Set your own with `--run-description`, `LLMDBENCH_DESCRIPTION_TEXT`, or `description.text` under a scenario's `common:` block, and it is used verbatim. A submitter-supplied description and keywords are recorded even when no experiment ID resolves, since neither needs one to be meaningful.
 
 `run.keywords` is populated only from `--run-keywords`, `LLMDBENCH_DESCRIPTION_KEYWORDS`, or `description.keywords` (comma-separated). It is never auto-populated -- see [SUBMISSION_POLICY.md](../llmdbenchmark/results_store/SUBMISSION_POLICY.md) -- and the key is omitted entirely when the submitter sets nothing.
+
+### `producer` and `derived_from` Fields
+
+Both are optional. `producer` names the tool and version that wrote the report. `derived_from` lists the `run.uid` of each artifact the report was built from.
 
 ### `scenario` Field
 
@@ -123,7 +131,7 @@ The `metrics` field contains all of the results for the report. This does not in
 
 ## Implementation and Usage
 
-The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in `schema_{version}.py`. Instantiating an instance of a benchmark report class includes various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
+The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in `artifacts/benchmark_report/v{major}_{minor}/schema.py`. The older `schema_v0_1`, `schema_v0_2` and `schema_v0_2_components` modules stay as aliases until `0.3`. Instantiating an instance of a benchmark report class includes various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
 
 ### Requirements
 
@@ -135,7 +143,7 @@ PyYAML>=6.0.2
 
 ### Creating a `BenchmarkReport`
 
-A `BenchmarkReport` class may be instantiated from a JSON/YAML file with `import_benchmark_report()`, or from a JSON/YAML string with `yaml_str_to_benchmark_report()`. Both of these functions will detect the appropriate version of the benchmark report.
+A `BenchmarkReport` class may be instantiated from a JSON/YAML file with `import_benchmark_report()`, or from a JSON/YAML string with `yaml_str_to_benchmark_report()`. Both of these functions will detect the appropriate version of the benchmark report. `load_artifact()` reads any artifact kind from a dict, choosing the model by its `kind` and `version`.
 
 To generate a JSON or YAML string from a `BenchmarkReport` instance, use the `get_json_str()` and `get_yaml_str()` methods. To save as a JSON/YAML file, use the `export_json()` or `export_yaml()` methods.
 
