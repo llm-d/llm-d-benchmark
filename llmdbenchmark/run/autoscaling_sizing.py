@@ -63,6 +63,9 @@ class Stage:
     ttft_p90: float | None = None
     offered_rate: float | None = None
     failures: int | None = None
+    # Min TTFT of the stage: the least-queued request, so the closest sample of
+    # the stack's no-load latency floor. The idle-TTFT pre-check reads it.
+    ttft_min: float | None = None
 
 
 def _ts(value: str) -> float:
@@ -108,6 +111,7 @@ def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
             latency = aggregate.get("latency") or {}
             tpot = (latency.get("time_per_output_token") or {}).get("p90")
             ttft = (latency.get("time_to_first_token") or {}).get("p90")
+            ttft_min = (latency.get("time_to_first_token") or {}).get("min")
             failures = (aggregate.get("requests") or {}).get("failures")
             offered = _offered_rate(data, int(match.group(1)))
             rate, tokens_in, tokens_out = (
@@ -127,6 +131,7 @@ def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
                     ttft,
                     offered,
                     failures,
+                    ttft_min=ttft_min,
                 ),
             )
         metadata = result_dir / "run_metadata.yaml"
@@ -533,6 +538,28 @@ def serving_capacity(
     return round(best.offered_rate / replicas, 3), best
 
 
+def idle_floor(stages: list[Stage]) -> float | None:
+    """The stack's no-load TTFT floor, from a probe run's least-queued request.
+
+    An SLO target below this floor can never be met: every rate fails it, the
+    ladder reports "no knee" after its full runtime, and retrying with lower
+    rates only burns more hours -- measured on a live cluster, P/D prefill-heavy
+    with an 8k-prompt shape held a 6-10 s floor against a 5 s target, and an
+    agentic trace on a 1-GPU pod a 5.5 s floor against 2 s; both were reported
+    as unmeasurable until the target was raised above the floor.
+
+    The probe is a single short low-rate stage through the guide's own profile
+    (see PROBE_RATE / PROBE_SECONDS in the Makefile): a handful of requests on
+    an otherwise idle pool. The MIN TTFT over them is the floor estimate --
+    the request that queued least -- so incidental overlap between probe
+    requests does not inflate it, while any real floor does. None when the
+    probe produced no measurement (no report, or no request completed): the
+    caller should warn and proceed rather than block on probe bad luck.
+    """
+    probes = [s for s in stages if s.name != "whole run" and s.ttft_min is not None]
+    return min(s.ttft_min for s in probes) if probes else None
+
+
 def write_sizing(
     stack_path: Path,
     results_dir: Path,
@@ -576,10 +603,31 @@ if __name__ == "__main__":
     #   peak-decode <results_dir> <decode_replicas> <tpot_target_seconds>
     # make calibrate-serving-capacity: python -m llmdbenchmark.run.autoscaling_sizing
     #   serving-capacity <results_dir> <replicas> <ttft_target_seconds>
+    # idle-TTFT pre-check (run before the ladder): python -m ...autoscaling_sizing
+    #   idle-floor <probe_results_dir> <ttft_target_seconds>
     import sys
 
+    command = sys.argv[1]
+    assert command in ("peak-decode", "serving-capacity", "idle-floor"), command
+    if command == "idle-floor":
+        _, _, results, target = sys.argv
+        floor = idle_floor(stage_windows(Path(results), ""))
+        if floor is None:
+            # The probe itself produced nothing to measure (no report or no
+            # completed request): say so and let the ladder proceed rather than
+            # block a calibration on probe bad luck.
+            print("⚠️  idle probe produced no TTFT measurement; skipping the pre-check")
+            sys.exit(0)
+        print(f"IDLE_TTFT_FLOOR={floor:.2f}s")
+        if floor > float(target):
+            sys.exit(
+                f"❌ the stack's idle TTFT floor for this shape is ~{floor:.2f}s, above "
+                f"TTFT_TARGET={target}s: no rate can meet the target. Raise TTFT_TARGET "
+                "(P/D stacks carry a KV-transfer floor; long prompts on few GPUs a "
+                "prefill floor) and re-run"
+            )
+        sys.exit(0)
     _, command, results, replicas, target = sys.argv
-    assert command in ("peak-decode", "serving-capacity"), command
     stages = stage_windows(Path(results), "")
     ladder = stages[:-1] if stages and stages[-1].name == "whole run" else stages
     if command == "serving-capacity":
