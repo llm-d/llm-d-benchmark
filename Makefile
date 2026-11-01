@@ -425,7 +425,6 @@ calibrate-peak-decode: check-kubectl ## Measure peakDecodeThroughput with a deco
 	test "$$BEFORE" = "$$AFTER" || { \
 	  echo "❌ decode replicas changed during the run ($$BEFORE -> $$AFTER): an autoscaler is live."; \
 	  echo "   Re-run with the decode pool fixed (eppKedaSaturation.dryRun=true)."; exit 3; }; \
-	PY=$$(head -1 "$$(command -v $(LLMDBENCH))" | sed 's/^#!//'); \
 	echo "📊 per stage (a stage counts only while p90 TPOT <= $(TPOT_TARGET)s):"; \
 	"$$PY" -m llmdbenchmark.run.autoscaling_sizing peak-decode "$$(ls -d "$$WS"/*/results | head -1)" "$$BEFORE" "$(TPOT_TARGET)" \
 	  | tee "$$WS/peak-decode.txt"; \
@@ -450,9 +449,12 @@ R_RATES ?= 0.25,0.5,1,1.5,2,3
 R_STAGE_SECONDS ?= 120
 REPLICAS ?= 1
 TTFT_TARGET ?= 2
+# Seconds to wait for in-flight requests to drain before the ladder (0-running+waiting
+# required); leftover queue from a previous run reads as missing capacity in stage 0.
+DRAIN_TIMEOUT_S ?= 600
 
 .PHONY: calibrate-serving-capacity
-calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s one replica serves, with the guide's own profile. NAMESPACE=<ns> SPEC=<spec> [R_RATES=0.25,0.5,1,1.5,2,3] [R_STAGE_SECONDS=120] [TTFT_TARGET=2] [REPLICAS=1] [WORKLOAD=<profile>] [OVERRIDES=k=v,...] [RUN_ARGS=...]
+calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s one replica serves, with the guide's own profile. NAMESPACE=<ns> SPEC=<spec> [R_RATES=0.25,0.5,1,1.5,2,3] [R_STAGE_SECONDS=120] [TTFT_TARGET=2] [REPLICAS=1] [WORKLOAD=<profile>] [OVERRIDES=k=v,...] [RUN_ARGS=...] [DRAIN_TIMEOUT_S=600]
 	@test -n "$(NAMESPACE)" -a -n "$(SPEC)" || { \
 	  echo "❌ usage: make calibrate-serving-capacity NAMESPACE=<ns> SPEC=<spec> [R_RATES=...] [TTFT_TARGET=2]"; exit 1; }
 	@set -e; \
@@ -467,6 +469,8 @@ calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s on
 	for i in $$(seq 1 120); do [ "$$(ready)" = "$(REPLICAS)" ] && break; sleep 10; done; \
 	BEFORE=$$(ready); \
 	test "$$BEFORE" = "$(REPLICAS)" || { echo "❌ expected $(REPLICAS) Ready llm-d.ai/role=decode pod(s) in ns/$$NS, found $$BEFORE"; exit 2; }; \
+	PY=$$(head -1 "$$(command -v $(LLMDBENCH))" | sed 's/^#!//'); \
+	"$$PY" -m llmdbenchmark.run.pool_drain check --namespace "$$NS" --timeout "$(DRAIN_TIMEOUT_S)" || exit 4; \
 	STAGES=$$(echo "$(R_RATES)" | tr ',' '\n' | awk -v d=$(R_STAGE_SECONDS) 'NF{printf "%s{rate: %s, duration: %s}", (n++ ? ", " : ""), $$1, d}'); \
 	echo "▶️  $(if $(WORKLOAD),$(WORKLOAD),the guide's own profile) at $(R_RATES) req/s, $(R_STAGE_SECONDS)s each, against $$BEFORE replica(s)"; \
 	$(LLMDBENCH) --spec "$(SPEC)" --ws "$$WS" run -p "$$NS" -l inference-perf $(if $(WORKLOAD),-w $(WORKLOAD)) \
@@ -474,7 +478,6 @@ calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s on
 	AFTER=$$(ready); \
 	test "$$BEFORE" = "$$AFTER" || { \
 	  echo "❌ Ready replicas changed during the run ($$BEFORE -> $$AFTER); re-run with the pool fixed."; exit 3; }; \
-	PY=$$(head -1 "$$(command -v $(LLMDBENCH))" | sed 's/^#!//'); \
 	echo "📊 per stage (a stage counts only while p90 TTFT <= $(TTFT_TARGET)s and nothing failed):"; \
 	"$$PY" -m llmdbenchmark.run.autoscaling_sizing serving-capacity "$$(ls -d "$$WS"/*/results | head -1)" "$$BEFORE" "$(TTFT_TARGET)" \
 	  | tee "$$WS/serving-capacity.txt"; \
