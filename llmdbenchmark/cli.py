@@ -2975,6 +2975,19 @@ def _no_pvc_standup_overrides(args) -> dict:
     }
 
 
+def _non_admin_overrides(args) -> dict:
+    """Synthetic global overrides for ``--non-admin``.
+
+    Router Prometheus auth needs cluster-scoped RBAC that a namespace-level
+    user cannot create, so disable it. Applies to every command that renders
+    plans (standup, run, experiment, update). An explicit user --set of the
+    same path wins (merge-order contract at the call site).
+    """
+    if not getattr(args, "non_admin", False):
+        return {}
+    return {"router": {"monitoring": {"prometheus": {"auth": {"enabled": False}}}}}
+
+
 def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
     """Combine ``--cluster-config`` and ``--set`` into selector buckets.
 
@@ -3030,6 +3043,19 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
         )
         by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
             no_pvc_overrides,
+            by_selector.get(GLOBAL_SELECTOR, {}),
+        )
+
+    # --non-admin: router Prometheus auth needs cluster-scoped RBAC.
+    # Synthetic global override, same precedence contract (explicit --set wins).
+    non_admin_overrides = _non_admin_overrides(args)
+    if non_admin_overrides:
+        logger.log_info(
+            "--non-admin: setting router.monitoring.prometheus.auth.enabled=false. "
+            "An explicit --set of the same key overrides this."
+        )
+        by_selector[GLOBAL_SELECTOR] = _deep_merge_dicts(
+            non_admin_overrides,
             by_selector.get(GLOBAL_SELECTOR, {}),
         )
 
