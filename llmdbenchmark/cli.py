@@ -2544,7 +2544,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--non-admin",
         "-i",
         action="store_true",
-        help="Run as non-cluster-level admin user.",
+        help="Run as non-cluster-level admin user (skips admin-only steps and "
+        "disables router Prometheus auth, which needs cluster-scoped RBAC).",
     )
     parser.add_argument(
         "--run-description",
@@ -2601,7 +2602,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-i",
         action="store_true",
         default=argparse.SUPPRESS,
-        help="Run as non-cluster-level admin user.",
+        help="Run as non-cluster-level admin user (skips admin-only steps and "
+        "disables router Prometheus auth, which needs cluster-scoped RBAC).",
     )
     benchmark_parser.add_argument(
         "--dry-run",
