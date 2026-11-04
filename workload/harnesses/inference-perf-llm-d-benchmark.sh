@@ -14,6 +14,10 @@ if [[ -z "${LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY+x}" ]]; then
   PROFILE_CHAT_EXTRA_BODY="$(python -c 'import json, sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); print(json.dumps(profile.get("llmdbenchmark", {}).get("chat_extra_body", {})))' "$PROFILE_SOURCE")"
   export LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY="$PROFILE_CHAT_EXTRA_BODY"
 fi
+if [[ -z "${LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP+x}" ]]; then
+  PROFILE_CLIENT_SIDE_WARMUP="$(python -c 'import sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); value = profile.get("llmdbenchmark", {}).get("client_side_warmup", False); assert isinstance(value, bool), "client_side_warmup must be a boolean"; print(str(value).lower())' "$PROFILE_SOURCE")"
+  export LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP="$PROFILE_CLIENT_SIDE_WARMUP"
+fi
 python -c 'import os, sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); profile.pop("llmdbenchmark", None); profile["storage"]["local_storage"]["path"] = os.environ["LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"]; yaml.safe_dump(profile, sys.stdout, sort_keys=False)' "$PROFILE_SOURCE" >"${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 

@@ -2,27 +2,36 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import time
+from pathlib import Path
 from typing import Any
+
+import aiohttp
 
 
 _PATCHED = False
+logger = logging.getLogger(__name__)
+_warmup_tasks: set[asyncio.Task[None]] = set()
 
 
 def strip_thinking_content(content: str) -> str:
-    start = content.find("<think>")
-    if start < 0:
+    if "<think>" not in content:
         end = content.find("</think>")
         if end >= 0:
-            content = content[end + len("</think>") :]
-            return content.replace("<think>", "").replace("</think>", "").lstrip()
+            return content[end + len("</think>") :].lstrip()
         return content
 
-    end = content.find("</think>", start + len("<think>"))
-    if end < 0:
-        return content[:start].rstrip()
-    content = content[:start] + content[end + len("</think>") :]
-    return content.replace("<think>", "").replace("</think>", "").lstrip()
+    visible = []
+    while (start := content.find("<think>")) >= 0:
+        visible.append(content[:start])
+        content = content[start + len("<think>") :]
+        end = content.find("</think>")
+        if end < 0:
+            return "".join(visible).rstrip()
+        content = content[end + len("</think>") :]
+    return ("".join(visible) + content).lstrip()
 
 
 def extract_assistant_content(raw_response: str | None) -> str:
@@ -89,12 +98,93 @@ def _inter_turn_delay_seconds() -> float:
     return delay
 
 
+def _client_side_warmup_enabled() -> bool:
+    value = os.environ.get("LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP", "false")
+    if value not in ("true", "false"):
+        raise ValueError(
+            "LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP must be true or false"
+        )
+    return value == "true"
+
+
+def _schedule_warmup(body: dict[str, Any], session_id: str, round_index: int) -> None:
+    task = asyncio.create_task(_warm_next_turn(body, session_id, round_index))
+    _warmup_tasks.add(task)
+
+    def finished(completed: asyncio.Task[None]) -> None:
+        _warmup_tasks.discard(completed)
+        if not completed.cancelled() and (error := completed.exception()) is not None:
+            logger.error(
+                "Client-side warm-up failed (session %s, turn %s)",
+                session_id,
+                round_index,
+                exc_info=(type(error), error, error.__traceback__),
+            )
+
+    task.add_done_callback(finished)
+
+
+async def _warm_next_turn(
+    body: dict[str, Any], session_id: str, round_index: int
+) -> None:
+    warmup_body = {
+        **body,
+        "stream": False,
+        "max_tokens": 1,
+    }
+    warmup_body.pop("stream_options", None)
+    warmup_body.pop("min_tokens", None)
+    warmup_body.pop("max_completion_tokens", None)
+    endpoint = os.environ["LLMDBENCH_HARNESS_STACK_ENDPOINT_URL"].rstrip("/")
+    headers = {"Content-Type": "application/json"}
+    start = time.perf_counter()
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as client:
+        try:
+            async with client.post(
+                f"{endpoint}/v1/chat/completions",
+                json=warmup_body,
+                headers=headers,
+            ) as response:
+                await response.read()
+                status = response.status
+                if status != 200:
+                    logger.error(
+                        "Client-side warm-up failed: HTTP %s (session %s, turn %s)",
+                        status,
+                        session_id,
+                        round_index,
+                    )
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            status = None
+            logger.error(
+                "Client-side warm-up failed (session %s, turn %s): %s",
+                session_id,
+                round_index,
+                exc,
+            )
+        elapsed = time.perf_counter() - start
+
+    results = Path(os.environ["LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"])
+    with (results / "client_side_warmup.jsonl").open("a", encoding="utf-8") as output:
+        output.write(
+            json.dumps(
+                {
+                    "session_id": session_id,
+                    "chat_round": round_index,
+                    "status": status,
+                    "duration_seconds": elapsed,
+                }
+            )
+            + "\n"
+        )
+
+
 def apply_patch() -> None:
     global _PATCHED
     if _PATCHED:
         return
 
-    from pydantic import ConfigDict, Field
+    from pydantic import ConfigDict, Field, PrivateAttr
 
     try:
         from inference_perf.apis import (
@@ -117,6 +207,7 @@ def apply_patch() -> None:
         model_config = ConfigDict(arbitrary_types_allowed=True)
         user_session_id: str = Field(exclude=True)
         target_round: int
+        _request_body: dict[str, Any] = PrivateAttr(default_factory=dict)
 
         @property
         def user_session(self):
@@ -128,12 +219,6 @@ def apply_patch() -> None:
             self._session_context = await self.user_session.get_context(
                 self.target_round
             )
-            # Think time before a follow-up turn. inference-perf starts the
-            # request clock after to_request_body returns and stops it after
-            # process_response, so waiting here keeps it out of the latency.
-            delay = _inter_turn_delay_seconds()
-            if delay and self.target_round > 0:
-                await asyncio.sleep(delay)
             messages = []
             if self.user_session.system_prompt:
                 messages.append(
@@ -146,6 +231,18 @@ def apply_patch() -> None:
                 effective_model_name, max_tokens, ignore_eos, streaming
             )
             body.update(_chat_extra_body())
+            self._request_body = body
+            # inference-perf starts the request clock after to_request_body returns.
+            delay = _inter_turn_delay_seconds()
+            if delay and self.target_round > 0:
+                completed_at = getattr(
+                    self.user_session, "_last_turn_completed_at", None
+                )
+                if completed_at is None:
+                    raise RuntimeError("Previous chat turn has no completion time")
+                await asyncio.sleep(
+                    max(0.0, completed_at + delay - asyncio.get_running_loop().time())
+                )
             return body
 
         def update_inference_info(self, inference_info) -> None:
@@ -167,6 +264,21 @@ def apply_patch() -> None:
                 self.user_session.history.append(
                     ChatMessage(role="assistant", content=assistant_content)
                 )
+            if assistant_content and _client_side_warmup_enabled():
+                warmup_body = {
+                    **self._request_body,
+                    "messages": [
+                        *self._request_body["messages"],
+                        {"role": "assistant", "content": assistant_content},
+                        {"role": "user", "content": " "},
+                    ],
+                }
+                _schedule_warmup(
+                    warmup_body, self.user_session_id, self.user_session._current_round
+                )
+            self.user_session._last_turn_completed_at = (
+                asyncio.get_running_loop().time()
+            )
             self.user_session.update_context(self._session_context)
             return inference_info
 
@@ -177,6 +289,9 @@ def apply_patch() -> None:
                 request_metrics=RequestMetrics(text=Text(input_tokens=0))
             )
             self.update_inference_info(inference_info)
+            self.user_session._last_turn_completed_at = (
+                asyncio.get_running_loop().time()
+            )
             self.user_session.update_context(self._session_context)
             return inference_info
 

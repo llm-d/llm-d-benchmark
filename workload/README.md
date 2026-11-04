@@ -261,6 +261,41 @@ keeps multi-turn history as chat messages, which is required for profiles such
 as `speculative_prefill_multi_turn.yaml.in` that use `api.type: chat`. It also
 removes Qwen-style `<think>...</think>` content from assistant history so hidden
 reasoning is not fed into the next request.
+The `speculative_prefill_multi_turn.yaml.in` profile enables client-side
+warm-up: after each completed turn, the adapter asynchronously sends the chat
+history, visible assistant answer, and a placeholder user message through the
+gateway with `max_tokens: 1`. The next turn starts after the configured delay
+from the previous response, without waiting for warm-up to finish. No router
+opt-in header is needed. Warm-up status and duration are recorded separately in
+`client_side_warmup.jsonl` in the experiment results directory. To run a
+baseline without warm-ups, set `LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP=false`
+for a separate run against a fresh serving instance; compare the inference-perf
+per-turn TTFT and the warm-up overhead, and include TTFT for other traffic under
+representative load. The warm-up uses the configured gateway endpoint. Since
+warm-ups are asynchronous, a final turn's warm-up may still be in flight when
+the benchmark exits and may not appear in the warm-up log.
+
+For example, against an existing Qwen3 gateway/EPP endpoint (see
+[Run-Only Mode](#run-only-mode) for endpoint discovery):
+
+```bash
+llmdbenchmark --spec gpu run --harness inference-perf \
+  --workload speculative_prefill_multi_turn.yaml \
+  --endpoint-url http://<GATEWAY_HOST>:<PORT> \
+  --model Qwen/Qwen3-8B --namespace <NAMESPACE>
+
+# Run a separate no-warm-up baseline against a fresh serving instance.
+llmdbenchmark --spec gpu run --harness inference-perf \
+  --workload speculative_prefill_multi_turn.yaml \
+  --endpoint-url http://<GATEWAY_HOST>:<PORT> \
+  --model Qwen/Qwen3-8B --namespace <NAMESPACE> \
+  --overrides "llmdbenchmark.client_side_warmup=false"
+```
+
+Both formal and warm-up requests use the same gateway endpoint. This profile
+illustrates Qwen-style reasoning history; other clients must build the warm-up
+prefix using the same formatting as their own next turn. Compare TTFT alongside
+full request latency and warm-up failures, since warm-ups add serving load.
 
 ### How Harness Scripts Are Mounted
 
@@ -333,7 +368,7 @@ Unknown tokens (not in the substitution map) are left unchanged.
 | `code_completion_synthetic.yaml.in` | Variable | Synthetic code | Code completion workload |
 | `random_concurrent.yaml.in` | Concurrent | Random synthetic | Concurrent random requests |
 | `shared_prefix_multi_turn_chat.yaml.in` | Variable | Shared prefix | Multi-turn with common prefixes |
-| `speculative_prefill_multi_turn.yaml.in` | Constant 0.05 req/s, 120s | Shared prefix | Single-session multi-turn speculative prefill with 20s inter-turn delay |
+| `speculative_prefill_multi_turn.yaml.in` | Constant 0.05 req/s, 120s | Shared prefix | Single-session client-side warm-up with 20s inter-turn delay |
 | `shared_prefix_synthetic.yaml.in` | Variable | Shared prefix | Shared prefix synthetic data |
 | `shared_prefix_synthetic_short.yaml.in` | Variable | Shared prefix | Short shared prefix workload |
 | `summarization_synthetic.yaml.in` | Variable | Synthetic | Long-context summarization |
