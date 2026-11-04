@@ -70,6 +70,10 @@ class StandaloneDeployStep(Step):
                 stack_name=stack_path.name,
             )
 
+        cache_hint = self._ensure_compile_cache_pvc(cmd, context, plan_config, errors)
+        if errors:
+            return self._compile_cache_failed(context, errors, stack_path.name)
+
         result = cmd.kube("apply", "-f", str(deploy_yaml))
         if not result.success:
             errors.append(f"Failed to apply standalone deployment: {result.stderr}")
@@ -146,7 +150,10 @@ class StandaloneDeployStep(Step):
             )
             if not wait_result.success:
                 errors.append(
-                    f"Standalone deployment pods not ready: {wait_result.stderr}"
+                    self._with_hint(
+                        f"Standalone deployment pods not ready: {wait_result.stderr}",
+                        cache_hint,
+                    )
                 )
 
         if deploy_name and not errors and not context.dry_run:

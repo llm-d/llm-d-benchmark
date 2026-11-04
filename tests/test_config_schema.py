@@ -314,6 +314,11 @@ class TestScenarioOnlyFields:
             f"decode.vllm.modelCommand should be accepted: {warnings}"
         )
 
+    def test_decode_vllm_cache_root(self, defaults_copy: dict) -> None:
+        defaults_copy["decode"]["vllm"]["cacheRoot"] = "/data/vllm"
+        warnings = validate_config(defaults_copy)
+        assert warnings == [], f"decode.vllm.cacheRoot should be accepted: {warnings}"
+
     def test_model_max_num_seq(self, defaults_copy: dict) -> None:
         defaults_copy["model"]["maxNumSeq"] = 128
         warnings = validate_config(defaults_copy)
