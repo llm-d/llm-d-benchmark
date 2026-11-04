@@ -19,6 +19,7 @@ if [[ -z "${LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP+x}" ]]; then
   export LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP="$PROFILE_CLIENT_SIDE_WARMUP"
 fi
 python -c 'import os, sys, yaml; profile = yaml.safe_load(open(sys.argv[1])); profile.pop("llmdbenchmark", None); profile["storage"]["local_storage"]["path"] = os.environ["LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"]; yaml.safe_dump(profile, sys.stdout, sort_keys=False)' "$PROFILE_SOURCE" >"${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}"
+export LLMDBENCH_INFERENCE_PERF_CONFIG_FILE="$(realpath "./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}")"
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 
 # inference-perf generates its reports after the final traffic stage drains.

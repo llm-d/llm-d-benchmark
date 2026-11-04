@@ -94,19 +94,20 @@ def test_wrapper_renders_profile_and_metadata(
             "-e",
             "-c",
             setup
-            + '\npython -c \'import json, os; print(json.dumps([os.getenv("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS", ""), os.environ["LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY"], os.environ["LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP"]]))\'\n',
+            + '\npython -c \'import json, os; print(json.dumps([os.getenv("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS", ""), os.environ["LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY"], os.environ["LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP"], os.environ["LLMDBENCH_INFERENCE_PERF_CONFIG_FILE"]]))\'\n',
         ],
         capture_output=True,
         text=True,
         check=True,
         env=env,
     )
-    actual_delay, actual_extra_body, actual_warmup = json.loads(
+    actual_delay, actual_extra_body, actual_warmup, config_file = json.loads(
         result.stdout.splitlines()[-1]
     )
     assert actual_delay == delay
     assert json.loads(actual_extra_body) == extra_body
     assert actual_warmup == warmup
+    assert config_file == str(results / workload)
 
     source = yaml.safe_load((PROFILES / workload).read_text())
     source.pop("llmdbenchmark", None)

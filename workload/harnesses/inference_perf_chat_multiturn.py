@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
+import yaml
 
 
 _PATCHED = False
@@ -135,8 +136,22 @@ async def _warm_next_turn(
     warmup_body.pop("stream_options", None)
     warmup_body.pop("min_tokens", None)
     warmup_body.pop("max_completion_tokens", None)
-    endpoint = os.environ["LLMDBENCH_HARNESS_STACK_ENDPOINT_URL"].rstrip("/")
+    with Path(os.environ["LLMDBENCH_INFERENCE_PERF_CONFIG_FILE"]).open(
+        encoding="utf-8"
+    ) as config_file:
+        config = yaml.safe_load(config_file)
+    endpoint = config["server"]["base_url"].rstrip("/")
     headers = {"Content-Type": "application/json"}
+    if api_key := config["server"].get("api_key"):
+        headers["Authorization"] = f"Bearer {api_key}"
+    api_config = config["api"]
+    for key, value in (api_config.get("headers") or {}).items():
+        for existing in list(headers):
+            if existing.lower() == key.lower():
+                del headers[existing]
+        headers[key] = value
+    if session_header := api_config.get("session_id_header_key"):
+        headers[session_header] = session_id
     start = time.perf_counter()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as client:
         try:

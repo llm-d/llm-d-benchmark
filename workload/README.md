@@ -268,10 +268,11 @@ gateway with `max_tokens: 1`. The next turn starts after the configured delay
 from the previous response, without waiting for warm-up to finish. No router
 opt-in header is needed. Warm-up status and duration are recorded separately in
 `client_side_warmup.jsonl` in the experiment results directory. To run a
-baseline without warm-ups, set `LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP=false`
+baseline without warm-ups, use the `--overrides` profile setting shown below
 for a separate run against a fresh serving instance; compare the inference-perf
 per-turn TTFT and the warm-up overhead, and include TTFT for other traffic under
-representative load. The warm-up uses the configured gateway endpoint. Since
+representative load. Warm-ups use the rendered profile's `server.base_url` and
+`api.headers`, including workload overrides, just like formal requests. Since
 warm-ups are asynchronous, a final turn's warm-up may still be in flight when
 the benchmark exits and may not appear in the warm-up log.
 

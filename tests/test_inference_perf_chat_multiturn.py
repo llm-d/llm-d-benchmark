@@ -127,19 +127,26 @@ def test_client_side_warmup_flag_requires_boolean(
 
 
 @pytest.mark.parametrize("status", [200, 503])
+@pytest.mark.parametrize("configured_headers", [False, True])
 def test_warm_next_turn_posts_one_token_request_and_records_result(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    status: int,
+    configured_headers: bool,
 ) -> None:
     from aiohttp import web
 
     module = _load_module()
     monkeypatch.setenv("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", str(tmp_path))
+    config_file = tmp_path / "config.yaml"
+    monkeypatch.setenv("LLMDBENCH_INFERENCE_PERF_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", "http://127.0.0.1:1")
 
     async def run() -> tuple[dict, list]:
         received = []
 
         async def handler(request):
-            received.append((request.path, await request.json()))
+            received.append((request.path, await request.json(), dict(request.headers)))
             return web.json_response({"choices": []}, status=status)
 
         app = web.Application()
@@ -149,9 +156,12 @@ def test_warm_next_turn_posts_one_token_request_and_records_result(
         site = web.TCPSite(runner, "127.0.0.1", 0)
         await site.start()
         port = site._server.sockets[0].getsockname()[1]
-        monkeypatch.setenv(
-            "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", f"http://127.0.0.1:{port}"
-        )
+        config = {"server": {"base_url": f"http://127.0.0.1:{port}"}, "api": {}}
+        if configured_headers:
+            config["server"]["api_key"] = "test-key"
+            config["api"]["headers"] = {"x-llm-d-tenant": "test-tenant"}
+            config["api"]["session_id_header_key"] = "x-session-id"
+        config_file.write_text(json.dumps(config))
         try:
             await module._warm_next_turn(
                 {
@@ -175,8 +185,15 @@ def test_warm_next_turn_posts_one_token_request_and_records_result(
             (tmp_path / "client_side_warmup.jsonl").read_text().strip()
         )
 
-    (route, payload), record = asyncio.run(run())
+    (route, payload, headers), record = asyncio.run(run())
     assert route == "/v1/chat/completions"
+    if configured_headers:
+        assert headers["x-llm-d-tenant"] == "test-tenant"
+        assert headers["Authorization"] == "Bearer test-key"
+        assert headers["x-session-id"] == "session-0"
+    else:
+        assert "x-llm-d-tenant" not in headers
+        assert "Authorization" not in headers
     assert payload == {
         "model": "model",
         "messages": [
