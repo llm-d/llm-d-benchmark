@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -230,3 +232,28 @@ def test_inter_turn_delay_stays_out_of_measured_request_latency(
     assert first_latency < delay and second_latency < delay
     assert first_wait < delay  # the opening turn has no previous turn to wait on
     assert second_wait >= delay  # a follow-up turn still waits out the think time
+
+
+def test_wrapper_imports_helpers_from_the_mount_first(tmp_path: Path) -> None:
+    """A pod that is not root cannot copy new helpers next to the image wrapper."""
+    wrapper = MODULE_PATH.parent / "inference-perf-llm-d-benchmark.sh"
+    lines = wrapper.read_text(encoding="utf-8").splitlines()
+    path_setup = "\n".join(
+        line
+        for line in lines
+        if line.startswith(("HARNESS_DIR=", "export PYTHONPATH="))
+    )
+    image_dir = tmp_path / "bin"
+    image_dir.mkdir()
+    script = image_dir / "wrapper.sh"
+    script.write_text(path_setup + '\nprintf "%s" "$PYTHONPATH"\n', encoding="utf-8")
+
+    pythonpath = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "PYTHONPATH": "/existing"},
+    ).stdout.split(":")
+
+    assert pythonpath == ["/workspace/harnesses", str(image_dir), "/existing"]
