@@ -34,6 +34,7 @@ def test_no_pvc_overrides_for_standup() -> None:
     assert _no_pvc_standup_overrides(args) == {
         "modelservice": {"uriProtocol": "hf"},
         "standalone": {"mountModelVolume": False},
+        "vllmCommon": {"cacheMountPath": ""},
     }
 
 
@@ -57,6 +58,7 @@ def test_no_pvc_overrides_for_update() -> None:
     assert _no_pvc_standup_overrides(args) == {
         "modelservice": {"uriProtocol": "hf"},
         "standalone": {"mountModelVolume": False},
+        "vllmCommon": {"cacheMountPath": ""},
     }
 
 

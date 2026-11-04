@@ -353,6 +353,145 @@ class Step(ABC):
         )
         return True
 
+    def _ensure_compile_cache_pvc(
+        self, cmd, context, plan_config: dict, errors: list
+    ) -> str:
+        """Create the workload PVC for the vLLM compile caches, check it is
+        ReadWriteMany and wait for it to bind.
+
+        Runs where the serving pods are applied, so ``update`` gets it too.
+        Returns a hint to add when the serving pods do not get ready, or "".
+        """
+        if not self._require_config(plan_config, "vllmCommon", "cacheMountPath"):
+            return ""
+        # All stacks share one workload PVC: create and size it from the
+        # first stack, like the run phase, so stacks do not resize it
+        pvc_yaml = self._find_rendered_yaml(context, "01_pvc_workload-pvc")
+        if not pvc_yaml:
+            errors.append(
+                "vllmCommon.cacheMountPath is set but the workload PVC "
+                "manifest (01_pvc_workload-pvc) was not rendered"
+            )
+            return ""
+        pvc_config = self._load_stack_config(pvc_yaml.parent)
+
+        pvc_name = self._require_config(plan_config, "storage", "workloadPvc", "name")
+        pvc_size = (pvc_config.get("harness") or {}).get(
+            "pvcSize"
+        ) or self._require_config(pvc_config, "storage", "workloadPvc", "size")
+        namespace = context.require_namespace()
+        if context.no_pvc and not context.compile_cache_no_pvc_warned:
+            context.compile_cache_no_pvc_warned = True
+            context.logger.log_warning(
+                "--no-pvc is set, but vllmCommon.cacheMountPath keeps the "
+                f'vLLM compile caches on the workload PVC "{pvc_name}", so '
+                "it is created"
+            )
+
+        exists = not context.dry_run and self._check_existing_pvc(
+            cmd, context, pvc_name, pvc_size, namespace, errors
+        )
+        if errors:
+            return ""
+        if not exists:
+            result = cmd.kube("apply", "-f", str(pvc_yaml))
+            if not result.success and "AlreadyExists" not in result.stderr:
+                errors.append(f"Failed to create workload PVC: {result.stderr}")
+                return ""
+
+        if not context.dry_run and not self._check_compile_cache_access_modes(
+            cmd, pvc_name, namespace, errors
+        ):
+            return ""
+
+        bind_result = cmd.wait_for_pvc(
+            pvc_name=pvc_name,
+            namespace=namespace,
+            timeout=context.pvc_bind_timeout,
+            poll_interval=5,
+            description=f'workload PVC "{pvc_name}"',
+        )
+        if not bind_result.success:
+            errors.append(
+                f'Workload PVC "{pvc_name}" did not bind: {bind_result.stderr}. '
+                "Set storage.workloadPvc.storageClassName to a ReadWriteMany "
+                'class, or vllmCommon.cacheMountPath: "" to keep the vLLM '
+                "compile caches inside the container."
+            )
+            return ""
+        if not bind_result.wait_skipped or self._pvc_is_bound(cmd, pvc_name, namespace):
+            return ""
+        return (
+            f'The workload PVC "{pvc_name}" for the vLLM compile caches '
+            "binds only when the first serving pod starts (StorageClass "
+            "volumeBindingMode=WaitForFirstConsumer): check `kubectl describe "
+            f"pvc {pvc_name} -n {namespace}` for ProvisioningFailed. If the "
+            'class cannot give ReadWriteMany, set vllmCommon.cacheMountPath: "".'
+        )
+
+    @staticmethod
+    def _pvc_is_bound(cmd, pvc_name: str, namespace: str) -> bool:
+        result = cmd.kube(
+            "get",
+            "pvc",
+            pvc_name,
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.status.phase}",
+            check=False,
+        )
+        return result.success and result.stdout.strip() == "Bound"
+
+    @staticmethod
+    def _with_hint(message: str, hint: str) -> str:
+        if not hint:
+            return message
+        return f"{message.rstrip().rstrip('.')}. {hint}"
+
+    def _compile_cache_failed(self, context, errors: list, stack_name: str):
+        for err in errors:
+            context.logger.log_error(f"    {err}")
+        return StepResult(
+            step_number=self.number,
+            step_name=self.name,
+            success=False,
+            message="Compile cache PVC not ready",
+            errors=errors,
+            stack_name=stack_name,
+        )
+
+    @staticmethod
+    def _check_compile_cache_access_modes(
+        cmd, pvc_name: str, namespace: str, errors: list
+    ) -> bool:
+        result = cmd.kube(
+            "get",
+            "pvc",
+            pvc_name,
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.spec.accessModes}",
+            check=False,
+        )
+        if not result.success:
+            errors.append(
+                f"Cannot read access modes of workload PVC '{pvc_name}': "
+                f"{result.stderr}"
+            )
+            return False
+        # Pods on many nodes mount it at once
+        if "ReadWriteMany" not in result.stdout:
+            errors.append(
+                f"Workload PVC '{pvc_name}' has access modes "
+                f"{result.stdout.strip() or '?'} but the vLLM compile cache "
+                "needs ReadWriteMany. Delete the PVC, or set "
+                'vllmCommon.cacheMountPath: "" in the scenario.'
+            )
+            return False
+        return True
+
     @staticmethod
     def _has_yaml_content(yaml_path: Path) -> bool:
         """True if the file has non-empty YAML content (skips conditionally-empty templates)."""

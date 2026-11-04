@@ -69,7 +69,7 @@ System resources (e.g. `kube-root-ca.crt`, `odh-trusted-ca-bundle`) are excluded
 
 Resource types checked: `deployment`, `httproute`, `service`, `gateway`, `gatewayparameters`, `inferencepool`, `inferencemodel`, `configmap`, `ingress`, `pod`, `job`.
 
-**Deep mode** (`--deep`): Deletes ALL resources in both namespaces across a broad set of resource types: `deployment`, `service`, `secret`, `gateway`, `inferencemodel`, `inferencepool`, `httproute`, `configmap`, `job`, `role`, `rolebinding`, `serviceaccount`, `hpa`, `va`, `servicemonitor`, `podmonitor`, `pod`, `pvc`. On OpenShift, also deletes `route` resources.
+**Deep mode** (`--deep`): Deletes ALL resources in both namespaces across a broad set of resource types: `deployment`, `service`, `secret`, `gateway`, `inferencemodel`, `inferencepool`, `httproute`, `configmap`, `job`, `role`, `rolebinding`, `serviceaccount`, `hpa`, `va`, `servicemonitor`, `podmonitor`, `pod`, `pvc`. On OpenShift, also deletes `route` resources. Deleting the workload PVC also deletes the vLLM compile caches on it (`vllmCommon.cacheMountPath`).
 
 ### Step 04 -- Clean Cluster Roles
 

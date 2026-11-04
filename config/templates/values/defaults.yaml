@@ -899,6 +899,11 @@ vllmCommon:
   containerHome: *container_home
   hfHome: *hf_home
 
+  # Keep the compile caches on the workload PVC, so a restarted pod does not
+  # compile again. Needs a ReadWriteMany PVC. "" keeps them in the container.
+  # See docs/developer-guide.md for the limits.
+  cacheMountPath: "/compile-cache"
+
   # Ephemeral storage resource for pod limits/requests (optional)
   # Only added to pod specs when ephemeralStorage value is non-empty.
   ephemeralStorageResource: "ephemeral-storage"

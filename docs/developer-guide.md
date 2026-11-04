@@ -39,6 +39,7 @@ accurate to the current codebase.
   - [File Structure](#file-structure)
   - [Step 1: Create the Specification Template](#step-1-create-the-specification-template)
   - [Step 2: Create the Scenario File](#step-2-create-the-scenario-file)
+  - [Compile Caches on the Workload PVC (`vllmCommon.cacheMountPath`)](#compile-caches-on-the-workload-pvc-vllmcommoncachemountpath)
   - [Overriding the Container Shell (`vllmCommon.shell`)](#overriding-the-container-shell-vllmcommonshell)
   - [How Templates Are Rendered](#how-templates-are-rendered)
   - [Custom Jinja2 Templates](#custom-jinja2-templates)
@@ -977,6 +978,52 @@ stack. Sibling stacks are exposed to templates via the injected
 [`10_helmfile-main.yaml.j2`](../config/templates/jinja/10_helmfile-main.yaml.j2) -
 so N stacks don't race on the same Helm release during parallel per-stack step
 execution.
+
+### Compile Caches on the Workload PVC (`vllmCommon.cacheMountPath`)
+
+With `vllmCommon.cacheMountPath` set (the default, `/compile-cache`), every
+modelservice and standalone serving container mounts the workload PVC at that
+path and keeps the vLLM, flashinfer and triton caches under
+`<path>/.vllm-cache/`, apart from the harness's own `.cache`. All stacks share
+them, so a restarted pod skips most of the torch.compile, triton and
+flashinfer work. Weight loading and CUDA graph capture are not cached, so the
+pod still takes some time to start. The model PVC stays read-only. Init
+containers keep their caches inside the container.
+
+- The step that applies the serving pods (standup step 05/08, or `update`)
+  creates the workload PVC in `namespace.name` if needed, and fails when it is
+  not ReadWriteMany or is too small. With a `WaitForFirstConsumer`
+  StorageClass the PVC binds only when the first serving pod starts, so a
+  class that cannot give ReadWriteMany shows up as serving pods that do not
+  get ready (the error then names the PVC).
+- The first `standup` or `update` of an existing stack after this feature
+  rolls every serving pod, because the pods get a new volume.
+- The cache is turned off at plan time when the workload PVC is not
+  ReadWriteMany, for fma, nok8s and kustomize, with `standup --no-pvc` (unless
+  an explicit `--set` turns it back on), and in direct-service mode
+  (`gateway.className: none`) when `gateway.namespace` is not `namespace.name`.
+  The path must be absolute.
+- An explicit `decode`/`prefill`/`standalone` `vllm.cacheRoot` still moves
+  only vLLM's own cache. A name set in `extraEnvVars` (`VLLM_CACHE_ROOT`,
+  `FLASHINFER_WORKSPACE_BASE`, `TRITON_CACHE_DIR`) wins over the one set here.
+- The caches use the same workload PVC as the results when the harness runs
+  in the same namespace. Plan a few GB per model and per vLLM config, and size
+  the PVC for that (`harness.pvcSize`, or `storage.workloadPvc.size` when it is
+  not set). A normal teardown keeps them; `teardown --deep` deletes the
+  workload PVC, with the results. Delete `<path>/.vllm-cache` to free the
+  space.
+- vLLM v0.32 writes its main compiled artifact atomically, and compiles again
+  when that file is broken. But it writes `vllm_compile_cache.py` (in the same
+  cache dir) with a plain write and reads it with no error handling. If a pod
+  stops while it writes this file (OOM, eviction, rollout), every later pod
+  with the same config fails at start until you delete `<path>/.vllm-cache`.
+  Many identical pods that start on an empty cache can also make one pod fail
+  once; it works after a restart. Some network file systems also have trouble
+  with triton writes from many nodes at once. If this happens often, set
+  `cacheMountPath: ""`.
+- A cold cache and a warm cache only change how long a pod takes to start.
+  Compare startup times (e.g. the `nop` harness) only between runs with the
+  same cache state, or set `cacheMountPath: ""`.
 
 ### Overriding the Container Shell (`vllmCommon.shell`)
 

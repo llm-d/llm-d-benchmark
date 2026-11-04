@@ -27,7 +27,7 @@
 {{ ic.env | toyaml | indent(2, true) }}
 {% else %}
   env:
-{{ build_ms_env_vars(mode) | indent(2, true) }}
+{{ build_ms_env_vars(mode, cache=False) | indent(2, true) }}
 {% endif %}
 {% if ic.ports is defined and ic.ports %}
   ports:
@@ -214,13 +214,33 @@
 {%- endmacro %}
 
 
+{# Not .cache: the harness uses it on this PVC. A name the user sets in  #}
+{# extra_env is left to the user, as two entries break the apply.         #}
+{% macro compile_cache_env(cache_root, cache_path, extra_env=none) -%}
+{% set user_names = (extra_env or []) | map(attribute='name') | list -%}
+{% set base = (cache_path or '').rstrip('/') ~ '/.vllm-cache' if cache_path else '' -%}
+{% if 'VLLM_CACHE_ROOT' not in user_names -%}
+- name: VLLM_CACHE_ROOT
+  value: "{{ cache_root or ((base ~ '/vllm') if base else (vllmCommon.containerHome ~ '/vllm')) }}"
+{% endif -%}
+{% if base and 'FLASHINFER_WORKSPACE_BASE' not in user_names -%}
+- name: FLASHINFER_WORKSPACE_BASE
+  value: "{{ base }}"
+{% endif -%}
+{% if base and 'TRITON_CACHE_DIR' not in user_names -%}
+- name: TRITON_CACHE_DIR
+  value: "{{ base }}/triton"
+{% endif -%}
+{%- endmacro %}
+
+
 {# ======================================================================== #}
 {# Macro to build the shared env vars block for a modelservice pod.        #}
-{# Used by BOTH the vllm container AND init containers so they share the   #}
-{# exact same environment. Takes mode ('decode' or 'prefill') and an       #}
-{# optional role_label ('1' for decode, '1' for prefill) for VLLM_IS_*.    #}
+{# Used by BOTH the vllm container AND init containers. Takes mode         #}
+{# ('decode' or 'prefill'). Init containers pass cache=False: they do not  #}
+{# mount the compile cache, so they keep it inside the container.          #}
 {# ======================================================================== #}
-{% macro build_ms_env_vars(mode='decode') -%}
+{% macro build_ms_env_vars(mode='decode', cache=True) -%}
 {% if mode == 'decode' -%}
 {% set config = decode -%}
 {% set role_env_name = 'VLLM_IS_DECODE' -%}
@@ -261,8 +281,10 @@
   value: "{{ model.name }}"
 - name: MODEL_PATH
   value: "{{ model.path }}"
-- name: VLLM_CACHE_ROOT
-  value: "{{ config.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+{% set cache_env = compile_cache_env(config.vllm.cacheRoot | default(''), vllmCommon.cacheMountPath if cache else '', config.extraEnvVars | default([])) | trim %}
+{% if cache_env %}
+{{ cache_env }}
+{% endif %}
 - name: VLLM_WORKER_MULTIPROC_METHOD
   value: "{{ config.vllm.workerMultiprocMethod | default(vllmCommon.workerMultiprocMethod | default('spawn')) }}"
 - name: VLLM_LOGGING_LEVEL

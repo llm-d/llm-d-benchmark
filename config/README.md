@@ -398,7 +398,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `modelservice` | Modelservice deployment settings (enabled by default) |
 | `nok8s` | No-Kubernetes deployment settings (disabled by default) -- see [nok8s](../docs/nok8s.md) |
 | `images` | Container image repositories, tags, and pull policies |
-| `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes) |
+| `vllmCommon` | Shared vLLM settings (ports, KV transfer, flags, volumes, compile cache) |
 | `harness` | Benchmark harness configuration |
 | `wva` | Workload Variant Autoscaler settings |
 | `keda` | Generic KEDA ScaledObjects with configurable Prometheus auth (any cluster) |
@@ -748,6 +748,17 @@ prefill:
 ```
 
 The resource name used in the rendered output is controlled by `vllmCommon.ephemeralStorageResource` (default: `ephemeral-storage`). Values placed in `resources.limits.ephemeral-storage` are **not** read by the template and will be silently ignored.
+
+### Compile Caches (`vllmCommon.cacheMountPath`)
+
+Serving pods keep the vLLM, flashinfer and triton compile caches on the workload PVC, under `<cacheMountPath>/.vllm-cache/`, so a restarted pod does not compile again:
+
+```yaml
+vllmCommon:
+  cacheMountPath: /compile-cache   # default; "" keeps the caches in the container
+```
+
+The path must be absolute. It needs a ReadWriteMany workload PVC in the namespace of the serving pods, and is turned off at plan time otherwise (and for fma, nok8s, kustomize and `standup --no-pvc`). See the [developer guide](../docs/developer-guide.md#compile-caches-on-the-workload-pvc-vllmcommoncachemountpath) for sizing, cleanup and the known failure modes.
 
 ### Network Resources (RDMA/InfiniBand)
 
