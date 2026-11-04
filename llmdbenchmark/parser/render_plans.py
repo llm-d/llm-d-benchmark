@@ -1871,6 +1871,12 @@ class RenderPlans:
                 if model_id_label:
                     match_labels["llm-d.ai/model"] = str(model_id_label)
                 model_servers["matchLabels"] = match_labels
+        # FMA: EPP targets the requester's TCP proxy, not the decode vLLM
+        # port the generic default below would pick (nothing listens there).
+        fma_config = values.get("fma") or {}
+        if fma_config.get("enabled") and not model_servers.get("targetPorts"):
+            proxy_port = (fma_config.get("requester") or {}).get("proxyPort")
+            model_servers["targetPorts"] = [{"number": int(proxy_port or 8000)}]
         if not model_servers.get("targetPorts"):
             decode_port = ((values.get("decode") or {}).get("vllm") or {}).get(
                 "servicePort"

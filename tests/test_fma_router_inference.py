@@ -29,7 +29,9 @@ def _validator(monkeypatch, *, fma_only: bool, baseline_ok: bool):
     monkeypatch.setattr(validator, "_scaled_to_zero_targets", lambda *a, **k: [])
     monkeypatch.setattr(validator, "_launcher_created_on_demand", lambda *a, **k: False)
     monkeypatch.setattr(
-        validator, "_fma_wait_serving", lambda *a, **k: {"metadata": {"name": "l"}}
+        validator,
+        "_fma_wait_serving",
+        lambda *a, **k: {"metadata": {"name": "l", "labels": {}}},
     )
     monkeypatch.setattr(fma, "_fma_pod_ip", lambda _pod: "10.0.0.1")
     monkeypatch.setattr(

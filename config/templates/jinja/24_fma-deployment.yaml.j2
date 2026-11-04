@@ -21,18 +21,9 @@ metadata:
 spec:
   launcherConfigName: fma-{{ model_id_label }}
   modelServerConfig:
-    labels:
-      component: inference
-      # EPP InferencePool selector keys (see 12_router-values.yaml.j2:217-218):
-      llm-d.ai/inferenceServing: "{{ labels.inferenceServing | default('true') }}"
-      llm-d.ai/model: "{{ model_id_label }}"
-{% set _fma_guide_label = wva.wellLitPath
-                         if (wva is defined and wva.enabled | default(false))
-                         else ((kustomize.guideName if kustomize is defined and kustomize.guideName else '') or scenarioName) %}
-      llm-d.ai/guide: "{{ _fma_guide_label }}"
-{% if wva is defined and wva.enabled | default(false) %}
-      llm-d.ai/variant: "{{ model_id_label }}-fma"
-{% endif %}
+{# No `labels`/`port` here: in TCP-proxy mode they belong on the requester
+   pod below / in the LauncherConfig pool -- on the ISC they misroute EPP
+   straight to the launcher, bypassing the requester's proxy ([issue #831](https://github.com/llm-d-incubation/llm-d-fast-model-actuation/issues/831)). #}
     env_vars:
       HF_HOME: "{{ fma.modelMountPath }}"
       VLLM_LOGGING_LEVEL: DEBUG
@@ -66,7 +57,6 @@ spec:
    baseline turns it off here too. #}
 {% set _fma_no_prefix_caching = _vllm_flags.noPrefixCaching | default(false) if fma.launcher.disablePrefixCaching is not boolean else fma.launcher.disablePrefixCaching %}
     options: "--model {{ _fma_model_arg }}{% if _fma_served_model_name %} --served-model-name {{ _fma_served_model_name }}{% endif %} --enable-sleep-mode{% if _fma_no_prefix_caching %} --no-enable-prefix-caching{% endif %} --load-format auto{% if (model.gpuMemoryUtilization | default(0.95) | float) > 0 %} --gpu-memory-utilization {{ model.gpuMemoryUtilization | default(0.95) }}{% endif %} --max-model-len {{ model.maxModelLen }}{% if _fma_block_size %} --block-size {{ _fma_block_size }}{% endif %}{% if fma.launcher.kvCacheMemory is defined and fma.launcher.kvCacheMemory %} --kv-cache-memory {{ fma.launcher.kvCacheMemory }}{% endif %} --tensor-parallel-size {{ fma.launcher.tensorParallelSize | default(1) }}{% if fma.launcher.enforceEager | default(false) %} --enforce-eager{% endif %}{% if _fma_disable_log_requests %} --no-enable-log-requests{% endif %}{% if _fma_disable_uvicorn %} --disable-uvicorn-access-log{% endif %}"
-    port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1
 kind: LauncherConfig
@@ -83,10 +73,8 @@ metadata:
 spec:
   maxInstances: {{ fma.launcher.maxInstances }}
 {% if fma.launcher.inferencePorts is defined and fma.launcher.inferencePorts %}
-  # Pool of ports for inference-engine instances in each launcher pod
-  # (FMA v0.7.1, upstream PR #790). Left unset by default per upstream
-  # guidance: the dual-pods controller does not consume the pool yet, so the
-  # ISC port above stays load-bearing.
+  # Port pool the controller assigns to instances (running) in each
+  # launcher pod (FMA v0.8.0); takes precedence over the ISC port above.
   inferencePorts:
 {% for port in fma.launcher.inferencePorts %}
   - {{ port }}
@@ -246,24 +234,26 @@ spec:
         llm-d.ai/inference-serving: "true"
         llm-d.ai/model: {{ model_id_label }}
         llm-d.ai/role: requester
+{% set _fma_guide_label = (kustomize.guideName if kustomize is defined and kustomize.guideName else '') or scenarioName %}
+        # InferencePool routing labels (EPP selector keys): on the requester
+        # pod in TCP-proxy mode, not the ISC ([issue #831](https://github.com/llm-d-incubation/llm-d-fast-model-actuation/issues/831)). Readiness gates
+        # membership (Ready = bound, proxied, serving).
+        llm-d.ai/inferenceServing: "{{ labels.inferenceServing | default('true') }}"
+        llm-d.ai/guide: "{{ _fma_guide_label }}"
       annotations:
-        dual-pods.llm-d.ai/admin-port: "8081"
+        # Controller PUTs proxy config here; must track fma.requester.spiPort.
+        dual-pods.llm-d.ai/admin-port: "{{ fma.requester.spiPort }}"
         dual-pods.llm-d.ai/inference-server-config: fma-{{ model_id_label }}
     spec:
 {% if fma.launcherNodeSelection is defined and fma.launcherNodeSelection.enabled | default(false) %}
       # Pin the requester to the single GPU node step_06 selected + labeled.
-      # ANDed with the nodeAffinity below (which stays load-bearing for WVA).
       nodeSelector:
         {{ fma.launcherNodeSelection.nodeLabel | default('fma-hotstart') }}: "true"
 {% endif %}
       {# Pick a resolved accelerator type from decode/prefill/standalone
          (cluster_resource_resolver.py rewrites `labelValue: auto` into the
          concrete value, e.g. NVIDIA-H100-80GB-HBM3, before this template
-         runs). Using `operator: In` with a concrete value is required for
-         WVA's resolver to extract the accelerator name from nodeAffinity;
-         `operator: Exists` finds the key but returns no value, and WVA falls
-         back to "unresolved" — which silences its saturation engine
-         (OptimizationFailed: No saturation metrics available for model). #}
+         runs), so the requester lands on the right GPU type. #}
       {% set _fma_accel = (decode.acceleratorType if decode is defined and decode.acceleratorType is defined and decode.acceleratorType.labelValue is defined
                            else (prefill.acceleratorType if prefill is defined and prefill.acceleratorType is defined and prefill.acceleratorType.labelValue is defined
                                  else (standalone.acceleratorType if standalone is defined and standalone.acceleratorType is defined and standalone.acceleratorType.labelValue is defined
@@ -283,15 +273,19 @@ spec:
           imagePullPolicy: {{ fma.requester.image.pullPolicy }}
           command:
           - /app/requester
+          # Pin the listener to the config value (not the binary's 8082 default).
+          - --proxy-port={{ fma.requester.proxyPort | default(8000) }}
           ports:
           - name: probes
             containerPort: {{ fma.requester.probePort }}
           - name: spi
             containerPort: {{ fma.requester.spiPort }}
+          - name: proxy
+            containerPort: {{ fma.requester.proxyPort | default(8000) }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: 8080
+              port: {{ fma.requester.probePort }}
             initialDelaySeconds: 2
             periodSeconds: 5
           resources:

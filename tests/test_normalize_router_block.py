@@ -533,6 +533,46 @@ class TestModelServersDefaults:
         out = normalize(values)
         assert out["router"]["modelServers"]["targetPorts"] == [{"number": 9999}]
 
+    def test_fma_enabled_targets_requester_proxy_port(self, normalize):
+        """FMA wins over the decode-derived default: the EPP must target the
+        requester's TCP proxy, not the decode vLLM port. Guards the ordering
+        -- if the FMA branch ever runs after the decode fallback, EPP
+        silently targets the decode port again."""
+        values = {
+            "fma": {"enabled": True, "requester": {"proxyPort": 8000}},
+            "decode": {"vllm": {"servicePort": 8000}},
+        }
+        out = normalize(values)
+        assert out["router"]["modelServers"]["targetPorts"] == [{"number": 8000}]
+
+    def test_fma_proxy_port_wiring_not_just_default_coincidence(self, normalize):
+        """A non-default proxyPort must flow through, proving the targetPort
+        derives from fma.requester.proxyPort rather than agreeing with it
+        by coincidence."""
+        values = {
+            "fma": {"enabled": True, "requester": {"proxyPort": 9000}},
+            "decode": {"vllm": {"servicePort": 8000}},
+        }
+        out = normalize(values)
+        assert out["router"]["modelServers"]["targetPorts"] == [{"number": 9000}]
+
+    def test_fma_enabled_user_targetPorts_still_win(self, normalize):
+        values = {
+            "fma": {"enabled": True, "requester": {"proxyPort": 8000}},
+            "decode": {"vllm": {"servicePort": 8000}},
+            "router": {"modelServers": {"targetPorts": [{"number": 9999}]}},
+        }
+        out = normalize(values)
+        assert out["router"]["modelServers"]["targetPorts"] == [{"number": 9999}]
+
+    def test_fma_disabled_keeps_decode_default(self, normalize):
+        values = {
+            "fma": {"enabled": False, "requester": {"proxyPort": 8000}},
+            "decode": {"vllm": {"servicePort": 8200}},
+        }
+        out = normalize(values)
+        assert out["router"]["modelServers"]["targetPorts"] == [{"number": 8200}]
+
 
 # ---------------------------------------------------------------------------
 # Flags / verbosity
