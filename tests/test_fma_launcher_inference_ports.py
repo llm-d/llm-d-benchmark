@@ -1,13 +1,14 @@
-"""Coverage for the FMA v0.7.1 ``inferencePorts`` pool
+"""Coverage for the FMA ``inferencePorts`` pool
 (https://github.com/llm-d-incubation/llm-d-fast-model-actuation/pull/790).
 
-``fma.launcher.inferencePorts`` (default empty) renders the pool of ports
-available to inference-engine instances in each launcher pod into the
-LauncherConfig's ``spec.inferencePorts``. The CRD requires the pool to hold
-at least ``maxInstances`` ports and to skip 8001 (the launcher service port).
-At v0.7.1 the dual-pods controller validates but does not yet consume the
-pool, so the InferenceServerConfig's ``modelServerConfig.port`` stays
-load-bearing and must not be dropped when a pool is set.
+``fma.launcher.inferencePorts`` renders the pool of ports available to
+inference-engine instances in each launcher pod into the LauncherConfig's
+``spec.inferencePorts``. Since FMA v0.8.0 the dual-pods controller assigns
+instance ports from this pool (upstream PR #809, resolving #779); it takes
+precedence over the InferenceServerConfig's ``modelServerConfig.port``,
+which is kept as a deprecated fallback for pool-less LauncherConfigs. The
+CRD requires the pool to hold at least ``maxInstances`` ports and to skip
+8001 (the launcher service port).
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ def _base_values(inference_ports: list | None = None) -> dict:
         "maxInstances": 4,
         "image": {
             "repository": "example.com/launcher",
-            "tag": "v0.7.1",
+            "tag": "v0.8.0",
             "pullPolicy": "IfNotPresent",
         },
         "podTemplate": {"metadata": {}},
@@ -67,7 +68,7 @@ def _base_values(inference_ports: list | None = None) -> dict:
             "launcher": launcher,
             "launcherConfigurator": {"port": 8001},
             "requester": {
-                "image": {"repository": "example.com/requester", "tag": "v0.7.1"},
+                "image": {"repository": "example.com/requester", "tag": "v0.8.0"},
                 "probePort": 8080,
                 "spiPort": 8081,
                 "limitsGPU": 1,
@@ -94,7 +95,8 @@ class TestFmaLauncherInferencePorts:
         assert "inferencePorts" not in spec
 
     def test_empty_pool_omits_field(self):
-        """An explicit empty list (the defaults.yaml value) omits the field."""
+        """An explicit empty list omits the field (pool-less LauncherConfig,
+        served by the deprecated ISC-port fallback)."""
         spec = _launcher_config(_render(_base_values(inference_ports=[])))["spec"]
         assert "inferencePorts" not in spec
 
@@ -104,11 +106,26 @@ class TestFmaLauncherInferencePorts:
         )["spec"]
         assert spec["inferencePorts"] == [8000, 8002, 8003, 8004]
 
-    def test_pool_does_not_drop_isc_port(self):
-        """At v0.7.1 the controller still reads the ISC port, so setting a pool
-        must keep modelServerConfig.port. Pool consumption is planned for 0.8.0
-        per https://github.com/llm-d-incubation/llm-d-fast-model-actuation/issues/779
-        (not yet a committed release). We keep the pool unset until a release
-        whose controller consumes it; revisit this test on that bump."""
+    def test_pool_keeps_deprecated_isc_port_fallback(self):
+        """Since v0.8.0 the pool takes precedence, but modelServerConfig.port
+        must still render: it is the (deprecated) fallback the controller uses
+        for LauncherConfigs without a pool."""
         docs = _render(_base_values(inference_ports=[8000, 8002, 8003, 8004]))
         assert _isc(docs)["spec"]["modelServerConfig"]["port"] == 8000
+
+
+class TestFmaDefaultsPool:
+    """defaults.yaml ships a pool by default (v0.8.0 bump); guard it against
+    the CRD's CEL rules so a maxInstances bump without extending the pool
+    fails here rather than at LauncherConfig apply time."""
+
+    def test_defaults_pool_satisfies_crd_rules(self):
+        with open("config/templates/values/defaults.yaml", encoding="utf-8") as fh:
+            fma = (yaml.safe_load(fh) or {})["fma"]
+        launcher = fma["launcher"]
+        pool = launcher["inferencePorts"]
+        assert pool, "defaults.yaml must set fma.launcher.inferencePorts"
+        assert len(pool) >= launcher["maxInstances"]
+        assert len(set(pool)) == len(pool), "pool must be a set (no duplicates)"
+        assert 8001 not in pool, "8001 is reserved for the launcher service"
+        assert 8000 in pool, "first port should match the legacy ISC port"

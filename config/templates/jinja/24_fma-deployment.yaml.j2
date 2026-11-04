@@ -83,10 +83,8 @@ metadata:
 spec:
   maxInstances: {{ fma.launcher.maxInstances }}
 {% if fma.launcher.inferencePorts is defined and fma.launcher.inferencePorts %}
-  # Pool of ports for inference-engine instances in each launcher pod
-  # (FMA v0.7.1, upstream PR #790). Left unset by default per upstream
-  # guidance: the dual-pods controller does not consume the pool yet, so the
-  # ISC port above stays load-bearing.
+  # Port pool the controller assigns to instances per launcher pod (FMA
+  # v0.8.0); takes precedence over the deprecated ISC port above.
   inferencePorts:
 {% for port in fma.launcher.inferencePorts %}
   - {{ port }}
