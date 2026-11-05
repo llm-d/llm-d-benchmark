@@ -15,6 +15,7 @@ behaves identically to the existing ``--experiments`` run-only flow.
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,6 +89,10 @@ def dotted_to_nested(flat: dict[str, Any]) -> dict[str, Any]:
     every segment is restored here, so a dotted key works in a parent
     position as well as at the leaf.
 
+    Mapping values are copied, so a later dotted key that extends one
+    (``a.b: {c: 1}`` then ``a.b.d: 2``) never writes into *flat*'s own data.
+    Setup ``constants`` are shared by every treatment and rely on this.
+
     Example::
 
         >>> dotted_to_nested({"a.b.c": 1, "a.b.d": 2, "x": 3})
@@ -113,7 +118,7 @@ def dotted_to_nested(flat: dict[str, Any]) -> dict[str, Any]:
                 f"Key conflict: '{restore_dots(dotted_key)}' would overwrite "
                 f"a nested dict with scalar value {value!r}"
             )
-        target[leaf] = value
+        target[leaf] = copy.deepcopy(value) if isinstance(value, dict) else value
     return nested
 
 
