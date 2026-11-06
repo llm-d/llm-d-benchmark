@@ -81,6 +81,23 @@ class BaseSmoketest:
         )
 
     @classmethod
+    def _kustomize_roles_to_check(
+        cls,
+        plan_config: dict,
+    ) -> list[tuple[str, str | None]]:
+        guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
+        if cls._is_xpu_ci_wide_ep(plan_config):
+            return [("prefill-decode", "prefill-decode")]
+        if guide_name in {"pd-disaggregation", "wide-ep"}:
+            return [("prefill", "prefill"), ("decode", "decode")]
+        if is_fma_guide(guide_name):
+            # Every FMA variant has no decode/prefill Deployments: launcher
+            # pods host vLLM and are intentionally sleeping (not all Ready),
+            # while requester pods reserve GPUs and carry the guide label.
+            return [("requester", None)]
+        return [("decode", "decode")]
+
+    @classmethod
     def _direct_inference_port(cls, plan_config: dict) -> str:
         """Return the serving port used for direct pod-IP probes."""
         if cls._is_xpu_ci_wide_ep(plan_config):
@@ -237,19 +254,7 @@ class BaseSmoketest:
 
         # 1. Check pods running for each configured role
         if is_kustomize:
-            if guide_name == "pd-disaggregation" or (
-                guide_name == "wide-ep" and not self._is_xpu_ci_wide_ep(plan_config)
-            ):
-                roles_to_check = [("prefill", "prefill"), ("decode", "decode")]
-            elif is_fma_guide(guide_name):
-                # Every FMA variant (base guide + derivatives like
-                # fast-model-actuation-keda) has no decode/prefill Deployments:
-                # launcher pods host vLLM and are intentionally sleeping (not all
-                # Ready) and are not guide-labeled. The requester pods reserve
-                # GPUs, carry the guide label -- so assert *those* are Ready.
-                roles_to_check = [("requester", None)]
-            else:
-                roles_to_check = [("decode", "decode")]
+            roles_to_check = self._kustomize_roles_to_check(plan_config)
         elif is_standalone:
             roles_to_check = [("standalone", standalone_role)]
         else:
