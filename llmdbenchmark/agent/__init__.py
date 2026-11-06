@@ -11,6 +11,9 @@ state. Its only repository imports are
 
 from llmdbenchmark.agent.facts import (
     AgentRenderedRunCommand,
+    AsyncGoodput,
+    AsyncGoodputGate,
+    AsyncGoodputReport,
     BenchmarkSecretReference,
     Diagnostic,
     ExecutionFacts,
@@ -32,11 +35,18 @@ from llmdbenchmark.agent.facts import (
 )
 from llmdbenchmark.agent.recommend import recommend
 from llmdbenchmark.agent.render import render_benchmark_job_manifest, render_run_command
-from llmdbenchmark.agent.score import discover_agent_analysis_input, score_slo_goodput
+from llmdbenchmark.agent.score import (
+    discover_agent_analysis_input,
+    score_async_goodput,
+    score_slo_goodput,
+)
 from llmdbenchmark.agent.workspace import write_agent_session_workspace
 
 __all__ = [
     "AgentRenderedRunCommand",
+    "AsyncGoodput",
+    "AsyncGoodputGate",
+    "AsyncGoodputReport",
     "BenchmarkSecretReference",
     "Diagnostic",
     "ExecutionFacts",
@@ -59,6 +69,7 @@ __all__ = [
     "recommend",
     "render_benchmark_job_manifest",
     "render_run_command",
+    "score_async_goodput",
     "score_slo_goodput",
     "write_agent_session_workspace",
 ]

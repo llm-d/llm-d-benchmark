@@ -1,0 +1,114 @@
+{# Modelservice-only template. Renders Helm values for llm-d-async when
+   asyncProcessor.enabled is true. Supports transport=redis-sortedset (default). #}
+{% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) and asyncProcessor is defined and (asyncProcessor.enabled | default(false)) %}
+{% set _gw_class = gateway.className | default('') %}
+{% if asyncProcessor.igwBaseURL | default('', true) %}
+{% set _default_igw_url = asyncProcessor.igwBaseURL %}
+{% elif _gw_class == 'none' %}
+{% set _default_igw_url = 'http://' ~ model_id_label ~ '-direct.' ~ namespace.name ~ '.svc.cluster.local:' ~ (routing.servicePort | default(8000)) %}
+{% elif _gw_class == 'epponly' %}
+{% set _default_igw_url = 'http://' ~ model_id_label ~ '-router-epp.' ~ namespace.name ~ '.svc.cluster.local:80' %}
+{% elif _gw_class in ['kgateway', 'agentgateway'] %}
+{% set _default_igw_url = 'http://infra-' ~ release ~ '-inference-gateway.' ~ namespace.name ~ '.svc.cluster.local:80' %}
+{% elif _gw_class == 'istio' %}
+{% set _default_igw_url = 'http://infra-' ~ release ~ '-inference-gateway-istio.' ~ namespace.name ~ '.svc.cluster.local:80' %}
+{% else %}
+{% set _default_igw_url = 'http://' ~ model_id_label ~ '-router-epp.' ~ namespace.name ~ '.svc.cluster.local:80' %}
+{% endif %}
+{% if asyncProcessor.prometheusURL | default('', true) %}
+{% set _prom_url = asyncProcessor.prometheusURL %}
+{% elif keda is defined and keda.prometheus is defined and (keda.prometheus.baseUrl | default('', true)) %}
+{% set _prom_url = keda.prometheus.baseUrl ~ ':' ~ (keda.prometheus.port | default(9090)) %}
+{% else %}
+{% set _prom_url = '' %}
+{% endif %}
+{% set _redis_port = (asyncProcessor.redis.port | default(6379)) if asyncProcessor.redis is defined else 6379 %}
+{% set _redis_url = (asyncProcessor.redis.url | default('', true)) if asyncProcessor.redis is defined else '' %}
+{% if not _redis_url %}
+{% set _redis_url = 'redis://redis.' ~ namespace.name ~ '.svc.cluster.local:' ~ _redis_port ~ '/0' %}
+{% endif %}
+ap:
+  image:
+    repository: {{ asyncProcessor.image.repository | default('ghcr.io/llm-d/llm-d-async') }}
+    tag: "{{ asyncProcessor.image.tag | default('') }}"
+  imagePullPolicy: {{ asyncProcessor.image.pullPolicy | default('IfNotPresent') }}
+  concurrency: {{ asyncProcessor.concurrency | default(64) }}
+  gateWaitTimeout: "{{ asyncProcessor.gateWaitTimeout | default('5m') }}"
+  drainTimeout: "{{ asyncProcessor.drainTimeout | default('2m') }}"
+{% if _prom_url %}
+  prometheusURL: "{{ _prom_url }}"
+{% endif %}
+{% if asyncProcessor.prometheusCacheTTL | default('', true) %}
+  prometheusCacheTTL: "{{ asyncProcessor.prometheusCacheTTL }}"
+{% endif %}
+{% if asyncProcessor.affinity is defined and asyncProcessor.affinity %}
+  affinity:
+{{ asyncProcessor.affinity | toyaml | indent(4, true) }}
+{% endif %}
+{% if asyncProcessor.resources is defined and asyncProcessor.resources %}
+  resources:
+{{ asyncProcessor.resources | toyaml | indent(4, true) }}
+{% endif %}
+{% if asyncProcessor.env is defined and asyncProcessor.env %}
+  env:
+{{ asyncProcessor.env | toyaml | indent(4, true) }}
+{% endif %}
+{% if asyncProcessor.workerPools is defined and asyncProcessor.workerPools %}
+  workerPools:
+{{ asyncProcessor.workerPools | toyaml | indent(4, true) }}
+{% endif %}
+  metrics:
+    enabled: true
+    port: {{ asyncProcessor.metricsPort | default(9090) }}
+    secure: false
+  podMonitor:
+    enabled: {{ (asyncProcessor.podMonitor.enabled | default(true)) | lower if asyncProcessor.podMonitor is defined else 'true' }}
+    interval: "{{ (asyncProcessor.podMonitor.interval | default('15s')) if asyncProcessor.podMonitor is defined else '15s' }}"
+{% if asyncProcessor.podMonitor is defined and asyncProcessor.podMonitor.labels is defined and asyncProcessor.podMonitor.labels %}
+    labels:
+{{ asyncProcessor.podMonitor.labels | toyaml | indent(6, true) }}
+{% endif %}
+  transport: "{{ asyncProcessor.transport | default('redis-sortedset') }}"
+  transportConfig:
+{% if asyncProcessor.urlSecret is defined and asyncProcessor.urlSecret %}
+    urlSecret:
+{{ asyncProcessor.urlSecret | toyaml | indent(6, true) }}
+{% else %}
+    urlSecret:
+      url: "{{ _redis_url }}"
+{% endif %}
+    result_queue_name: "{{ asyncProcessor.resultQueueName | default('result-list') }}"
+    poll_interval_ms: {{ asyncProcessor.pollIntervalMs | default(1000) }}
+    batch_size: {{ asyncProcessor.batchSize | default(10) }}
+{% if asyncProcessor.resume is defined and asyncProcessor.resume %}
+    resume:
+{{ asyncProcessor.resume | toyaml | indent(6, true) }}
+{% endif %}
+{% set _queues = asyncProcessor.queues | default([]) %}
+{% if _queues %}
+    queues:
+{% for q in _queues %}
+      - queue_name: "{{ q.queue_name | default('request-sortedset') }}"
+        request_path_url: "{{ q.request_path_url | default('/v1/completions') }}"
+        igw_base_url: "{{ q.igw_base_url | default(_default_igw_url, true) }}"
+{% if q.worker_pool_id is defined and q.worker_pool_id %}
+        worker_pool_id: "{{ q.worker_pool_id }}"
+{% endif %}
+{% if q.inference_objective is defined and q.inference_objective %}
+        inference_objective: "{{ q.inference_objective }}"
+{% endif %}
+{% if q.gate_type is defined and q.gate_type %}
+        gate_type: "{{ q.gate_type }}"
+{% endif %}
+{% if q.gate_params is defined and q.gate_params %}
+        gate_params:
+{{ q.gate_params | toyaml | indent(10, true) }}
+{% endif %}
+{% endfor %}
+{% else %}
+    queues:
+      - queue_name: "request-sortedset"
+        request_path_url: "/v1/completions"
+        igw_base_url: "{{ _default_igw_url }}"
+{% endif %}
+{% endif %}

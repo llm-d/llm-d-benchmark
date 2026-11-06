@@ -46,6 +46,7 @@ _RESULT_PATTERNS: dict[str, str] = {
     "vllm-benchmark": "openai*.json",
     "inferencemax": "*.json",
     "eval-containers": "task/result.json",
+    "async-batch": "results.json",
 }
 
 # Summary marker per harness -- the line in stdout.log where the
@@ -65,6 +66,7 @@ _IN_POD_ANALYZERS = frozenset(
         "nop",
         "lm-eval",
         "eval-containers",
+        "async-batch",
     }
 )
 
@@ -102,6 +104,7 @@ _WRITER_NAMES: dict[str, str] = {
     "inferencemax": "inferencemax",
     "nop": "nop",
     "eval-containers": "eval-containers",
+    "async-batch": "async-batch",
 }
 
 
@@ -306,6 +309,18 @@ def _convert_via_api(
             )
 
             import_eval_containers(str(result_file)).export_yaml(str(output_file))
+            return None
+
+        if writer_name == "async-batch":
+            # Async/batch autoscaling harness: deadline attainment + Allocated
+            # GPU-Hours goodput in results.observability. 0.2-only.
+            if br_version != "0.2":
+                return None
+            from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
+                import_async_batch,
+            )
+
+            import_async_batch(str(result_file)).export_yaml(str(output_file))
             return None
 
         if br_version == "0.1":

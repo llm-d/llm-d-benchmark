@@ -34,6 +34,7 @@ class WorkloadGenerator(StrEnum):
     """
 
     AIPERF = "aiperf"
+    ASYNC_BATCH = "async-batch"
     GUIDELLM = auto()
     INFERENCE_MAX = "inferencemax"
     INFERENCE_PERF = "inference-perf"

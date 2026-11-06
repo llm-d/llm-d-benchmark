@@ -17,6 +17,7 @@ class DeploySetupStep(Step):
     _VALUES_FILE_MAP = {
         "11_infra": "infra.yaml",
         "12_router-values": "router-values.yaml",
+        "12a_async-values": "async-values.yaml",
         "13_ms-values": "ms-values.yaml",
     }
 

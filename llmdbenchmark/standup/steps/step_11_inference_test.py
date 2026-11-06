@@ -99,6 +99,33 @@ class InferenceTestStep(Step):
         )
         release = self._require_config(plan_config, "release")
 
+        is_scale_to_zero = not is_standalone and (
+            int((plan_config.get("decode") or {}).get("replicas", 1)) <= 0
+            or any(
+                int(so.get("minReplicas", 1)) == 0
+                and (
+                    not (so.get("scaleTargetRef") or {}).get("name")
+                    or str((so.get("scaleTargetRef") or {}).get("name")).endswith(
+                        "-decode"
+                    )
+                )
+                for so in (plan_config.get("keda") or {}).get("scaledObjects") or []
+                if isinstance(so, dict)
+            )
+        )
+        if is_scale_to_zero:
+            context.logger.log_info(
+                "Scale-to-zero decode active -- skipping synchronous sample "
+                "inference probe to preserve initial 0-replica state"
+            )
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=True,
+                message=f"Inference test skipped for scale-to-zero stack {stack_name}",
+                stack_name=stack_name,
+            )
+
         # Discover endpoint (same logic as smoketest)
         gateway_class = plan_config.get("gateway", {}).get("className", "")
         if gateway_class == "none" and not is_standalone:

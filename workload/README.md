@@ -62,6 +62,8 @@ experiments/                                # DoE experiment definitions (repo r
 workload/
   harnesses/                                # Benchmark entry-point scripts
     aiperf-llm-d-benchmark.sh
+    async-batch-llm-d-benchmark.sh
+    async_batch.py
     collect_metrics.sh
     dpc_log_parser.py
     fma_functions.py
@@ -84,6 +86,10 @@ workload/
       dataset.yaml.in
       sanity_random.yaml.in
       synthetic.yaml.in
+    async-batch/
+      backlog_scaleout.yaml.in
+      hourly_duty_cycle.yaml.in
+      sanity_async.yaml.in
     guidellm/                               # Profiles for the guidellm harness
       concurrent-1k-1k.yaml.in
       concurrent-heavy-heterogeneous.yaml.in
@@ -220,10 +226,20 @@ The harness script runs inside the **benchmark container image** as a Kubernetes
 | `vllm-benchmark` | `vllm-benchmark-llm-d-benchmark.sh` | `vllm bench serve` | vLLM-native benchmarking with latency percentiles |
 | `inferencemax` | `inferencemax-llm-d-benchmark.sh` | Custom Python script | Benchmarking with warmup and random seed control |
 | `lm-eval` | `lm-eval-llm-d-benchmark.sh` | `lm_eval` (lm-evaluation-harness) | Accuracy/quality evaluation against standard tasks (hellaswag, mmlu, piqa, ...) |
+| `async-batch` | `async-batch-llm-d-benchmark.sh` | `async_batch.py` (`llm-d-async` Redis SortedSet / Coordinator HTTP) | Async/batch deadline attainment & Allocated GPU-Hour Goodput across KEDA `0↔N` autoscaling |
 | `nop` | `nop-llm-d-benchmark.py` | No-op | Testing and validation without running real benchmarks |
 | `aiperf` | `aiperf-llm-d-benchmark.sh` | `aiperf profile` (NVIDIA AIPerf) | Load testing with synthetic or trace datasets (e.g. mooncake) |
 
 > **lm-eval smoke test:** the `accuracy_default` profile runs the full task set. For a quick pipeline check, cap samples per task and propagate the override into the harness pod, e.g. `LIMIT=10 llmdbenchmark ... -l lm-eval -w accuracy_default.yaml -g LIMIT ...`.
+
+The `async-batch` harness evaluates asynchronous/batch inference with autoscaling
+(`llm-d-async`). Profiles under `workload/profiles/async-batch/` define one or
+more arrival waves with per-cohort Unix deadline offsets (`deadlineOffsetSeconds`),
+optional scale-down settling (`waitForScaleDown`), and duty-cycle accounting
+windows (`windowDurationSeconds`). Results join on-time requests/tokens with
+time-integrated Allocated GPU-Hours (`replica_status.json`) into
+`async_goodput_summary.json` and Benchmark Report v0.2 (`results.observability.async_goodput`),
+scored via `score_async_goodput()` and `llmdbenchmark/analysis/scripts/async_goodput_comparison_table.py`.
 
 ### Harness Script Contract
 
@@ -445,6 +461,14 @@ llmdbenchmark --spec guides/pd-disaggregation run \
   -U "http://${DECODE_IP}:8000"
 ```
 
+#### async-batch (3 profiles)
+
+| Profile | Load Pattern | Data Type | Description |
+|---------|-------------|-----------|-------------|
+| `backlog_scaleout.yaml.in` | Single burst (3,000 reqs @ 200 RPS, 25m window) | Synthetic (512 in / 256 out) | M2 4-layer backlog `0↔2` scale-out & cooldown Goodput evaluation |
+| `hourly_duty_cycle.yaml.in` | Periodic drops (2x800 reqs @ 100 RPS, 30m window) | Synthetic (512 in / 256 out) | Multi-burst duty cycle comparing Always-On, M1 Cron, and M2 Backlog |
+| `sanity_async.yaml.in` | Instant burst (50 reqs, +300s deadline) | Synthetic (256 in / 128 out) | Quick smoke & simulator validation for async-batch Goodput |
+
 ### Profile Configuration Styles
 
 Each harness uses a different YAML schema for its profiles:
@@ -566,6 +590,36 @@ evaluation:
   num_fewshot: 0
   limit: 10       # null = full run; use LIMIT=<n> plus `-g LIMIT` for a smoke test
   num_concurrent: 4
+```
+
+**async-batch** -- Example profile (from `sanity_async.yaml.in`):
+```yaml
+name: sanity-async
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+apiPath: /v1/completions
+promptTokens: 256
+maxTokens: 128
+completionGraceSeconds: 30
+transport:
+  mode: redis-sortedset
+  requestQueueName: request-sortedset
+  resultQueueName: result-list
+  clearQueuesBeforeRun: true
+slo:
+  minDeadlineAttainment: 0.99
+accounting:
+  waitForScaleDown: true
+  settledReplicasTarget: 0
+  scaleDownTimeoutSeconds: 180
+  windowDurationSeconds: 0
+waves:
+  - name: smoke-burst
+    cohort: batch-standard
+    offsetSeconds: 0
+    count: 50
+    rateRps: 0
+    deadlineOffsetSeconds: 300
+# ...
 ```
 
 ---
