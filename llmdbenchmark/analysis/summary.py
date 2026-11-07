@@ -16,6 +16,7 @@ SUMMARY_MARKERS: dict[str, str] = {
     "guidellm": "Setup complete, starting benchmarks",
     "vllm-benchmark": "Result ==",
     "inferencemax": "Result ==",
+    "async-batch": "========== ASYNC-BATCH SUMMARY ==========",
 }
 
 

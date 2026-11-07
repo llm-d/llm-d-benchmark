@@ -76,6 +76,35 @@ class VerifyModelStep(Step):
                 stack_name=stack_name,
             )
 
+        harness_name = context.harness_name or (plan_config.get("harness") or {}).get(
+            "name", ""
+        )
+        is_scale_to_zero = int(
+            (plan_config.get("decode") or {}).get("replicas", 1)
+        ) <= 0 or any(
+            int(so.get("minReplicas", 1)) == 0
+            and (
+                not (so.get("scaleTargetRef") or {}).get("name")
+                or str((so.get("scaleTargetRef") or {}).get("name")).endswith("-decode")
+            )
+            for so in (plan_config.get("keda") or {}).get("scaledObjects") or []
+            if isinstance(so, dict)
+        )
+        if harness_name == "async-batch" or is_scale_to_zero:
+            context.logger.log_info(
+                f"Skipping synchronous /v1/models probe for '{stack_name}' "
+                f"(harness={harness_name}, scale_to_zero={is_scale_to_zero})"
+            )
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=True,
+                message=(
+                    f"Model verification skipped for async/scale-to-zero stack {stack_name}"
+                ),
+                stack_name=stack_name,
+            )
+
         # Parse host, port, and optional path prefix from endpoint URL.
         # Shared-HTTPRoute scenarios bake the per-stack prefix into the
         # detected endpoint (e.g. http://gw:80/pool-a) so {endpoint_url}/v1/*

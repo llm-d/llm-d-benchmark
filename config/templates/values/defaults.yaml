@@ -123,6 +123,7 @@ _anchors:
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v1.0.0
   llm-d-benchmark_version:           &llm-d-benchmark_version           nightly
   llm-d-prism_version:               &llm-d-prism_version               v1.0.0
+  llm-d-async_version:               &llm-d-async_version               v1.0.0
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -488,6 +489,8 @@ helmRepositories:
     sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
   lws:
     sourceRepo: https://github.com/kubernetes-sigs/lws
+  llmDAsync:
+    sourceRepo: https://github.com/llm-d/llm-d-async
 
 # ============================================================================
 # CHART VERSIONS
@@ -507,6 +510,7 @@ chartVersions:
   inferencePool: *gaie_version
   agentgateway: *agentgateway_version
   lws: *lws_version
+  llmDAsync: *llm-d-async_version
 
 # ============================================================================
 # SERVICE ACCOUNT CONFIGURATION
@@ -1973,6 +1977,7 @@ harness:
   nodeSelector: {}
   tolerations: []
   output: local
+  virtualGpusPerPod: 1
   inferencePerf:
     rayonNumThreads: 4
   evalImage: null
@@ -1983,6 +1988,51 @@ harness:
     memoryLimit: 2Gi
   runSummary:
     waitTimeout: 300
+
+# ============================================================================
+# ASYNC PROCESSOR (llm-d-async + optional in-namespace Redis broker)
+#
+# Deploys the llm-d-async processor chart alongside modelservice for async/batch
+# workloads (including KEDA scale-to-zero and readiness hold-back gates).
+# ============================================================================
+asyncProcessor:
+  enabled: false
+  chartRepository: oci://ghcr.io/llm-d/charts
+  chartName: llm-d-async
+  chartVersion: ""
+  igwBaseURL: ""
+  image:
+    repository: ghcr.io/llm-d/llm-d-async
+    tag: *llm-d-async_version
+    pullPolicy: *pull_if_not_present
+  concurrency: 64
+  gateWaitTimeout: "5m"
+  drainTimeout: "2m"
+  prometheusURL: ""
+  prometheusCacheTTL: "5s"
+  metricsPort: 9090
+  podMonitor:
+    enabled: true
+    interval: "15s"
+    labels: {}
+  redis:
+    enabled: true
+    url: ""
+    image: redis:7.2-alpine
+    port: 6379
+    resources:
+      requests:
+        cpu: "100m"
+        memory: 256Mi
+      limits:
+        cpu: "500m"
+        memory: 1Gi
+  workerPools: []
+  transport: "redis-sortedset"
+  resultQueueName: "result-list"
+  pollIntervalMs: 1000
+  batchSize: 10
+  queues: []
 
 # ============================================================================
 # EXPERIMENT RUNTIME DEFAULTS

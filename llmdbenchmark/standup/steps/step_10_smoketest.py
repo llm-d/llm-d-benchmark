@@ -107,6 +107,83 @@ class SmoketestStep(Step):
         else:
             pod_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role=decode"
 
+        is_scale_to_zero = not is_standalone and (
+            int((plan_config.get("decode") or {}).get("replicas", 1)) <= 0
+            or any(
+                int(so.get("minReplicas", 1)) == 0
+                and (
+                    not (so.get("scaleTargetRef") or {}).get("name")
+                    or str((so.get("scaleTargetRef") or {}).get("name")).endswith(
+                        "-decode"
+                    )
+                )
+                for so in (plan_config.get("keda") or {}).get("scaledObjects") or []
+                if isinstance(so, dict)
+            )
+        )
+        async_cfg = plan_config.get("asyncProcessor") or {}
+        if async_cfg.get("enabled", False):
+            async_selectors = ["app.kubernetes.io/name=llm-d-async"]
+            if (async_cfg.get("redis") or {}).get("enabled", True):
+                async_selectors.insert(0, "app.kubernetes.io/name=redis")
+            for async_sel in async_selectors:
+                async_check = cmd.kube(
+                    "get",
+                    "pods",
+                    "-l",
+                    async_sel,
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    "jsonpath={.items[*].status.phase}",
+                    check=False,
+                )
+                if not async_check.dry_run:
+                    if async_check.success:
+                        a_phases = async_check.stdout.strip().split()
+                        if not a_phases:
+                            errors.append(
+                                f"No async component pods found with selector '{async_sel}'"
+                            )
+                        elif not all(p == "Running" for p in a_phases):
+                            errors.append(
+                                f"Async pods ({async_sel}) not all running: {', '.join(a_phases)}"
+                            )
+                        else:
+                            context.logger.log_info(
+                                f"Async component ({async_sel}) running ✓"
+                            )
+                    else:
+                        errors.append(
+                            f"Failed to check async pods ({async_sel}): {async_check.stderr}"
+                        )
+
+        if is_scale_to_zero:
+            context.logger.log_info(
+                "Scale-to-zero decode active (decode.replicas=0 or KEDA minReplicas=0) "
+                "-- skipping live decode pod & HTTP inference smoketests to preserve 0-replica state"
+            )
+            if not context.dry_run:
+                cleanup_ephemeral_pods(cmd, namespace, context.logger)
+            if errors:
+                for err in errors:
+                    context.logger.log_error(f"Smoketest: {err}")
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message="Smoketest failed",
+                    errors=errors,
+                    stack_name=stack_name,
+                )
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=True,
+                message=f"Scale-to-zero control-plane smoketests passed for {stack_name}",
+                stack_name=stack_name,
+            )
+
         context.logger.log_info(f"Checking pod status (selector: {pod_selector})...")
 
         pod_check = cmd.kube(

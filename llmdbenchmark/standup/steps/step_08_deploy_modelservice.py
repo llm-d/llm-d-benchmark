@@ -192,8 +192,20 @@ class DeployModelserviceStep(Step):
             # Sibling stacks share the namespace, so their pods must not count.
             decode_label = f"llm-d.ai/model={model_id_label},llm-d.ai/role=decode"
 
-            # When decode.replicas == 0 there are no decode pods to wait for.
-            if expected_replicas > 0:
+            # When decode.replicas == 0 (or KEDA minReplicas == 0 targets decode)
+            # there may be 0 decode pods at standup time.
+            keda_min_zero = any(
+                int(so.get("minReplicas", 1)) == 0
+                and (
+                    not (so.get("scaleTargetRef") or {}).get("name")
+                    or str((so.get("scaleTargetRef") or {}).get("name")).endswith(
+                        "-decode"
+                    )
+                )
+                for so in (plan_config.get("keda") or {}).get("scaledObjects") or []
+                if isinstance(so, dict)
+            )
+            if expected_replicas > 0 and not keda_min_zero:
                 decode_wait = cmd.wait_for_pods(
                     label=decode_label,
                     namespace=namespace,
@@ -210,10 +222,10 @@ class DeployModelserviceStep(Step):
                     errors.append(f"Decode pods not ready: {decode_wait.stderr}")
             else:
                 context.logger.log_info(
-                    "decode.replicas=0 -- skipping decode-pod wait "
-                    "(FMA owns model server lifecycle when fma.enabled=true)"
+                    "Scale-to-zero decode (decode.replicas=0 or KEDA minReplicas=0) "
+                    "-- skipping decode-pod wait"
                 )
-            if expected_replicas > 1 and not context.dry_run:
+            if expected_replicas > 1 and not keda_min_zero and not context.dry_run:
                 decode_pods = observe_pods(cmd, namespace, label=decode_label)
                 if decode_pods is not None:
                     actual_count = sum(1 for pod in decode_pods if not pod.deleting)
@@ -371,6 +383,21 @@ class DeployModelserviceStep(Step):
         if keda_config.get("scaledObjects"):
             self._apply_keda_stack_resources(cmd, stack_path, errors)
 
+        # Async processor (llm-d-async + optional in-namespace Redis broker)
+        async_config = plan_config.get("asyncProcessor") or {}
+        if async_config.get("enabled", False):
+            self._deploy_async_processor(
+                cmd=cmd,
+                context=context,
+                stack_path=stack_path,
+                helmfile_work=helmfile_work,
+                namespace=namespace,
+                model_id_label=model_id_label,
+                async_config=async_config,
+                timeout=timeout,
+                errors=errors,
+            )
+
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if not errors:
@@ -405,6 +432,71 @@ class DeployModelserviceStep(Step):
             message=f"Modelservice deployed for {stack_name}",
             stack_name=stack_name,
         )
+
+    def _deploy_async_processor(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        stack_path: Path,
+        helmfile_work: Path,
+        namespace: str,
+        model_id_label: str,
+        async_config: dict,
+        timeout: int,
+        errors: list,
+    ) -> None:
+        """Deploy optional in-namespace Redis broker and llm-d-async Helm release."""
+        redis_cfg = async_config.get("redis") or {}
+        if redis_cfg.get("enabled", True):
+            redis_yaml = self._find_yaml(stack_path, "36_async-redis")
+            if redis_yaml and self._has_yaml_content(redis_yaml):
+                res = cmd.kube("apply", "-f", str(redis_yaml), "-n", namespace)
+                if not res.success:
+                    errors.append(f"Failed to deploy async Redis broker: {res.stderr}")
+                else:
+                    redis_wait = cmd.wait_for_pods(
+                        label="app.kubernetes.io/name=redis",
+                        namespace=namespace,
+                        timeout=min(timeout, 300),
+                        poll_interval=5,
+                        description="async Redis broker",
+                    )
+                    if not redis_wait.success:
+                        errors.append(
+                            f"Async Redis broker not ready: {redis_wait.stderr}"
+                        )
+
+        target_helmfile = (
+            helmfile_work
+            if helmfile_work.exists()
+            else self._find_yaml(stack_path, "10_helmfile-main")
+        )
+        if target_helmfile:
+            res = cmd.helmfile(
+                "--namespace",
+                namespace,
+                "--selector",
+                f"name={model_id_label}-async",
+                "apply",
+                "-f",
+                str(target_helmfile),
+                "--skip-diff-on-install",
+                "--skip-schema-validation",
+            )
+            if not res.success:
+                errors.append(f"Failed to deploy llm-d-async: {res.stderr}")
+            else:
+                ap_wait = cmd.wait_for_pods(
+                    label="app.kubernetes.io/name=llm-d-async",
+                    namespace=namespace,
+                    timeout=min(timeout, 300),
+                    poll_interval=5,
+                    description="llm-d-async processor",
+                )
+                if not ap_wait.success:
+                    errors.append(
+                        f"llm-d-async processor pods not ready: {ap_wait.stderr}"
+                    )
 
     def _wait_for_sibling_inference_pools(
         self,

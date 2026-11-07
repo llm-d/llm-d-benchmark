@@ -311,3 +311,64 @@ class SloGoodput(BaseModel):
     reports: list[SloGoodputReport]
     slo_scoring_diagnostics: list[Diagnostic]
     slo_goodput_output_token_rate: float | None
+
+
+###############################################################################
+# Async/Batch Autoscaling Goodput
+###############################################################################
+
+
+class AsyncGoodputGate(BaseModel):
+    """SLO gate for async/batch autoscaling runs.
+
+    Requires at least ``min_deadline_attainment`` of submitted requests to
+    complete with HTTP 2xx at or before their Unix deadline so high-drop or
+    under-scaling configurations cannot win on GPU-hours alone.
+    """
+
+    model_config = STRICT
+
+    min_deadline_attainment: float = Field(0.99, ge=0.0, le=1.0)
+    require_scale_down: bool = False
+
+
+class AsyncGoodputReport(BaseModel):
+    """Async Autoscaling Goodput scoring for a single run or v0.2 report."""
+
+    model_config = READER
+
+    report_path: str
+    treatment: str | None = None
+    verdict: Literal["pass", "fail", "indeterminate"]
+    total_requests: int
+    on_time_requests: int
+    exceeded_deadline_requests: int
+    failed_requests: int
+    deadline_attainment_rate: float
+    allocated_gpu_hours: float | None
+    ready_gpu_hours: float | None = None
+    allocated_pod_hours: float | None = None
+    overhead_gpu_fraction: float | None = None
+    accelerator_mode: Literal["physical_gpu", "simulated_pod_units"] = (
+        "simulated_pod_units"
+    )
+    request_goodput_per_gpu_hour: float | None
+    request_goodput_per_gpu_min: float | None
+    output_token_goodput_per_gpu_hour: float | None
+    calibrated_replica_rps: float | None = None
+    calibrated_cold_start_p90_s: float | None = None
+    scale_down_settled: bool | None = None
+
+
+class AsyncGoodput(BaseModel):
+    """Multi-run Async Autoscaling Goodput comparison and winner selection."""
+
+    model_config = READER
+
+    agent_artifact_version: Literal["1"] = "1"
+    gate: AsyncGoodputGate
+    reports: list[AsyncGoodputReport]
+    diagnostics: list[Diagnostic]
+    best_request_goodput_per_gpu_hour: float | None
+    best_output_token_goodput_per_gpu_hour: float | None
+    winning_report_path: str | None

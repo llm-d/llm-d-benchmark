@@ -128,6 +128,11 @@ KEY_COMPONENTS: dict[str, tuple[KeyClass, frozenset[str], str]] = {
         _VLLM | {"monitoring", "fma"},
         "re-applies KEDA ScaledObjects",
     ),
+    "asyncProcessor": (
+        KeyClass.INFRA,
+        _VLLM | {"infra"},
+        "re-applies the llm-d-async processor release and Redis broker",
+    ),
     "eppKedaSaturation": (
         KeyClass.INFRA,
         _VLLM | {"monitoring"},

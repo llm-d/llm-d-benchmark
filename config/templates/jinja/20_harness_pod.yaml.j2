@@ -136,6 +136,14 @@
     - name: LLMDBENCH_FMA_MAX_INSTANCES
       value: "{{ fma.launcher.maxInstances }}"
 {% endif %}
+    - name: LLMDBENCH_VIRTUAL_GPUS_PER_POD
+      value: "{{ harness.virtualGpusPerPod | default(1) }}"
+{% if asyncProcessor is defined and (asyncProcessor.enabled | default(false)) %}
+    - name: LLMDBENCH_ASYNC_REDIS_URL
+      value: "{{ (asyncProcessor.redis.url if asyncProcessor.redis is defined and asyncProcessor.redis.url is defined and asyncProcessor.redis.url else ('redis://redis.' ~ namespace.name ~ '.svc.cluster.local:' ~ ((asyncProcessor.redis.port | default(6379)) if asyncProcessor.redis is defined else 6379) ~ '/0')) }}"
+    - name: LLMDBENCH_ASYNC_RESULT_QUEUE
+      value: "{{ asyncProcessor.resultQueueName | default('result-list') }}"
+{% endif %}
 {% if harness.extraEnvVars is defined and harness.extraEnvVars %}
 {% for env_entry in harness.extraEnvVars %}
     - name: {{ env_entry.name }}

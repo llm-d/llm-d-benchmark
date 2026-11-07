@@ -273,7 +273,40 @@ class BaseSmoketest:
                     "No prefill pods configured -- skipping prefill health check"
                 )
 
+        is_scale_to_zero = bool(
+            not is_standalone
+            and not is_kustomize
+            and not roles_to_check
+            and (
+                _nested_get(plan_config, "keda", "enabled")
+                or _nested_get(plan_config, "asyncProcessor", "enabled")
+                or _nested_get(plan_config, "wva", "enabled")
+            )
+        )
+
         if not roles_to_check:
+            if is_scale_to_zero:
+                if not service_ip:
+                    report.add(
+                        CheckResult(
+                            "endpoint_discovery",
+                            False,
+                            message="Could not find service/gateway IP",
+                        )
+                    )
+                    return report
+                context.logger.log_info(
+                    "Scale-to-zero standby configured (0 initial serving replicas); "
+                    "skipping serving pod & /v1/models probes until workload arrives"
+                )
+                report.add(
+                    CheckResult(
+                        "scale_to_zero_standby",
+                        True,
+                        message="Endpoint discovered; 0 initial serving replicas (scale-to-zero enabled)",
+                    )
+                )
+                return report
             report.add(
                 CheckResult(
                     "pods_configured",
@@ -684,6 +717,32 @@ class BaseSmoketest:
                     "inference_endpoint",
                     False,
                     message="Could not find service/gateway IP for inference test",
+                )
+            )
+            return report
+
+        decode_replicas = int(_nested_get(plan_config, "decode", "replicas") or 0)
+        prefill_replicas = int(_nested_get(plan_config, "prefill", "replicas") or 0)
+        if (
+            not _is_standalone
+            and "kustomize" not in context.deployed_methods
+            and decode_replicas == 0
+            and prefill_replicas == 0
+            and (
+                _nested_get(plan_config, "keda", "enabled")
+                or _nested_get(plan_config, "asyncProcessor", "enabled")
+                or _nested_get(plan_config, "wva", "enabled")
+            )
+        ):
+            context.logger.log_info(
+                "Scale-to-zero standby configured (0 initial serving replicas); "
+                "skipping synchronous sample inference request"
+            )
+            report.add(
+                CheckResult(
+                    "inference_skipped_scale_to_zero",
+                    True,
+                    message="Sample inference skipped for scale-to-zero standby deployment",
                 )
             )
             return report

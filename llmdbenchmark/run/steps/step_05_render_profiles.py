@@ -71,8 +71,15 @@ class RenderProfilesStep(Step):
             default="sanity_random.yaml",
         )
 
-        # Locate source profiles directory
-        base_dir = context.base_dir or Path(__file__).resolve().parents[3]
+        # Locate source profiles directory (fall back to llm-d-benchmark package
+        # root when invoked from an external repo such as llm-d-autoscaling).
+        pkg_root = Path(__file__).resolve().parents[3]
+        base_dir = context.base_dir or pkg_root
+        if (
+            not (base_dir / "workload" / "profiles").is_dir()
+            and (pkg_root / "workload" / "profiles").is_dir()
+        ):
+            base_dir = pkg_root
         workload_file_path = getattr(context, "workload_file_path", None)
         source_profile_file: Path | None = None
         profiles_source: Path | None = None

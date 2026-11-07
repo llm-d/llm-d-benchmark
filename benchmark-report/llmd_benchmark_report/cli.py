@@ -95,6 +95,7 @@ def main() -> None:
         # Both produce the current 0.2.x revision.
         from .native_to_br0_2 import (
             import_aiperf,
+            import_async_batch,
             import_inference_max,
             import_vllm_benchmark,
             import_inference_perf,
@@ -130,6 +131,16 @@ def main() -> None:
                 import_aiperf(args.results_file).export_yaml(args.output_file)
             else:
                 print(import_aiperf(args.results_file).get_yaml_str())
+        case WorkloadGenerator.ASYNC_BATCH:
+            if args.br_version not in ("0.2", "0.2.1"):
+                sys.stderr.write(
+                    "async-batch supports Benchmark Report v0.2/0.2.1 only.\n"
+                )
+                sys.exit(1)
+            if args.output_file:
+                import_async_batch(args.results_file).export_yaml(args.output_file)
+            else:
+                print(import_async_batch(args.results_file).get_yaml_str())
         case WorkloadGenerator.GUIDELLM:
             # "is not None", not truthiness: index 0 is a valid selection, and
             # treating it as unset silently converts every benchmark instead.
@@ -181,7 +192,7 @@ def main() -> None:
                 print(import_nop(args.results_file).get_yaml_str())
         case _:
             sys.stderr.write(
-                "Unsupported workload generator: {args.workload_generator}\n"
+                f"Unsupported workload generator: {args.workload_generator}\n"
             )
             sys.stderr.write(
                 f"Must be one of: {str([wg.value for wg in WorkloadGenerator])[1:-1]}\n"

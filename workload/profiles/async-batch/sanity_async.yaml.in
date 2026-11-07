@@ -1,0 +1,32 @@
+# Quick smoke & simulator validation profile for async-batch autoscaling goodput
+name: sanity-async
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+apiPath: /v1/completions
+promptTokens: 256
+maxTokens: 128
+completionGraceSeconds: 30
+
+transport:
+  mode: redis-sortedset
+  requestQueueName: request-sortedset
+  resultQueueName: result-list
+  clearQueuesBeforeRun: true
+
+slo:
+  minDeadlineAttainment: 0.99
+
+accounting:
+  waitForScaleDown: true
+  settledReplicasTarget: 0
+  scaleDownTimeoutSeconds: 180
+  windowDurationSeconds: 0
+
+waves:
+  - name: smoke-burst
+    cohort: batch-standard
+    offsetSeconds: 0
+    count: 50
+    rateRps: 0
+    deadlineOffsetSeconds: 300
+    queueName: request-sortedset
+    tenant: tenant-smoke

@@ -130,7 +130,13 @@ class DeployHarnessLocalStep(Step):
         )
         deploy_method = ",".join(context.deployed_methods or ["nok8s"])
 
-        base_dir = context.base_dir or Path(__file__).resolve().parents[3]
+        pkg_root = Path(__file__).resolve().parents[3]
+        base_dir = context.base_dir or pkg_root
+        if (
+            not (base_dir / "workload" / "harnesses").is_dir()
+            and (pkg_root / "workload" / "harnesses").is_dir()
+        ):
+            base_dir = pkg_root
         harnesses_dir = base_dir / "workload" / "harnesses"
         profiles_dir = context.workload_profiles_dir()
         results_dir = context.run_results_dir()

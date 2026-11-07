@@ -18,6 +18,8 @@ METRICS_PATH="${LLMDBENCH_VLLM_MONITORING_METRICS_PATH:-/metrics}"
 METRICS_CURL_TIMEOUT="${METRICS_CURL_TIMEOUT:-30}"  # max-time for curl in seconds
 EPP_METRICS_PORT="${LLMDBENCH_EPP_METRICS_PORT:-9090}"  # EPP Prometheus metrics port
 EPP_METRICS_SECRET="${LLMDBENCH_EPP_METRICS_SECRET:-inference-gateway-sa-metrics-reader-secret}"  # pragma: allowlist secret
+ASYNC_METRICS_PORT="${LLMDBENCH_ASYNC_METRICS_PORT:-9090}"  # llm-d-async Prometheus metrics port
+VIRTUAL_GPUS_PER_POD="${LLMDBENCH_VIRTUAL_GPUS_PER_POD:-1}"  # CPU-sim fallback units per pod
 _EPP_AUTH_HEADER=""  # cached bearer token header for EPP scrapes
 
 # Function to initialize metrics directory
@@ -101,6 +103,35 @@ get_epp_pod_info() {
     echo "$pod_info"
 }
 
+# Get llm-d-async processor pod names and IPs.
+# Output: lines of "pod_name pod_ip" pairs.
+get_async_pod_info() {
+    local namespace="$1"
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+
+    local pod_info
+    pod_info=$($kubectl_cmd --namespace "$namespace" get pods \
+        -l app.kubernetes.io/name=llm-d-async \
+        --field-selector=status.phase=Running \
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' 2>/dev/null || true)
+
+    if [[ -z "$pod_info" ]]; then
+        local pod_names
+        pod_names=$($kubectl_cmd get pods -n "$namespace" 2>/dev/null | grep -i "llm-d-async" | grep "Running" | awk '{print $1}' || true)
+        if [[ -n "$pod_names" ]]; then
+            for pod in $pod_names; do
+                local ip
+                ip=$($kubectl_cmd get pod -n "$namespace" "$pod" -o jsonpath='{.status.podIP}' 2>/dev/null || true)
+                if [[ -n "$ip" ]]; then
+                    pod_info="${pod_info:+${pod_info}$'\n'}${pod} ${ip}"
+                fi
+            done
+        fi
+    fi
+
+    echo "$pod_info"
+}
+
 # ---------------------------------------------------------------------------
 # Replica status & pod startup times
 # ---------------------------------------------------------------------------
@@ -116,13 +147,31 @@ collect_replica_status() {
     local output_file="$METRICS_DIR/processed/replica_status.json"
     local timeseries_file="$METRICS_DIR/processed/replica_status_timeseries.json"
     local debug_log="$METRICS_DIR/raw/collection_debug.log"
+    local pods_tmp_file="$METRICS_DIR/raw/.serving_pods_snapshot.json"
 
     mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
 
     local all_json
     all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log") || all_json='{"items":[]}'
 
-    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" _RS_MODEL_FILTER="$model_filter" python3 -c '
+    # Query serving pods (including Pending-scheduled, Running-unready cold-start,
+    # Ready, and Terminating) to compute exact Allocated GPU-Hours.
+    local pods_json
+    pods_json=$($kubectl_cmd --namespace "$namespace" get pods -l llm-d.ai/inferenceServing=true -o json 2>>"$debug_log") || pods_json='{"items":[]}'
+    local pod_count
+    pod_count=$(echo "$pods_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))" 2>>"$debug_log" || echo 0)
+    if [[ "$pod_count" == "0" ]]; then
+        local standalone_json
+        standalone_json=$($kubectl_cmd --namespace "$namespace" get pods -l stood-up-via=standalone -o json 2>>"$debug_log") || standalone_json='{"items":[]}'
+        local standalone_count
+        standalone_count=$(echo "$standalone_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))" 2>>"$debug_log" || echo 0)
+        if [[ "$standalone_count" != "0" ]]; then
+            pods_json="$standalone_json"
+        fi
+    fi
+    printf '%s' "$pods_json" > "$pods_tmp_file"
+
+    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" _RS_MODEL_FILTER="$model_filter" _RS_PODS_FILE="$pods_tmp_file" _RS_VIRTUAL_GPUS="$VIRTUAL_GPUS_PER_POD" python3 -c '
 import json, sys, os
 from datetime import datetime, timezone
 
@@ -130,23 +179,54 @@ namespace = os.environ["_RS_NAMESPACE"]
 output_file = os.environ["_RS_OUTPUT"]
 ts_file = os.environ["_RS_TS_OUTPUT"]
 model_filter = os.environ.get("_RS_MODEL_FILTER", "")
+pods_file = os.environ.get("_RS_PODS_FILE", "")
+try:
+    virtual_gpus = float(os.environ.get("_RS_VIRTUAL_GPUS", "1") or 1.0)
+except ValueError:
+    virtual_gpus = 1.0
 
+GPU_KEYS = ("nvidia.com/gpu", "amd.com/gpu", "google.com/tpu")
+
+def _parse_qty(val):
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
+
+def _containers_gpus(containers):
+    total = 0.0
+    for c in containers or []:
+        res = c.get("resources") or {}
+        reqs = res.get("requests") or {}
+        lims = res.get("limits") or {}
+        pod_c_gpu = 0.0
+        for k in GPU_KEYS:
+            q = _parse_qty(reqs.get(k)) or _parse_qty(lims.get(k))
+            if q > 0:
+                pod_c_gpu += q
+        total += pod_c_gpu
+    return total
+
+now_utc = datetime.now(timezone.utc)
 data = json.load(sys.stdin)
 snapshot = {
-    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "timestamp": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "epoch_seconds": round(now_utc.timestamp(), 3),
     "namespace": namespace,
     "controllers": [],
 }
 
+any_physical_gpu = False
 for item in data.get("items", []):
     kind = item.get("kind", "Deployment")
     metadata = item.get("metadata", {})
     spec = item.get("spec", {})
     status = item.get("status", {})
 
-    tmpl_labels = (
-        spec.get("template", {}).get("metadata", {}).get("labels", {})
-    )
+    tmpl = spec.get("template", {})
+    tmpl_labels = tmpl.get("metadata", {}).get("labels", {})
     # Its a serving replica source if either:
     #   * its pod template is labelled inferenceServing=true OR
     #   * it is the FMA requester Deployment (llm-d.ai/role=requester).
@@ -163,16 +243,96 @@ for item in data.get("items", []):
     if model_filter and model != model_filter:
         continue
 
+    tmpl_gpus = _containers_gpus(tmpl.get("spec", {}).get("containers", []))
+    if tmpl_gpus > 0:
+        any_physical_gpu = True
+
     snapshot["controllers"].append({
         "name": metadata.get("name", ""),
         "kind": kind,
         "model": model,
         "role": tmpl_labels.get("llm-d.ai/role", "unknown"),
-        "desired_replicas": spec.get("replicas", 0),
-        "ready_replicas": status.get("readyReplicas", 0),
-        "available_replicas": status.get("availableReplicas", 0),
-        "updated_replicas": status.get("updatedReplicas", 0),
+        "desired_replicas": spec.get("replicas", 0) or 0,
+        "ready_replicas": status.get("readyReplicas", 0) or 0,
+        "available_replicas": status.get("availableReplicas", 0) or 0,
+        "updated_replicas": status.get("updatedReplicas", 0) or 0,
+        "gpus_per_pod": tmpl_gpus,
     })
+
+pods_data = {"items": []}
+if pods_file and os.path.exists(pods_file):
+    try:
+        with open(pods_file) as pf:
+            pods_data = json.load(pf)
+    except (json.JSONDecodeError, OSError):
+        pods_data = {"items": []}
+
+scheduled_replicas = 0
+ready_pod_replicas = 0
+terminating_replicas = 0
+pending_unscheduled_replicas = 0
+allocated_gpus = 0.0
+ready_gpus = 0.0
+
+for pod in pods_data.get("items", []):
+    p_meta = pod.get("metadata", {})
+    p_labels = p_meta.get("labels", {})
+    p_model = p_labels.get("llm-d.ai/model", p_labels.get("app", ""))
+    if model_filter and p_model and p_model != model_filter:
+        continue
+
+    p_spec = pod.get("spec", {})
+    p_status = pod.get("status", {})
+    phase = p_status.get("phase", "")
+    if phase in ("Succeeded", "Failed"):
+        continue
+
+    node_name = p_spec.get("nodeName") or ""
+    if not node_name:
+        pending_unscheduled_replicas += 1
+        continue
+
+    scheduled_replicas += 1
+    is_terminating = bool(p_meta.get("deletionTimestamp"))
+    if is_terminating:
+        terminating_replicas += 1
+
+    is_ready = False
+    if not is_terminating:
+        for cond in p_status.get("conditions", []) or []:
+            if cond.get("type") == "Ready" and cond.get("status") == "True":
+                is_ready = True
+                break
+    if is_ready:
+        ready_pod_replicas += 1
+
+    pod_gpus = _containers_gpus(p_spec.get("containers", []))
+    if pod_gpus > 0:
+        any_physical_gpu = True
+    allocated_gpus += pod_gpus
+    if is_ready:
+        ready_gpus += pod_gpus
+
+accel_mode = "physical_gpu" if any_physical_gpu else "simulated_pod_units"
+effective_allocated_gpus = (
+    allocated_gpus if any_physical_gpu else scheduled_replicas * virtual_gpus
+)
+effective_ready_gpus = (
+    ready_gpus if any_physical_gpu else ready_pod_replicas * virtual_gpus
+)
+
+snapshot["pod_allocation"] = {
+    "scheduled_replicas": scheduled_replicas,
+    "ready_replicas": ready_pod_replicas,
+    "terminating_replicas": terminating_replicas,
+    "pending_unscheduled_replicas": pending_unscheduled_replicas,
+    "allocated_gpus": allocated_gpus,
+    "ready_gpus": ready_gpus,
+    "virtual_gpus_per_pod": virtual_gpus,
+    "effective_allocated_gpus": effective_allocated_gpus,
+    "effective_ready_gpus": effective_ready_gpus,
+    "accelerator_mode": accel_mode,
+}
 
 # Write latest snapshot (backward compatible)
 with open(output_file, "w") as f:
@@ -193,15 +353,18 @@ if len(ts_data["snapshots"]) >= 2:
     prev = ts_data["snapshots"][-2]
     prev_counts = {c["name"]: c.get("ready_replicas", 0) for c in prev.get("controllers", [])}
     curr_counts = {c["name"]: c.get("ready_replicas", 0) for c in snapshot.get("controllers", [])}
-    changed = prev_counts != curr_counts
+    prev_sched = prev.get("pod_allocation", {}).get("scheduled_replicas", 0)
+    curr_sched = snapshot["pod_allocation"]["scheduled_replicas"]
+    changed = (prev_counts != curr_counts) or (prev_sched != curr_sched)
 
 with open(ts_file, "w") as f:
     json.dump(ts_data, f, indent=2)
 
-print("Replica status: %d controller(s), %d snapshots%s" % (
-    len(snapshot["controllers"]), len(ts_data["snapshots"]),
-    "" if changed else " (unchanged)"))
+print("Replica status: %d controller(s), scheduled=%d, ready=%d, %d snapshots%s" % (
+    len(snapshot["controllers"]), scheduled_replicas, ready_pod_replicas,
+    len(ts_data["snapshots"]), "" if changed else " (unchanged)"))
 ' 2>>"$debug_log"
+    rm -f "$pods_tmp_file"
     if [[ $? -ne 0 ]]; then
         echo "Warning: Failed to collect replica status (see $debug_log)" >&2
     fi
@@ -490,6 +653,22 @@ collect_metrics_snapshot() {
             _scrape_pod "$pod_name" "$pod_ip" "$iso_timestamp" \
                 "$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log" \
                 "$EPP_METRICS_PORT" "epp_prometheus_metrics" "" "$epp_auth" &
+        done
+    fi
+
+    # Collect llm-d-async processor pod metrics (backlog, queue depth, gate, inflight)
+    local async_info
+    async_info=$(get_async_pod_info "$namespace")
+
+    if [[ -n "$async_info" ]]; then
+        echo "Found llm-d-async pods:"
+        echo "$async_info"
+
+        echo "$async_info" | while read -r pod_name pod_ip; do
+            [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
+            _scrape_pod "$pod_name" "$pod_ip" "$iso_timestamp" \
+                "$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log" \
+                "$ASYNC_METRICS_PORT" "async_prometheus_metrics" &
         done
     fi
 

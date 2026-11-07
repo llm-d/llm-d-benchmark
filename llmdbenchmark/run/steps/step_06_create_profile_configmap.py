@@ -209,7 +209,13 @@ class CreateProfileConfigmapStep(Step):
         harness_ns: str,
     ) -> tuple[bool, str]:
         """Create the llmdbench-harness-scripts ConfigMap from workload/harnesses/."""
-        base_dir = context.base_dir or Path(__file__).resolve().parents[3]
+        pkg_root = Path(__file__).resolve().parents[3]
+        base_dir = context.base_dir or pkg_root
+        if (
+            not (base_dir / "workload" / "harnesses").is_dir()
+            and (pkg_root / "workload" / "harnesses").is_dir()
+        ):
+            base_dir = pkg_root
         harnesses_dir = base_dir / "workload" / "harnesses"
         analyzers_dir = base_dir / "llmdbenchmark" / "analysis" / "scripts"
 
@@ -337,7 +343,13 @@ class CreateProfileConfigmapStep(Step):
         stack_name: str,
     ) -> StepResult:
         """Handle --dry-run mode."""
-        base_dir = context.base_dir or Path(__file__).resolve().parents[3]
+        pkg_root = Path(__file__).resolve().parents[3]
+        base_dir = context.base_dir or pkg_root
+        if (
+            not (base_dir / "workload" / "harnesses").is_dir()
+            and (pkg_root / "workload" / "harnesses").is_dir()
+        ):
+            base_dir = pkg_root
         harnesses_dir = base_dir / "workload" / "harnesses"
         script_count = (
             sum(1 for f in harnesses_dir.iterdir() if f.is_file())

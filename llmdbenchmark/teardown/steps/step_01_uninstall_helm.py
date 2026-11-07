@@ -66,7 +66,12 @@ class UninstallHelmStep(Step):
     # is only model-keyed, e.g. "<model_id_label>-fma-dp"), so without this
     # entry a mismatched/omitted model label at teardown leaves the release
     # deployed while teardown still reports success (#1820).
-    _MANAGED_CHART_PREFIXES = ("llm-d-modelservice", "llm-d-router-", "fma-controllers")
+    _MANAGED_CHART_PREFIXES = (
+        "llm-d-modelservice",
+        "llm-d-router-",
+        "llm-d-async",
+        "fma-controllers",
+    )
 
     def __init__(self):
         super().__init__(
@@ -181,6 +186,7 @@ class UninstallHelmStep(Step):
         # still depend on it. --deep forces uninstall regardless.
         self._teardown_wva(cmd, context, errors)
         self._teardown_epp_keda_saturation(cmd, context, errors)
+        self._teardown_generic_keda_and_async(cmd, context)
 
         if errors:
             return StepResult(
@@ -197,6 +203,32 @@ class UninstallHelmStep(Step):
             success=True,
             message="Helm releases uninstalled",
         )
+
+    def _teardown_generic_keda_and_async(
+        self, cmd: CommandExecutor, context: ExecutionContext
+    ) -> None:
+        """Delete generic KEDA ScaledObjects (27_keda-scaledobjects) and async Redis manifests (36_async-redis)."""
+        for stack_path in context.rendered_stacks or []:
+            cfg = self._load_stack_config(stack_path)
+            ns = (cfg.get("namespace") or {}).get("name") or context.namespace or ""
+            if not ns:
+                continue
+            for stem in (
+                "27_keda-scaledobjects",
+                "27a_keda-triggerauthentication",
+                "36_async-redis",
+            ):
+                manifest = _find_yaml(stack_path, stem)
+                if manifest and _has_yaml_content(manifest):
+                    cmd.kube(
+                        "delete",
+                        "-f",
+                        str(manifest),
+                        "--namespace",
+                        ns,
+                        "--ignore-not-found=true",
+                        check=False,
+                    )
 
     def _delete_fma_crs(
         self,

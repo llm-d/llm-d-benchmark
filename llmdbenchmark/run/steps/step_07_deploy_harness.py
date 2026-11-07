@@ -273,11 +273,16 @@ class DeployHarnessStep(Step):
             context_value=context.namespace,
         )
 
-        # Load the harness pod template
-        base_dir = context.base_dir or Path(__file__).resolve().parents[3]
+        # Load the harness pod template (fall back to package root for cross-repo specs)
+        pkg_root = Path(__file__).resolve().parents[3]
+        base_dir = context.base_dir or pkg_root
         template_path = (
             base_dir / "config" / "templates" / "jinja" / "20_harness_pod.yaml.j2"
         )
+        if not template_path.exists():
+            template_path = (
+                pkg_root / "config" / "templates" / "jinja" / "20_harness_pod.yaml.j2"
+            )
         if not template_path.exists():
             return StepResult(
                 step_number=self.number,
