@@ -206,6 +206,12 @@ class KustomizeDeployStep(Step):
                     context=context,
                 )
 
+        # --- 1c. Leftover autoscalers ---
+        # A leftover ScaledObject from a failed standup attempt keeps
+        # deactivating the Deployment this step applies (see
+        # _remove_leftover_autoscalers).
+        self._remove_leftover_autoscalers(cmd, context, namespace)
+
         # --- 2. Router ---
         router_cmds = self._select_router_commands(
             parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE),
@@ -476,6 +482,56 @@ class KustomizeDeployStep(Step):
 
     _HF_SECRET_NAME = "llm-d-hf-token"
     _HF_SECRET_KEY = "HF_TOKEN"
+
+    @staticmethod
+    def _remove_leftover_autoscalers(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+    ) -> None:
+        """Delete KEDA ScaledObjects left by a previous standup attempt.
+
+        Standup retries run without a teardown between attempts, and a
+        leftover ScaledObject with ``minReplicaCount: 0`` keeps deactivating
+        the freshly applied Deployment, so the pod wait never converges. The
+        guide re-applies its own ScaledObject in its autoscaling step, so
+        this only removes objects a retry would fight. Non-fatal by design.
+        """
+        listed = cmd.kube(
+            "get", "scaledobject", "-n", namespace, "-o", "name", check=False
+        )
+        if not listed.success:
+            # No scaledobjects.keda.sh CRD -- not a KEDA guide.
+            return
+        names = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
+        for name in names:
+            context.logger.log_info(
+                f"Removing leftover autoscaler from a previous standup attempt: {name}"
+            )
+            result = cmd.kube(
+                "delete",
+                name,
+                "-n",
+                namespace,
+                "--ignore-not-found=true",
+                check=False,
+            )
+            if not result.success:
+                context.logger.log_warning(
+                    f"Failed to remove {name} (continuing): {result.stderr}"
+                )
+        if names:
+            # Safety net in case KEDA's own HPA garbage collection lags.
+            cmd.kube(
+                "delete",
+                "hpa",
+                "-n",
+                namespace,
+                "-l",
+                "scaledobject.keda.sh/name",
+                "--ignore-not-found=true",
+                check=False,
+            )
 
     @staticmethod
     def _ensure_hf_token_secret(
