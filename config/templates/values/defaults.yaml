@@ -275,6 +275,10 @@ model:
   blockSize: *block_size
   gpuMemoryUtilization: *gpu_memory_util
   cacheBase: *model_cache_base
+  # HuggingFace revision (commit SHA, tag or branch) that the step 04 download
+  # Job / hostPath DaemonSet passes to `hf download --revision`. Unset fetches
+  # the repo's default branch. Pin a commit SHA for reproducible weights.
+  # revision: <commit-sha>
 
 # ============================================================================
 # MODEL ARTIFACTS CONFIGURATION
