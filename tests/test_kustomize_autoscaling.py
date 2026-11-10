@@ -13,18 +13,22 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 
-# See test_kustomize_hf_token.py: stub the `planner` package that
-# llmdbenchmark.standup.steps transitively imports.
+# Stub the `planner` package that llmdbenchmark.standup.steps
+# transitively imports.
 if "planner.capacity_planner" not in sys.modules:
 
     class _PermissiveModule(types.ModuleType):
         def __getattr__(self, name: str):  # type: ignore[override]
             return type(name, (), {})
 
-    sys.modules.setdefault("planner", _PermissiveModule("planner"))
-    sys.modules["planner.capacity_planner"] = _PermissiveModule(
-        "planner.capacity_planner"
-    )
+    # A string __file__: the permissive __getattr__ would otherwise
+    # answer it with a class, crashing inspect on py3.14 (coverage/testmon).
+    _planner = _PermissiveModule("planner")
+    _planner.__file__ = "<planner stub>"
+    _capacity = _PermissiveModule("planner.capacity_planner")
+    _capacity.__file__ = "<planner stub>"
+    sys.modules.setdefault("planner", _planner)
+    sys.modules["planner.capacity_planner"] = _capacity
 
 from llmdbenchmark.kustomize.readme_parser import CommandPhase, parse_guide_readme
 from llmdbenchmark.standup.steps.step_05_kustomize_deploy import KustomizeDeployStep
