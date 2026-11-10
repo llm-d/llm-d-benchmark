@@ -6,12 +6,13 @@ is what the in-pod scripts used to produce, since they called
 ``add_metrics_to_benchmark_report`` with no window at all.
 
 Runs in-pod, before the results are compressed, so every input here is a plain
-file: ``stdout.log`` for the markers, ``metrics/processed/`` for the scrape, and
-the reports themselves.
+file: ``metrics/raw/`` and ``stdout.log`` for the stage bounds,
+``metrics/processed/`` for the scrape, and the reports themselves.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,17 +22,71 @@ STAGE_MARKER_RE = re.compile(
     r".*Stage (\d+) - (?:session-based )?run (started|completed|failed)",
     re.MULTILINE,
 )
+# inference-perf's own stamps, served on its /metrics and scraped by collect_metrics.sh.
+SCRAPED_STAGE_RE = re.compile(
+    r'^inference_perf_stage_(start|end)_timestamp_seconds\{[^}]*\bstage="(\d+)"[^}]*\} (\S+)',
+    re.MULTILINE,
+)
+HARNESS_SOURCE = "# Source: harness_prometheus_metrics"
 # Greedy, to take the last occurrence like native_to_br0_2 does on the same filename.
 REPORT_STAGE_RE = re.compile(r".*stage_(\d+)", re.DOTALL)
 
 
-def stage_windows(results_dir: Path) -> dict[int, tuple[datetime, datetime]]:
-    """Map stage index to its (start, end) as logged by the load generator.
+def stage_windows(
+    results_dir: Path, metrics_dir: Path | None = None
+) -> dict[int, tuple[datetime, datetime]]:
+    """Map stage index to its (start, end) as reported by the load generator.
 
-    The markers are ``%(asctime)s`` local time, stamped UTC here because the pod
-    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). Returns {} when the log is missing
-    or holds no complete marker pair, leaving the caller on the whole-run series.
+    A stage the harness scrape stamped (see :func:`scraped_stage_windows`) takes
+    those bounds. The others fall back to the log markers, which are
+    ``%(asctime)s`` local time cut to the second, stamped UTC here because the pod
+    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). Returns {} when neither source holds
+    a complete pair, leaving the caller on the whole-run series.
     """
+    windows = _logged_stage_windows(results_dir)
+    if metrics_dir is not None:
+        windows.update(scraped_stage_windows(metrics_dir))
+    return windows
+
+
+def scraped_stage_windows(metrics_dir: Path) -> dict[int, tuple[datetime, datetime]]:
+    """Map stage index to its (start, end) from inference-perf's scraped stamps.
+
+    Only scrapes of the harness's own endpoint are read. The stamps are Unix times
+    with sub-second precision. A restarted stage is stamped again, so the latest
+    stamp wins, as the last log marker does.
+    """
+    stamps: dict[int, dict[str, float]] = {}
+    for path in (metrics_dir / "raw").glob("*.log"):
+        try:
+            with open(path, errors="replace") as fh:
+                header = [fh.readline() for _ in range(5)]
+                if not any(line.strip() == HARNESS_SOURCE for line in header):
+                    continue
+                text = fh.read()
+        except OSError:
+            continue
+        for kind, stage, value in SCRAPED_STAGE_RE.findall(text):
+            try:
+                when = float(value)
+            except ValueError:
+                continue
+            if not math.isfinite(when):
+                continue
+            pair = stamps.setdefault(int(stage), {})
+            pair[kind] = max(pair.get(kind, when), when)
+
+    return {
+        stage: (
+            datetime.fromtimestamp(pair["start"], timezone.utc),
+            datetime.fromtimestamp(pair["end"], timezone.utc),
+        )
+        for stage, pair in stamps.items()
+        if "start" in pair and "end" in pair and pair["start"] < pair["end"]
+    }
+
+
+def _logged_stage_windows(results_dir: Path) -> dict[int, tuple[datetime, datetime]]:
     try:
         text = (results_dir / "stdout.log").read_text(errors="replace")
     except OSError:
@@ -92,14 +147,14 @@ def embed_metrics(
     if not reports:
         return 0
 
-    windows = stage_windows(results_dir)
+    windows = stage_windows(results_dir, metrics_dir)
 
     staged = [r for r in reports if REPORT_STAGE_RE.search(r.name)]
     # Staged reports with no window at all means the markers stopped parsing,
     # which silently restores the whole-run series this clipping replaced.
     if staged and not windows:
         _say(
-            f"No stage windows parsed from stdout.log for {len(staged)} stage "
+            f"No stage windows in the harness scrape or stdout.log for {len(staged)} stage "
             f"report(s) -- embedding the whole run in each",
             True,
         )
