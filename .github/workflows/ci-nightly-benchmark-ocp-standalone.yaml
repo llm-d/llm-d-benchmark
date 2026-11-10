@@ -73,7 +73,7 @@ jobs:
       connector: ${{ inputs.connector || '' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-ocp' }}
       helm_release: ${{ inputs.helm_release || 'lmdbenchcicdr-ocp' }}
-      workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-ocp' }}
+      workspace_dir: ${{ inputs.workspace_dir || format('/tmp/llmdbenchcicds-ocp-{0}-{1}', github.run_id, github.run_attempt) }}
       bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
       bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
       bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
