@@ -67,6 +67,27 @@ def _thanos_range(cmd, host: str, token: str, query: str, start: float, end: flo
     return [(float(t), float(v)) for t, v in series[0]["values"]] if series else []
 
 
+def _cluster_scaled_object(cmd, namespace: str, name: str) -> dict | None:
+    """The ScaledObject *name* as deployed in *namespace*, or None if unreadable."""
+    result = cmd.kube(
+        "get",
+        "scaledobjects.keda.sh",
+        name,
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
+        check=False,
+    )
+    if not result.success:
+        return None
+    try:
+        so = json.loads(result.stdout)
+    except json.JSONDecodeError, ValueError:
+        return None
+    return so if isinstance(so, dict) and so.get("kind") == "ScaledObject" else None
+
+
 def _prometheus_api_status(stdout: str) -> tuple[str, str]:
     """Return (status, error_detail) from a Prometheus/Thanos API response.
 
@@ -424,12 +445,25 @@ class CaptureClusterStateStep(Step):
             # 8. Replica sizing for this run's traffic shape (KEDA paths only):
             # demand vs. KEDA decision vs. provisioned, per traffic stage.
             if epp_keda_enabled:
+                # Size the ScaledObjects the cluster runs: this run's plan is
+                # re-rendered without standup's --set flags, so its copy can
+                # be live where the stack was stood up in dry-run.
+                def lookup(ns: str, name: str) -> dict | None:
+                    so = _cluster_scaled_object(cmd, ns or deploy_ns, name)
+                    if so is None:
+                        warnings.append(
+                            f"sizing: could not read ScaledObject {name} from "
+                            "the cluster; using the rendered plan's copy"
+                        )
+                    return so
+
                 sizing = write_sizing(
                     stack_path,
                     context.run_results_dir(),
                     exp_ids or exp_id,  # every treatment of the run, not the first
                     out_dir,
                     lambda q, s, e: _thanos_range(cmd, thanos_host, token, q, s, e),
+                    lookup,
                 )
                 captured += sizing
                 if sizing:

@@ -1,8 +1,9 @@
 """Replica sizing for a traffic shape, from a run's KEDA ScaledObjects.
 
-For each ScaledObject the run deployed (30_keda-scaledobject) and each traffic
-stage the harness reported, replay the ScaledObject's own trigger queries over
-that stage's window and compare three replica counts:
+For each ScaledObject the stack deployed (30_keda-scaledobject, read back from
+the cluster) and each traffic stage the harness reported, replay the
+ScaledObject's own trigger queries over that stage's window and compare three
+replica counts:
 
   demand       what the strategy's thresholds ask for at each instant, before
                the HPA behavior paces it: max over triggers of
@@ -49,6 +50,9 @@ STEP_SECONDS = 15
 
 # fetch(promql, start, end) -> [(unix_ts, value), ...] at STEP_SECONDS resolution.
 Fetch = Callable[[str, float, float], list[tuple[float, float]]]
+
+# lookup(namespace, name) -> the cluster's ScaledObject, or None if it can't be read.
+Lookup = Callable[[str, str], dict | None]
 
 
 @dataclass
@@ -142,12 +146,27 @@ def stage_windows(results_dir: Path, exp_ids: str | list[str]) -> list[Stage]:
     return ordered
 
 
-def scaled_objects(stack_path: Path) -> list[dict]:
+def scaled_objects(stack_path: Path, lookup: Lookup | None = None) -> list[dict]:
+    """The stack's ScaledObjects (30_keda-scaledobject), as the cluster runs them.
+
+    ``run`` renders its own plan, so a flag passed only to ``standup`` (for
+    example ``--set eppKedaSaturation.dryRun=true``) is missing from the
+    rendered copy. When *lookup* is given, each rendered ScaledObject is
+    replaced by the cluster's object of the same namespace and name, which
+    carries the deployed target, dry-run annotation and triggers. The rendered
+    one stays when the cluster has no such object or it cannot be read.
+    """
     rendered = next(stack_path.glob("30_keda-scaledobject*.yaml"), None)
     if rendered is None:
         return []
     docs = yaml.safe_load_all(rendered.read_text(encoding="utf-8"))
-    return [d for d in docs if d and d.get("kind") == "ScaledObject"]
+    sos = [d for d in docs if d and d.get("kind") == "ScaledObject"]
+    if lookup is None:
+        return sos
+    return [
+        lookup(so["metadata"].get("namespace", ""), so["metadata"]["name"]) or so
+        for so in sos
+    ]
 
 
 def _series(fetch: Fetch, query: str, stage: Stage) -> dict[float, float]:
@@ -539,9 +558,13 @@ def write_sizing(
     exp_ids: str | list[str],
     out_dir: Path,
     fetch: Fetch,
+    lookup: Lookup | None = None,
 ) -> list[str]:
-    """Write autoscaling-sizing.{json,txt}; return the file names written."""
-    sos = scaled_objects(stack_path)
+    """Write autoscaling-sizing.{json,txt}; return the file names written.
+
+    *lookup* reads a ScaledObject from the cluster (see ``scaled_objects``).
+    """
+    sos = scaled_objects(stack_path, lookup)
     stages = stage_windows(results_dir, exp_ids)
     if not (sos and stages):
         return []
