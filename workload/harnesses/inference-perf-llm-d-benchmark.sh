@@ -23,8 +23,10 @@ export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERI
 source /workspace/harnesses/inference-perf-lifecycle.sh
 LLMDBENCH_FINAL_STAGE_ID="$(inference_perf_final_stage_id "./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}")"
 
+# The mount comes first: a pod that is not root cannot add new files next to
+# the image copy of this script, so its helper modules may only be there.
 HARNESS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="${HARNESS_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="/workspace/harnesses:${HARNESS_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
