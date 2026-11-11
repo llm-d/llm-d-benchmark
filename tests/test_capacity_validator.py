@@ -20,6 +20,9 @@ if "planner" not in sys.modules:
     planner_stub = types.ModuleType("planner")
     capacity_stub = types.ModuleType("planner.capacity_planner")
     capacity_stub.__getattr__ = lambda name: lambda *a, **kw: None  # type: ignore[attr-defined]
+    # A string __file__: the permissive __getattr__ would otherwise
+    # answer it with a lambda, crashing inspect on py3.14 (coverage/testmon).
+    planner_stub.__file__ = capacity_stub.__file__ = "<planner stub>"
     sys.modules["planner"] = planner_stub
     sys.modules["planner.capacity_planner"] = capacity_stub
 
