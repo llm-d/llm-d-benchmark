@@ -25,7 +25,7 @@ whatever the host's package manager provides.
 | **helm-diff** | `v3.13.0` | plugin (version) | `install.sh` line 80 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `1.5.1` | version | `install.sh` line 78 (`tool_version_for`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **llm-d-planner (git)** | `v0.1.0` | commit SHA | `install.sh` line 895 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
-| **oc** | `4.18.0` | version | `install.sh` line 84 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
+| **oc** | `openshift-clients-v4.18.0-202502040032` | version | `install.sh` line 84 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
 
 
 ## Helm Chart Dependencies
