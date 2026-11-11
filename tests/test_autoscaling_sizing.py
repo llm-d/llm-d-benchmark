@@ -16,18 +16,21 @@ Behavior under test:
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from llmdbenchmark.run.autoscaling_sizing import (
+    STEP_SECONDS,
+    Stage,
     explain_pd_ratio,
+    idle_floor,
     pd_ratio,
     peak_decode_throughput,
     serving_capacity,
-    STEP_SECONDS,
-    Stage,
     size_stage,
     stage_windows,
     write_sizing,
@@ -577,3 +580,114 @@ def test_stage_windows_read_ttft_failures_and_the_offered_rate(tmp_path):
     report.write_text(yaml.safe_dump(data))
     stage = stage_windows(results, "exp")[1]
     assert (stage.ttft_p90, stage.failures, stage.offered_rate) == (0.46, 3, 1.22)
+
+
+# --- idle-TTFT pre-check (refuse an unreachable SLO target) -------------------
+
+
+def _probe_report(path: Path, ttft_min: float, p90: float | None = None):
+    """A single-stage probe run report: min TTFT is the least-queued request."""
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "run": {
+                    "time": {
+                        "start": "2026-10-31T22:00:00Z",
+                        "end": "2026-10-31T22:00:30Z",
+                    }
+                },
+                "results": {
+                    "request_performance": {
+                        "aggregate": {
+                            "throughput": {"request_rate": {"mean": 0.1}},
+                            "latency": {
+                                "time_to_first_token": {
+                                    "min": ttft_min,
+                                    "p90": p90 or ttft_min,
+                                }
+                            },
+                            "requests": {"failures": 0},
+                        }
+                    }
+                },
+            }
+        )
+    )
+
+
+def _probe_results(tmp_path: Path, ttft_min: float) -> Path:
+    results = tmp_path / "probe_results"
+    run = results / "exp_1"
+    run.mkdir(parents=True)
+    _probe_report(run / "benchmark_report_v0.2,_stage_0_x.yaml", ttft_min)
+    return results
+
+
+def test_idle_floor_takes_the_least_queued_request(tmp_path):
+    # A handful of probe requests may overlap; the min is the closest sample of
+    # the stack's no-load floor, so overlap must not inflate the estimate.
+    stages = stage_windows(_probe_results(tmp_path, 6.3), "")
+    assert idle_floor(stages) == 6.3
+
+
+def test_idle_floor_is_none_when_the_probe_measured_nothing(tmp_path):
+    results = tmp_path / "empty"
+    (results / "exp_1").mkdir(parents=True)
+    assert idle_floor(stage_windows(results, "")) is None
+
+
+def test_idle_floor_cli_refuses_a_target_below_the_floor(tmp_path):
+    # Measured case: P/D prefill-heavy held a 6-10 s idle floor against a 5 s
+    # target; the ladder ran its full length and reported "no knee".
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "llmdbenchmark.run.autoscaling_sizing",
+            "idle-floor",
+            str(_probe_results(tmp_path, 6.3)),
+            "5",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode != 0
+    assert "IDLE_TTFT_FLOOR=6.30" in r.stdout
+    assert "Raise TTFT_TARGET" in r.stderr
+
+
+def test_idle_floor_cli_passes_a_target_above_the_floor(tmp_path):
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "llmdbenchmark.run.autoscaling_sizing",
+            "idle-floor",
+            str(_probe_results(tmp_path, 0.3)),
+            "2",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0 and "IDLE_TTFT_FLOOR=0.30" in r.stdout
+
+
+def test_idle_floor_cli_warns_and_proceeds_without_a_measurement(tmp_path):
+    results = tmp_path / "empty"
+    (results / "exp_1").mkdir(parents=True)
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "llmdbenchmark.run.autoscaling_sizing",
+            "idle-floor",
+            str(results),
+            "2",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0 and "skipping the pre-check" in r.stdout

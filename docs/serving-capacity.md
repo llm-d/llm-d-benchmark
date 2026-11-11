@@ -40,10 +40,17 @@ What the target does:
 1. **Holds the pool at `REPLICAS`** (default 1). It pauses every ScaledObject in the namespace with
    `autoscaling.keda.sh/paused-replicas`, waits until that many `llm-d.ai/role=decode` pods are Ready,
    and removes the pause on exit. It fails if the Ready count changes during the run.
-2. **Runs a rate ladder of the guide's own workload profile.** `llmdbenchmark run` uses the scenario's
+2. **Refuses an unreachable SLO target before the ladder runs.** A short low-rate stage of
+   the same profile (`PROBE_RATE` × `PROBE_SECONDS`, default 0.1 req/s for 30 s) measures the
+   stack's no-load TTFT floor — its least-queued request — and the target fails fast when the
+   floor is above `TTFT_TARGET`: no rate can ever meet it, and the ladder would only report
+   "no knee" after its full runtime. Measured floors: ~0.3 s co-located, ~3 s on P/D (KV
+   transfer), 5–7 s for long prompts on a 1-GPU prefill pod. The probe prints
+   `IDLE_TTFT_FLOOR=<x>s` either way, so the floor is recorded even when the target passes.
+3. **Runs a rate ladder of the guide's own workload profile.** `llmdbenchmark run` uses the scenario's
    `harness.experimentProfile` and overrides only `load.stages` (and `load.type=poisson`), so the
    token shape is the guide's.
-3. **Picks R.** From the per-stage v0.2 benchmark reports, R is the highest offered rate whose stage
+4. **Picks R.** From the per-stage v0.2 benchmark reports, R is the highest offered rate whose stage
    had p90 TTFT ≤ `TTFT_TARGET` and zero failed requests, divided by `REPLICAS`.
 
 If the highest rate still met the SLO, the target warns that R may be higher. Raise `R_RATES` and
@@ -59,6 +66,8 @@ re-run.
 | `WORKLOAD` | guide's `experimentProfile` | Another profile from `workload/profiles/inference-perf` |
 | `OVERRIDES` | none | Extra `k=v` profile overrides, as for `calibrate-peak-decode` |
 | `RUN_ARGS` | none | Extra arguments to `llmdbenchmark run` |
+| `PROBE_RATE` | `0.1` | req/s of the idle-TTFT pre-check stage (a handful of requests) |
+| `PROBE_SECONDS` | `30` | Length of the idle-TTFT pre-check stage |
 
 ## Use it
 
