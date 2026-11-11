@@ -386,7 +386,8 @@ class FmaValidator(BaseSmoketest):
         """Baseline inference check against the bound launcher pod.
 
         Sends one request to the bound launcher pod as a fail-fast serving gate
-        before the (expensive) run phase.
+        before the (expensive) run phase. On the kustomize guide path, also
+        routes one request through the EPP.
         """
         report = SmoketestReport()
         cmd = context.require_cmd()
@@ -398,7 +399,8 @@ class FmaValidator(BaseSmoketest):
 
         # Requester at zero: go through the router (a launcher pod request never
         # triggers the scale-up). Checked before the plan-based skip, since a
-        # plan starting at 0 can still be autoscaled. FMA-only has no router.
+        # plan starting at 0 can still be autoscaled. The fma method deploys
+        # no router.
         if self._scaled_to_zero_targets(cmd, context, namespace, plan_config):
             if is_fma_only_mode(context):
                 return _fma_skip_report("fma_inference_skipped_no_router")
@@ -433,6 +435,11 @@ class FmaValidator(BaseSmoketest):
             label="baseline",
         )
         report.add(CheckResult("fma_inference_baseline", ok, message=msg))
+
+        # The checks above are pod-direct; the guide path deploys a router
+        # they never exercise (the fma method deploys none).
+        if ok and not is_fma_only_mode(context):
+            report.merge(super().run_inference_test(context, stack_path))
         return report
 
     def _fma_request_once(
