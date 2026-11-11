@@ -447,7 +447,7 @@ _scrape_pod() {
     return 0
 }
 
-# Collect metrics snapshot from all vLLM and EPP pods
+# Collect metrics snapshot from all vLLM and EPP pods and the harness
 collect_metrics_snapshot() {
     local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
     local timestamp=$(date +%s)
@@ -491,6 +491,15 @@ collect_metrics_snapshot() {
                 "$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log" \
                 "$EPP_METRICS_PORT" "epp_prometheus_metrics" "" "$epp_auth" &
         done
+    fi
+
+    # The harness's own endpoint, exported by launchers whose harness serves one.
+    # 127.0.0.1 because it listens on IPv4 only and localhost can resolve to ::1.
+    if [[ -n "${LLMDBENCH_HARNESS_METRICS_PORT:-}" ]]; then
+        local harness_pod="${HOSTNAME:-harness}"
+        _scrape_pod "$harness_pod" "127.0.0.1" "$iso_timestamp" \
+            "$METRICS_DIR/raw/${harness_pod}_${timestamp}_metrics.log" \
+            "$LLMDBENCH_HARNESS_METRICS_PORT" "harness_prometheus_metrics" &
     fi
 
     # Wait for all background collections to finish

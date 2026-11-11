@@ -64,8 +64,8 @@ WORKDIR /workspace
 RUN pip install --upgrade pip setuptools setuptools-rust wheel
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=v0.7.0
-ARG INFERENCE_PERF_COMMIT=v0.7.0
+ARG INFERENCE_PERF_BRANCH=v1.0.0
+ARG INFERENCE_PERF_COMMIT=v1.0.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \

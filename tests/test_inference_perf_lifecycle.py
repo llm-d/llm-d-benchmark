@@ -130,3 +130,88 @@ def test_wrapper_preserves_explicit_chat_overrides(tmp_path: Path) -> None:
         env=env,
     )
     assert result.stdout.splitlines()[-2:] == ["3", '{"seed": 7}']
+
+
+# Usage lines from `inference-perf --help`: v1.0.0 lists the endpoint flag, v0.7.0 stops at circuit_breakers.
+V1_HELP = "[--circuit_breakers CIRCUIT_BREAKERS]\n[--observability.metrics.port OBSERVABILITY.METRICS.PORT]\n"
+V0_7_HELP = "[--circuit_breakers CIRCUIT_BREAKERS]\n"
+
+
+# Puts a fake `python` first on PATH that prints help_text and exits with exit_code,
+# standing in for the image's inference-perf install.
+def _fake_python_env(
+    tmp_path: Path, help_text: str, exit_code: int = 0
+) -> dict[str, str]:
+    (tmp_path / "help.txt").write_text(help_text)
+    fake_python = tmp_path / "python"
+    fake_python.write_text(
+        f'#!/usr/bin/env bash\ncat "{tmp_path / "help.txt"}"\nexit {exit_code}\n'
+    )
+    fake_python.chmod(0o755)
+    return {
+        **os.environ,
+        "HELPER": str(HELPER),
+        "PATH": f"{tmp_path}:{os.environ['PATH']}",
+    }
+
+
+# v1.0.0 help -> supported (rc 0). v0.7.0 help -> not supported (rc 1).
+# A help that matches but exits 2, like a broken install, -> not supported.
+@pytest.mark.parametrize(
+    ("help_text", "exit_code", "serves"),
+    [(V1_HELP, 0, True), (V0_7_HELP, 0, False), (V1_HELP, 2, False)],
+    ids=["v1.0.0", "v0.7.0", "broken-install"],
+)
+def test_serves_metrics_follows_the_installed_flags(
+    tmp_path: Path, help_text: str, exit_code: int, serves: bool
+) -> None:
+    result = subprocess.run(
+        ["bash", "-c", 'source "$HELPER"; inference_perf_serves_metrics'],
+        env=_fake_python_env(tmp_path, help_text, exit_code),
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is serves
+
+
+# Runs the wrapper's scrape-enabled block with args "--config_file x" and the port preset to 1234.
+# v1.0.0 -> args gain "--observability.metrics.port 1234" (the preset wins) and the port stays exported.
+# v0.7.0 -> args unchanged and the port is unset, so collect_metrics.sh skips the harness.
+@pytest.mark.parametrize(
+    ("help_text", "args", "port"),
+    [
+        (V1_HELP, "--config_file x --observability.metrics.port 1234", "1234"),
+        (V0_7_HELP, "--config_file x", ""),
+    ],
+    ids=["v1.0.0", "v0.7.0"],
+)
+def test_wrapper_passes_the_metrics_flag_only_when_supported(
+    tmp_path: Path, help_text: str, args: str, port: str
+) -> None:
+    block = WRAPPER.read_text().split(
+        "# Start metrics collection in background if enabled\n", 1
+    )[1]
+    block = block.split('  echo "Starting metrics collection..."', 1)[0] + "fi\n"
+    env = _fake_python_env(tmp_path, help_text)
+    env.update(
+        {
+            "LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED": "true",
+            "LLMDBENCH_HARNESS_ARGS": "--config_file x",
+            "LLMDBENCH_HARNESS_METRICS_PORT": "1234",
+        }
+    )
+    result = subprocess.run(
+        [
+            "bash",
+            "-e",
+            "-c",
+            'source "$HELPER"\n'
+            + block
+            + 'printf "%s\\n" "$LLMDBENCH_HARNESS_ARGS" "${LLMDBENCH_HARNESS_METRICS_PORT:-}"\n',
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+    )
+    assert result.stdout.splitlines()[-2:] == [args, port]

@@ -28,6 +28,13 @@ export PYTHONPATH="${HARNESS_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
+  # collect_metrics.sh scrapes the harness only when this port is exported
+  if inference_perf_serves_metrics; then
+    export LLMDBENCH_HARNESS_METRICS_PORT="${LLMDBENCH_HARNESS_METRICS_PORT:-9464}"
+    LLMDBENCH_HARNESS_ARGS+=" --observability.metrics.port ${LLMDBENCH_HARNESS_METRICS_PORT}"
+  else
+    unset LLMDBENCH_HARNESS_METRICS_PORT
+  fi
   echo "Starting metrics collection..."
   /usr/local/bin/collect_metrics.sh start >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1 &
   METRICS_COLLECTOR_PID=$!
