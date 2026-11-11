@@ -545,6 +545,10 @@ decode:
         mountPath: /model-cache
         readOnly: true
 {% endif %}
+{% if vllmCommon.cacheMountPath %}
+      - name: compile-cache
+        mountPath: {{ vllmCommon.cacheMountPath }}
+{% endif %}
 {% if decode.additionalVolumeMounts is defined %}
 {% for mount in decode.additionalVolumeMounts %}
       - name: {{ mount.name }}
@@ -604,6 +608,11 @@ decode:
       hostPath:
         path: {{ storage.hostPath.path }}
         type: Directory
+{% endif %}
+{% if vllmCommon.cacheMountPath %}
+    - name: compile-cache
+      persistentVolumeClaim:
+        claimName: {{ storage.workloadPvc.name }}
 {% endif %}
 {% if decode.additionalVolumes is defined %}
 {% for volume in decode.additionalVolumes %}
@@ -986,6 +995,10 @@ prefill:
         mountPath: /model-cache
         readOnly: true
 {% endif %}
+{% if vllmCommon.cacheMountPath %}
+      - name: compile-cache
+        mountPath: {{ vllmCommon.cacheMountPath }}
+{% endif %}
 {% if prefill.additionalVolumeMounts is defined %}
 {% for mount in prefill.additionalVolumeMounts %}
       - name: {{ mount.name }}
@@ -1045,6 +1058,11 @@ prefill:
       hostPath:
         path: {{ storage.hostPath.path }}
         type: Directory
+{% endif %}
+{% if vllmCommon.cacheMountPath %}
+    - name: compile-cache
+      persistentVolumeClaim:
+        claimName: {{ storage.workloadPvc.name }}
 {% endif %}
 {% if prefill.additionalVolumes is defined %}
 {% for volume in prefill.additionalVolumes %}

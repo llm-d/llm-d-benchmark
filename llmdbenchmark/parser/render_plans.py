@@ -821,6 +821,56 @@ class RenderPlans:
         self.logger.log_info("Workload Variant Autoscaler enabled from CLI")
         return result
 
+    def _resolve_compile_cache(self, values: dict) -> dict:
+        """Turn off ``vllmCommon.cacheMountPath`` where the workload PVC cannot hold it.
+
+        Serving pods on many nodes mount the cache at the same time, so it
+        needs a ReadWriteMany workload PVC in the namespace of the serving
+        pods. With fma the launchers run vLLM
+        and keep their own caches on the model volume; the modelservice pods
+        are only requesters. Runs after the deploy method is final.
+        """
+        vllm = values.get("vllmCommon") or {}
+        if not vllm.get("cacheMountPath"):
+            return values
+        if not str(vllm["cacheMountPath"]).startswith("/"):
+            raise ValueError(
+                f"vllmCommon.cacheMountPath {vllm['cacheMountPath']!r} must be "
+                'an absolute path, or "" to keep the vLLM compile caches '
+                "inside the container."
+            )
+
+        workload_pvc = (values.get("storage") or {}).get("workloadPvc") or {}
+        gateway = values.get("gateway") or {}
+        pvc_namespace = (values.get("namespace") or {}).get("name")
+        reason = None
+        if (values.get("fma") or {}).get("enabled", False):
+            reason = "fma launchers keep their own caches"
+        elif (values.get("nok8s") or {}).get("enabled", False) or (
+            values.get("kustomize") or {}
+        ).get("enabled", False):
+            reason = "the deploy method does not mount it"
+        elif "ReadWriteMany" not in (workload_pvc.get("accessModes") or []):
+            reason = "the workload PVC is not ReadWriteMany"
+        elif gateway.get("className") == "none" and gateway.get("namespace") not in (
+            None,
+            "",
+            "auto",
+            pvc_namespace,
+        ):
+            # The workload PVC is in namespace.name, the pods are not
+            reason = (
+                f"the serving pods run in gateway.namespace "
+                f"{gateway.get('namespace')!r}, not in {pvc_namespace!r}"
+            )
+        if reason is None:
+            return values
+
+        result = deepcopy(values)
+        result["vllmCommon"]["cacheMountPath"] = ""
+        self.logger.log_info(f"vLLM compile caches stay inside the container: {reason}")
+        return result
+
     def _resolve_lws_multinode(self, values: dict) -> dict:
         """Force ``multinode.enabled`` on whenever ``lws.enabled`` is set.
 
@@ -2508,6 +2558,7 @@ class RenderPlans:
         merged_values = self._resolve_hostpath(merged_values)
         merged_values = self._resolve_network(merged_values)
         merged_values = self._resolve_lws_multinode(merged_values)
+        merged_values = self._resolve_compile_cache(merged_values)
         merged_values = self._resolve_epp_keda_saturation(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)

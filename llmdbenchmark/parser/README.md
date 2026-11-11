@@ -191,8 +191,9 @@ During plan rendering, the following resolvers execute in order on the merged va
 9. **Custom command conflict warning** -- Warns when CLI `--models` won't propagate into hardcoded `customCommand` values.
 10. **Deploy method resolution** -- Apply CLI `--methods` override (`standalone` or `modelservice`). Only one may be active.
 11. **Monitoring resolution** -- Apply CLI `--monitoring` flag. Enables PodMonitor and metrics scraping.
-12. **HuggingFace token auto-detection** -- Detect HF token from `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` env vars when the configured token is a sentinel value (`REPLACE_TOKEN` or empty).
-13. **Config schema validation** -- Non-blocking Pydantic validation.
+12. **Compile cache resolution** (`_resolve_compile_cache`) -- Set `vllmCommon.cacheMountPath` to `""` for fma, nok8s and kustomize, when the workload PVC is not ReadWriteMany, and in direct-service mode when `gateway.namespace` is not `namespace.name`. Rejects a relative path. Runs after the deploy method is final.
+13. **HuggingFace token auto-detection** -- Detect HF token from `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` env vars when the configured token is a sentinel value (`REPLACE_TOKEN` or empty).
+14. **Config schema validation** -- Non-blocking Pydantic validation.
 
 ## Version Resolver (`version_resolver.py`)
 

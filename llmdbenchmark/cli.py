@@ -742,7 +742,8 @@ def _do_standup(args, logger, render_plan_errors):
             "workload PVC, or data-access pod will be created. Model "
             "weights are fetched at runtime by the serving pods. Pair "
             "with 'run --no-pvc' -- a plain 'run' would create the "
-            "workload PVC on demand.",
+            "workload PVC on demand. An explicit --set of "
+            "vllmCommon.cacheMountPath still creates the workload PVC.",
             emoji="\U0001f4e6",
         )
 
@@ -2972,6 +2973,7 @@ def _no_pvc_standup_overrides(args) -> dict:
     return {
         "modelservice": {"uriProtocol": "hf"},
         "standalone": {"mountModelVolume": False},
+        "vllmCommon": {"cacheMountPath": ""},
     }
 
 
@@ -3022,8 +3024,9 @@ def _build_setup_overrides_by_stack(args, logger) -> dict[str, dict]:
     no_pvc_overrides = _no_pvc_standup_overrides(args)
     if no_pvc_overrides:
         logger.log_warning(
-            "--no-pvc: forcing modelservice.uriProtocol=hf and "
-            "standalone.mountModelVolume=false -- serving pods fetch model "
+            "--no-pvc: forcing modelservice.uriProtocol=hf, "
+            "standalone.mountModelVolume=false and "
+            "vllmCommon.cacheMountPath='' -- serving pods fetch model "
             "weights from HuggingFace at startup (slower cold starts; "
             "results are comparable only to other hf-loading runs). An "
             "explicit --set of the same key overrides this."

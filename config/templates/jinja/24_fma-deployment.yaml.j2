@@ -136,8 +136,6 @@ spec:
             value: "{{ fma.modelMountPath }}"
           - name: VLLM_CACHE_ROOT
             value: "{{ fma.modelMountPath }}/vllm"
-          - name: FLASHINFER_WORKSPACE_DIR
-            value: "{{ fma.modelMountPath }}/flashinfer"
           - name: TRITON_CACHE_DIR
             value: "{{ fma.modelMountPath }}/triton"
           - name: XDG_CACHE_HOME
