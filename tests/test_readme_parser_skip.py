@@ -326,7 +326,7 @@ class TestOnlyWhenGuard:
             ("kubectl create namespace ${NAMESPACE}", None),
             (
                 "kubectl apply -f model-cache-pvc.yaml",
-                ("INFRA_PROVIDER", ("coreweave", "aws")),
+                (("INFRA_PROVIDER", ("coreweave", "aws")),),
             ),
             ("kubectl apply -f crds.yaml", None),
         ]
@@ -340,3 +340,85 @@ class TestOnlyWhenGuard:
         guarded = parsed.get_commands(CommandPhase.PREREQUISITES)[1]
         assert guarded.applies({"INFRA_PROVIDER": provider}) is applies
         assert parsed.get_commands(CommandPhase.PREREQUISITES)[0].applies({})
+
+
+class TestGuideRenderedOnlyWhenGuard:
+    """llm-d's ``scripts/guide.py`` renders a step's ``when:`` filter as
+    ``VAR=a or b`` within a variable and `` and `` across variables (e.g. the
+    workload-autoscaling/keda-epp guide)."""
+
+    README = """\
+        # Prerequisites
+
+        ```bash
+        # only when SIGNAL=inflight:
+        kubectl get servicemonitor -n ${NAMESPACE}
+
+        # only when SIGNAL=queue or saturation:
+        kubectl logs deployment/epp -c epp | grep "Initializing Flow Control layer"
+        kubectl get servicemonitor -n ${NAMESPACE}
+
+        # only when SIGNAL=inflight and ENV=ocp:
+        kubectl apply -f ocp-inflight.yaml
+
+        # only when MONITORING=true and INFRA_PROVIDER=gke or coreweave:
+        kubectl apply -f podmonitoring.yaml
+        ```
+        """
+
+    def _cmds(self, tmp_path: Path):
+        parsed = parse_guide_readme(_write_readme(tmp_path, self.README))
+        return parsed.get_commands(CommandPhase.PREREQUISITES)
+
+    def test_or_and_and_guards_are_parsed(self, tmp_path: Path):
+        assert [c.when for c in self._cmds(tmp_path)] == [
+            (("SIGNAL", ("inflight",)),),
+            (("SIGNAL", ("queue", "saturation")),),
+            (("SIGNAL", ("queue", "saturation")),),
+            (("SIGNAL", ("inflight",)), ("ENV", ("ocp",))),
+            (("MONITORING", ("true",)), ("INFRA_PROVIDER", ("gke", "coreweave"))),
+        ]
+
+    @pytest.mark.parametrize(
+        "variables, expected",
+        [
+            (
+                {"SIGNAL": "inflight", "ENV": "existing"},
+                [True, False, False, False, False],
+            ),
+            ({"SIGNAL": "inflight", "ENV": "ocp"}, [True, False, False, True, False]),
+            ({"SIGNAL": "saturation", "ENV": "ocp"}, [False, True, True, False, False]),
+            (
+                {
+                    "SIGNAL": "queue",
+                    "MONITORING": "true",
+                    "INFRA_PROVIDER": "coreweave",
+                },
+                [False, True, True, False, True],
+            ),
+            ({"MONITORING": "true", "INFRA_PROVIDER": "aws"}, [False] * 5),
+        ],
+    )
+    def test_every_clause_must_hold(self, tmp_path: Path, variables, expected):
+        assert [c.applies(variables) for c in self._cmds(tmp_path)] == expected
+
+    def test_describe_when_uses_the_guide_grammar(self, tmp_path: Path):
+        cmds = self._cmds(tmp_path)
+        assert cmds[1].describe_when() == "SIGNAL=queue or saturation"
+        assert cmds[3].describe_when() == "SIGNAL=inflight and ENV=ocp"
+
+    def test_unparseable_guard_does_not_inherit_the_previous_one(self, tmp_path: Path):
+        readme = """\
+            # Prerequisites
+
+            ```bash
+            # only when SIGNAL=inflight:
+            kubectl get servicemonitor -n ${NAMESPACE}
+
+            # only when SIGNAL is not inflight:
+            kubectl apply -f flow-control.yaml
+            ```
+            """
+        parsed = parse_guide_readme(_write_readme(tmp_path, readme))
+        cmds = parsed.get_commands(CommandPhase.PREREQUISITES)
+        assert [c.when for c in cmds] == [(("SIGNAL", ("inflight",)),), None]
