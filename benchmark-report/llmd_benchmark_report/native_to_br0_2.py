@@ -138,6 +138,7 @@ _KNOWN_HARNESS_PREFIXES = (
     "inferencemax",
     "nop",
     "priority-mix",
+    "async-batch",
     "eval-containers",
     "aiperf",
     "lm-eval",
@@ -4618,3 +4619,187 @@ def import_guidellm_all(results_file: str) -> list[BenchmarkReportV02]:
     for index in range(_get_num_guidellm_runs(results_file)):
         reports.append(import_guidellm(results_file, index))
     return reports
+
+
+def import_async_batch(results_file: str) -> BenchmarkReportV02:
+    """Convert async-batch output into a v0.2 Benchmark Report.
+
+    Maps aggregate request turnaround/throughput into
+    ``results.request_performance.aggregate`` and embeds the canonical
+    ``async_goodput`` and ``resource_integral`` summaries inside
+    ``results.observability`` (schema extra-permitted dictionary).
+    """
+    res_path = Path(results_file)
+    root = res_path.parent
+
+    def _read_json(rel: str) -> dict[str, Any]:
+        plain = root / rel
+        if plain.is_file():
+            try:
+                return json.loads(plain.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return {}
+        try:
+            from llmdbenchmark.utilities.archive import read_member
+        except ImportError:
+            return {}
+        payload = read_member(root, rel)
+        if payload is None:
+            return {}
+        try:
+            return json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return {}
+
+    results = _read_json(res_path.name)
+    goodput_summary = _read_json("async_goodput_summary.json")
+    replica_status = _read_json("metrics/processed/replica_status.json")
+    pod_startup = _read_json("metrics/processed/pod_startup_times.json")
+
+    agg_src = results.get("aggregate") or {}
+    total_reqs = int(agg_src.get("total_requests") or 0)
+    on_time_reqs = int(agg_src.get("on_time_requests") or 0)
+    exceeded_reqs = int(agg_src.get("exceeded_deadline_requests") or 0)
+    failed_reqs = int(agg_src.get("failed_requests") or 0)
+    in_tok = int(agg_src.get("total_input_tokens") or 0)
+    out_tok = int(agg_src.get("total_output_tokens") or 0)
+    on_time_out_tok = int(agg_src.get("on_time_output_tokens") or 0)
+    dur_s = float(
+        results.get("drain_duration_seconds")
+        or results.get("accounting_window_seconds")
+        or 0.0
+    )
+
+    integral = replica_status.get("resource_integral") or {}
+    if not goodput_summary:
+        alloc_gpu_hr = integral.get("allocated_gpu_hours")
+        ready_pod_hr = integral.get("ready_pod_hours")
+        req_gp_hr = (
+            round(on_time_reqs / float(alloc_gpu_hr), 4)
+            if isinstance(alloc_gpu_hr, (int, float)) and alloc_gpu_hr > 0
+            else None
+        )
+        tok_gp_hr = (
+            round(on_time_out_tok / float(alloc_gpu_hr), 4)
+            if isinstance(alloc_gpu_hr, (int, float)) and alloc_gpu_hr > 0
+            else None
+        )
+        cal_rps = (
+            round(on_time_reqs / (float(ready_pod_hr) * 3600.0), 6)
+            if isinstance(ready_pod_hr, (int, float)) and ready_pod_hr > 0
+            else None
+        )
+        min_att = float(
+            (results.get("slo_gate") or {}).get("min_deadline_attainment", 0.99)
+        )
+        attainment = round(on_time_reqs / total_reqs, 6) if total_reqs > 0 else 0.0
+        if total_reqs <= 0 or alloc_gpu_hr is None or float(alloc_gpu_hr) <= 0:
+            verdict = "indeterminate"
+        elif attainment >= min_att:
+            verdict = "pass"
+        else:
+            verdict = "fail"
+        goodput_summary = {
+            "schema_version": "1.0",
+            "verdict": verdict,
+            "min_deadline_attainment": min_att,
+            "total_requests": total_reqs,
+            "on_time_requests": on_time_reqs,
+            "exceeded_deadline_requests": exceeded_reqs,
+            "failed_requests": failed_reqs,
+            "deadline_attainment_rate": attainment,
+            "on_time_output_tokens": on_time_out_tok,
+            "allocated_gpu_hours": alloc_gpu_hr,
+            "ready_gpu_hours": integral.get("ready_gpu_hours"),
+            "allocated_pod_hours": integral.get("allocated_pod_hours"),
+            "overhead_gpu_fraction": integral.get("overhead_gpu_fraction"),
+            "accelerator_mode": integral.get("accelerator_mode")
+            or "simulated_pod_units",
+            "request_goodput_per_gpu_hour": req_gp_hr,
+            "request_goodput_per_gpu_min": (
+                round(req_gp_hr / 60.0, 4) if req_gp_hr is not None else None
+            ),
+            "output_token_goodput_per_gpu_hour": tok_gp_hr,
+            "calibrated_replica_rps": cal_rps,
+            "calibrated_cold_start_p90_s": (
+                (pod_startup.get("aggregate") or {}).get("p90")
+            ),
+            "scale_down_settled": results.get("scale_down_settled"),
+        }
+
+    br_dict = _populate_benchmark_report_from_envars()
+    load = br_dict.setdefault("scenario", {}).setdefault("load", {})
+    load.setdefault("metadata", {})
+    std = load.setdefault("standardized", {})
+    std["tool"] = WorkloadGenerator.ASYNC_BATCH.value
+    std.setdefault("tool_version", str(results.get("schema_version") or "1.0"))
+    std.setdefault("source", LoadSource.RANDOM.value)
+    std.setdefault(
+        "input_seq_len",
+        {
+            "distribution": Distribution.FIXED.value,
+            "value": int(round(in_tok / max(on_time_reqs, 1))) if in_tok else 0,
+        },
+    )
+    load.setdefault("native", {}).setdefault("args", {}).update(
+        {
+            "harness": "async-batch",
+            "workload_name": results.get("workload_name", ""),
+            "transport_mode": results.get("transport_mode", "redis-sortedset"),
+            "accounting_window_seconds": results.get("accounting_window_seconds"),
+            "wait_for_scale_down": results.get("wait_for_scale_down"),
+        }
+    )
+
+    perf_agg: dict[str, Any] = {
+        "requests": {
+            "total": total_reqs,
+            "failures": failed_reqs + exceeded_reqs,
+        },
+        "latency": {},
+        "throughput": {},
+    }
+
+    turn = agg_src.get("turnaround_s") or {}
+    if turn.get("mean") is not None:
+        lat_entry: dict[str, Any] = {"units": Units.S}
+        for key in (
+            "mean",
+            "stddev",
+            "min",
+            "p10",
+            "p25",
+            "p50",
+            "p75",
+            "p90",
+            "p95",
+            "p99",
+            "max",
+        ):
+            if turn.get(key) is not None:
+                lat_entry[key] = float(turn[key])
+        perf_agg["latency"]["request_latency"] = lat_entry
+
+    if dur_s > 0:
+        perf_agg["throughput"]["request_rate"] = {
+            "units": Units.QUERY_PER_S,
+            "mean": on_time_reqs / dur_s,
+        }
+        perf_agg["throughput"]["output_token_rate"] = {
+            "units": Units.TOKEN_PER_S,
+            "mean": on_time_out_tok / dur_s,
+        }
+        perf_agg["throughput"]["total_token_rate"] = {
+            "units": Units.TOKEN_PER_S,
+            "mean": (in_tok + out_tok) / dur_s,
+        }
+
+    br_results = br_dict.setdefault("results", {})
+    br_results["request_performance"] = {"aggregate": perf_agg}
+    obs = br_results.setdefault("observability", {})
+    obs["async_goodput"] = goodput_summary
+    if integral:
+        obs["resource_integral"] = integral
+    if results.get("cohorts"):
+        obs["async_cohorts"] = results["cohorts"]
+    return load_benchmark_report(br_dict)

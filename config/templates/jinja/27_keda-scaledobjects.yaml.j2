@@ -39,13 +39,26 @@ spec:
 {% if so.pollingInterval is defined %}
   pollingInterval: {{ so.pollingInterval }}
 {% endif %}
+{% if so.cooldownPeriod is defined %}
+  cooldownPeriod: {{ so.cooldownPeriod }}
+{% endif %}
+{% if so.fallback is defined and so.fallback %}
+  fallback:
+    failureThreshold: {{ so.fallback.failureThreshold | default(3) }}
+    replicas: {{ so.fallback.replicas | default(1) }}
+{% if so.fallback.behavior is defined %}
+    behavior: {{ so.fallback.behavior }}
+{% endif %}
+{% endif %}
   triggers:
 {% for trigger in so.triggers | default([]) %}
   - type: {{ trigger.type }}
 {% if trigger.name is defined %}
     name: {{ trigger.name }}
 {% endif %}
+{% if trigger.type != 'cron' or trigger.metricType is defined %}
     metricType: {{ trigger.metricType | default('AverageValue') }}
+{% endif %}
 {% if trigger.type == 'prometheus' and auth_mode == 'bearer-secret' %}
     authenticationRef:
       name: keda-prometheus-auth

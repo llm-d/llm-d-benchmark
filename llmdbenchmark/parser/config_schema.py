@@ -481,6 +481,11 @@ class HarnessConfig(BaseModel):
     # neither implies the other.
     privileged: bool | None = None
     serviceAccount: str | None = None
+    virtualGpusPerPod: float | int | None = None
+    extraEnvVars: list[dict[str, Any]] | None = None
+    resultsDirPrefix: str | None = None
+    stackName: str | None = None
+    smoketest: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------

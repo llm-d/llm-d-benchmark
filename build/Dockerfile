@@ -128,7 +128,8 @@ RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /w
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
     echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \
     echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt; \
-    echo "aiperf: ${AIPERF_REPO} ${AIPERF_COMMIT}" >> /workspace/repos.txt;
+    echo "aiperf: ${AIPERF_REPO} ${AIPERF_COMMIT}" >> /workspace/repos.txt; \
+    echo "async-batch: https://github.com/llm-d/llm-d-benchmark.git main" >> /workspace/repos.txt;
 
 ADD workload/harnesses/ /usr/local/bin/
 ADD llmdbenchmark/analysis/scripts/ /tmp/analysis/

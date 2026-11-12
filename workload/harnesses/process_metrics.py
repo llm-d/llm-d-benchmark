@@ -59,6 +59,19 @@ LEGACY_AGGREGATE_METRICS = {
     "llm_d_epp_flow_control_pool_saturation",
     "llm_d_epp_flow_control_queue_size",
     "llm_d_epp_request_running",
+    # llm-d-async backlog, hold-back gate, and completion metrics
+    "llm_d_async_async_broker_backlog",
+    "llm_d_async_async_broker_backlog_source_available",
+    "llm_d_async_async_queue_depth",
+    "llm_d_async_async_gate_waiting_requests",
+    "llm_d_async_async_inflight_requests",
+    "llm_d_async_async_successful_requests_total",
+    "llm_d_async_async_exceeded_deadline_requests_total",
+    "llm_d_async_async_failed_requests_total",
+    "llm_d_async_async_shedded_requests_total",
+    "llm_d_async_async_tokens_total",
+    "llm_d_async_async_dispatch_budget",
+    "llm_d_async_async_pool_worker_limit",
 }
 AGGREGATE_METRICS = (
     TIME_SERIES_METRIC_SET
@@ -146,6 +159,19 @@ METRIC_UNITS = {
     "inference_extension_prefix_indexer_size": "count",
     "llm_d_inference_scheduler_pd_decision_total": "count",
     "llm_d_inference_scheduler_disagg_decision_total": "count",
+    # llm-d-async Prometheus metrics
+    "llm_d_async_async_broker_backlog": "count",
+    "llm_d_async_async_broker_backlog_source_available": "ratio",
+    "llm_d_async_async_queue_depth": "count",
+    "llm_d_async_async_gate_waiting_requests": "count",
+    "llm_d_async_async_inflight_requests": "count",
+    "llm_d_async_async_successful_requests_total": "count",
+    "llm_d_async_async_exceeded_deadline_requests_total": "count",
+    "llm_d_async_async_failed_requests_total": "count",
+    "llm_d_async_async_shedded_requests_total": "count",
+    "llm_d_async_async_tokens_total": "tokens",
+    "llm_d_async_async_dispatch_budget": "count",
+    "llm_d_async_async_pool_worker_limit": "count",
 }
 
 # Byte-unit conversions applied during parsing
@@ -429,8 +455,198 @@ def aggregate_requester_startup_stats():
     )
 
 
+def _parse_snapshot_epoch(snap):
+    """Extract float UTC epoch seconds from a replica status snapshot."""
+    from datetime import datetime, timezone
+
+    epoch = snap.get("epoch_seconds")
+    if isinstance(epoch, (int, float)):
+        return float(epoch)
+    ts = snap.get("timestamp", "")
+    if not ts:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            dt = datetime.strptime(ts, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            continue
+    return None
+
+
+def compute_resource_integral(
+    snapshots,
+    window_start=None,
+    window_end=None,
+    virtual_gpus_per_pod=1.0,
+):
+    """Compute time-integrated pod-hours and GPU-hours across replica snapshots.
+
+    Uses piecewise zero-order hold across consecutive snapshots, optionally
+    clipped or extended to ``[window_start, window_end]`` (Unix epoch seconds).
+    Includes scheduled cold-start, active serving, and terminating/cooldown pods
+    via ``snapshot["pod_allocation"]`` when present, falling back to controller
+    ``ready_replicas`` for legacy snapshots.
+    """
+    if not snapshots:
+        return None
+
+    try:
+        v_gpus = float(virtual_gpus_per_pod or 1.0)
+    except (ValueError, TypeError):
+        v_gpus = 1.0
+    if v_gpus <= 0:
+        v_gpus = 1.0
+
+    parsed = []
+    any_physical = False
+    for snap in snapshots:
+        t = _parse_snapshot_epoch(snap)
+        if t is None:
+            continue
+        controllers = snap.get("controllers") or []
+        pod_alloc = snap.get("pod_allocation")
+        ctrl_ready = sum(float(c.get("ready_replicas", 0) or 0) for c in controllers)
+        ctrl_desired = sum(
+            float(c.get("desired_replicas", 0) or 0) for c in controllers
+        )
+
+        snap_has_physical = False
+        if isinstance(pod_alloc, dict):
+            if pod_alloc.get("accelerator_mode") == "physical_gpu" or (
+                float(pod_alloc.get("allocated_gpus", 0) or 0) > 0
+            ):
+                snap_has_physical = True
+        for c in controllers:
+            if float(c.get("gpus_per_pod", 0) or 0) > 0:
+                snap_has_physical = True
+
+        if snap_has_physical:
+            any_physical = True
+
+        parsed.append((t, snap, controllers, pod_alloc, ctrl_ready, ctrl_desired))
+
+    if not parsed:
+        return None
+
+    parsed.sort(key=lambda x: x[0])
+
+    def _state(entry):
+        _, _snap, controllers, pod_alloc, ctrl_ready, ctrl_desired = entry
+        if isinstance(pod_alloc, dict):
+            alloc_pods = float(pod_alloc.get("scheduled_replicas", 0) or 0)
+            ready_pods = float(pod_alloc.get("ready_replicas", 0) or 0)
+            if any_physical:
+                alloc_gpus = float(pod_alloc.get("allocated_gpus", 0) or 0)
+                ready_gpus = float(pod_alloc.get("ready_gpus", 0) or 0)
+            else:
+                alloc_gpus = alloc_pods * v_gpus
+                ready_gpus = ready_pods * v_gpus
+        else:
+            alloc_pods = ctrl_ready
+            ready_pods = ctrl_ready
+            if any_physical:
+                alloc_gpus = sum(
+                    float(c.get("ready_replicas", 0) or 0)
+                    * float(c.get("gpus_per_pod", 0) or v_gpus)
+                    for c in controllers
+                )
+                ready_gpus = alloc_gpus
+            else:
+                alloc_gpus = alloc_pods * v_gpus
+                ready_gpus = ready_pods * v_gpus
+
+        if any_physical:
+            desired_gpus = sum(
+                float(c.get("desired_replicas", 0) or 0)
+                * float(c.get("gpus_per_pod", 0) or v_gpus)
+                for c in controllers
+            )
+        else:
+            desired_gpus = ctrl_desired * v_gpus
+
+        return (
+            alloc_pods,
+            ready_pods,
+            ctrl_desired,
+            alloc_gpus,
+            ready_gpus,
+            desired_gpus,
+        )
+
+    t_first = parsed[0][0]
+    t_last = parsed[-1][0]
+    t_start = float(window_start) if window_start is not None else t_first
+    t_end = float(window_end) if window_end is not None else t_last
+    if t_end < t_start:
+        t_end = t_start
+
+    alloc_pod_s = 0.0
+    ready_pod_s = 0.0
+    desired_pod_s = 0.0
+    alloc_gpu_s = 0.0
+    ready_gpu_s = 0.0
+    desired_gpu_s = 0.0
+
+    def _accumulate(state_tuple, dt):
+        nonlocal alloc_pod_s, ready_pod_s, desired_pod_s
+        nonlocal alloc_gpu_s, ready_gpu_s, desired_gpu_s
+        if dt <= 0:
+            return
+        ap, rp, dp, ag, rg, dg = state_tuple
+        alloc_pod_s += ap * dt
+        ready_pod_s += rp * dt
+        desired_pod_s += dp * dt
+        alloc_gpu_s += ag * dt
+        ready_gpu_s += rg * dt
+        desired_gpu_s += dg * dt
+
+    # Pre-snapshot lead-in if window_start precedes first snapshot
+    if t_start < t_first:
+        _accumulate(_state(parsed[0]), min(t_first, t_end) - t_start)
+
+    # Piecewise zero-order hold across consecutive snapshots
+    for idx in range(len(parsed) - 1):
+        seg_a = max(parsed[idx][0], t_start)
+        seg_b = min(parsed[idx + 1][0], t_end)
+        if seg_b > seg_a:
+            _accumulate(_state(parsed[idx]), seg_b - seg_a)
+
+    # Post-snapshot hold if window_end extends past final snapshot
+    if t_end > t_last:
+        _accumulate(_state(parsed[-1]), t_end - max(t_last, t_start))
+
+    overhead_fraction = (
+        round(max(0.0, 1.0 - (ready_gpu_s / alloc_gpu_s)), 6)
+        if alloc_gpu_s > 0
+        else 0.0
+    )
+
+    return {
+        "window_start_epoch": round(t_start, 3),
+        "window_end_epoch": round(t_end, 3),
+        "window_seconds": round(max(t_end - t_start, 0.0), 3),
+        "allocated_pod_seconds": round(alloc_pod_s, 3),
+        "allocated_pod_hours": round(alloc_pod_s / 3600.0, 6),
+        "allocated_gpu_seconds": round(alloc_gpu_s, 3),
+        "allocated_gpu_hours": round(alloc_gpu_s / 3600.0, 6),
+        "ready_pod_seconds": round(ready_pod_s, 3),
+        "ready_pod_hours": round(ready_pod_s / 3600.0, 6),
+        "ready_gpu_seconds": round(ready_gpu_s, 3),
+        "ready_gpu_hours": round(ready_gpu_s / 3600.0, 6),
+        "desired_pod_hours": round(desired_pod_s / 3600.0, 6),
+        "desired_gpu_hours": round(desired_gpu_s / 3600.0, 6),
+        "overhead_gpu_fraction": overhead_fraction,
+        "accelerator_mode": "physical_gpu" if any_physical else "simulated_pod_units",
+        "virtual_gpus_per_pod": v_gpus,
+        "snapshot_count": len(parsed),
+    }
+
+
 def aggregate_replica_stats():
-    """Compute aggregate statistics from replica status time series."""
+    """Compute aggregate statistics and resource integrals from replica status time series."""
     ts_data = _load_json(os.path.join(processed_dir, "replica_status_timeseries.json"))
     snapshots = ts_data.get("snapshots", [])
     if not snapshots:
@@ -440,17 +656,53 @@ def aggregate_replica_stats():
         sum(c.get("ready_replicas", 0) for c in snap.get("controllers", []))
         for snap in snapshots
     ]
+    scheduled_counts = [
+        (
+            snap["pod_allocation"].get("scheduled_replicas", 0)
+            if isinstance(snap.get("pod_allocation"), dict)
+            else sum(c.get("ready_replicas", 0) for c in snap.get("controllers", []))
+        )
+        for snap in snapshots
+    ]
+
+    # Check if harness wrote an explicit accounting window in results.json
+    results_dir = os.environ.get(
+        "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR",
+        os.path.dirname(os.path.abspath(metrics_dir)),
+    )
+    harness_results = _load_json(os.path.join(results_dir, "results.json"))
+    window_start = harness_results.get("window_start_epoch")
+    window_end = harness_results.get("window_end_epoch")
+    virtual_gpus = os.environ.get("LLMDBENCH_VIRTUAL_GPUS_PER_POD", "1")
+    integral = compute_resource_integral(
+        snapshots,
+        window_start=window_start,
+        window_end=window_end,
+        virtual_gpus_per_pod=virtual_gpus,
+    )
 
     status_file = os.path.join(processed_dir, "replica_status.json")
     status_data = _load_json(status_file)
-    if status_data:
-        status_data["aggregate_ready_replicas"] = _report_stats(ready_counts, "count")
-        _save_json(status_file, status_data)
+    if not status_data:
+        status_data = dict(snapshots[-1])
+    status_data["aggregate_ready_replicas"] = _report_stats(ready_counts, "count")
+    status_data["aggregate_scheduled_replicas"] = _report_stats(
+        scheduled_counts, "count"
+    )
+    if integral is not None:
+        status_data["resource_integral"] = integral
+    _save_json(status_file, status_data)
 
+    integral_msg = ""
+    if integral is not None:
+        integral_msg = (
+            f", allocated_gpu_hours={integral['allocated_gpu_hours']:.4f} "
+            f"({integral['accelerator_mode']})"
+        )
     print(
         f"Replica stats: {len(snapshots)} snapshots, "
         f"ready replicas min={min(ready_counts)} max={max(ready_counts)} "
-        f"mean={statistics.mean(ready_counts):.1f}"
+        f"mean={statistics.mean(ready_counts):.1f}{integral_msg}"
     )
 
 

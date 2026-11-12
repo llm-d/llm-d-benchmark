@@ -95,4 +95,20 @@ releases:
     labels:
       kind: inference-stack
 {% endif %}
+
+{% if asyncProcessor is defined and (asyncProcessor.enabled | default(false)) %}
+  - name: {{ model_id_label }}-async
+    namespace: {{ gateway.namespace }}
+    chart: {{ asyncProcessor.chartRepository | default('oci://ghcr.io/llm-d/charts') }}/{{ asyncProcessor.chartName | default('llm-d-async') }}
+    version: {{ asyncProcessor.chartVersion | default(chartVersions.llmDAsync, true) }}
+    installed: true
+{% if not _direct %}
+    needs:
+      - {{ gateway.namespace }}/{{ model_id_label }}-router
+{% endif %}
+    values:
+      - async-values.yaml
+    labels:
+      kind: inference-stack
+{% endif %}
 {% endif %}

@@ -88,6 +88,13 @@ if [[ ! -z ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} ]]; then
   if [[ $LLMDBENCH_CLUSTER_TYPE == "Kind" ]]; then
     sed -i "s^127.0.0.1:.*^kubernetes.default^g" ~/.kube/config
   fi
+  if [[ -f "/var/run/secrets/kubernetes.io/serviceaccount/token" ]]; then
+    if ! kubectl --request-timeout=5s get pods -n "${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}" >/dev/null 2>&1; then
+      echo "WARN: Host kubeconfig failed inside pod (exec auth plugin unavailable); falling back to in-cluster ServiceAccount."
+      rm -f ~/.kube/config
+      unset KUBECONFIG
+    fi
+  fi
 fi
 
 if [[ -f ~/.bashrc ]]; then

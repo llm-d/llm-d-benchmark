@@ -69,9 +69,14 @@ MODELSERVICE_PATTERNS = [
     "-epp",
     # Plain-Service baseline created for gateway.className=none.
     "-direct",
+    # Async processor + in-namespace Redis broker deployed when asyncProcessor.enabled.
+    "-async",
+    "llm-d-async",
+    "redis",
 ]
 
 DEEP_RESOURCE_KINDS = [
+    "scaledobject",
     "disaggregatedset",
     "leaderworkerset",
     "deployment",
