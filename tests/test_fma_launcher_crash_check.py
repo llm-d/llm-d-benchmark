@@ -61,6 +61,13 @@ class _FakeCmd:
         self.launcher_listings = list(launcher_listings or [])
 
     def kube(self, *args, check=False):
+        if len(args) >= 3 and args[0] == "get" and args[1] == "pod":
+            # Requester lookup (the bound launcher's `dual` label names the
+            # requester pod): answer with a pod that has an IP.
+            return SimpleNamespace(
+                success=True,
+                stdout=json.dumps({"status": {"podIP": "10.0.0.99"}}),
+            )
         if "-l" not in args:
             # Autoscaler discovery: answer like a cluster without KEDA/HPAs.
             return SimpleNamespace(
