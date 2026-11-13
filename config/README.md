@@ -1715,6 +1715,17 @@ per-replica load and latency are higher than they would be at the demanded size,
 so treat demand as an upper bound. Sizing needs OpenShift's Thanos Querier and
 platform kube-state-metrics, the same as the rest of this path.
 
+The peak can be set by a single 15 s sample. Each row in `autoscaling-sizing.json`
+also has `demand.p95`: the replica count demand stays at or under for at least 95%
+of the samples (nearest rank). A static pool of that size covers the sustained
+level, and a spike that lasts no more than 5% of the window does not raise it. With
+fewer than 20 samples (about 5 minutes) it equals the peak. To keep every sample,
+for example to measure how long spikes last, set
+`eppKedaSaturation.sizingDemandSeries: true` (or
+`--set eppKedaSaturation.sizingDemandSeries=true`). Each row then also has
+`demand.series`, a list of `[time, replicas]` pairs, one per sample, with `time` in
+Unix seconds.
+
 When `eppKedaSaturation.scaledObject.peakPrefillThroughput` is set (the token-aware scenarios), the
 report also gives the ideal prefill:decode ratio and pool sizes, rate-matched from the measured token
 rates. Set `peakDecodeThroughput` to make the decode side exact. See

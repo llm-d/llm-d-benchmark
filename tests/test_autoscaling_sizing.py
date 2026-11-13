@@ -5,6 +5,10 @@ Behavior under test:
   clamped to [minReplicaCount, maxReplicaCount], with the driving trigger and
   a cap that bound the peak both reported;
 - a missing sample counts as 0, as KEDA's prometheus scaler treats it;
+- demand's p95 is the nearest-rank 95th percentile of the clamped samples, so
+  a spike in no more than 5% of them does not set it;
+- the per-sample demand series is kept only when
+  eppKedaSaturation.sizingDemandSeries is set;
 - the KEDA decision and the real pool are each compared with demand in
   replica-seconds, so a lagging scale-up shows as short and a lagging
   scale-down as over;
@@ -104,6 +108,7 @@ def test_a_missing_sample_counts_as_zero():
 def test_the_max_replica_cap_is_reported():
     row = size_stage(_so(max_replicas=2), STAGE, _fetch({"running": [80]}))
     assert row["demand"]["peak"] == 2
+    assert row["demand"]["p95"] == 2
     assert row["demand"]["unclampedPeak"] == 5
 
 
@@ -133,6 +138,35 @@ def test_a_live_scaled_object_sizes_its_own_target():
     row = size_stage(_so(annotations={}), STAGE, _fetch({"running": [16]}))
     assert row["realTarget"] == "Deployment/m-decode-dryrun"
     assert row["dryRun"] is False
+
+
+def test_demand_p95_drops_a_one_sample_spike():
+    # In-flight holds at 72 (5 replicas at 16 each) but one 15 s sample hits
+    # 84 (6). With 20 samples that spike is the top 5%, so p95 stays at 5.
+    row = size_stage(_so(), STAGE, _fetch({"running": [72] * 10 + [84] + [72] * 9}))
+    assert row["demand"]["peak"] == 6
+    assert row["demand"]["p95"] == 5
+
+
+def test_with_fewer_than_20_samples_demand_p95_is_the_peak():
+    # Nearest rank: one sample in 19 is more than 5% of them.
+    row = size_stage(_so(), STAGE, _fetch({"running": [72] * 9 + [84] + [72] * 9}))
+    assert row["demand"]["p95"] == 6
+
+
+def test_no_samples_means_no_demand_p95():
+    assert size_stage(_so(), STAGE, _fetch({}))["demand"]["p95"] is None
+
+
+def test_the_demand_series_is_kept_only_when_asked():
+    fetch = _fetch({"running": [16, 48, 0]})  # demand 1 3 1 (clamped to min 1)
+    assert "series" not in size_stage(_so(), STAGE, fetch)["demand"]
+    row = size_stage(_so(), STAGE, fetch, demand_series=True)
+    assert row["demand"]["series"] == [
+        [T0, 1],
+        [T0 + STEP_SECONDS, 3],
+        [T0 + 2 * STEP_SECONDS, 1],
+    ]
 
 
 def _report(path: Path, stage: int, start: str, end: str, rate: float):
@@ -204,6 +238,27 @@ def test_nothing_is_written_without_a_scaled_object(tmp_path):
     out.mkdir()
     assert write_sizing(tmp_path, _results(tmp_path), "exp", out, _fetch({})) == []
     assert not list(out.iterdir())
+
+
+def test_write_sizing_keeps_the_demand_series_only_when_asked(tmp_path):
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    (stack / "30_keda-scaledobject.yaml").write_text(yaml.safe_dump(_so()))
+    results = _results(tmp_path)
+    out = tmp_path / "out"
+    out.mkdir()
+
+    def demand(keda):
+        (stack / "config.yaml").write_text(yaml.safe_dump({"eppKedaSaturation": keda}))
+        write_sizing(stack, results, "exp", out, _fetch({"running": [20, 50]}))
+        rows = json.loads((out / "autoscaling-sizing.json").read_text())["rows"]
+        return [r["demand"] for r in rows]
+
+    assert not any("series" in d for d in demand({"enabled": True}))
+    assert demand({"enabled": True, "sizingDemandSeries": True})[0]["series"] == [
+        [T0, 2],
+        [T0 + STEP_SECONDS, 4],
+    ]
 
 
 @dataclass
