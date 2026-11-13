@@ -1523,7 +1523,20 @@ Each entry in the list produces one `ScaledObject`. The list is empty by default
 | `maxReplicas` | `10` | Maximum replica count |
 | `pollingInterval` | _(omitted)_ | Seconds between KEDA polls; omit to use KEDA's default (15 s) |
 | `triggers` | `[]` | List of KEDA trigger objects (see below) |
+| `cooldownPeriod` | _(omitted)_ | Seconds after the last active trigger before scaling to `idleReplicaCount`/0; omit to use KEDA's default (300 s) |
+| `idleReplicaCount` | _(omitted)_ | Replica count while no trigger is active; must be below `minReplicas` |
 | `behavior` | _(omitted)_ | Optional HPA behavior block rendered under `spec.advanced.horizontalPodAutoscalerConfig.behavior` |
+| `fallback.failureThreshold` | _(omitted)_ | Consecutive scaler errors before KEDA falls back; required when `fallback` is set |
+| `fallback.replicas` | _(omitted)_ | Replica count to hold while in fallback; required when `fallback` is set |
+| `fallback.behavior` | _(omitted)_ | `static`, `currentReplicas`, `currentReplicasIfHigher` or `currentReplicasIfLower` (KEDA ≥ 2.15); omit for KEDA's default (`static`) |
+| `scalingModifiers.formula` | _(omitted)_ | Expression combining triggers by their `name` into one metric, rendered under `spec.advanced.scalingModifiers` |
+| `scalingModifiers.target` | _(omitted)_ | Target for the composite metric (required by KEDA when `formula` is set) |
+| `scalingModifiers.activationTarget` | _(omitted)_ | Activation target for the composite metric |
+| `scalingModifiers.metricType` | _(omitted)_ | HPA metric type of the composite metric; KEDA defaults to `AverageValue` |
+
+Each optional field is rendered only when the scenario sets it, so an entry without it keeps KEDA's default. `behavior` and `scalingModifiers` share a single `spec.advanced` block.
+
+KEDA only applies `fallback` to triggers with `metricType: AverageValue` (the default here), and rejects a `fallback` whose triggers use `Value`. With `scalingModifiers`, the composite metric's `metricType` must also be `AverageValue`.
 
 Each entry in `triggers` is a raw KEDA trigger. For Prometheus triggers, `serverAddress` is injected automatically from `keda.prometheus`; you do not set it manually.
 
@@ -1535,6 +1548,9 @@ Each entry in `triggers` is a raw KEDA trigger. For Prometheus triggers, `server
 | `query` | _(required)_ | PromQL query string |
 | `threshold` | `"1"` | Scale-up threshold |
 | `activationThreshold` | `"0"` | Activation threshold (KEDA `activationThreshold`) |
+| `ignoreNullValues` | _(omitted)_ | `"false"` makes an empty query result a scaler error instead of `0`, so a missing series fails visibly and `fallback` can fire. Omit to keep KEDA's default (`"true"`). A YAML bool is rendered as a lowercase string |
+
+Other keys on a Prometheus trigger are ignored.
 
 #### Example
 
@@ -1561,6 +1577,37 @@ keda:
             max(inference_pool_average_kv_cache_utilization{namespace="my-ns"})
           threshold: "0.7"
           activationThreshold: "0"
+```
+
+To make a missing series a scaler error and hold a fixed replica count while Prometheus can't answer, combining two signals into one:
+
+```yaml
+keda:
+  scaledObjects:
+    - name: decode-saturation
+      minReplicas: 1
+      maxReplicas: 10
+      triggers:
+        - type: prometheus
+          name: kv
+          query: |
+            max(inference_pool_average_kv_cache_utilization{namespace="my-ns"})
+          threshold: "0.7"
+          ignoreNullValues: "false"
+        - type: prometheus
+          name: queue
+          query: |
+            sum(inference_pool_average_queue_size{namespace="my-ns"})
+          threshold: "4"
+          ignoreNullValues: "false"
+      fallback:
+        failureThreshold: 3
+        replicas: 4
+        behavior: currentReplicasIfHigher
+      scalingModifiers:
+        formula: "max(kv / 0.7, queue / 4)"
+        target: "1"
+        metricType: AverageValue
 ```
 
 For `bearer-secret` auth, first create a Secret in the deploy namespace:
