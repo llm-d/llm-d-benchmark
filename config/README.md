@@ -1132,7 +1132,7 @@ The `shared-config` emptyDir volume and volumeMount are already configured in `d
 
 #### Routing-table settle delay
 
-When the init container configures source-based routing for multi-rail networks, it appends new entries to `/etc/iproute2/rt_tables` and waits briefly for the write to settle before populating the tables. The wait defaults to 1 second and can be tuned (or disabled) with the `LLMDBENCH_RT_TABLES_SETTLE_SECONDS` environment variable — the unit tests set it to `0` to skip the delay entirely. Unparseable values fall back to the default.
+When the init container configures source-based routing for multi-rail networks, it appends new entries to `/etc/iproute2/rt_tables` and waits briefly for the write to settle before populating the tables. The wait defaults to 1 second and can be tuned (or disabled) with the `LLMDBENCH_RT_TABLES_SETTLE_SECONDS` environment variable — the unit tests set it to `0` to skip the delay entirely. Unparsable values fall back to the default.
 
 #### Image resolution
 
