@@ -1554,6 +1554,28 @@
       "title": "PodStartupTimes",
       "type": "object"
     },
+    "Producer": {
+      "additionalProperties": false,
+      "description": "Tool that wrote the artifact.",
+      "properties": {
+        "name": {
+          "description": "Tool name, e.g. llm-d-benchmark.",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "description": "Tool version.",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
     "ReplicaHealth": {
       "additionalProperties": false,
       "description": "Health information for a specific replica.",
@@ -2037,7 +2059,7 @@
       "description": "Benchmark run details.",
       "properties": {
         "uid": {
-          "description": "Unique ID for this specific benchmark report.",
+          "description": "Unique ID for this specific artifact.",
           "title": "Uid",
           "type": "string"
         },
@@ -2051,7 +2073,7 @@
             }
           ],
           "default": null,
-          "description": "Experiment ID, common across benchmark reports from a particular experiment.",
+          "description": "Experiment ID, common across artifacts from a particular experiment.",
           "title": "Eid"
         },
         "cid": {
@@ -3627,6 +3649,12 @@
   "additionalProperties": false,
   "description": "Base class for a benchmark report.",
   "properties": {
+    "kind": {
+      "const": "benchmark-report",
+      "description": "Artifact kind. Reports at 0.2 and 0.2.1 may omit it.",
+      "title": "Kind",
+      "type": "string"
+    },
     "version": {
       "default": "0.2.1",
       "description": "Version of the schema.",
@@ -3635,6 +3663,34 @@
     },
     "run": {
       "$ref": "#/$defs/Run"
+    },
+    "producer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Producer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tool and version that wrote the artifact."
+    },
+    "derived_from": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "``run.uid`` of each artifact this one was built from.",
+      "title": "Derived From"
     },
     "scenario": {
       "anyOf": [

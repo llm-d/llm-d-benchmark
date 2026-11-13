@@ -1,4 +1,5 @@
-- results:
+- kind: benchmark-report
+  results:
     request_performance:
       aggregate:
         latency:
@@ -329,7 +330,8 @@
         tool: guidellm
         tool_version: ''
   version: 0.2.1
-- results:
+- kind: benchmark-report
+  results:
     request_performance:
       aggregate:
         latency:

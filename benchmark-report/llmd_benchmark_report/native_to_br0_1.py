@@ -11,7 +11,7 @@ from typing import Any
 import yaml
 
 from . import guidellm_native
-from .base import Units
+from .artifacts.benchmark_report.base import Units
 from .core import (
     check_file,
     get_nested,
@@ -19,7 +19,11 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_1 import BenchmarkReportV01, HostType, WorkloadGenerator
+from .artifacts.benchmark_report.v0_1.schema import (
+    BenchmarkReportV01,
+    HostType,
+    WorkloadGenerator,
+)
 
 
 def _get_llmd_benchmark_envars() -> dict:

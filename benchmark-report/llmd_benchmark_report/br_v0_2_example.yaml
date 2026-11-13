@@ -1,3 +1,6 @@
+# Artifact kind, the same for every benchmark report
+kind: benchmark-report
+
 # Schema version for this entire benchmark report
 version: '0.2.1'
 

@@ -1,3 +1,4 @@
+kind: benchmark-report
 results:
   request_performance:
     aggregate:
