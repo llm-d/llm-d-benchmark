@@ -73,7 +73,7 @@ jobs:
       connector: ${{ inputs.connector || '' }}
       cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdfns-ocp' }}
       helm_release: ${{ inputs.helm_release || 'lmdbenchcicdr-ocp' }}
-      workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicdf-ocp' }}
+      workspace_dir: ${{ inputs.workspace_dir || format('/tmp/llmdbenchcicdf-ocp-{0}-{1}', github.run_id, github.run_attempt) }}
       bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
       bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
       bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
@@ -123,8 +123,11 @@ jobs:
           gcloud storage cp -r "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/" "$STANDALONE_DIR/" || true
           gcloud storage cp -r "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/fma/$RUN_DATE/" "$FMA_DIR/" || true
 
-          latest_standalone=$(find "$STANDALONE_DIR" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
-          latest_fma=$(find "$FMA_DIR" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
+          # Compare timestamps rather than usernames when both runner/root runs exist.
+          latest_standalone=$(find "$STANDALONE_DIR" -type d \( -name "runner-*" -o -name "root-*" \) \
+            -printf '%f\t%p\n' 2>/dev/null | sed -E 's/^(runner|root)-//' | sort | tail -1 | cut -f2-)
+          latest_fma=$(find "$FMA_DIR" -type d \( -name "runner-*" -o -name "root-*" \) \
+            -printf '%f\t%p\n' 2>/dev/null | sed -E 's/^(runner|root)-//' | sort | tail -1 | cut -f2-)
 
           echo "## Standalone Baseline Metrics (OCP)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
