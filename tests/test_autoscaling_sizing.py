@@ -10,6 +10,8 @@ Behavior under test:
   scale-down as over;
 - stage windows come from the harness's v0.2 benchmark reports, plus the
   whole run from run_metadata.yaml;
+- the ScaledObjects sized are the cluster's, not the run's re-rendered plan,
+  so a stack stood up in dry-run is reported as dry-run;
 - step 09a's range-query helper parses Thanos and fails closed.
 """
 
@@ -32,7 +34,10 @@ from llmdbenchmark.run.autoscaling_sizing import (
     stage_windows,
     write_sizing,
 )
-from llmdbenchmark.run.steps.step_09a_capture_cluster_state import _thanos_range
+from llmdbenchmark.run.steps.step_09a_capture_cluster_state import (
+    _cluster_scaled_object,
+    _thanos_range,
+)
 
 T0 = 1_800_000_000.0
 
@@ -199,6 +204,61 @@ def test_write_sizing_names_the_max_replicas(tmp_path):
     assert {r["stage"] for r in rows} == {"stage 0", "stage 1", "whole run"}
 
 
+def _rendered_live(tmp_path: Path) -> Path:
+    """A stack whose re-rendered plan has the live ScaledObject (no dryRun)."""
+    so = _so(annotations={})
+    so["spec"]["scaleTargetRef"] = {"kind": "Deployment", "name": "m-decode"}
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    (stack / "30_keda-scaledobject.yaml").write_text(yaml.safe_dump(so))
+    return stack
+
+
+def test_the_cluster_scaled_object_wins_over_the_rendered_plan(tmp_path):
+    """A stack stood up with dryRun=true is sized as dry-run, whatever run rendered."""
+    looked_up = []
+
+    def lookup(ns, name):
+        looked_up.append((ns, name))
+        return _so()  # the cluster's copy: shadow target plus the annotation
+
+    out = tmp_path / "out"
+    out.mkdir()
+    write_sizing(
+        _rendered_live(tmp_path),
+        _results(tmp_path),
+        "exp",
+        out,
+        _fetch({"running": [20]}),
+        lookup,
+    )
+    assert looked_up == [("bench", "m-decode-saturation")]
+    rows = json.loads((out / "autoscaling-sizing.json").read_text())["rows"]
+    assert {r["dryRun"] for r in rows} == {True}
+    assert {r["realTarget"] for r in rows} == {"Deployment/m-decode"}
+    text = (out / "autoscaling-sizing.txt").read_text()
+    assert (
+        "m-decode-saturation -> Deployment/m-decode [dry-run (decisions not actuated)]"
+        in text
+    )
+
+
+def test_an_unreadable_cluster_scaled_object_falls_back_to_the_plan(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    write_sizing(
+        _rendered_live(tmp_path),
+        _results(tmp_path),
+        "exp",
+        out,
+        _fetch({"running": [20]}),
+        lambda ns, name: None,
+    )
+    rows = json.loads((out / "autoscaling-sizing.json").read_text())["rows"]
+    assert {r["dryRun"] for r in rows} == {False}
+    assert {r["realTarget"] for r in rows} == {"Deployment/m-decode"}
+
+
 def test_nothing_is_written_without_a_scaled_object(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
@@ -235,6 +295,39 @@ def test_range_queries_parse_thanos_and_keep_the_token_off_the_command_line():
     ]
     assert "secret" not in cmd.command and "secret" in cmd.stdin
     assert f"step={STEP_SECONDS}" in cmd.command
+
+
+class _KubeCmd:
+    def __init__(self, result):
+        self.result, self.args = result, None
+
+    def kube(self, *args, check=False):
+        self.args = args
+        return self.result
+
+
+def test_the_scaled_object_is_read_from_the_cluster_by_name():
+    cmd = _KubeCmd(_Result(True, json.dumps(_so())))
+    assert _cluster_scaled_object(cmd, "bench", "m-decode-saturation") == _so()
+    assert cmd.args == (
+        "get",
+        "scaledobjects.keda.sh",
+        "m-decode-saturation",
+        "--namespace",
+        "bench",
+        "-o",
+        "json",
+    )
+
+
+def test_an_unreadable_scaled_object_is_none():
+    for result in (
+        _Result(False, ""),
+        _Result(True, ""),
+        _Result(True, "not json"),
+        _Result(True, json.dumps({"kind": "Status", "status": "Failure"})),
+    ):
+        assert _cluster_scaled_object(_KubeCmd(result), "bench", "x") is None
 
 
 def test_a_failed_range_query_yields_no_samples():
@@ -467,7 +560,7 @@ def test_step_09a_sizes_every_treatment_not_just_the_first(tmp_path, monkeypatch
     monkeypatch.setattr(
         step,
         "write_sizing",
-        lambda stack, results, ids, out, fetch: seen.append(ids) or [],
+        lambda stack, results, ids, out, fetch, lookup: seen.append(ids) or [],
     )
     stack = tmp_path / "stack"
     stack.mkdir()
@@ -500,6 +593,64 @@ def test_step_09a_sizes_every_treatment_not_just_the_first(tmp_path, monkeypatch
     step.CaptureClusterStateStep().execute(context, stack)
 
     assert seen == [ids]
+
+
+def test_step_09a_sizes_the_scaled_objects_the_cluster_runs(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from llmdbenchmark.run.steps import step_09a_capture_cluster_state as step
+
+    found = {}
+
+    def write_sizing(stack, results, ids, out, fetch, lookup):
+        found["deployed"] = lookup("", "m-decode-saturation")
+        found["missing"] = lookup("other", "gone")
+        return []
+
+    monkeypatch.setattr(step, "write_sizing", write_sizing)
+    stack = tmp_path / "stack"
+    stack.mkdir()
+    (stack / "config.yaml").write_text(
+        yaml.safe_dump({"eppKedaSaturation": {"enabled": True}})
+    )
+    reads = []
+
+    def kube(*args, check=False):
+        if args[:2] == ("get", "route"):
+            return _Result(True, "thanos.example")
+        if args[:2] == ("whoami", "-t"):
+            return _Result(True, "token")
+        if args[:2] == ("get", "scaledobjects.keda.sh") and args[3:5] == (
+            "--namespace",
+            "bench",
+        ):
+            reads.append(args[2])
+            if args[2] == "m-decode-saturation":
+                return _Result(True, json.dumps(_so()))
+        return SimpleNamespace(success=False, stdout="", stderr="")
+
+    cmd = SimpleNamespace(
+        kube=kube,
+        execute=lambda *a, **k: _Result(True, '{"status": "success"}'),
+    )
+    logged = []
+    context = SimpleNamespace(
+        namespace="bench",
+        experiment_ids=["exp"],
+        run_results_dir=lambda: tmp_path / "results",
+        require_cmd=lambda: cmd,
+        logger=SimpleNamespace(
+            log_info=lambda *a, **k: None,
+            log_warning=lambda msg, **k: logged.append(msg),
+        ),
+    )
+
+    step.CaptureClusterStateStep().execute(context, stack)
+
+    # A ScaledObject without a namespace is read from the deploy namespace.
+    assert reads == ["m-decode-saturation"]
+    assert found == {"deployed": _so(), "missing": None}
+    assert any("could not read ScaledObject gone" in m for m in logged)
 
 
 # --- R, SLO-bounded serving capacity (make calibrate-serving-capacity) -------

@@ -1668,6 +1668,12 @@ per-replica load and latency are higher than they would be at the demanded size,
 so treat demand as an upper bound. Sizing needs OpenShift's Thanos Querier and
 platform kube-state-metrics, the same as the rest of this path.
 
+Each ScaledObject is read back from the cluster, not taken from the plan `run`
+renders for itself. A stack stood up with `--set eppKedaSaturation.dryRun=true`
+is therefore reported as dry-run, with its real target, even when `run` is not
+given the same `--set`. If the cluster's copy cannot be read, step 09a logs a
+warning and sizes the rendered copy instead.
+
 When `eppKedaSaturation.scaledObject.peakPrefillThroughput` is set (the token-aware scenarios), the
 report also gives the ideal prefill:decode ratio and pool sizes, rate-matched from the measured token
 rates. Set `peakDecodeThroughput` to make the decode side exact. See
