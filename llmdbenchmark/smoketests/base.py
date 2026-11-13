@@ -26,6 +26,7 @@ from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     CURL_IMAGE,
     compute_gateway_path_prefix,
+    ensure_service_account,
     find_custom_endpoint,
     find_direct_modelservice_endpoint,
     find_epponly_endpoint,
@@ -1919,6 +1920,8 @@ class BaseSmoketest:
         prefix = _normalize_url_prefix(url_path_prefix)
         url = f"{protocol}://{host}:{port}{prefix}/health"
         curl_image = CURL_IMAGE
+        # Fresh namespaces have no SA until the run phase creates it.
+        ensure_service_account(cmd, namespace, plan_config)
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
@@ -2545,6 +2548,8 @@ class BaseSmoketest:
         plan_config: dict | None,
         timeout_seconds: int = 120,
     ) -> tuple[str, str | None]:
+        # Fresh namespaces have no SA until the run phase creates it.
+        ensure_service_account(cmd, namespace, plan_config)
         override_args = _build_overrides(plan_config)
         curl_image = CURL_IMAGE
         payload_json = json.dumps(payload)
