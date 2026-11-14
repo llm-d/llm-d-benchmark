@@ -8,9 +8,8 @@ load:
 api:
   type: chat
   streaming: true
-  headers:
-    x-speculative-prefill: "true"
 llmdbenchmark:
+  client_side_warmup: true
   inter_turn_delay_seconds: 20
   chat_extra_body:
     temperature: 0.0

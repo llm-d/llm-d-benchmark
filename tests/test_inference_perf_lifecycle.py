@@ -59,18 +59,23 @@ def test_nonfinal_or_failed_stage_does_not_emit_event(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("workload", "delay", "extra_body"),
+    ("workload", "delay", "extra_body", "warmup"),
     [
-        ("sanity_random.yaml.in", "", {}),
+        ("sanity_random.yaml.in", "", {}, "false"),
         (
             "speculative_prefill_multi_turn.yaml.in",
             "20",
             {"temperature": 0.0, "seed": 42, "top_p": 1.0},
+            "true",
         ),
     ],
 )
 def test_wrapper_renders_profile_and_metadata(
-    tmp_path: Path, workload: str, delay: str, extra_body: dict[str, float | int]
+    tmp_path: Path,
+    workload: str,
+    delay: str,
+    extra_body: dict[str, float | int],
+    warmup: str,
 ) -> None:
     results = tmp_path / "results"
     env = {
@@ -81,6 +86,7 @@ def test_wrapper_renders_profile_and_metadata(
     }
     env.pop("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS", None)
     env.pop("LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY", None)
+    env.pop("LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP", None)
     setup = WRAPPER.read_text().split("export LLMDBENCH_HARNESS_ARGS=", 1)[0]
     result = subprocess.run(
         [
@@ -88,16 +94,20 @@ def test_wrapper_renders_profile_and_metadata(
             "-e",
             "-c",
             setup
-            + '\npython -c \'import json, os; print(json.dumps([os.getenv("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS", ""), os.environ["LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY"]]))\'\n',
+            + '\npython -c \'import json, os; print(json.dumps([os.getenv("LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS", ""), os.environ["LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY"], os.environ["LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP"], os.environ["LLMDBENCH_INFERENCE_PERF_CONFIG_FILE"]]))\'\n',
         ],
         capture_output=True,
         text=True,
         check=True,
         env=env,
     )
-    actual_delay, actual_extra_body = json.loads(result.stdout.splitlines()[-1])
+    actual_delay, actual_extra_body, actual_warmup, config_file = json.loads(
+        result.stdout.splitlines()[-1]
+    )
     assert actual_delay == delay
     assert json.loads(actual_extra_body) == extra_body
+    assert actual_warmup == warmup
+    assert config_file == str(results / workload)
 
     source = yaml.safe_load((PROFILES / workload).read_text())
     source.pop("llmdbenchmark", None)
@@ -114,6 +124,7 @@ def test_wrapper_preserves_explicit_chat_overrides(tmp_path: Path) -> None:
         "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(results),
         "LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS": "3",
         "LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY": '{"seed": 7}',
+        "LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP": "false",
     }
     setup = WRAPPER.read_text().split("export LLMDBENCH_HARNESS_ARGS=", 1)[0]
     result = subprocess.run(
@@ -122,11 +133,11 @@ def test_wrapper_preserves_explicit_chat_overrides(tmp_path: Path) -> None:
             "-e",
             "-c",
             setup
-            + '\nprintf "%s\\n" "$LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS" "$LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY"\n',
+            + '\nprintf "%s\\n" "$LLMDBENCH_INFERENCE_PERF_INTER_TURN_DELAY_SECONDS" "$LLMDBENCH_INFERENCE_PERF_CHAT_EXTRA_BODY" "$LLMDBENCH_INFERENCE_PERF_CLIENT_SIDE_WARMUP"\n',
         ],
         capture_output=True,
         text=True,
         check=True,
         env=env,
     )
-    assert result.stdout.splitlines()[-2:] == ["3", '{"seed": 7}']
+    assert result.stdout.splitlines()[-3:] == ["3", '{"seed": 7}', "false"]
