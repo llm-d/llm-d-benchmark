@@ -132,7 +132,6 @@ class _RecordingCmd:
 @pytest.fixture
 def deploy(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
-    _write_guide(repo)
     stack = tmp_path / "stack"
     stack.mkdir()
     config = {"enabled": True, "guideName": GUIDE, "repoPath": str(repo)}
@@ -143,7 +142,8 @@ def deploy(tmp_path: Path, monkeypatch):
     for helper in ("_ensure_hf_token_secret", "_propagate_standup_parameters"):
         monkeypatch.setattr(KustomizeDeployStep, helper, lambda *a, **k: None)
 
-    def _deploy(cmd: _RecordingCmd):
+    def _deploy(cmd: _RecordingCmd, body: str = README):
+        _write_guide(repo, body)
         ctx = MagicMock(harness_namespace=None, deployed_endpoints={})
         ctx.require_cmd.return_value = cmd
         ctx.require_namespace.return_value = "ns"
@@ -171,3 +171,49 @@ def test_autoscaling_failure_fails_the_step(deploy):
     assert not result.success
     assert result.message == "Autoscaling deployment failed"
     assert "boom" in result.errors[0]
+
+
+# The shape of llm-d's workload-autoscaling/keda-epp guide: one guarded
+# ScaledObject per SIGNAL and ENV, rendered by llm-d's scripts/guide.py.
+GUARDED_README = f"""\
+# Test Guide + KEDA Autoscaling
+
+```bash
+export SIGNAL=inflight
+export ENV=existing
+```
+
+### 5. Deploy the Model Server
+
+```bash
+kubectl apply -n ${{NAMESPACE}} -k ${{REPO_ROOT}}/guides/test-guide/modelserver/
+```
+
+### 6. {KEDA_HEADING}
+
+```bash
+# only when SIGNAL=inflight and ENV=existing:
+kubectl apply -n ${{NAMESPACE}} -k ${{REPO_ROOT}}/guides/test-guide/overlays/k8s/inflight
+```
+
+```bash
+# only when SIGNAL=queue or saturation and ENV=existing:
+kubectl apply -n ${{NAMESPACE}} -k ${{REPO_ROOT}}/guides/test-guide/overlays/k8s/queue
+```
+
+```bash
+# only when SIGNAL=inflight and ENV=ocp:
+kubectl apply -n ${{NAMESPACE}} -k ${{REPO_ROOT}}/guides/test-guide/overlays/ocp/inflight
+```
+"""
+
+
+def test_autoscaling_skips_steps_whose_guard_does_not_hold(deploy):
+    cmd = _RecordingCmd()
+
+    result = deploy(cmd, GUARDED_README)
+
+    assert result.success, result.errors
+    applied = [e for e in cmd.events if "overlays/" in e]
+    assert len(applied) == 1
+    assert "overlays/k8s/inflight" in applied[0]

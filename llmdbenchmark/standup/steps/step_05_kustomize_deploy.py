@@ -159,8 +159,8 @@ class KustomizeDeployStep(Step):
         for gc in prereq_cmds:
             if not gc.applies(resolver.variables):
                 context.logger.log_info(
-                    f"Skipping prerequisite (only when {gc.when[0]}="
-                    f"{','.join(gc.when[1])}): {gc.raw[:80]}"
+                    f"Skipping prerequisite (only when {gc.describe_when()}): "
+                    f"{gc.raw[:80]}"
                 )
                 continue
             resolved = resolver.resolve(gc.raw)
@@ -325,6 +325,12 @@ class KustomizeDeployStep(Step):
         # --- 5b. Autoscaling (e.g. a KEDA ScaledObject) ---
         # After the wait: pods must be Ready before the autoscaler takes over.
         for gc in parsed.get_commands(CommandPhase.AUTOSCALING):
+            if not gc.applies(resolver.variables):
+                context.logger.log_info(
+                    f"Skipping autoscaling step (only when {gc.describe_when()}): "
+                    f"{gc.raw[:80]}"
+                )
+                continue
             resolved = resolver.resolve(gc.raw)
             result = self._run_resolved(
                 cmd, resolved, check=False, context=context, phase="autoscaling"

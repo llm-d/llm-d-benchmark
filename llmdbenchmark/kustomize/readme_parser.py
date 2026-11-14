@@ -31,16 +31,24 @@ class GuideCommand:
     raw: str
     phase: CommandPhase
     mode: DeployMode = DeployMode.ANY
-    # From a preceding ``# only when VAR=value[,value]:`` comment: the command
-    # runs only when the guide variable VAR resolves to one of the values.
-    when: tuple[str, tuple[str, ...]] | None = None
+    # From a preceding ``# only when VAR=a or b and OTHER=c:`` comment: one
+    # ``(VAR, values)`` clause per variable. The command runs only when every
+    # variable resolves to one of its values (AND across clauses, OR within).
+    when: tuple[tuple[str, tuple[str, ...]], ...] | None = None
 
     def applies(self, variables: dict[str, str]) -> bool:
         """Whether this command's ``only when`` guard (if any) holds."""
         if self.when is None:
             return True
-        name, values = self.when
-        return variables.get(name, "") in values
+        return all(variables.get(name, "") in values for name, values in self.when)
+
+    def describe_when(self) -> str:
+        """The guard in llm-d's ``guide.py`` form, e.g. ``SIGNAL=queue or saturation``."""
+        if self.when is None:
+            return ""
+        return " and ".join(
+            f"{name}={' or '.join(values)}" for name, values in self.when
+        )
 
     def __str__(self) -> str:
         return self.raw
@@ -236,17 +244,42 @@ def _should_keep_command(line: str) -> bool:
 
 
 # ``# only when INFRA_PROVIDER=coreweave:`` guards the commands after it in
-# the same code block.
-_ONLY_WHEN_RE = re.compile(
-    r"^\s*#\s*only when\s+(\w+)=([\w./,-]+)\s*:?\s*$", re.IGNORECASE
+# the same code block. llm-d's ``scripts/guide.py`` renders a step's ``when:``
+# filter as ``VAR=a or b`` within a variable and `` and `` across variables
+# (e.g. ``# only when SIGNAL=inflight and ENV=ocp:``); ``VAR=a,b`` is also
+# accepted for hand-written guards.
+_ONLY_WHEN_RE = re.compile(r"^\s*#\s*only when\b(?P<expr>.*?)\s*:?\s*$", re.IGNORECASE)
+_WHEN_CLAUSE_RE = re.compile(
+    r"^(?P<name>\w+)=(?P<values>[\w./,-]+(?:\s+or\s+[\w./,-]+)*)$"
 )
+_WHEN_AND_RE = re.compile(r"\s+and\s+")
+_WHEN_OR_RE = re.compile(r"\s+or\s+|,")
 
 
-def _only_when(line: str) -> tuple[str, tuple[str, ...]] | None:
+def _only_when(
+    line: str,
+) -> tuple[bool, tuple[tuple[str, tuple[str, ...]], ...] | None]:
+    """Parse an ``# only when ...:`` guard comment.
+
+    Returns ``(is_guard, clauses)``. ``is_guard`` is True for any ``# only
+    when`` comment; ``clauses`` is None when its expression cannot be parsed.
+    """
     m = _ONLY_WHEN_RE.match(line)
     if not m:
-        return None
-    return m.group(1), tuple(v for v in m.group(2).split(",") if v)
+        return False, None
+    expr = m.group("expr").strip()
+    if not expr:
+        return True, None
+    clauses: list[tuple[str, tuple[str, ...]]] = []
+    for part in _WHEN_AND_RE.split(expr):
+        cm = _WHEN_CLAUSE_RE.match(part.strip())
+        if not cm:
+            return True, None
+        values = tuple(v for v in _WHEN_OR_RE.split(cm.group("values")) if v)
+        if not values:
+            return True, None
+        clauses.append((cm.group("name"), values))
+    return True, tuple(clauses)
 
 
 def _join_continuations(lines: list[str]) -> list[str]:
@@ -388,7 +421,12 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
                 phase, default_mode = pm
                 when = None
                 for cmd_text in joined:
-                    when = _only_when(cmd_text) or when
+                    is_guard, guard = _only_when(cmd_text)
+                    if is_guard:
+                        # A guard replaces the previous one. A guard we
+                        # cannot parse must not leave the previous one in
+                        # place for the commands after it.
+                        when = guard
                     if _should_keep_command(cmd_text):
                         mode = (
                             details_mode if details_mode is not None else default_mode
