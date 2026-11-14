@@ -19,7 +19,7 @@ whatever the host's package manager provides.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **curl** | `8_21_0` | version | `install.sh` line 77 (`tool_version_for`) | [curl/curl](https://github.com/curl/curl) |
+| **curl** | `8_23_0` | version | `install.sh` line 77 (`tool_version_for`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `v3.19.0` | version | `install.sh` line 79 (`tool_version_for`) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `v3.13.0` | plugin (version) | `install.sh` line 80 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
