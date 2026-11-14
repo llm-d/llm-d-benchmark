@@ -75,9 +75,9 @@ def test_video_stats_mapped(report, native):
     _assert_maps(vid.pixels, raw["pixels"], Units.PIXELS)
     _assert_maps(vid.filesize, raw["bytes"], Units.BYTES)
     _assert_maps(vid.aspect_ratio, raw["aspect_ratio"], Units.RATIO)
-    # inference-perf does not emit a video duration, so the schema must not
-    # invent one.
-    assert not hasattr(vid, "duration")
+    # inference-perf does not emit a request-side video duration, so the
+    # converter must not invent one.
+    assert vid.duration is None
 
 
 def test_audio_stats_mapped(report, native):

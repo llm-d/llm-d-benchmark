@@ -105,6 +105,16 @@ New unit categories back these fields: `pixels` (quantity), `ratio` (for aspect 
 
 Server-side multi-modal metrics (vision token counts, encoding time, multimodal cache hit rates) are out of scope for this revision.
 
+### Response media
+
+Added after the `0.2.1` release, for endpoints that return media (image generation, video generation, speech). Like the `0.2.1` additions, every field is optional:
+
+- **`results.request_performance.aggregate.requests.output_multimodal`**: the same per-modality block as `multimodal`, over the media instances the server returned. `multimodal` keeps describing what the client sent.
+- **`results.request_performance.aggregate.throughput.output_{image,video,audio}_rate`** (`Statistics`): per-modality rates of returned media (`images/s`, `videos/s`, `audios/s`).
+- **`video.duration`** (`s`), on both sides: generated video is measured by duration, and frames alone do not give it without a frame rate.
+
+A statistic covers only the instances it could be measured on: a response that returns a URL has no filesize, so that instance is left out of `filesize` but still counted in `count`.
+
 ## v0.1 Format Description
 
 A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.

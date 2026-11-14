@@ -196,7 +196,19 @@
             }
           ],
           "default": null,
-          "description": "Per-modality payload statistics."
+          "description": "Per-modality payload statistics of the media the client sent (request media)."
+        },
+        "output_multimodal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MultiModalRequests"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-modality payload statistics of the media the server returned (response media)."
         }
       },
       "required": [
@@ -267,7 +279,7 @@
             }
           ],
           "default": null,
-          "description": "Image delivery rate."
+          "description": "Rate of images sent in requests (request media)."
         },
         "video_rate": {
           "anyOf": [
@@ -279,7 +291,7 @@
             }
           ],
           "default": null,
-          "description": "Video delivery rate."
+          "description": "Rate of videos sent in requests (request media)."
         },
         "audio_rate": {
           "anyOf": [
@@ -291,7 +303,43 @@
             }
           ],
           "default": null,
-          "description": "Audio delivery rate."
+          "description": "Rate of audio clips sent in requests (request media)."
+        },
+        "output_image_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rate of images returned in responses (response media)."
+        },
+        "output_video_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rate of videos returned in responses (response media)."
+        },
+        "output_audio_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rate of audio clips returned in responses (response media)."
         }
       },
       "title": "AggregateThroughput",
@@ -1254,7 +1302,7 @@
     },
     "MultiModalRequests": {
       "additionalProperties": false,
-      "description": "Per-modality request payload statistics for multi-modal workloads.",
+      "description": "Per-modality media payload statistics, for request or response media.",
       "properties": {
         "image": {
           "anyOf": [
@@ -3640,6 +3688,18 @@
           ],
           "default": null,
           "description": "Number of frames per video instance."
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Duration per video instance."
         }
       },
       "title": "VideoPayloadStats",

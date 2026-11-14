@@ -300,8 +300,22 @@ results:
             duration:
               units: s
               mean: 10.0
+        output_multimodal: # Same statistics for the media the server returned
+          video:
+            count:
+              units: count
+              mean: 1.0
+            filesize: # Instances returned as a URL are left out of filesize
+              units: bytes
+              mean: 2400000.0
+            frames:
+              units: count
+              mean: 121.0
+            duration:
+              units: s
+              mean: 5.04
       throughput:
-        # Per-modality delivery rates, for multi-modal workloads
+        # Per-modality rates of media sent in requests, for multi-modal workloads
         image_rate:
           units: images/s
           mean: 24.0
@@ -311,6 +325,10 @@ results:
         audio_rate:
           units: audios/s
           mean: 2.0
+        # Rates of media returned in responses
+        output_video_rate:
+          units: videos/s
+          mean: 0.4
         input_token_rate:
           units: tokens/s
           mean: 2262.448
