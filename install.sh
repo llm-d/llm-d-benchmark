@@ -81,7 +81,7 @@ tool_version_for() {
         # helm-diff build compatible with Helm 4's plugin SDK; selected at
         # install time when an on-PATH helm is already major version 4+.
         helm-diff-v4) echo "v3.15.7" ;;
-        oc)        echo "4.18.0"  ;;
+        oc)        echo "openshift-clients-v4.18.0-202502040032" ;;
         *)         echo ""        ;;
     esac
 }
