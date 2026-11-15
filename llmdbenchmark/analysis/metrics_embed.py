@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 STAGE_MARKER_RE = re.compile(
@@ -28,6 +28,8 @@ SCRAPED_STAGE_RE = re.compile(
     re.MULTILINE,
 )
 HARNESS_SOURCE = "# Source: harness_prometheus_metrics"
+# The log markers are cut to the second.
+LOG_RESOLUTION = timedelta(seconds=1)
 # Greedy, to take the last occurrence like native_to_br0_2 does on the same filename.
 REPORT_STAGE_RE = re.compile(r".*stage_(\d+)", re.DOTALL)
 
@@ -40,12 +42,18 @@ def stage_windows(
     A stage the harness scrape stamped (see :func:`scraped_stage_windows`) takes
     those bounds. The others fall back to the log markers, which are
     ``%(asctime)s`` local time cut to the second, stamped UTC here because the pod
-    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). Returns {} when neither source holds
-    a complete pair, leaving the caller on the whole-run series.
+    pins ``TZ=UTC`` (20_harness_pod.yaml.j2). So does a stage whose stamps start
+    more than a second before its logged start: the scrape missed a restart the
+    log saw. Returns {} when neither source holds a complete pair, leaving the
+    caller on the whole-run series.
     """
     windows = _logged_stage_windows(results_dir)
     if metrics_dir is not None:
-        windows.update(scraped_stage_windows(metrics_dir))
+        for stage, scraped in scraped_stage_windows(metrics_dir).items():
+            logged = windows.get(stage)
+            if logged and scraped[0] < logged[0] - LOG_RESOLUTION:
+                continue
+            windows[stage] = scraped
     return windows
 
 

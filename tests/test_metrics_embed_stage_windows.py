@@ -123,6 +123,38 @@ def test_a_restarted_stage_takes_its_latest_stamps(tmp_path):
     }
 
 
+def test_a_restart_the_scrape_missed_keeps_the_logged_window(tmp_path):
+    results = _results(
+        tmp_path,
+        [
+            f'inference_perf_stage_start_timestamp_seconds{{stage="0"}} {S0_START}',
+            f'inference_perf_stage_end_timestamp_seconds{{stage="0"}} {S0_END}',
+        ],
+    )
+    with open(results / "stdout.log", "a", encoding="utf-8") as fh:
+        fh.write(
+            "2026-08-18 10:05:00,900 INFO Stage 0 - run started\n"
+            "2026-08-18 10:06:00,900 INFO Stage 0 - run completed\n"
+        )
+
+    assert stage_windows(results, results / "metrics")[0] == (
+        datetime(2026, 8, 18, 10, 5, tzinfo=timezone.utc),
+        datetime(2026, 8, 18, 10, 6, tzinfo=timezone.utc),
+    )
+
+
+def test_a_stamp_just_before_its_logged_second_is_kept(tmp_path):
+    results = _results(
+        tmp_path,
+        [
+            f'inference_perf_stage_start_timestamp_seconds{{stage="0"}} {S0_START - 1}',
+            f'inference_perf_stage_end_timestamp_seconds{{stage="0"}} {S0_END}',
+        ],
+    )
+
+    assert stage_windows(results, results / "metrics")[0][0] == _utc(S0_START - 1)
+
+
 def test_a_stage_restarted_after_its_last_scraped_end_falls_back_to_the_log(tmp_path):
     results = _results(
         tmp_path,
