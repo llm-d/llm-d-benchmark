@@ -102,6 +102,13 @@ class TestDottedToNested:
         with pytest.raises(ValueError, match="Key conflict"):
             dotted_to_nested({"a.b.c": 2, "a.b": 1})
 
+    def test_does_not_mutate_mapping_values(self):
+        """Extending a mapping value with a dotted key leaves the input alone."""
+        shared = {"c": 1}
+        result = dotted_to_nested({"a.b": shared, "a.b.d": 2})
+        assert result == {"a": {"b": {"c": 1, "d": 2}}}
+        assert shared == {"c": 1}
+
 
 # ===========================================================================
 # parse_experiment — with setup treatments
@@ -236,6 +243,30 @@ class TestSetupConstantsOverrideOrder:
         assert t.overrides["model"]["maxModelLen"] == 32000
         assert t.overrides["model"]["blockSize"] == 64
         assert t.overrides["vllmCommon"]["flags"]["numCpuBlocks"] == 500
+
+    def test_treatment_does_not_leak_into_mapping_constant(self, tmp_path: Path):
+        """A treatment extending a mapping constant must not change the
+        constant seen by the treatments after it."""
+        p = tmp_path / "leak-test.yaml"
+        p.write_text(
+            textwrap.dedent(
+                """\
+                setup:
+                  constants:
+                    vllmCommon.kvTransfer: {enabled: true}
+                  treatments:
+                    - name: offload
+                      vllmCommon.kvTransfer.connector: OffloadingConnector
+                    - name: baseline
+            """
+            )
+        )
+        offload, baseline = parse_experiment(p).setup_treatments
+        assert offload.overrides["vllmCommon"]["kvTransfer"] == {
+            "enabled": True,
+            "connector": "OffloadingConnector",
+        }
+        assert baseline.overrides["vllmCommon"]["kvTransfer"] == {"enabled": True}
 
 
 # ===========================================================================
