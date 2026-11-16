@@ -35,12 +35,16 @@ spec:
           args:
             - |
               mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && \
-              hf download "${HF_MODEL_ID}" --local-dir "{{ downloadJob.mountPath }}/${MODEL_PATH}" --max-workers {{ downloadJob.maxWorkers }}
+              hf download "${HF_MODEL_ID}"{% if model.revision is defined and model.revision %} --revision "${HF_MODEL_REVISION}"{% endif %} --local-dir "{{ downloadJob.mountPath }}/${MODEL_PATH}" --max-workers {{ downloadJob.maxWorkers }}
           env:
             - name: MODEL_PATH
               value: {{ model.path }}
             - name: HF_MODEL_ID
               value: {{ model.huggingfaceId }}
+{% if model.revision is defined and model.revision %}
+            - name: HF_MODEL_REVISION
+              value: "{{ model.revision }}"
+{% endif %}
 {% if huggingface.enabled %}
             - name: HF_TOKEN
               valueFrom:
