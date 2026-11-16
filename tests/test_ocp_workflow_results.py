@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -10,6 +11,30 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
+
+
+def _has_gnu_find() -> bool:
+    find = shutil.which("find")
+    if find is None:
+        return False
+    try:
+        result = subprocess.run(
+            [find, "--version"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return False
+    return result.returncode == 0 and "GNU findutils" in result.stdout
+
+
+requires_gnu_find = pytest.mark.skipif(
+    not _has_gnu_find(),
+    reason=(
+        "OCP workflow Bash requires GNU find (-printf) on PATH. On macOS, run "
+        "'brew install findutils', then "
+        '\'PATH="$(brew --prefix findutils)/libexec/gnubin:$PATH" '
+        "pytest tests/test_ocp_workflow_results.py'."
+    ),
+)
 
 
 def run_step(workflow, step_name, tmp_path, directory_names):
@@ -45,6 +70,7 @@ def run_step(workflow, step_name, tmp_path, directory_names):
     return summary, output
 
 
+@requires_gnu_find
 @pytest.mark.parametrize("old_user,new_user", [("runner", "root"), ("root", "runner")])
 def test_nightly_display_uses_newest_run_across_users(tmp_path, old_user, new_user):
     directories = ("standalone-results", "fma-results")
@@ -75,6 +101,7 @@ def test_nightly_display_uses_newest_run_across_users(tmp_path, old_user, new_us
         assert f"{directory}: old" not in text
 
 
+@requires_gnu_find
 @pytest.mark.parametrize("old_user,new_user", [("runner", "root"), ("root", "runner")])
 def test_keda_diagnostics_use_newest_run_across_users(tmp_path, old_user, new_user):
     directories = {
