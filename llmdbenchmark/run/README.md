@@ -141,7 +141,7 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 |------|------|-------------|
 | 00 | `RunPreflightStep` | Validate cluster connectivity and output destination; note (not fail) if the harness namespace doesn't exist yet -- step 02 creates it |
 | 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
-| 02 | `HarnessNamespaceStep` | Prepare harness namespace: namespace, HF token secret, preprocess ConfigMap; plus workload PVC + data-access pod in PVC mode. Runs in every k8s run (including --no-pvc, which skips only the PVC/data-access portion). |
+| 02 | `HarnessNamespaceStep` | Prepare harness namespace: namespace, HF token secret, preprocess ConfigMap; plus workload PVC + data-access pod in PVC mode (standup may have created the PVC already for the vLLM compile caches). Runs in every k8s run (including --no-pvc, which skips only the PVC/data-access portion). |
 | 02b | `DeployPrismStep` | Deploy the persistent in-cluster llm-d-prism dashboard over the workload PVC (`--no-prism` skips it; also skipped with `--no-pvc`). Best-effort: failures only warn. Survives teardown except `teardown --prism` or `-d`. |
 | 03 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
 | 04 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |

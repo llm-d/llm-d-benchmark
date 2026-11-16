@@ -106,6 +106,10 @@ class DeployModelserviceStep(Step):
                 stack_name=stack_name,
             )
 
+        cache_hint = self._ensure_compile_cache_pvc(cmd, context, plan_config, errors)
+        if errors:
+            return self._compile_cache_failed(context, errors, stack_name)
+
         helm_dir = context.setup_helm_dir() / stack_name
         helmfile_work = helm_dir / "helmfile.yaml"
 
@@ -207,7 +211,11 @@ class DeployModelserviceStep(Step):
                     ),
                 )
                 if not decode_wait.success:
-                    errors.append(f"Decode pods not ready: {decode_wait.stderr}")
+                    errors.append(
+                        self._with_hint(
+                            f"Decode pods not ready: {decode_wait.stderr}", cache_hint
+                        )
+                    )
             else:
                 context.logger.log_info(
                     "decode.replicas=0 -- skipping decode-pod wait "
@@ -242,7 +250,12 @@ class DeployModelserviceStep(Step):
                     expected=prefill_replicas,
                 )
                 if not prefill_wait.success:
-                    errors.append(f"Prefill pods not ready: {prefill_wait.stderr}")
+                    errors.append(
+                        self._with_hint(
+                            f"Prefill pods not ready: {prefill_wait.stderr}",
+                            cache_hint,
+                        )
+                    )
 
             if not direct_service_mode:
                 pool_wait = wait_for_epp(cmd, namespace, model_id_label, timeout)

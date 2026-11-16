@@ -63,6 +63,7 @@ Key methods:
 - `_find_yaml(stack_path, prefix)` -- Find a YAML file by prefix in a single stack directory.
 - `_parse_size_gi(size_str)` -- Parse Kubernetes quantity strings (`300Gi`, `1Ti`, `500Mi`) to GiB.
 - `_check_existing_pvc(cmd, context, pvc_name, requested_size, namespace, errors)` -- Check if a PVC exists and validate its size against the requested size. Returns `True` if the PVC exists (caller should skip creation).
+- `_ensure_compile_cache_pvc(cmd, context, plan_config, errors)` -- When `vllmCommon.cacheMountPath` is set, create the shared workload PVC if needed (manifest and size from the first stack, like run step 02), check it is ReadWriteMany and wait for it to bind. Returns a hint for the serving-pod wait error when the PVC is not bound yet (`WaitForFirstConsumer`), else `""`. Add it with `_with_hint(message, hint)`.
 - `_has_yaml_content(yaml_path)` -- Check if a YAML file has non-empty content (skips conditionally-empty templates).
 
 ### Result Types

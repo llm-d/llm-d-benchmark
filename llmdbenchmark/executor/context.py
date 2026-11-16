@@ -202,6 +202,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # harness pod's emptyDir and are copied from the pod itself -- kept alive
     # by a post-run sentinel + sleep -- before the pod is deleted.
     no_pvc: bool = False
+    compile_cache_no_pvc_warned: bool = field(default=False, repr=False)
 
     # --no-cleanup: leave harness pods and their ConfigMaps in place after
     # the run (skip step 06's phase-5 pod deletion and step 11), so users

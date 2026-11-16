@@ -23,7 +23,7 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 
 Note: Step 01 is intentionally absent (reserved). Smoketest and inference test run as a separate phase after standup, from the `llmdbenchmark.smoketests` module; `get_standup_steps()` no longer registers them. `step_10_smoketest.py` and `step_11_inference_test.py` are still on disk but unregistered -- only their helpers are still imported.
 
-Harness preparation (namespace, HF secret copy, preprocess ConfigMap, workload PVC, data-access pod) moved to the run phase (run step 02) — standup ends with the model endpoint serving and no benchmark-side resources. **Breaking:** step numbers 6–9 shifted down to 5–8; update any `-s` step selections.
+Harness preparation (namespace, HF secret copy, preprocess ConfigMap, workload PVC, data-access pod) moved to the run phase (run step 02) — standup ends with the model endpoint serving and no benchmark-side resources. The one exception is the workload PVC when it holds the vLLM compile caches (`vllmCommon.cacheMountPath`, on by default): steps 05/08 create it before the serving pods, and fail when it is not ReadWriteMany. **Breaking:** step numbers 6–9 shifted down to 5–8; update any `-s` step selections.
 
 ## Standing up without PVCs (`--no-pvc`)
 
@@ -37,8 +37,10 @@ On clusters where users cannot provision PersistentVolumeClaims, pass
   comparable only to other hf-loading runs.
 - The workload PVC and data-access pod are a run-phase concern now: `run`
   creates them on demand and `run --no-pvc` skips them. Standup's
-  `--no-pvc` only covers the model PVC (above); pair the two flags for a
-  fully PVC-less flow.
+  `--no-pvc` covers the model PVC (above) and keeps the vLLM compile
+  caches inside the container (`vllmCommon.cacheMountPath: ""`, unless
+  an explicit `--set` turns it back on), so standup creates no workload
+  PVC. Pair the two flags for a fully PVC-less flow.
 - Scenarios with `storage.hostPath.enabled: true` fail fast — hostPath
   pre-stages weights on the nodes, which contradicts fetching at runtime.
 - Scenario `customCommand`s should serve `$MODEL_SERVE_REF` (exported to

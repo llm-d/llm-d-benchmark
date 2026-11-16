@@ -191,6 +191,7 @@ class VllmServeConfig(BaseModel):
     customPreprocessCommand: str | None = None
     additionalFlags: list[str]
     modelCommand: str | None = None
+    cacheRoot: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +353,7 @@ class VllmCommonConfig(BaseModel):
     pullSecret: str
     containerHome: str
     hfHome: str
+    cacheMountPath: str
     ephemeralStorageResource: str
     ephemeralStorage: str
     networkResource: str

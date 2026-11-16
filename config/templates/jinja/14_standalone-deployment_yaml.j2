@@ -305,8 +305,10 @@ spec:
           value: "{{ standalone.vllm.workerMultiprocMethod }}"
         - name: VLLM_LOGGING_LEVEL
           value: "{{ standalone.vllm.loggingLevel }}"
-        - name: VLLM_CACHE_ROOT
-          value: "{{ standalone.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+{% set cache_env = compile_cache_env(standalone.vllm.cacheRoot | default(''), vllmCommon.cacheMountPath, standalone.extraEnvVars | default([])) | trim %}
+{% if cache_env %}
+{{ cache_env | indent(8, true) }}
+{% endif %}
         - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
           value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
         - name: VLLM_SERVER_DEV_MODE
@@ -458,6 +460,10 @@ spec:
           mountPath: {{ standalone.modelMountPath }}
           readOnly: true
 {% endif %}
+{% if vllmCommon.cacheMountPath %}
+        - name: compile-cache
+          mountPath: {{ vllmCommon.cacheMountPath }}
+{% endif %}
 {# Additional volume mounts (per-deployment extras) #}
 {% if standalone.additionalVolumeMounts is defined %}
 {% for mount in standalone.additionalVolumeMounts %}
@@ -530,8 +536,10 @@ spec:
           value: "{{ standalone.vllm.workerMultiprocMethod }}"
         - name: VLLM_LOGGING_LEVEL
           value: "{{ standalone.vllm.loggingLevel }}"
-        - name: VLLM_CACHE_ROOT
-          value: "{{ standalone.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+{% set cache_env = compile_cache_env(standalone.vllm.cacheRoot | default(''), vllmCommon.cacheMountPath, standalone.extraEnvVars | default([])) | trim %}
+{% if cache_env %}
+{{ cache_env | indent(8, true) }}
+{% endif %}
         - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
           value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
         - name: VLLM_SERVER_DEV_MODE
@@ -667,6 +675,10 @@ spec:
           mountPath: {{ standalone.modelMountPath }}
           readOnly: true
 {% endif %}
+{% if vllmCommon.cacheMountPath %}
+        - name: compile-cache
+          mountPath: {{ vllmCommon.cacheMountPath }}
+{% endif %}
 {% if standalone.additionalVolumeMounts is defined %}
 {% for mount in standalone.additionalVolumeMounts %}
         - name: {{ mount.name }}
@@ -728,6 +740,11 @@ spec:
         persistentVolumeClaim:
           claimName: {{ standalone.modelPvcName }}
 {% endif %}
+{% endif %}
+{% if vllmCommon.cacheMountPath %}
+      - name: compile-cache
+        persistentVolumeClaim:
+          claimName: {{ storage.workloadPvc.name }}
 {% endif %}
 {# Additional volumes (per-deployment extras) #}
 {% if standalone.additionalVolumes is defined %}

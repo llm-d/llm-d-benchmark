@@ -128,5 +128,8 @@ llmdbenchmark --spec experimental/eval-containers-aider-polyglot run \
 **PVC stuck in `Pending`**
 → The `storageClassName` in your cluster-config does not exist. Run `oc get sc` to list available storage classes.
 
+**vLLM pods crash creating `/compile-cache/.vllm-cache`**
+→ The serving pods keep their compile caches on the workload PVC, and the pod's random UID cannot write there. Either the PVC root is not writable by the pod's UID or fsGroup (it depends on the storage class), or `.vllm-cache` was created first by a pod with another UID (e.g. a vLLM pod with `runAsUser: 0`). Use a storage class that gives the pod's fsGroup write access, delete `.vllm-cache` if another UID owns it, or set `vllmCommon.cacheMountPath: ""` in your cluster-config.
+
 **`access-to-harness-data-workload-pvc` pod fails to start**
 → Check that `dataAccess.serviceAccount` in your cluster-config matches the SA you created in Step 1.
