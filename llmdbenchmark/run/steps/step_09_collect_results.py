@@ -20,8 +20,12 @@ class CollectResultsStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip if results are already local (nok8s bind-mount, --no-pvc, or step 06)."""
+        """Skip if there is nothing to collect: debug pods, or results already
+        local (nok8s bind-mount, --no-pvc, or step 06)."""
         if "nok8s" in (context.deployed_methods or []):
+            return True
+        # Debug pods run 'sleep infinity' and never write a result set.
+        if context.harness_debug:
             return True
         # --no-pvc: results were copied from the harness pods in step 06 and
         # there is no data-access pod to fall back on.
@@ -35,6 +39,24 @@ class CollectResultsStep(Step):
         if results_dir.exists() and any(results_dir.iterdir()):
             return True
         return False
+
+    @staticmethod
+    def _list_result_dirs(cmd, data_pod, namespace, prefix) -> list[str] | None:
+        """Names under ``prefix`` on the PVC, or None when it cannot be listed."""
+        ls_result = cmd.kube(
+            "exec",
+            data_pod,
+            "--namespace",
+            namespace,
+            "--",
+            "ls",
+            "-1",
+            prefix,
+            check=False,
+        )
+        if not ls_result.success:
+            return None
+        return [d.strip() for d in ls_result.stdout.splitlines() if d.strip()]
 
     @staticmethod
     def _copy(cmd, data_pod, namespace, prefix, dir_name, local_path, context):
@@ -132,19 +154,37 @@ class CollectResultsStep(Step):
         total_collected = 0
 
         if experiment_ids:
-            # Collect results for each known experiment ID
-            for exp_id in experiment_ids:
-                local_path = local_results_dir / exp_id
+            # Each harness pod writes <experiment_id>_<N> (step 07), so an ID on
+            # its own names no directory. Select the dirs carrying it, matched
+            # the way step 07's own PVC discovery matches them.
+            dir_names: list[str] = []
+            pvc_dirs = self._list_result_dirs(
+                cmd, data_pod, harness_ns, results_dir_prefix
+            )
+            if pvc_dirs is None:
+                errors.append(f"Could not list {results_dir_prefix} on the PVC")
+            else:
+                for exp_id in experiment_ids:
+                    matches = [d for d in pvc_dirs if exp_id in d]
+                    if not matches:
+                        context.logger.log_warning(
+                            f"No result directories found for {exp_id} under "
+                            f"{results_dir_prefix} on the PVC"
+                        )
+                    dir_names.extend(matches)
+
+            for dir_name in dir_names:
+                local_path = local_results_dir / dir_name
                 local_path.mkdir(parents=True, exist_ok=True)
 
-                context.logger.log_info(f"Collecting results: {exp_id}...")
+                context.logger.log_info(f"Collecting results: {dir_name}...")
 
                 result = self._copy(
                     cmd,
                     data_pod,
                     harness_ns,
                     results_dir_prefix,
-                    exp_id,
+                    dir_name,
                     local_path,
                     context,
                 )
@@ -155,36 +195,22 @@ class CollectResultsStep(Step):
                     if file_count > 0:
                         total_collected += file_count
                         context.logger.log_info(
-                            f"Collected {file_count} file(s) for {exp_id}"
+                            f"Collected {file_count} file(s) for {dir_name}"
                         )
                     else:
                         context.logger.log_warning(
-                            f"No files collected for {exp_id} (directory may be empty)"
+                            f"No files collected for {dir_name} (directory may be empty)"
                         )
                 else:
                     errors.append(
-                        f"Failed to copy results for {exp_id}: {result.stderr[:200]}"
+                        f"Failed to copy results for {dir_name}: {result.stderr[:200]}"
                     )
         else:
             # Discovery mode -- list what's in the results dir
-            ls_result = cmd.kube(
-                "exec",
-                data_pod,
-                "--namespace",
-                harness_ns,
-                "--",
-                "ls",
-                "-1",
-                results_dir_prefix,
-                check=False,
-            )
-            if ls_result.success and ls_result.stdout.strip():
-                dirs = ls_result.stdout.strip().split("\n")
+            dirs = self._list_result_dirs(cmd, data_pod, harness_ns, results_dir_prefix)
+            if dirs:
                 context.logger.log_info(f"Found {len(dirs)} result directories on PVC")
                 for dir_name in dirs:
-                    dir_name = dir_name.strip()
-                    if not dir_name:
-                        continue
                     local_path = local_results_dir / dir_name
                     local_path.mkdir(parents=True, exist_ok=True)
 

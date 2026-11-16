@@ -27,7 +27,7 @@ benchmark-report = "llmd_benchmark_report.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["llmd_benchmark_report", "benchmark_report"]
+include = ["llmd_benchmark_report", "llmd_benchmark_report.*", "benchmark_report"]
 
 [tool.setuptools.package-data]
 llmd_benchmark_report = ["*.yaml", "*.json"]

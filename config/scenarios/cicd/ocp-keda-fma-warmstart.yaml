@@ -27,12 +27,11 @@
 #     on EPP pool saturation metrics; FMA's launcher-populator reconciles
 #     launcher pods to match.
 #
-# How EPP reaches FMA: 12_router-values.yaml.j2 emits a router.modelServers
-# selector matching `llm-d.ai/inferenceServing=true, llm-d.ai/model=<id>`.
-# 24_fma-deployment.yaml.j2 puts those labels on the InferenceServerConfig's
-# `modelServerConfig.labels` (NOT on the LauncherConfig pod template) — the
-# dual-pods controller propagates them to the launcher pod at BIND time, so
-# only launchers actually serving traffic show up in the InferencePool.
+# How EPP reaches FMA (requester TCP-proxy mode): the router.modelServers
+# selector and targetPort (fma.requester.proxyPort, 8000) match REQUESTER
+# pods -- 24_fma-deployment.yaml.j2 puts the labels there, not the ISC
+# ([issue #831](https://github.com/llm-d-incubation/llm-d-fast-model-actuation/issues/831)) -- and the EPP routes to each requester's TCP proxy, which
+# the controller points at the bound launcher's vLLM port. Ready = endpoint.
 #
 # How KEDA scales FMA: the KEDA ScaledObject (30_keda-scaledobject.yaml.j2)
 # targets the FMA requester Deployment (`fma-requester-<id>`) and scales it on EPP
@@ -146,7 +145,7 @@ scenario:
 
       # Standup (step 06) bound-launcher wait: how long to wait for the
       # dual-pods-controller to bind a launcher and its vLLM to start serving
-      # (the inferenceServing/model labels appear only once serving). Raised
+      # (a requester is Ready only once its bound vLLM is serving). Raised
       # above the 600s default because Qwen3-32B off shared storage can exceed
       # 10 min to load and serve, tripping a CI standup timeout.
       boundLauncherTimeout: 1800

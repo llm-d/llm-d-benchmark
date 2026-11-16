@@ -149,7 +149,7 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 | 06 | `CreateProfileConfigmapStep` | Create ConfigMaps for workload profiles and harness scripts |
 | 07 | `DeployHarnessStep` | Deploy harness pod(s), wait for completion, collect results, capture logs |
 | 08 | `WaitCompletionStep` | Wait for harness pods (used when step 07 does not inline waiting) |
-| 09 | `CollectResultsStep` | Collect results from PVC to local workspace (skipped under `--data-collect skip`) |
+| 09 | `CollectResultsStep` | Collect results from PVC to local workspace when step 07 left none locally (skipped under `--data-collect skip` and `-d`) |
 | 10 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3); skipped under `--data-collect skip`, which leaves nothing local to upload |
 | 11 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
 | 12 | `AnalyzeResultsStep` | Build any benchmark report the harness pod did not build (always on; skipped under `--data-collect skip`) |

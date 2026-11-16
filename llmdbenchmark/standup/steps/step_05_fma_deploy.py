@@ -130,9 +130,9 @@ class FMADeployStep(Step):
             if not result.success:
                 errors.append(f"Failed to apply fma deployment: {result.stderr}")
 
-        # Resize the rendered placeholders (launcherCount + requester replicas +
-        # ScaledObject ceiling) to the pinned node's GPU count -- one
-        # launcher/requester pair per GPU. Only when node selection yielded one.
+        # Resize the rendered placeholders (launcherCount + requester replicas)
+        # to the pinned node's GPU count -- one launcher/requester pair per
+        # GPU. Only when node selection yielded one.
         if len(errors) == 0 and selected_gpu_count:
             model_id_label = plan_config.get("model_id_label", "")
             self._size_fma_to_gpu_count(
@@ -158,12 +158,9 @@ class FMADeployStep(Step):
             )
 
         if len(errors) == 0:
-            # Wait for at least one launcher pod to be Bound (carrying the
-            # ISC labels propagated by the dual-pods-controller). Without
-            # this wait, standup returns immediately after the requester
-            # is Ready -- but the dual-pods-controller binds a launcher
-            # ASYNCHRONOUSLY (typically 30s to several minutes after
-            # requester Ready).
+            # Wait for requester pods Ready: the controller configures the
+            # proxy before relaying readiness, so Ready == launcher
+            # bound+serving.
             #
             # Skip the wait when fma.requester.replicas == 0. When node
             # selection resized the requester to the node's GPU count, use that
@@ -179,11 +176,10 @@ class FMADeployStep(Step):
                 )
             elif model_id_label:
                 label_selector = (
-                    f"llm-d.ai/inferenceServing=true,llm-d.ai/model={model_id_label}"
+                    f"llm-d.ai/role=requester,llm-d.ai/model={model_id_label}"
                 )
-                # How long to wait for the dual-pods-controller to bind a
-                # launcher and for its vLLM to start serving (labels appear
-                # only once serving). Configurable per-scenario via
+                # How long to wait for the controller to bind a launcher and
+                # ready the requester. Configurable per-scenario via
                 # fma.boundLauncherTimeout; large models on slow storage can
                 # take well over the historical 600s default.
                 bound_launcher_timeout = int(
@@ -198,12 +194,15 @@ class FMADeployStep(Step):
                     namespace=namespace,
                     timeout=bound_launcher_timeout,
                     poll_interval=10,
-                    description=f"FMA bound launcher (model={model_id_label})",
+                    description=(
+                        f"FMA requester Ready = launcher bound+serving "
+                        f"(model={model_id_label})"
+                    ),
                     expected=int(requester_replicas),
                 )
                 if not wait_result.success:
                     errors.append(
-                        f"FMA bound launcher pod did not become Ready in "
+                        f"FMA requester pod(s) did not become Ready in "
                         f"ns/{namespace}: {wait_result.stderr}. The "
                         f"dual-pods-controller may not have bound a "
                         f"launcher to the requester yet."
@@ -500,8 +499,7 @@ class FMADeployStep(Step):
         slow launcher model load -- closing the window in which another tenant
         could claim them (the contention the old TOCTOU re-check guarded against).
         The LPP launcherCount is then set 1:1 so the populator binds one launcher
-        per requester. Also caps the KEDA ScaledObject at gpu_count. Hotstart-only
-        (runs only when node selection did).
+        per requester. Hotstart-only (runs only when node selection did).
         """
         if not model_id_label:
             errors.append("Cannot size FMA to GPU count: model_id_label missing.")
@@ -577,10 +575,6 @@ class FMADeployStep(Step):
             )
             return
 
-        # Cap the ScaledObject at gpu_count so KEDA's HPA can't exceed the node's
-        # GPUs. It's applied later (step_09), so edit the rendered manifest here.
-        self._cap_scaledobject_max_replicas(context, stack_path, gpu_count)
-
         # Persist the effective count so run-phase / smoketest steps that read
         # fma.requester.replicas (e.g. the hot-start rollout wait and sleeping
         # count) use it instead of the rendered placeholder.
@@ -591,41 +585,6 @@ class FMADeployStep(Step):
             f"(LauncherPopulationPolicy {lpp_name} launcherCount + "
             f"{deploy_name} replicas), one pair per GPU on the pinned node"
         )
-
-    @staticmethod
-    def _cap_scaledobject_max_replicas(
-        context: ExecutionContext, stack_path: Path, gpu_count: int
-    ) -> None:
-        """Lower maxReplicaCount to min(rendered, gpu_count) in the rendered
-        28_wva-scaledobject manifest (clamping minReplicaCount to match) so
-        step_09 applies an object capped to node GPU capacity. Best-effort.
-        """
-        so_file = next(stack_path.glob("28_wva-scaledobject*"), None)
-        if so_file is None:
-            return
-        try:
-            with open(so_file, encoding="utf-8") as fh:
-                doc = yaml.safe_load(fh) or {}
-            spec = doc.get("spec")
-            if not isinstance(spec, dict):
-                return
-            # Lower-only: never raise the scenario's configured ceiling.
-            rendered_max = int(spec.get("maxReplicaCount", gpu_count) or gpu_count)
-            spec["maxReplicaCount"] = min(rendered_max, gpu_count)
-            if int(spec.get("minReplicaCount", 1) or 1) > spec["maxReplicaCount"]:
-                spec["minReplicaCount"] = spec["maxReplicaCount"]
-            with open(so_file, "w", encoding="utf-8") as fh:
-                yaml.safe_dump(doc, fh, default_flow_style=False, sort_keys=False)
-            context.logger.log_info(
-                f"    | Capped {so_file.name} maxReplicaCount="
-                f"{spec['maxReplicaCount']} (min of rendered {rendered_max} and "
-                f"pinned-node GPU count {gpu_count})"
-            )
-        except (OSError, yaml.YAMLError, ValueError) as exc:
-            context.logger.log_warning(
-                f"    | Could not cap ScaledObject maxReplicaCount to {gpu_count} "
-                f"in {so_file}: {exc}"
-            )
 
     @staticmethod
     def _persist_requester_replicas(

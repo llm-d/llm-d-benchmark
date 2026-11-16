@@ -12,6 +12,11 @@
      kind         -- defaults to Deployment
      name         -- defaults to <model_id_label>-decode
 
+   Optional spec fields, each rendered only when the scenario sets it:
+     cooldownPeriod, idleReplicaCount, fallback, scalingModifiers, and
+     ignoreNullValues on prometheus triggers. scalingModifiers and behavior
+     share one advanced: block.
+
    Only rendered when keda.scaledObjects is defined and non-empty.
    ============================================================================ #}
 {% if keda is defined and keda.scaledObjects | default([]) %}
@@ -39,6 +44,12 @@ spec:
 {% if so.pollingInterval is defined %}
   pollingInterval: {{ so.pollingInterval }}
 {% endif %}
+{% if so.cooldownPeriod is defined %}
+  cooldownPeriod: {{ so.cooldownPeriod }}
+{% endif %}
+{% if so.idleReplicaCount is defined %}
+  idleReplicaCount: {{ so.idleReplicaCount }}
+{% endif %}
   triggers:
 {% for trigger in so.triggers | default([]) %}
   - type: {{ trigger.type }}
@@ -63,15 +74,42 @@ spec:
         {{ trigger.query | trim | indent(8) }}
       threshold: "{{ trigger.threshold | default('1') }}"
       activationThreshold: "{{ trigger.activationThreshold | default('0') }}"
+{% if trigger.ignoreNullValues is defined %}
+      ignoreNullValues: "{{ trigger.ignoreNullValues | string | lower }}"
+{% endif %}
 {% elif trigger.metadata is defined %}
 {{ trigger.metadata | toyaml | indent(6, first=True) }}
 {% endif %}
 {% endfor %}
-{% if so.behavior is defined %}
+{% if so.fallback is defined %}
+  fallback:
+    failureThreshold: {{ so.fallback.failureThreshold }}
+    replicas: {{ so.fallback.replicas }}
+{% if so.fallback.behavior is defined %}
+    behavior: {{ so.fallback.behavior }}
+{% endif %}
+{% endif %}
+{% if so.behavior is defined or so.scalingModifiers is defined %}
   advanced:
+{% if so.behavior is defined %}
     horizontalPodAutoscalerConfig:
       behavior:
 {{ so.behavior | toyaml | indent(8, first=True) }}
+{% endif %}
+{% if so.scalingModifiers is defined %}
+{% set sm = so.scalingModifiers %}
+    scalingModifiers:
+      formula: '{{ sm.formula | trim | replace("'", "''") }}'
+{% if sm.target is defined %}
+      target: "{{ sm.target }}"
+{% endif %}
+{% if sm.activationTarget is defined %}
+      activationTarget: "{{ sm.activationTarget }}"
+{% endif %}
+{% if sm.metricType is defined %}
+      metricType: {{ sm.metricType }}
+{% endif %}
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endif %}

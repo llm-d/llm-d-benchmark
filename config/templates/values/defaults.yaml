@@ -1584,10 +1584,8 @@ fma:
 
   chart:
     # FMA release tag (drives install-fma.sh --release and the image tags
-    # below). v0.7.1 ships the LauncherConfig inferencePorts pool (PR #790)
-    # and makes InferenceServerConfig's modelServerConfig.port optional
-    # (PR #798).
-    version: 0.7.1
+    # below). v0.8.0's controller assigns ports from the LauncherConfig pool.
+    version: 0.8.0
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
@@ -1595,10 +1593,15 @@ fma:
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.7.1
+      tag: v0.8.0
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
+    # Requester TCP proxy: forwards to the pool-assigned vLLM port; the
+    # EPP's targetPort in proxy mode. 8000 = vllmCommon.inferencePort, so
+    # the metrics/reset tooling and the guides
+    # ([llm-d#3019](https://github.com/llm-d/llm-d/pull/3019)) match it.
+    proxyPort: 8000
     readinessProbeInitialDelay: 5
     readinessProbePeriod: 10
     limitsGPU: 1
@@ -1607,12 +1610,10 @@ fma:
 
   launcher:
     maxInstances: 4
-    # Port pool for inference-engine instances per launcher pod (FMA v0.7.1,
-    # upstream PR #790). Deliberately unset per upstream guidance: the
-    # dual-pods controller doesn't consume it yet (#779) and still reads the
-    # InferenceServerConfig port. When set, it must hold >= maxInstances
-    # ports, excluding 8001 (the launcher service port).
-    inferencePorts: []
+    # Port pool the controller assigns to instances (running) in each
+    # launcher pod (FMA v0.8.0). Needs >= maxInstances ports (extend both
+    # together) and must skip 8001 (launcher service port).
+    inferencePorts: [8000, 8002, 8003, 8004]
     # Opt-in: pass the download job's staged local copy
     # (<modelMountPath>/<model.path>, a complete copy by construction) as
     # the launcher's --model instead of the repo ID. The repo ID resolves
@@ -1649,7 +1650,7 @@ fma:
     enforceEager: false
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.7.1
+      tag: v0.8.0
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:

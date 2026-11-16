@@ -6,6 +6,9 @@ Verifies that:
 - authMode=bearer-secret renders 27a_keda-triggerauthentication.yaml
   and adds authenticationRef to each prometheus trigger
 - A scenario without keda.scaledObjects renders neither template
+- fallback, ignoreNullValues, scalingModifiers, cooldownPeriod and
+  idleReplicaCount render only when the scenario sets them, and
+  scalingModifiers shares one advanced: block with behavior
 """
 
 from __future__ import annotations
@@ -174,6 +177,49 @@ _KEDA_NON_PROMETHEUS_TRIGGER = """\
                 value: "50"
 """
 
+# Every optional ScaledObject field at once. ignoreNullValues is a YAML bool
+# here on purpose: KEDA wants the string "false", not Python's "False".
+_KEDA_ALL_OPTIONAL_FIELDS = """\
+    keda:
+      prometheus:
+        baseUrl: http://prometheus-operated.monitoring.svc.cluster.local
+        port: 9090
+        authMode: none
+      scaledObjects:
+        - name: decode-saturation
+          minReplicas: 1
+          maxReplicas: 5
+          cooldownPeriod: 120
+          idleReplicaCount: 0
+          triggers:
+            - type: prometheus
+              name: kv
+              metricType: AverageValue
+              query: |
+                max(kv_metric{namespace="test"})
+              threshold: "0.7"
+              ignoreNullValues: false
+            - type: prometheus
+              name: queue
+              metricType: AverageValue
+              query: |
+                sum(queue_metric{namespace="test"})
+              threshold: "4"
+              ignoreNullValues: "false"
+          fallback:
+            failureThreshold: 3
+            replicas: 4
+            behavior: currentReplicasIfHigher
+          behavior:
+            scaleDown:
+              stabilizationWindowSeconds: 300
+          scalingModifiers:
+            formula: 'max(kv / 0.7, queue / 4) > 1 ? 2 : 1'
+            target: "1"
+            activationTarget: "0"
+            metricType: AverageValue
+"""
+
 _SCENARIO_NO_KEDA = _SCENARIO_HEADER  # no keda key at all
 
 # Template 30 (EPP saturation autoscaling). The behavior values below are
@@ -224,6 +270,19 @@ def _scenario_bearer_auth() -> str:
 
 def _scenario_non_prometheus_trigger() -> str:
     return _SCENARIO_HEADER + _KEDA_NON_PROMETHEUS_TRIGGER
+
+
+def _scenario_all_optional_fields() -> str:
+    return _SCENARIO_HEADER + _KEDA_ALL_OPTIONAL_FIELDS
+
+
+def _render_scaledobjects(tmp_path: Path, scenario: str) -> tuple[str, list[dict]]:
+    """Render *scenario* and return template 27's text and its parsed documents."""
+    result = _render_with_overrides(tmp_path, scenario)
+    so_file = _find_yaml(result.rendered_paths[0], "27_keda-scaledobjects")
+    assert so_file is not None, "27_keda-scaledobjects*.yaml not found"
+    text = so_file.read_text(encoding="utf-8")
+    return text, [d for d in yaml.safe_load_all(text) if d]
 
 
 def _scenario_epp_keda_saturation() -> str:
@@ -367,6 +426,69 @@ class TestAuthModeBearerSecret:
         assert ta_file is None or not _has_yaml_content(ta_file), (
             "Template 27a should be empty when keda is absent"
         )
+
+
+class TestOptionalScaledObjectFields:
+    """Template 27: fields rendered only when the scenario sets them."""
+
+    def test_absent_fields_are_not_rendered(self, tmp_path: Path) -> None:
+        """A scenario without the optional keys gets none of them, so it
+        keeps KEDA's defaults exactly as before these keys existed."""
+        _, docs = _render_scaledobjects(tmp_path, _scenario_none_auth())
+        spec = docs[0]["spec"]
+        for key in ("fallback", "advanced", "cooldownPeriod", "idleReplicaCount"):
+            assert key not in spec, f"{key} rendered without being set"
+        assert "ignoreNullValues" not in spec["triggers"][0]["metadata"]
+
+    def test_all_fields_rendered(self, tmp_path: Path) -> None:
+        text, docs = _render_scaledobjects(tmp_path, _scenario_all_optional_fields())
+        spec = docs[0]["spec"]
+
+        assert spec["cooldownPeriod"] == 120
+        assert spec["idleReplicaCount"] == 0
+        assert spec["fallback"] == {
+            "failureThreshold": 3,
+            "replicas": 4,
+            "behavior": "currentReplicasIfHigher",
+        }
+        for trigger in spec["triggers"]:
+            assert trigger["metadata"]["ignoreNullValues"] == "false"
+            # KEDA only applies fallback to AverageValue triggers.
+            assert trigger["metricType"] == "AverageValue"
+
+        assert text.count("  advanced:") == 1, "advanced: emitted more than once"
+        advanced = spec["advanced"]
+        assert advanced["horizontalPodAutoscalerConfig"]["behavior"] == {
+            "scaleDown": {"stabilizationWindowSeconds": 300}
+        }
+        assert advanced["scalingModifiers"] == {
+            "formula": "max(kv / 0.7, queue / 4) > 1 ? 2 : 1",
+            "target": "1",
+            "activationTarget": "0",
+            "metricType": "AverageValue",
+        }
+
+    def test_scaling_modifiers_without_behavior(self, tmp_path: Path) -> None:
+        """scalingModifiers alone still opens advanced:, without an empty
+        horizontalPodAutoscalerConfig."""
+        scenario = _scenario_all_optional_fields().replace(
+            "          behavior:\n            scaleDown:\n"
+            "              stabilizationWindowSeconds: 300\n",
+            "",
+        )
+        _, docs = _render_scaledobjects(tmp_path, scenario)
+        advanced = docs[0]["spec"]["advanced"]
+        assert set(advanced) == {"scalingModifiers"}
+
+    def test_formula_quotes_survive(self, tmp_path: Path) -> None:
+        """A formula with both quote styles must round-trip through YAML."""
+        formula = """kv > 0.5 ? """ + '"a"' + """ : 'b'"""
+        scenario = _scenario_all_optional_fields().replace(
+            "formula: 'max(kv / 0.7, queue / 4) > 1 ? 2 : 1'",
+            "formula: " + yaml.safe_dump(formula).strip().removesuffix("...").strip(),
+        )
+        _, docs = _render_scaledobjects(tmp_path, scenario)
+        assert docs[0]["spec"]["advanced"]["scalingModifiers"]["formula"] == formula
 
 
 class TestEppKedaSaturationBehavior:

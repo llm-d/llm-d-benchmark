@@ -1,3 +1,4 @@
+kind: benchmark-report
 results:
   component_health:
   - component_label: vllm-svc-0

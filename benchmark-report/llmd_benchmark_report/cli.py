@@ -16,7 +16,7 @@ import os
 import sys
 
 from . import make_json_schema
-from .base import WorkloadGenerator
+from .artifacts.benchmark_report.base import WorkloadGenerator
 
 
 def main() -> None:

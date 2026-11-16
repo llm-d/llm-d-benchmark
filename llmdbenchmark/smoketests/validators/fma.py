@@ -30,9 +30,10 @@ from llmdbenchmark.utilities.kube_helpers import _pod_crash_details
 # --- FMA serving signals -----------------------------------------------------
 # When the dual-pods controller BINDS a launcher to a requester it stamps the
 # launcher pod with binding labels it manages itself -- `dual-pods.llm-d.ai/dual`
-# (the bound requester pod name) and `dual-pods.llm-d.ai/sleeping` -- and it ADDS
-# the InferenceServerConfig.modelServerConfig routing labels. It strips the
-# binding labels again on unbind.
+# (the bound requester pod name) and `dual-pods.llm-d.ai/sleeping` (the
+# bound instance's sleep state, trailing the actual /sleep and /wake_up
+# calls) -- and strips them on unbind. The InferencePool routing labels
+# live on the requester pod ([issue #831](https://github.com/llm-d-incubation/llm-d-fast-model-actuation/issues/831)), not the launcher.
 #
 # NOTE the guide runs a POOL of launchers (LauncherPopulationPolicy
 # launcherCount=1 per GPU node), not a single launcher; with requester
@@ -96,6 +97,31 @@ def _fma_serving_pod(cmd, namespace: str) -> dict | None:
 def _fma_pod_ip(pod: dict | None) -> str:
     """status.podIP of *pod*, or "" if absent."""
     return ((pod or {}).get("status", {}) or {}).get("podIP", "") or ""
+
+
+def _fma_requester_pod_ip(cmd, namespace: str, launcher_pod: dict | None) -> str:
+    """Pod IP of the requester bound to *launcher_pod* (via the controller's
+    ``dual`` label) -- the TCP-proxy serving endpoint. "" if unbound/unread."""
+    labels = launcher_pod["metadata"]["labels"] if launcher_pod else {}
+    requester_name = labels.get(_FMA_BOUND_LABEL, "")
+    if not requester_name:
+        return ""
+    result = cmd.kube(
+        "get",
+        "pod",
+        requester_name,
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
+        check=False,
+    )
+    if not result.success:
+        return ""
+    try:
+        return (loads(result.stdout).get("status", {}) or {}).get("podIP", "") or ""
+    except JSONDecodeError:
+        return ""
 
 
 def _fma_launcher_crashes(
@@ -209,7 +235,7 @@ class FmaValidator(BaseSmoketest):
         plan_config = _load_config(stack_path)
 
         model_name = _nested_get(plan_config, "model", "name") or ""
-        port = str(_nested_get(plan_config, "vllmCommon", "inferencePort") or "8000")
+        port = str(_nested_get(plan_config, "fma", "requester", "proxyPort") or "8000")
 
         if self._launcher_created_on_demand(context, cmd, plan_config):
             return _fma_skip_report("fma_health_skipped_no_launcher")
@@ -345,14 +371,17 @@ class FmaValidator(BaseSmoketest):
             )
         )
 
-        # 3. vLLM answers /v1/models on the launcher pod IP:port.
-        pod_ip = _fma_pod_ip(serving_pod)
+        # 3. vLLM answers /v1/models through the bound requester's TCP proxy.
+        pod_ip = _fma_requester_pod_ip(cmd, namespace, serving_pod)
         if not pod_ip and not cmd.dry_run:
             report.add(
                 CheckResult(
-                    "fma_launcher_ip",
+                    "fma_requester_ip",
                     False,
-                    message=f"Bound launcher pod {pod_name} has no status.podIP",
+                    message=(
+                        f"Requester bound to launcher pod {pod_name} has no "
+                        f"status.podIP"
+                    ),
                 )
             )
             return report
@@ -370,7 +399,8 @@ class FmaValidator(BaseSmoketest):
                 "fma_model_ready",
                 err is None,
                 message=(
-                    f"vLLM serving '{model_name}' at {pod_ip}:{port}"
+                    f"vLLM serving '{model_name}' via requester TCP proxy at "
+                    f"{pod_ip}:{port}"
                     if err is None
                     else err
                 ),
@@ -383,11 +413,11 @@ class FmaValidator(BaseSmoketest):
         context: ExecutionContext,
         stack_path: Path,
     ) -> SmoketestReport:
-        """Baseline inference check against the bound launcher pod.
+        """Baseline inference check through the bound requester's TCP proxy.
 
-        Sends one request to the bound launcher pod as a fail-fast serving gate
-        before the (expensive) run phase. On the kustomize guide path, also
-        routes one request through the EPP.
+        Sends one request to the requester bound to the serving launcher as a
+        fail-fast serving gate before the (expensive) run phase. On the
+        kustomize guide path, also routes one request through the EPP.
         """
         report = SmoketestReport()
         cmd = context.require_cmd()
@@ -395,7 +425,7 @@ class FmaValidator(BaseSmoketest):
         plan_config = _load_config(stack_path)
 
         model_name = _nested_get(plan_config, "model", "name") or ""
-        port = str(_nested_get(plan_config, "vllmCommon", "inferencePort") or "8000")
+        port = str(_nested_get(plan_config, "fma", "requester", "proxyPort") or "8000")
 
         # Requester at zero: go through the router (a launcher pod request never
         # triggers the scale-up). Checked before the plan-based skip, since a
@@ -428,7 +458,7 @@ class FmaValidator(BaseSmoketest):
             cmd,
             context,
             namespace,
-            _fma_pod_ip(pod),
+            _fma_requester_pod_ip(cmd, namespace, pod),
             port,
             model_name,
             plan_config,
@@ -454,10 +484,10 @@ class FmaValidator(BaseSmoketest):
         *,
         label: str,
     ) -> tuple[bool, str]:
-        """Send one /v1/completions (falling back to /v1/chat/completions) to the
-        launcher pod IP:port. Returns (passed, message)."""
+        """Send one /v1/completions (falling back to /v1/chat/completions) to
+        the requester's TCP proxy (pod_ip:port). Returns (passed, message)."""
         if not pod_ip and not cmd.dry_run:
-            return False, f"FMA {label} request: launcher pod has no IP"
+            return False, f"FMA {label} request: requester pod has no IP"
         base_url = f"http://{pod_ip or '<dry-run-ip>'}:{port}"
         context.logger.log_info(f"FMA {label} inference against {base_url}...")
         result = self._try_completions(
@@ -499,7 +529,7 @@ class FmaValidator(BaseSmoketest):
         a podIP). Returns the pod dict on success or None on timeout."""
         if cmd.dry_run:
             return {
-                "metadata": {"name": "<dry-run-launcher>"},
+                "metadata": {"name": "<dry-run-launcher>", "labels": {}},
                 "status": {"podIP": "<dry-run-ip>"},
             }
 

@@ -96,6 +96,17 @@ def compute_gateway_path_prefix(
     return _normalize_url_prefix(tmpl.replace("{stack.name}", stack_name))
 
 
+def _sa_name(
+    plan_config: dict | None, service_account: str | None = None
+) -> str | None:
+    """Resolve the SA ephemeral pods run as. Shared by _build_overrides and
+    ensure_service_account so the account the overrides stamp onto the pod is
+    always the one the ensure creates."""
+    return service_account or (
+        plan_config.get("serviceAccount", {}).get("name") if plan_config else None
+    )
+
+
 def _build_overrides(
     plan_config: dict | None, service_account: str | None = None
 ) -> list[str]:
@@ -108,15 +119,77 @@ def _build_overrides(
                 {"name": pull_secret}
             ]
 
-    sa_name = service_account or (
-        plan_config.get("serviceAccount", {}).get("name") if plan_config else None
-    )
+    sa_name = _sa_name(plan_config, service_account)
     if sa_name:
         overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
 
     if overrides:
         return ["--overrides", f"'{json.dumps(overrides)}'"]
     return []
+
+
+def _missing(result: CommandResult) -> bool:
+    """True when a ``kubectl get`` says the object is not there."""
+    return not result.success or "not found" in (result.stderr + result.stdout).lower()
+
+
+def ensure_service_account(
+    cmd: CommandExecutor,
+    namespace: str,
+    plan_config: dict | None,
+    service_account: str | None = None,
+    with_rbac: bool = False,
+) -> None:
+    """Create the plan's ServiceAccount if it does not exist.
+
+    Ephemeral curl pods run as this SA (``serviceAccount.name``, resolved
+    like :func:`_build_overrides`), but on a fresh namespace nothing creates
+    it before the smoketest -- and admission only needs the SA to exist.
+    Probes therefore pass the default; ``with_rbac=True`` additionally
+    provisions the harness Role (get,list on configmaps, pods, pods/log),
+    which the run phase's harness pods need. No-op when none is configured
+    or it is ``default``.
+    """
+    sa_name = _sa_name(plan_config, service_account)
+    if not sa_name or sa_name == "default":
+        return
+
+    if _missing(cmd.kube("get", "sa", sa_name, "--namespace", namespace, check=False)):
+        cmd.logger.log_info(
+            f"ServiceAccount '{sa_name}' not found, auto-creating it..."
+        )
+        cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
+
+    if not with_rbac:
+        return
+
+    role_name = f"{sa_name}-role"
+    if _missing(
+        cmd.kube("get", "role", role_name, "--namespace", namespace, check=False)
+    ):
+        cmd.logger.log_info(
+            f"RBAC Role '{role_name}' missing for ServiceAccount '{sa_name}', auto-creating it..."
+        )
+        cmd.kube(
+            "create",
+            "role",
+            role_name,
+            "--verb=get,list",
+            "--resource=configmaps,pods,pods/log",
+            "--namespace",
+            namespace,
+            check=False,
+        )
+        cmd.kube(
+            "create",
+            "rolebinding",
+            f"{sa_name}-binding",
+            f"--role={role_name}",
+            f"--serviceaccount={namespace}:{sa_name}",
+            "--namespace",
+            namespace,
+            check=False,
+        )
 
 
 def _ephemeral_label_args() -> list[str]:
@@ -747,59 +820,9 @@ def test_model_serving(
     prefix = _normalize_url_prefix(url_path_prefix)
     url = f"{protocol}://{host}:{port}{prefix}/v1/models"
 
-    # Auto-ensure service account and RBAC
-    sa_name = service_account or (
-        plan_config.get("serviceAccount", {}).get("name") if plan_config else "default"
-    )
-    if sa_name:
-        if sa_name != "default":
-            sa_check = cmd.kube(
-                "get", "sa", sa_name, "--namespace", namespace, check=False
-            )
-            if (
-                not sa_check.success
-                or "not found" in (sa_check.stderr + sa_check.stdout).lower()
-            ):
-                cmd.logger.log_info(
-                    f"ServiceAccount '{sa_name}' not found, auto-creating it..."
-                )
-                cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
-
-        # Always ensure the required RBAC role exists
-        role_name = f"{sa_name}-role"
-        role_check = cmd.kube(
-            "get", "role", role_name, "--namespace", namespace, check=False
-        )
-        if (
-            not role_check.success
-            or "not found" in (role_check.stderr + role_check.stdout).lower()
-        ):
-            cmd.logger.log_info(
-                f"RBAC Role '{role_name}' missing for ServiceAccount '{sa_name}', auto-creating it..."
-            )
-            cmd.kube(
-                "create",
-                "role",
-                role_name,
-                "--verb=get,list",
-                "--resource=configmaps,pods,pods/log",
-                "--namespace",
-                namespace,
-                check=False,
-            )
-
-            # Always ensure RoleBinding
-            binding_name = f"{sa_name}-binding"
-            cmd.kube(
-                "create",
-                "rolebinding",
-                binding_name,
-                f"--role={role_name}",
-                f"--serviceaccount={namespace}:{sa_name}",
-                "--namespace",
-                namespace,
-                check=False,
-            )
+    # RBAC included: this also serves the run phase's verify_model, which
+    # runs before the harness pods that need the Role.
+    ensure_service_account(cmd, namespace, plan_config, service_account, with_rbac=True)
 
     override_args = _build_overrides(plan_config, service_account=service_account)
     curl_image = CURL_IMAGE
@@ -1036,6 +1059,8 @@ def reset_caches_pods(
         return warnings
 
     override_args = _build_overrides(plan_config)
+    # Fresh namespaces have no SA until the run phase creates it.
+    ensure_service_account(cmd, namespace, plan_config)
     curl_image = CURL_IMAGE
 
     def _run_curl_pod(ips: list[str], endpoints: tuple[str, ...]) -> CommandResult:

@@ -34,8 +34,8 @@ MINIMAL_V02 = {"version": "0.2", "run": {"uid": "u"}, "results": {}}
 
 
 # The legacy example report, loaded through version dispatch, comes back as
-# the v0.2 model with version "0.2" kept, and dumps to exactly the recorded
-# br_v0_2_legacy_example.dump.yaml.
+# the v0.2 model with version "0.2" kept and kind "benchmark-report" filled,
+# and dumps to exactly the recorded br_v0_2_legacy_example.dump.yaml.
 def test_legacy_example_loads_as_before() -> None:
     data = yaml.safe_load(LEGACY_EXAMPLE.read_text(encoding="utf-8"))
 
@@ -50,9 +50,10 @@ def test_legacy_example_loads_as_before() -> None:
 
 
 # {"version": "0.2", "run": {"uid": "u"}, "results": {}} loads and dumps back
-# unchanged, so no field a 0.2 report could omit has become required.
+# with only kind "benchmark-report" added, so no field a 0.2 report could omit
+# has become required.
 def test_minimal_legacy_document_round_trips() -> None:
     report = load_benchmark_report(MINIMAL_V02)
 
     assert type(report) is BenchmarkReportV02
-    assert report.dump() == MINIMAL_V02
+    assert report.dump() == {**MINIMAL_V02, "kind": "benchmark-report"}

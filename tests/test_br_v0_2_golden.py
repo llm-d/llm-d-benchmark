@@ -33,6 +33,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from llmd_benchmark_report import load_artifact, load_benchmark_report
+
 FIXTURES = Path(__file__).parent / "fixtures"
 GOLDEN_DIR = FIXTURES / "br_v0_2_golden"
 
@@ -187,3 +189,20 @@ def test_no_orphaned_goldens() -> None:
     expected = {f"{case.name}.yaml" for case in CASES}
     on_disk = {path.name for path in GOLDEN_DIR.glob("*.yaml")}
     assert on_disk <= expected, f"orphaned goldens: {sorted(on_disk - expected)}"
+
+
+# Every golden loads to the same report through load_artifact() and
+# load_benchmark_report(), both as committed and with its kind line removed,
+# the way a report written before kind existed reads.
+@pytest.mark.parametrize(
+    "golden", sorted(GOLDEN_DIR.glob("*.yaml")), ids=lambda path: path.stem
+)
+def test_golden_loads_the_same_through_both_loaders(golden: Path) -> None:
+    documents = yaml.safe_load(golden.read_text(encoding="utf-8"))
+    for data in documents if isinstance(documents, list) else [documents]:
+        assert data["kind"] == "benchmark-report"
+        legacy = {key: value for key, value in data.items() if key != "kind"}
+        for document in (data, legacy):
+            assert (
+                load_artifact(document).dump() == load_benchmark_report(document).dump()
+            )

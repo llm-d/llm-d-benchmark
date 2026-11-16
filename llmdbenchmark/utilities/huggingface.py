@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from huggingface_hub import (
+    auth_check,
     model_info as hf_model_info,
 )
 from huggingface_hub.utils import (
@@ -58,9 +59,14 @@ def is_model_gated(model_id: str) -> GatedStatus:
 
 
 def user_has_model_access(model_id: str, hf_token: str) -> AccessStatus:
-    """Verify that a HuggingFace token has access to a gated model."""
+    """Verify that a HuggingFace token has access to a gated model.
+
+    Uses ``auth_check`` rather than ``model_info``: the Hub returns a gated
+    repo's metadata to any caller, so ``model_info`` succeeds for a token that
+    was never granted access. ``auth_check`` raises ``GatedRepoError`` instead.
+    """
     try:
-        hf_model_info(model_id, token=hf_token)
+        auth_check(model_id, token=hf_token)
         return AccessStatus.AUTHORIZED
     except GatedRepoError:
         return AccessStatus.UNAUTHORIZED

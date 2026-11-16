@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 DUAL_LABEL = "dual-pods.llm-d.ai/dual"
 ACCELERATORS_ANNOTATION = "dual-pods.llm-d.ai/accelerators"
+ADMIN_PORT_ANNOTATION = "dual-pods.llm-d.ai/admin-port"
+PROXY_CONFIG_PATH = "/v1/proxy/config"
+DEFAULT_ADMIN_PORT = 8081
 FMA_TIMEOUT = 10.0 * 60.0  # time (seconds) to wait
 
 # Name of the requester container whose start time is the actuation baseline
@@ -218,6 +221,27 @@ class FMAMetrics:
         return dump_dict
 
 
+def get_requester_proxy_target(requester_pod: Any) -> tuple[str, int] | None:
+    """The (address, port) of the vLLM backend behind the requester's TCP
+    proxy, per the configuration the dual-pods controller PUTs at bind time.
+    None when unconfigured or unreachable, so the caller can fall back."""
+    pod_ip = requester_pod.status.pod_ip
+    if not pod_ip:
+        return None
+    annotations = requester_pod.metadata.annotations or {}
+    try:
+        admin_port = int(annotations.get(ADMIN_PORT_ANNOTATION, DEFAULT_ADMIN_PORT))
+        response = requests.get(
+            f"http://{pod_ip}:{admin_port}{PROXY_CONFIG_PATH}", timeout=5.0
+        )
+        if response.status_code != 200:
+            return None
+        target = response.json()
+        return str(target["address"]), int(target["port"])
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
+
 def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments
     v1: client.CoreV1Api,
     api,
@@ -251,32 +275,41 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
             )
             continue
 
-        vllm_port = None
-        try:
-            inference_server = api.get_namespaced_custom_object(
-                group="fma.llm-d.ai",
-                version="v1alpha1",
-                namespace=namespace,
-                plural="inferenceserverconfigs",
-                name=inference_server_config_name,
-            )
-            vllm_port = (
-                inference_server.get("spec", {})
-                .get("modelServerConfig", {})
-                .get("port")
-            )
-            if vllm_port is None:
-                logger.info(
-                    "No modelServerConfig port found in inferenceserverconfigs %s",
+        # The requester's proxy config is the authoritative vLLM endpoint.
+        # The ISC-port read only serves ISCs that still carry one (legacy
+        # guides / hand-written); rendered configs have none -> skip.
+        vllm_address: str | None = None
+        vllm_port: int | None = None
+        proxy_target = get_requester_proxy_target(requester_pod)
+        if proxy_target is not None:
+            vllm_address, vllm_port = proxy_target
+        else:
+            try:
+                inference_server = api.get_namespaced_custom_object(
+                    group="fma.llm-d.ai",
+                    version="v1alpha1",
+                    namespace=namespace,
+                    plural="inferenceserverconfigs",
+                    name=inference_server_config_name,
+                )
+                vllm_port = (
+                    inference_server.get("spec", {})
+                    .get("modelServerConfig", {})
+                    .get("port")
+                )
+            except ApiException:
+                logger.exception(
+                    "error accessing inference server config '%s'",
                     inference_server_config_name,
                 )
                 continue
-        except ApiException:
-            logger.exception(
-                "error accessing inference server config '%s'",
-                inference_server_config_name,
-            )
-            continue
+            if vllm_port is None:
+                logger.warning(
+                    "No proxy configuration and no modelServerConfig port for "
+                    "requester pod '%s'; skipping it.",
+                    requester_pod_name,
+                )
+                continue
 
         launcher_pod_ip = None
         try:
@@ -310,12 +343,25 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-argument
                 launcher_info.launcher_endpoint = (
                     f"http://{launcher_pod_ip}:{fma_launcher_port}"
                 )
-                launcher_info.vllm_endpoint = f"http://{launcher_pod_ip}:{vllm_port}"
+                # ISC fallback: the port is on the launcher pod itself.
+                if vllm_address is None:
+                    vllm_address = launcher_pod_ip
+                launcher_info.vllm_endpoint = f"http://{vllm_address}:{vllm_port}"
                 launcher_infos.append(launcher_info)
         except client.ApiException:
             logger.exception("error accessing launcher pod '%s'", launcher_pod_name)
             continue
 
+    # An empty result with requesters present means every one was skipped
+    # (proxy GET failing everywhere: transient timeout, wrong admin-port
+    # annotation) -- running the benchmark loops zero times would report
+    # success with no actuation data, indistinguishable from a clean run.
+    if requester_infos and not launcher_infos:
+        raise RuntimeError(
+            f"{len(requester_infos)} requester pod(s) in ns/{namespace} but no "
+            "launcher info collected (proxy configuration unreachable or "
+            "launcher not bound)"
+        )
     return launcher_infos
 
 

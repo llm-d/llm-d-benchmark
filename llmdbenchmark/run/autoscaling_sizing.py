@@ -9,7 +9,9 @@ replica counts:
                the HPA behavior paces it: max over triggers of
                ceil(value / threshold), clamped to [minReplicaCount,
                maxReplicaCount]. Its peak is the static size that keeps every
-               trigger at or under its threshold for this traffic.
+               trigger at or under its threshold for this traffic; its p95
+               does that for 95% of the samples, so a spike that lasts no
+               more than 5% of the window does not set it.
   decision     the replica count KEDA's HPA actually chose (paced by behavior
                and stabilization windows). Under eppKedaSaturation.dryRun this
                is the count it would have set.
@@ -179,6 +181,13 @@ def _stats(values: list[float]) -> dict:
     return {"peak": int(max(values)), "mean": round(sum(values) / len(values), 2)}
 
 
+def _p95(values: list[int]) -> int | None:
+    """Nearest rank: the smallest value at least 95% of the samples are at or under."""
+    if not values:
+        return None
+    return sorted(values)[math.ceil(0.95 * len(values)) - 1]
+
+
 def _against_demand(
     series: dict[float, float], timestamps: list[float], demand: list[int]
 ) -> dict | None:
@@ -197,7 +206,9 @@ def _against_demand(
     }
 
 
-def size_stage(so: dict, stage: Stage, fetch: Fetch) -> dict:
+def size_stage(
+    so: dict, stage: Stage, fetch: Fetch, demand_series: bool = False
+) -> dict:
     meta, spec = so["metadata"], so["spec"]
     ns = meta.get("namespace", "")
     lo = int(spec.get("minReplicaCount", 1))
@@ -265,6 +276,7 @@ def size_stage(so: dict, stage: Stage, fetch: Fetch) -> dict:
         "maxReplicas": hi,
         "demand": {
             **_stats(demand),
+            "p95": _p95(demand),
             "drivenBy": driver_at_peak,
             "unclampedPeak": raw_peak,
         },
@@ -277,6 +289,8 @@ def size_stage(so: dict, stage: Stage, fetch: Fetch) -> dict:
             "vsDemand": _against_demand(provisioned, timestamps, demand),
         },
     }
+    if demand_series:
+        result["demand"]["series"] = [[ts, d] for ts, d in zip(timestamps, demand)]
     return result
 
 
@@ -530,25 +544,31 @@ def peak_decode_throughput(
 def serving_capacity(
     stages: list[Stage], replicas: int, ttft_target: float
 ) -> tuple[float, Stage] | None:
-    """R: requests/s per replica at the highest offered rate that met the SLO.
+    """R: requests/s per replica at the top of the SLO-bounded part of the ladder.
 
     A rate ladder against a fixed pool makes this a measurement. A stage counts
     only while its p90 TTFT is within the target and no request failed. Past
     that, latency or errors break the SLO before throughput stops rising, so R
     is an SLO-bounded capacity, below the saturation rate.
+
+    Capacity only falls as the offered rate rises, so R is the highest rate
+    that passed with every lower rate passing too: a stage that passes above a
+    failing one is measurement noise (a short stage of long requests can pass
+    or miss on timing luck), not capacity.
     """
-    within = [
-        s
-        for s in stages
-        if s.name != "whole run"
-        and s.offered_rate
-        and s.ttft_p90 is not None
-        and s.ttft_p90 <= ttft_target
-        and not s.failures
-    ]
-    if not within or replicas < 1:
+    ladder = sorted(
+        (s for s in stages if s.name != "whole run" and s.offered_rate),
+        key=lambda s: s.offered_rate,
+    )
+    best = None
+    for s in ladder:
+        if not (
+            s.ttft_p90 is not None and s.ttft_p90 <= ttft_target and not s.failures
+        ):
+            break
+        best = s
+    if best is None or replicas < 1:
         return None
-    best = max(within, key=lambda s: s.offered_rate)
     return round(best.offered_rate / replicas, 3), best
 
 
@@ -568,13 +588,14 @@ def write_sizing(
     stages = stage_windows(results_dir, exp_ids)
     if not (sos and stages):
         return []
-    rows = [size_stage(so, stage, fetch) for so in sos for stage in stages]
     config_file = stack_path / "config.yaml"
     config = (
         yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
         if config_file.exists()
         else {}
     )
+    series = bool((config.get("eppKedaSaturation") or {}).get("sizingDemandSeries"))
+    rows = [size_stage(so, stage, fetch, series) for so in sos for stage in stages]
     pd = pd_ratio(config, stages, rows)
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
     (out_dir / "autoscaling-sizing.json").write_text(

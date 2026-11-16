@@ -11,6 +11,9 @@ import os
 import sys
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
 
 # fma_functions.py uses bare imports (``from dpc_log_parser import ...``) that
 # assume ``workload/harnesses`` is on the path, which is how it runs in the
@@ -264,3 +267,87 @@ class TestTimingSourceSurvivesNativeToBr01:
     def test_dpc_survives(self, tmp_path):
         li = self._import(tmp_path, _fma_nop_results("dpc", 102.0))
         assert li["timing_source"] == "dpc"
+
+
+class TestGetFmaLauncherInfos:
+    """vLLM endpoint discovery: the requester's proxy config is
+    authoritative; the ISC's modelServerConfig.port only serves legacy
+    ISCs that still carry one (rendered configs have none), and a
+    requester with neither is skipped."""
+
+    def _requester(self):
+        pod = SimpleNamespace(
+            metadata=SimpleNamespace(
+                name="req-1",
+                labels={f.DUAL_LABEL: "launcher-1"},
+                annotations={
+                    "dual-pods.llm-d.ai/inference-server-config": "isc-1",
+                    f.ADMIN_PORT_ANNOTATION: "8081",
+                },
+            ),
+            status=SimpleNamespace(pod_ip="10.0.0.9"),
+        )
+        return SimpleNamespace(pod=pod)
+
+    def _launcher_pod(self):
+        return SimpleNamespace(
+            metadata=SimpleNamespace(
+                name="launcher-1",
+                creation_timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                namespace="ns",
+            ),
+            spec=SimpleNamespace(
+                node_name="node-a",
+                containers=[SimpleNamespace(name="inference-server", image="img:1")],
+            ),
+            status=SimpleNamespace(pod_ip="10.0.0.5"),
+        )
+
+    def _run(self, monkeypatch, proxy_response, isc):
+        """get_fma_launcher_infos with a mocked proxy GET + kube APIs."""
+        monkeypatch.setattr(f.requests, "get", lambda url, timeout=None: proxy_response)
+        core = MagicMock()
+        core.read_namespaced_pod.return_value = self._launcher_pod()
+        monkeypatch.setattr(f.client, "CoreV1Api", lambda: core)
+        api = MagicMock()
+        api.get_namespaced_custom_object.return_value = isc
+        infos = f.get_fma_launcher_infos(
+            MagicMock(), api, [self._requester()], "ns", "8001", f.BenchmarkResult()
+        )
+        return infos, api
+
+    def test_proxy_config_supplies_endpoint(self, monkeypatch):
+        resp = SimpleNamespace(
+            status_code=200, json=lambda: {"address": "10.0.0.5", "port": 8002}
+        )
+        infos, api = self._run(monkeypatch, resp, isc={"spec": {}})
+        assert [i.vllm_endpoint for i in infos] == ["http://10.0.0.5:8002"]
+        api.get_namespaced_custom_object.assert_not_called()
+
+    def test_falls_back_to_isc_port_when_proxy_unconfigured(self, monkeypatch):
+        infos, _ = self._run(
+            monkeypatch,
+            SimpleNamespace(status_code=404),
+            isc={"spec": {"modelServerConfig": {"port": 8000}}},
+        )
+        assert [i.vllm_endpoint for i in infos] == ["http://10.0.0.5:8000"]
+
+    def test_raises_when_no_requester_yields_a_port(self, monkeypatch):
+        """Every requester skipped (proxy GET failing everywhere) must raise,
+        not silently produce an empty benchmark."""
+        with pytest.raises(RuntimeError, match="no launcher info collected"):
+            self._run(monkeypatch, SimpleNamespace(status_code=404), isc={"spec": {}})
+
+    def test_empty_requesters_returns_empty_without_raising(self, monkeypatch):
+        """Scale-to-zero: no requesters is legitimate, not an error."""
+        monkeypatch.setattr(
+            f.requests,
+            "get",
+            lambda url, timeout=None: SimpleNamespace(status_code=404),
+        )
+        assert (
+            f.get_fma_launcher_infos(
+                MagicMock(), MagicMock(), [], "ns", "8001", f.BenchmarkResult()
+            )
+            == []
+        )

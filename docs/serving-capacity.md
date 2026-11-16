@@ -40,10 +40,17 @@ What the target does:
 1. **Holds the pool at `REPLICAS`** (default 1). It pauses every ScaledObject in the namespace with
    `autoscaling.keda.sh/paused-replicas`, waits until that many `llm-d.ai/role=decode` pods are Ready,
    and removes the pause on exit. It fails if the Ready count changes during the run.
-2. **Runs a rate ladder of the guide's own workload profile.** `llmdbenchmark run` uses the scenario's
+2. **Waits for the pool to drain.** In-flight requests left by a previous run read as capacity the
+   pod does not have: the ladder's first stage measures the leftover queue, not the pod. The target
+   reads `vllm:num_requests_running + vllm:num_requests_waiting` from every model-server pod and
+   waits up to `DRAIN_TIMEOUT_S` (default 600 s) for the sum to reach zero, then fails with guidance
+   if it does not. Without the router's flow-control gate an overloaded run leaves vLLM's internal
+   queue draining for minutes, so back-to-back measurements poison each other; with it on, the
+   router bounds in-flight work and the check passes immediately.
+3. **Runs a rate ladder of the guide's own workload profile.** `llmdbenchmark run` uses the scenario's
    `harness.experimentProfile` and overrides only `load.stages` (and `load.type=poisson`), so the
    token shape is the guide's.
-3. **Picks R.** From the per-stage v0.2 benchmark reports, R is the highest offered rate whose stage
+4. **Picks R.** From the per-stage v0.2 benchmark reports, R is the highest offered rate whose stage
    had p90 TTFT ≤ `TTFT_TARGET` and zero failed requests, divided by `REPLICAS`.
 
 If the highest rate still met the SLO, the target warns that R may be higher. Raise `R_RATES` and
@@ -59,6 +66,7 @@ re-run.
 | `WORKLOAD` | guide's `experimentProfile` | Another profile from `workload/profiles/inference-perf` |
 | `OVERRIDES` | none | Extra `k=v` profile overrides, as for `calibrate-peak-decode` |
 | `RUN_ARGS` | none | Extra arguments to `llmdbenchmark run` |
+| `DRAIN_TIMEOUT_S` | `600` | Seconds to wait for in-flight requests to drain before the ladder. Raise it (or restart the model pods) when a previous overloaded run left a long vLLM queue. |
 
 ## Use it
 

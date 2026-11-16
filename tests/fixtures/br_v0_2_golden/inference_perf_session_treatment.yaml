@@ -1,3 +1,4 @@
+kind: benchmark-report
 results:
   session_performance:
     sessions:

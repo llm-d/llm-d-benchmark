@@ -376,7 +376,7 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 ### Administrative Requirements
 
 > [!IMPORTANT]
-> Deploying the llm-d stack requires **cluster-level admin** privileges for configuring cluster-level resources. **Namespace-level admin** users can run the tool if [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the target namespace already exists. Use `--non-admin` to skip admin-only steps.
+> Deploying the llm-d stack requires **cluster-level admin** privileges for configuring cluster-level resources. **Namespace-level admin** users can run the tool if [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the target namespace already exists. Use `--non-admin` to skip admin-only steps; it also sets `router.monitoring.prometheus.auth.enabled=false` (that option creates a cluster-scoped ClusterRoleBinding), so no extra `--set` is needed. An explicit `--set` of the same key still takes precedence.
 
 ## Installation
 
@@ -433,7 +433,7 @@ llmdbenchmark --version
 | `--spec SPEC` | `LLMDBENCH_SPEC` | Specification name or path (bare name, category/name, or full path) |
 | `--workspace DIR` / `--ws` | `LLMDBENCH_WORKSPACE` | Workspace directory for outputs (default: temp dir) |
 | `--base-dir DIR` / `--bd` | `LLMDBENCH_BASE_DIR` | Base directory for templates/scenarios (default: `.`) |
-| `--non-admin` / `-i` | `LLMDBENCH_NON_ADMIN` | Skip admin-only steps |
+| `--non-admin` / `-i` | `LLMDBENCH_NON_ADMIN` | Skip admin-only steps and disable router Prometheus auth (`router.monitoring.prometheus.auth.enabled=false`) |
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
 | `--quiet-plan` / `--no-quiet-plan` | `LLMDBENCH_QUIET_PLAN` | Suppress the per-file plan-rendering narration on the console -- the `Rendered: <file>` lines, image overrides and per-stack banners -- replacing it with a one-line summary of what was rendered and where. **On by default** for `standup`, `smoketest`, `teardown`, `run` and `experiment`, where the render is an implicit prelude; **off by default** for `plan`, whose output it is. The detail is never lost: it is written to `<workspace>/logs/` at `DEBUG` either way. `--verbose` overrides this and always shows the full narration. See [Quieting the plan-rendering output](#quieting-the-plan-rendering-output). |
