@@ -204,6 +204,16 @@ def test_version_missing_vs_unsupported_vs_legacy(tmp_path):
         d.code for d in current_result.slo_scoring_diagnostics
     ]
 
+    # What a report declares once it embeds an autoscaling time series.
+    autoscaled = {**example, "version": "0.2.2", "kind": "benchmark-report"}
+    autoscaled_result = score_slo_goodput(
+        [_write_report(tmp_path, "autoscaled.yaml", autoscaled)], [gate]
+    )
+    assert autoscaled_result.reports[0].verdict == "pass"
+    assert [d.code for d in autoscaled_result.slo_scoring_diagnostics] == [
+        d.code for d in current_result.slo_scoring_diagnostics
+    ]
+
     unsupported_result = score_slo_goodput([unsupported_path], [gate])
     assert any(
         d.code == "unsupported_report_version"

@@ -23,6 +23,7 @@ SCHEMA_FILES = {
     "0.1": "br_v0_1_json_schema.json",
     "0.2": "br_v0_2_json_schema.json",
     "0.2.1": "br_v0_2_json_schema.json",
+    "0.2.2": "br_v0_2_json_schema.json",
 }
 
 

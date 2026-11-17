@@ -91,8 +91,8 @@ def main() -> None:
             import_guidellm,
             import_guidellm_all,
         )
-    elif args.br_version in ("0.2", "0.2.1"):
-        # Both produce the current 0.2.x revision.
+    elif args.br_version in ("0.2", "0.2.1", "0.2.2"):
+        # All produce the current 0.2.x report.
         from .native_to_br0_2 import (
             import_aiperf,
             import_inference_max,

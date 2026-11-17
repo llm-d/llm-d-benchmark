@@ -1429,10 +1429,19 @@ This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inf
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
 - `inference_extension_flow_control_queue_size` -- flow control queue depth
 - `inference_extension_flow_control_pool_saturation` -- pool saturation level
-- `llm_d_epp_flow_control_pool_saturation` -- pool saturation (0.0–1.0); KEDA
+- `llm_d_epp_flow_control_pool_saturation` -- pool saturation (can exceed 1.0); KEDA
   EPP-saturation scale trigger (`saturationThreshold`)
+- `llm_d_epp_flow_control_queue_size` -- requests held in the flow-control queue
+
+With or without flow control, the router metrics the other KEDA EPP triggers
+read are collected too:
 - `llm_d_epp_request_running` -- running requests; KEDA EPP-saturation scale
   trigger (`runningRequestsThreshold`)
+- `llm_d_epp_inflight_requests` / `llm_d_epp_inflight_tokens` -- in-flight
+  requests and uncached prompt tokens (optionally plus estimated output) per
+  endpoint (summed in the report)
+- `llm_d_epp_request_total` / `llm_d_epp_request_error_total` -- scheduled
+  requests and request errors
 
 #### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 

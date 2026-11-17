@@ -190,7 +190,8 @@ several `Units` members and would reject valid reports). Every level of
 that path may be absent in a real report, so a missing percentile or a
 missing `aggregate.throughput` produces a diagnostic (`missing_percentile`,
 `missing_throughput`), never an interpolated or derived number. Reports
-declaring `"0.2.1"` (what the converters emit) or `"0.2"` (reports
+declaring `"0.2.1"` (what the converters emit), `"0.2.2"` (the same
+reports once they embed an autoscaling time series) or `"0.2"` (reports
 converted before `0.2.1`, which validate unchanged under it) are scored
 alike. Reports whose `version` field is absent or anything else produce
 `missing_report_version` or `unsupported_report_version` respectively.

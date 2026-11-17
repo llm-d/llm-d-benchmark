@@ -59,12 +59,36 @@ LEGACY_AGGREGATE_METRICS = {
     "llm_d_epp_flow_control_pool_saturation",
     "llm_d_epp_flow_control_queue_size",
     "llm_d_epp_request_running",
+    # EPP in-flight load and request counters (KEDA inflight and token-aware
+    # triggers, the arrival rate of pending-aware scaling) and the engine's
+    # finished-request counter
+    "llm_d_epp_inflight_requests",
+    "llm_d_epp_inflight_tokens",
+    "llm_d_epp_request_total",
+    "llm_d_epp_request_error_total",
+    "vllm:request_success_total",
 }
 AGGREGATE_METRICS = (
     TIME_SERIES_METRIC_SET
     if TIME_SERIES_METRIC_SET is not None
     else LEGACY_AGGREGATE_METRICS
 )
+
+# Metrics exported as several series per pod (per endpoint, stage, finish
+# reason, ...), folded to one value per scrape the way their scaling queries
+# read them. Must match _SERIES_AGGREGATION in the benchmark report's
+# metrics_processor.py (this script runs without that package; a test keeps
+# the two in sync).
+SERIES_AGGREGATION = {
+    "vllm:request_success_total": "sum",
+    "llm_d_epp_inflight_requests": "sum",
+    "llm_d_epp_inflight_tokens": "sum",
+    "llm_d_epp_request_running": "sum",
+    "llm_d_epp_flow_control_queue_size": "sum",
+    "llm_d_epp_flow_control_pool_saturation": "max",
+    "llm_d_epp_request_total": "sum",
+    "llm_d_epp_request_error_total": "sum",
+}
 
 # Ratio metrics: (output_name, numerator_metric, denominator_metric)
 RATIO_METRICS = [
@@ -127,6 +151,11 @@ METRIC_UNITS = {
     "llm_d_epp_flow_control_pool_saturation": "ratio",
     "llm_d_epp_flow_control_queue_size": "count",
     "llm_d_epp_request_running": "count",
+    "llm_d_epp_inflight_requests": "count",
+    "llm_d_epp_inflight_tokens": "tokens",
+    "llm_d_epp_request_total": "count",
+    "llm_d_epp_request_error_total": "count",
+    "vllm:request_success_total": "count",
     "inference_extension_scheduler_e2e_duration_seconds_bucket": "seconds",
     "inference_extension_scheduler_e2e_duration_seconds_sum": "seconds",
     "inference_extension_scheduler_e2e_duration_seconds_count": "count",
@@ -260,6 +289,12 @@ def parse_prometheus_metrics(file_path):
                     base_name = base_name.replace(old_suffix, new_suffix)
 
                 metrics[base_name].append(value)
+
+    # One file is one scrape: fold each multi-series metric to the one value
+    # its scaling query reads, as the benchmark report does.
+    for name, how in SERIES_AGGREGATION.items():
+        if len(metrics.get(name, ())) > 1:
+            metrics[name] = [max(metrics[name]) if how == "max" else sum(metrics[name])]
 
     return timestamp, pod_name, namespace, dict(metrics)
 

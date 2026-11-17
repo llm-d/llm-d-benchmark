@@ -13,7 +13,8 @@ from typing import Any
 # Time-series embedding allow-list.
 # Keys must be existing TimeSeriesResourceMetrics fields, and units must satisfy
 # that field's validator. Hardware fields date from 0.2; the engine and router
-# fields below them were added in 0.2.1 (see _V0_2_TIME_SERIES_FIELDS).
+# fields below them were added in 0.2.1, the autoscaling signals in 0.2.2 (see
+# _V0_2_TIME_SERIES_FIELDS and _V0_2_2_TIME_SERIES_FIELDS).
 # Spec is either {"metric": <prometheus name>} or {"ratio": (num, den)}.
 # ---------------------------------------------------------------------------
 _EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
@@ -118,6 +119,10 @@ _EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
         "metric": "vllm:generation_tokens_total",
         "units": "count",
     },
+    "request_success": {
+        "metric": "vllm:request_success_total",
+        "units": "count",
+    },
     # Router / endpoint-picker pool state
     "pool_avg_kv_cache_utilization": {
         "metric": "inference_pool_average_kv_cache_utilization",
@@ -135,14 +140,83 @@ _EMBED_TIME_SERIES: dict[str, dict[str, Any]] = {
         "metric": "inference_pool_ready_pods",
         "units": "count",
     },
+    # Router signals the KEDA autoscaling paths scale on (see _SERIES_AGGREGATION)
+    "epp_inflight_requests": {
+        "metric": "llm_d_epp_inflight_requests",
+        "units": "count",
+    },
+    "epp_inflight_tokens": {
+        "metric": "llm_d_epp_inflight_tokens",
+        "units": "count",
+    },
+    "epp_request_running": {
+        "metric": "llm_d_epp_request_running",
+        "units": "count",
+    },
+    "epp_flow_control_queue_size": {
+        "metric": "llm_d_epp_flow_control_queue_size",
+        "units": "count",
+    },
+    "epp_flow_control_pool_saturation": {
+        "metric": "llm_d_epp_flow_control_pool_saturation",
+        # Unbounded: 1.0 is the router's set point, above it oversubscription.
+        "units": "ratio",
+    },
+    "epp_requests": {
+        "metric": "llm_d_epp_request_total",
+        "units": "count",
+    },
+    "epp_request_errors": {
+        "metric": "llm_d_epp_request_error_total",
+        "units": "count",
+    },
 }
+
+# A metric exported as several series on one pod (one per endpoint, stage,
+# finish reason, ...) is parsed into one list holding every series' samples
+# (see timeseries._parse_scrape). For the metrics below, the samples of one
+# scrape are folded into a single value, the way the autoscaling queries read
+# them: sum() for counts, max() for the saturation ratio, whose `stage` series
+# (prefill, decode, effective) are not additive.
+_SERIES_AGGREGATION: dict[str, str] = {
+    "vllm:request_success_total": "sum",
+    "llm_d_epp_inflight_requests": "sum",
+    "llm_d_epp_inflight_tokens": "sum",
+    "llm_d_epp_request_running": "sum",
+    "llm_d_epp_flow_control_queue_size": "sum",
+    "llm_d_epp_flow_control_pool_saturation": "max",
+    "llm_d_epp_request_total": "sum",
+    "llm_d_epp_request_error_total": "sum",
+}
+
+# Replica counts embedded per controller from replica_status_timeseries.json:
+# field -> (controller key, units).
+_REPLICA_TIME_SERIES: dict[str, tuple[str, str]] = {
+    "desired_replicas": ("desired_replicas", "count"),
+    "ready_replicas": ("ready_replicas", "count"),
+}
+
+_V0_2_2_TIME_SERIES_FIELDS = frozenset(
+    (
+        "request_success",
+        "epp_inflight_requests",
+        "epp_inflight_tokens",
+        "epp_request_running",
+        "epp_flow_control_queue_size",
+        "epp_flow_control_pool_saturation",
+        "epp_requests",
+        "epp_request_errors",
+        *_REPLICA_TIME_SERIES,
+    )
+)
 
 _DEFAULT_TS_MAX_POINTS = 256
 
-# Fields above date from 0.2; the rest were added in 0.2.1. The converters
-# declare 0.2.1, but a report converted before that revision declares 0.2 and
-# is bumped when it embeds any of the later fields, so the version it declares
-# stays accurate for readers that predate 0.2.1.
+# Fields above date from 0.2; the rest were added in 0.2.1, except the 0.2.2
+# set below. The converters declare the current revision, but a report
+# converted before a revision declares an earlier one and is bumped when it
+# embeds any of that revision's fields, so the version it declares stays
+# accurate for readers that predate the revision.
 _V0_2_TIME_SERIES_FIELDS = frozenset(
     (
         "kv_cache_usage",
@@ -156,6 +230,20 @@ _V0_2_TIME_SERIES_FIELDS = frozenset(
         "power_consumption",
     )
 )
+
+
+def _declare_version(br_dict: dict[str, Any], fields: set[str]) -> None:
+    """Raise the declared version to the revision that introduced *fields*.
+
+    Only an earlier 0.2 revision is raised; a report's declared version never
+    goes down. 0.2.2 requires ``kind``, which 0.2 and 0.2.1 reports may omit.
+    """
+    version = br_dict.get("version")
+    if fields & _V0_2_2_TIME_SERIES_FIELDS and version in ("0.2", "0.2.1"):
+        br_dict["version"] = "0.2.2"
+        br_dict.setdefault("kind", "benchmark-report")
+    elif fields - _V0_2_TIME_SERIES_FIELDS and version == "0.2":
+        br_dict["version"] = "0.2.1"
 
 
 def _env(name: str, default: str | None = None) -> str | None:
@@ -302,14 +390,43 @@ def _detect_role(pod_name: str) -> str:
         return "prefill"
     if "decode" in lower:
         return "decode"
+    if re.search(r"(^|-)epp(-|$)", lower):
+        return "epp"
     return "replica"
+
+
+# The EPP's label in scenario.stack (native_to_br0_2._add_inference_scheduler_component).
+_EPP_COMPONENT_LABEL = "Inference Scheduler (EPP)"
 
 
 def _component_id(role: str) -> str:
     """Return a component_id string from role."""
     if role in ("prefill", "decode"):
         return f"{role}-engine"
+    if role == "epp":
+        return _EPP_COMPONENT_LABEL
     return "inference-engine"
+
+
+def _metric_points(pod_metrics: dict[str, list], key: str, metric: str) -> list:
+    """Samples of *key* on one pod, one per scrape for metrics in _SERIES_AGGREGATION.
+
+    *key* is the metric name, or a label-selected ``series_key``; *metric* is the
+    bare name that selects the aggregation.
+    """
+    points = pod_metrics.get(key, [])
+    how = _SERIES_AGGREGATION.get(metric)
+    if not how or not points:
+        return points
+    folded: dict[Any, float] = {}
+    for ts, value in points:
+        if ts not in folded:
+            folded[ts] = value
+        elif how == "max":
+            folded[ts] = max(folded[ts], value)
+        else:
+            folded[ts] += value
+    return sorted(folded.items())
 
 
 def _load_json(filepath: str) -> dict[str, Any]:
@@ -454,7 +571,9 @@ def _build_statistics_from_scrapes(
                 raw_name, divisor = _CONVERTED_METRICS.get(prom_name, (prom_name, 1))
                 values = [
                     v / divisor
-                    for _, v in clip_to_window(pod_metrics.get(raw_name, []), window)
+                    for _, v in clip_to_window(
+                        _metric_points(pod_metrics, raw_name, raw_name), window
+                    )
                 ]
             if not values:
                 continue
@@ -533,11 +652,10 @@ def _build_embedded_time_series(
                 }
                 points = compute_ratio_series(clipped, ratio[0], ratio[1])
             else:
-                key = spec.get("metric", "")
+                metric = spec.get("metric", "")
                 labels = spec.get("labels")
-                if labels:
-                    key = series_key(key, labels)
-                points = pod_metrics.get(key, [])
+                key = series_key(metric, labels) if labels else metric
+                points = _metric_points(pod_metrics, key, metric)
             if points:
                 available.add(field)
                 total += len(points)
@@ -574,6 +692,114 @@ def _build_embedded_time_series(
         outcome["scraped_from"] = min(scraped).isoformat()
         outcome["scraped_to"] = max(scraped).isoformat()
     return (available if window else embedded), outcome
+
+
+def _replica_component(role: str) -> tuple[str, frozenset[str]]:
+    """Component label and embedded fields for a controller, from its role.
+
+    The collector also records the KEDA dry-run shadow (role ``<role>-dryrun``),
+    whose desired count is what the autoscaler would have asked for but which
+    never runs pods, and FMA requester Deployments (role ``requester``).
+    """
+    all_fields = frozenset(_REPLICA_TIME_SERIES)
+    if role.endswith("-dryrun"):
+        base = _component_id(role[: -len("-dryrun")])
+        return f"{base} (autoscaling dry-run)", frozenset({"desired_replicas"})
+    if role == "requester":
+        return "FMA requester", all_fields
+    return _component_id(role), all_fields
+
+
+def _step_points(points: list) -> list:
+    """Keep the samples on either side of each change, plus the first and last.
+
+    Lossless for a step function such as a replica count, where uniform
+    downsampling could drop a short scale-up.
+    """
+    if len(points) <= 2:
+        return points
+    keep = {0, len(points) - 1}
+    for i in range(1, len(points)):
+        if points[i][1] != points[i - 1][1]:
+            keep.update((i - 1, i))
+    return [points[i] for i in sorted(keep)]
+
+
+def _build_replica_time_series(
+    obs: dict[str, Any],
+    metrics_dir: str,
+    window: tuple[Any, Any] | None = None,
+) -> set[str]:
+    """Embed desired and ready replicas over time, one component per controller.
+
+    The collector polls each serving Deployment/StatefulSet into
+    replica_status_timeseries.json; the report otherwise keeps only the latest
+    snapshot (``replica_status``), which shows where a run ended, not how the
+    autoscaler got there. Returns the field names available before the stage
+    window is applied, to declare a version against.
+    """
+    from datetime import datetime, timezone
+
+    from .timeseries import clip_to_window, series_points
+
+    snapshots = _load_json(
+        os.path.join(metrics_dir, "processed", "replica_status_timeseries.json")
+    ).get("snapshots", [])
+
+    points: dict[tuple[str, str, str], dict[str, list]] = {}
+    for snapshot in snapshots:
+        try:
+            ts = datetime.fromisoformat(
+                str(snapshot.get("timestamp", "")).replace("Z", "+00:00")
+            )
+        except ValueError:
+            continue
+        if ts.tzinfo is None:  # as clip_to_window reads naive times
+            ts = ts.replace(tzinfo=timezone.utc)
+        for controller in snapshot.get("controllers") or []:
+            name = controller.get("name")
+            if not name:
+                continue
+            ckey = (controller.get("kind") or "", name, controller.get("role") or "")
+            by_field = points.setdefault(ckey, {})
+            for field, (key, _units) in _REPLICA_TIME_SERIES.items():
+                value = controller.get(key)
+                if isinstance(value, (int, float)):
+                    by_field.setdefault(field, []).append((ts, float(value)))
+
+    # Pre-clip, as in _build_embedded_time_series, so the stage reports of one
+    # run declare the same version.
+    available: set[str] = set()
+    components = obs.setdefault("components", [])
+    names = [name for _, name, _ in points]
+    for (kind, name, role), by_field in sorted(points.items()):
+        label, fields = _replica_component(role)
+        series_by_field: dict[str, Any] = {}
+        for field, field_points in by_field.items():
+            if field not in fields:
+                continue
+            available.add(field)
+            clipped = clip_to_window(sorted(field_points), window)
+            if clipped:
+                # Not downsampled: compressed to its changes already, and
+                # uniform decimation would turn a step into a ramp or drop it.
+                series_by_field[field] = {
+                    "units": _REPLICA_TIME_SERIES[field][1],
+                    "series": series_points(_step_points(clipped), 0),
+                }
+        if series_by_field:
+            components.append(
+                {
+                    "component_label": label,
+                    # A Deployment and a StatefulSet may share a name.
+                    "replica_id": f"{kind}/{name}" if names.count(name) > 1 else name,
+                    "time_series": series_by_field,
+                }
+            )
+
+    if not components:
+        obs.pop("components", None)
+    return available
 
 
 # ---------------------------------------------------------------------------
@@ -766,13 +992,18 @@ def add_metrics_to_benchmark_report(
             embedded, outcome = _build_embedded_time_series(
                 obs, scraped_series, _embed_time_series_max_points(), time_series_window
             )
-            if embedded - _V0_2_TIME_SERIES_FIELDS and br_dict.get("version") == "0.2":
-                br_dict["version"] = "0.2.1"
+            _declare_version(br_dict, embedded)
             interval.update(outcome)
         else:
             interval["scope"] = "disabled"
     else:
         interval["scope"] = "unavailable"
+
+    # Replicas over time come from the Kubernetes API, not from the scrapes.
+    if _embed_time_series_enabled():
+        _declare_version(
+            br_dict, _build_replica_time_series(obs, metrics_dir, time_series_window)
+        )
 
     # EPP log-derived metrics
     epp_summary = _load_json(os.path.join(metrics_dir, "epp_metrics_summary.json"))
@@ -784,8 +1015,8 @@ def add_metrics_to_benchmark_report(
         os.path.join(metrics_dir, "processed", "replica_status.json")
     )
     if replica_status.get("controllers"):
-        # Full time series stays in replica_status_timeseries.json, to keep the
-        # report small.
+        # Latest snapshot only; the counts over time are embedded per controller
+        # by _build_replica_time_series.
         obs["replica_status"] = replica_status
 
     # Pod startup times

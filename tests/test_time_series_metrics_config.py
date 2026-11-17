@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import runpy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -657,3 +657,439 @@ def test_hit_rate_sums_the_engines_of_a_pod(tmp_path: Path) -> None:
     assert stats["mean"] == pytest.approx(45.0)
     series = obs["components"][0]["time_series"]["prefix_cache_hit_rate"]["series"]
     assert [p["value"] for p in series] == [pytest.approx(45.0)]
+
+
+def test_epp_signals_fold_their_endpoint_series(tmp_path: Path) -> None:
+    """Per-endpoint router series embed as the sum the autoscaler reads.
+
+    The parser keeps every series of a metric in one list; embedding it as is
+    would plot each endpoint's value at the same instant.
+    """
+    from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import Observability
+
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+    for ts, a, b in (
+        ("2026-07-14T00:00:00Z", 3, 4),
+        ("2026-07-14T00:00:30Z", 5, -2),
+    ):
+        _write_scrape(
+            raw_dir,
+            "qwen-router-epp-xyz",
+            ts,
+            [
+                f'llm_d_epp_inflight_requests{{endpoint_name="decode-a"}} {a}',
+                f'llm_d_epp_inflight_requests{{endpoint_name="decode-b"}} {b}',
+                f'llm_d_epp_request_error_total{{error_code="ServiceUnavailable"}} {a}',
+                f'llm_d_epp_request_error_total{{error_code="Internal"}} {b}',
+            ],
+        )
+    (processed_dir / "time_series_metrics.json").write_text(
+        '["llm_d_epp_inflight_requests"]', encoding="utf-8"
+    )
+    (processed_dir / "metrics_summary.json").write_text(
+        json.dumps({"qwen-router-epp-xyz": {"metrics": {}}}), encoding="utf-8"
+    )
+
+    report = add_metrics_to_benchmark_report({}, str(metrics_dir))
+    obs = report["results"]["observability"]
+    Observability(**obs)
+
+    component = obs["components"][0]
+    assert component["component_label"] == "Inference Scheduler (EPP)"
+    ts_block = component["time_series"]
+    assert [p["value"] for p in ts_block["epp_inflight_requests"]["series"]] == [7, 3]
+    assert [p["value"] for p in ts_block["epp_request_errors"]["series"]] == [7, 3]
+
+    # The statistics fold the same way, so they describe the plotted series.
+    entry = obs["llm_d_epp_inflight_requests"]["components"][0]
+    assert entry["role"] == "epp"
+    assert entry["statistics"]["mean"] == pytest.approx(5.0)
+
+
+def test_pool_saturation_takes_the_highest_stage(tmp_path: Path) -> None:
+    """Per-stage saturation is not additive: embed the highest, as max() reads it."""
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    processed_dir = metrics_dir / "processed"
+    raw_dir.mkdir(parents=True)
+    processed_dir.mkdir()
+    _write_scrape(
+        raw_dir,
+        "qwen-router-epp-xyz",
+        "2026-07-14T00:00:00Z",
+        [
+            'llm_d_epp_flow_control_pool_saturation{stage="prefill"} 0.4',
+            'llm_d_epp_flow_control_pool_saturation{stage="decode"} 1.3',
+            'llm_d_epp_flow_control_pool_saturation{stage="effective"} 1.3',
+        ],
+    )
+    (processed_dir / "metrics_summary.json").write_text(
+        json.dumps({"qwen-router-epp-xyz": {"metrics": {}}}), encoding="utf-8"
+    )
+
+    report = add_metrics_to_benchmark_report({}, str(metrics_dir))
+    series = report["results"]["observability"]["components"][0]["time_series"][
+        "epp_flow_control_pool_saturation"
+    ]
+    # Unbounded (1.0 is the router's set point), so not a portion.
+    assert series["units"] == "ratio"
+    assert [p["value"] for p in series["series"]] == [1.3]
+
+
+def _write_replica_snapshots(processed_dir: Path, desired_ready: list) -> None:
+    snapshots = [
+        {
+            "timestamp": (
+                datetime(2026, 7, 14, tzinfo=timezone.utc) + timedelta(seconds=10 * i)
+            ).isoformat(),
+            "namespace": "bench",
+            "controllers": [
+                {
+                    "name": "qwen-decode",
+                    "kind": "Deployment",
+                    "role": "decode",
+                    "desired_replicas": desired,
+                    "ready_replicas": ready,
+                    "available_replicas": ready,
+                }
+            ],
+        }
+        for i, (desired, ready) in enumerate(desired_ready)
+    ]
+    (processed_dir / "replica_status_timeseries.json").write_text(
+        json.dumps({"snapshots": snapshots}), encoding="utf-8"
+    )
+
+
+def test_replica_counts_embed_per_controller(tmp_path: Path) -> None:
+    """Desired and ready replicas embed as a step series, one component per controller.
+
+    Only the samples around each change are kept, so downsampling a long run
+    cannot drop a short scale-up.
+    """
+    from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import Observability
+
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_replica_snapshots(
+        processed_dir, [(1, 1), (1, 1), (2, 1), (2, 1), (2, 2), (2, 2)]
+    )
+
+    report = add_metrics_to_benchmark_report({"version": "0.2"}, str(metrics_dir))
+    obs = report["results"]["observability"]
+    Observability(**obs)
+
+    assert report["version"] == "0.2.2"
+    component = obs["components"][0]
+    assert component["component_label"] == "decode-engine"
+    assert component["replica_id"] == "qwen-decode"
+    desired = component["time_series"]["desired_replicas"]["series"]
+    ready = component["time_series"]["ready_replicas"]["series"]
+    assert [(p["ts"][17:19], p["value"]) for p in desired] == [
+        ("00", 1),
+        ("10", 1),
+        ("20", 2),
+        ("50", 2),
+    ]
+    assert [(p["ts"][17:19], p["value"]) for p in ready] == [
+        ("00", 1),
+        ("30", 1),
+        ("40", 2),
+        ("50", 2),
+    ]
+
+
+def test_replica_counts_clip_to_the_stage_window(tmp_path: Path) -> None:
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_replica_snapshots(processed_dir, [(1, 1), (2, 1), (3, 2), (3, 3)])
+    window = (
+        datetime(2026, 7, 14, 0, 0, 10, tzinfo=timezone.utc),
+        datetime(2026, 7, 14, 0, 0, 30, tzinfo=timezone.utc),
+    )
+
+    report = add_metrics_to_benchmark_report(
+        {}, str(metrics_dir), time_series_window=window
+    )
+    desired = report["results"]["observability"]["components"][0]["time_series"][
+        "desired_replicas"
+    ]["series"]
+    assert [p["value"] for p in desired] == [2, 3]
+
+
+def test_process_metrics_folds_each_scrape(tmp_path: Path, monkeypatch) -> None:
+    """metrics_summary.json folds per scrape too, so its means match the report's."""
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    (metrics_dir / "processed").mkdir(parents=True)
+    raw_dir.mkdir()
+    for ts, a, b in (("2026-07-14T00:00:00Z", 3, 4), ("2026-07-14T00:00:30Z", 5, -2)):
+        _write_scrape(
+            raw_dir,
+            "qwen-router-epp-xyz",
+            ts,
+            [
+                f'llm_d_epp_inflight_requests{{endpoint_name="decode-a"}} {a}',
+                f'llm_d_epp_inflight_requests{{endpoint_name="decode-b"}} {b}',
+                'llm_d_epp_flow_control_pool_saturation{stage="prefill"} 0.4',
+                'llm_d_epp_flow_control_pool_saturation{stage="decode"} 1.3',
+            ],
+        )
+    monkeypatch.setenv("METRICS_DIR", str(metrics_dir))
+    monkeypatch.setenv(
+        "LLMDBENCH_TIME_SERIES_METRICS",
+        '["llm_d_epp_inflight_requests", "llm_d_epp_flow_control_pool_saturation"]',
+    )
+
+    module = runpy.run_path(
+        "workload/harnesses/process_metrics.py", run_name="process_metrics_test"
+    )
+    summary = module["aggregate_metrics"]()
+
+    pod = summary["qwen-router-epp-xyz"]["metrics"]
+    assert pod["llm_d_epp_inflight_requests"]["mean"] == pytest.approx(5.0)
+    assert pod["llm_d_epp_flow_control_pool_saturation"]["mean"] == pytest.approx(1.3)
+
+
+def test_process_metrics_folds_like_the_report() -> None:
+    """The harness script cannot import the report package; keep the tables equal."""
+    from llmdbenchmark.analysis.benchmark_report import metrics_processor
+
+    module = runpy.run_path(
+        "workload/harnesses/process_metrics.py", run_name="process_metrics_test"
+    )
+    assert module["SERIES_AGGREGATION"] == metrics_processor._SERIES_AGGREGATION
+
+
+def test_replica_counts_keep_every_step(tmp_path: Path, monkeypatch) -> None:
+    """More changes than the point cap: every step survives, none becomes a ramp."""
+    monkeypatch.setenv("LLMDBENCH_METRICS_TS_MAX_POINTS", "8")
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    flapping = [1 + i % 2 for i in range(12)]
+    _write_replica_snapshots(processed_dir, [(d, 1) for d in flapping])
+
+    report = add_metrics_to_benchmark_report({}, str(metrics_dir))
+    desired = report["results"]["observability"]["components"][0]["time_series"][
+        "desired_replicas"
+    ]["series"]
+    # Every sample is a change, so all 12 stay despite the cap of 8.
+    assert [p["value"] for p in desired] == flapping
+
+
+def test_replica_version_ignores_the_stage_window(tmp_path: Path) -> None:
+    """A stage with no snapshots declares the same version as its siblings."""
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_replica_snapshots(processed_dir, [(1, 1), (2, 2)])
+    window = (
+        datetime(2026, 7, 14, 1, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 7, 14, 1, 0, 30, tzinfo=timezone.utc),
+    )
+
+    report = add_metrics_to_benchmark_report(
+        {"version": "0.2"}, str(metrics_dir), time_series_window=window
+    )
+
+    assert "components" not in report["results"]["observability"]
+    assert report["version"] == "0.2.2"
+
+
+def test_autoscaling_fields_declare_0_2_2_and_load(tmp_path: Path) -> None:
+    """A 0.2.1 report that embeds a 0.2.2 field declares 0.2.2 and still loads.
+
+    0.2.2 requires ``kind``, which a 0.2.1 report may omit, so it is added.
+    """
+    from llmd_benchmark_report import load_artifact, load_benchmark_report
+
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_replica_snapshots(processed_dir, [(1, 1), (2, 2)])
+    report = {"version": "0.2.1", "run": {"uid": "run"}, "results": {}}
+
+    report = add_metrics_to_benchmark_report(report, str(metrics_dir))
+
+    assert (report["version"], report["kind"]) == ("0.2.2", "benchmark-report")
+    assert load_benchmark_report(report).version == "0.2.2"
+    assert load_artifact(report).version == "0.2.2"
+
+
+def test_converters_still_declare_0_2_1() -> None:
+    """Only a report that embeds a 0.2.2 field declares it."""
+    from llmd_benchmark_report.artifacts.benchmark_report.v0_2.schema import (
+        VERSION,
+        BenchmarkReportV02,
+    )
+
+    assert VERSION == "0.2.1"
+    assert "0.2.2" in BenchmarkReportV02.VERSIONS
+    assert "0.2.2" not in BenchmarkReportV02.LEGACY_VERSIONS
+
+
+def test_saturation_units_agree_between_statistics_and_series(
+    tmp_path: Path, monkeypatch
+) -> None:
+    metrics_dir = tmp_path / "metrics"
+    raw_dir = metrics_dir / "raw"
+    (metrics_dir / "processed").mkdir(parents=True)
+    raw_dir.mkdir()
+    _write_scrape(
+        raw_dir,
+        "qwen-router-epp-xyz",
+        "2026-07-14T00:00:00Z",
+        [
+            'llm_d_epp_flow_control_pool_saturation{stage="prefill"} 0.4',
+            'llm_d_epp_flow_control_pool_saturation{stage="decode"} 1.3',
+        ],
+    )
+    monkeypatch.setenv("METRICS_DIR", str(metrics_dir))
+    monkeypatch.setenv(
+        "LLMDBENCH_TIME_SERIES_METRICS", '["llm_d_epp_flow_control_pool_saturation"]'
+    )
+    # As the harness runs it: writes processed/metrics_summary.json.
+    runpy.run_path(
+        "workload/harnesses/process_metrics.py", run_name="process_metrics_test"
+    )["aggregate_metrics"]()
+
+    obs = add_metrics_to_benchmark_report({}, str(metrics_dir))["results"][
+        "observability"
+    ]
+    stats = obs["llm_d_epp_flow_control_pool_saturation"]["components"][0]
+    series = obs["components"][0]["time_series"]["epp_flow_control_pool_saturation"]
+    assert stats["statistics"]["units"] == series["units"] == "ratio"
+
+
+def _write_controller_snapshots(processed_dir: Path, snapshots: list) -> None:
+    (processed_dir / "replica_status_timeseries.json").write_text(
+        json.dumps({"snapshots": snapshots}), encoding="utf-8"
+    )
+
+
+def _controller(name: str, role: str, desired: int, ready: int, kind="Deployment"):
+    return {
+        "name": name,
+        "kind": kind,
+        "role": role,
+        "desired_replicas": desired,
+        "ready_replicas": ready,
+        "available_replicas": ready,
+    }
+
+
+def test_replica_components_are_labelled_by_controller_role(tmp_path: Path) -> None:
+    """The dry-run shadow and FMA requesters are not inference engines.
+
+    The shadow runs no pods, so only what the autoscaler asked for is embedded.
+    """
+    from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import Observability
+
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_controller_snapshots(
+        processed_dir,
+        [
+            {
+                "timestamp": "2026-07-14T00:00:00Z",
+                "controllers": [
+                    _controller("qwen-decode", "decode", 2, 2),
+                    _controller("qwen-decode-dryrun", "decode-dryrun", 3, 0),
+                    _controller("qwen-requester", "requester", 1, 1),
+                ],
+            }
+        ],
+    )
+
+    obs = add_metrics_to_benchmark_report({}, str(metrics_dir))["results"][
+        "observability"
+    ]
+    Observability(**obs)
+
+    by_id = {c["replica_id"]: c for c in obs["components"]}
+    assert by_id["qwen-decode"]["component_label"] == "decode-engine"
+    shadow = by_id["qwen-decode-dryrun"]
+    assert shadow["component_label"] == "decode-engine (autoscaling dry-run)"
+    assert set(shadow["time_series"]) == {"desired_replicas"}
+    assert by_id["qwen-requester"]["component_label"] == "FMA requester"
+
+
+def test_replica_snapshots_mix_naive_and_utc_timestamps(tmp_path: Path) -> None:
+    """A naive timestamp reads as UTC, as clip_to_window reads it, instead of failing."""
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_controller_snapshots(
+        processed_dir,
+        [
+            {
+                "timestamp": "2026-07-14T00:00:00",
+                "controllers": [_controller("qwen-decode", "decode", 1, 1)],
+            },
+            {
+                "timestamp": "2026-07-14T00:00:10Z",
+                "controllers": [_controller("qwen-decode", "decode", 2, 1)],
+            },
+        ],
+    )
+
+    obs = add_metrics_to_benchmark_report({}, str(metrics_dir))["results"][
+        "observability"
+    ]
+    desired = obs["components"][0]["time_series"]["desired_replicas"]["series"]
+    assert [(p["ts"], p["value"]) for p in desired] == [
+        ("2026-07-14T00:00:00+00:00", 1),
+        ("2026-07-14T00:00:10+00:00", 2),
+    ]
+
+
+def test_controllers_sharing_a_name_stay_separate(tmp_path: Path) -> None:
+    metrics_dir = tmp_path / "metrics"
+    processed_dir = metrics_dir / "processed"
+    processed_dir.mkdir(parents=True)
+    _write_controller_snapshots(
+        processed_dir,
+        [
+            {
+                "timestamp": "2026-07-14T00:00:00Z",
+                "controllers": [
+                    _controller("qwen-decode", "decode", 2, 2),
+                    _controller("qwen-decode", "decode", 4, 4, kind="StatefulSet"),
+                ],
+            }
+        ],
+    )
+
+    obs = add_metrics_to_benchmark_report({}, str(metrics_dir))["results"][
+        "observability"
+    ]
+    desired = {
+        c["replica_id"]: [
+            p["value"] for p in c["time_series"]["desired_replicas"]["series"]
+        ]
+        for c in obs["components"]
+    }
+    assert desired == {"Deployment/qwen-decode": [2], "StatefulSet/qwen-decode": [4]}
+
+
+def test_json_schema_requires_kind_after_the_legacy_revisions() -> None:
+    """The JSON schema matches the model: 0.2 and 0.2.1 may omit kind, 0.2.2 may not."""
+    from llmd_benchmark_report import make_json_schema
+
+    schema = json.loads(make_json_schema("0.2.2"))
+    assert "kind" not in schema["required"]
+    assert {
+        "if": {
+            "properties": {"version": {"not": {"enum": ["0.2", "0.2.1"]}}},
+            "required": ["version"],
+        },
+        "then": {"required": ["kind"]},
+    } in schema["allOf"]

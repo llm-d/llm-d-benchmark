@@ -176,3 +176,26 @@ def test_index_0_refuses_to_clobber_without_force(
         "--force",
     )
     assert _rate_of(output) == STAGE_RATES[0]
+
+
+@pytest.mark.parametrize("br_version", ["0.2", "0.2.1", "0.2.2"])
+def test_every_0_2_revision_produces_the_current_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, br_version: str
+) -> None:
+    """Converters declare 0.2.1 whichever 0.2 revision is asked for."""
+    output = tmp_path / "br.yaml"
+
+    _run(
+        monkeypatch,
+        str(FIXTURE),
+        str(output),
+        "-b",
+        br_version,
+        "-w",
+        "guidellm",
+        "-i",
+        "0",
+    )
+
+    report = yaml.safe_load(output.read_text())
+    assert (report["version"], report["kind"]) == ("0.2.1", "benchmark-report")

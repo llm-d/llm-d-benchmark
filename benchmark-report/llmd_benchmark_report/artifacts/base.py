@@ -93,8 +93,20 @@ def _drop_legacy_kind_from_required(
     schema: dict[str, Any], model: type[BaseModel]
 ) -> None:
     # documents at a legacy version are valid without `kind`, so the schema must accept them
-    if getattr(model, "LEGACY_VERSIONS", None) and "kind" in schema.get("required", []):
+    legacy = getattr(model, "LEGACY_VERSIONS", None)
+    if legacy and "kind" in schema.get("required", []):
         schema["required"].remove("kind")
+        # ... but a document that declares a later version must still carry it
+        if set(getattr(model, "VERSIONS", ())) - set(legacy):
+            schema.setdefault("allOf", []).append(
+                {
+                    "if": {
+                        "properties": {"version": {"not": {"enum": sorted(legacy)}}},
+                        "required": ["version"],
+                    },
+                    "then": {"required": ["kind"]},
+                }
+            )
 
 
 class Artifact(BaseModel):

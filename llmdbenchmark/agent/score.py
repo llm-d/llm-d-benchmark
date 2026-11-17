@@ -42,6 +42,10 @@ _SECONDS_PER_TOKEN_PER_UNIT = {
 _AGENT_ANALYSIS_INPUT_GLOB = "**/benchmark_report_v0.2,_*.yaml"
 
 
+# The 0.2 revisions this module reads; every one has the shape it expects.
+_SCORED_VERSIONS = ("0.2", "0.2.1", "0.2.2")
+
+
 def discover_agent_analysis_input(results_dir: Path) -> list[Path]:
     """Glob a results tree for benchmark-report v0.2 files (the Agent
     Analysis Input), ignoring the v0.1 siblings written alongside them."""
@@ -234,7 +238,7 @@ def _score_report(
             diagnostics,
         )
 
-    if getattr(report, "version", None) not in ("0.2", "0.2.1"):
+    if getattr(report, "version", None) not in _SCORED_VERSIONS:
         # load_benchmark_report happily loads a v0.1 report (it predates
         # the "standardized"/"aggregate" shape this module reads); a v0.1
         # file sitting next to its v0.2 sibling on disk must yield the
@@ -242,7 +246,8 @@ def _score_report(
         # AttributeError three lines down.
         message = (
             f"{report_str}: unsupported report version "
-            f"{getattr(report, 'version', None)!r} (only 0.2/0.2.1 are scored)"
+            f"{getattr(report, 'version', None)!r} "
+            f"(only {'/'.join(_SCORED_VERSIONS)} are scored)"
         )
         diagnostics.append(
             Diagnostic(
