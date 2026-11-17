@@ -374,10 +374,10 @@ class CaptureClusterStateStep(Step):
         thanos_queries = [
             (
                 "vllm-cache-with-variant",
-                'vllm:gpu_cache_usage_perc{llm_d_ai_variant=~".+"}',
+                'vllm:kv_cache_usage_perc{llm_d_ai_variant=~".+"}',
             ),
-            ("vllm-cache-no-variant", 'vllm:gpu_cache_usage_perc{llm_d_ai_variant=""}'),
-            ("vllm-cache-all", "vllm:gpu_cache_usage_perc"),
+            ("vllm-cache-no-variant", 'vllm:kv_cache_usage_perc{llm_d_ai_variant=""}'),
+            ("vllm-cache-all", "vllm:kv_cache_usage_perc"),
             (
                 "epp-pool-kv-cache",
                 "inference_pool_average_kv_cache_utilization",
