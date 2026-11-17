@@ -4,6 +4,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext, is_fma_only_mode
+from llmdbenchmark.smoketests.base import BaseSmoketest
 from llmdbenchmark.utilities.endpoint import test_model_serving, cleanup_ephemeral_pods
 
 
@@ -86,6 +87,10 @@ class VerifyModelStep(Step):
 
         context.logger.log_info(f"Verifying model '{model_name}' at {endpoint_url}...")
 
+        self._wake_from_zero(
+            cmd, context, plan_config, namespace, endpoint_url, model_name
+        )
+
         error = test_model_serving(
             cmd,
             namespace,
@@ -128,6 +133,39 @@ class VerifyModelStep(Step):
             message=f"Model '{model_name}' verified at {endpoint_url}",
             stack_name=stack_name,
         )
+
+    @staticmethod
+    def _wake_from_zero(cmd, context, plan_config, namespace, endpoint_url, model_name):
+        """At zero replicas, send one inference request through the router.
+
+        GET /v1/models is not queued by the EPP, so it cannot trigger a
+        queue-driven scale-from-zero; an inference request can.
+        """
+        cold = BaseSmoketest()._scaled_to_zero_targets(
+            cmd, context, context.namespace, plan_config
+        )
+        if not cold:
+            return
+        timeout = BaseSmoketest._resolve_wait_setting(
+            plan_config,
+            "coldStartTimeout",
+            None,
+            BaseSmoketest._DEFAULT_COLD_START_TIMEOUT,
+        )
+        context.logger.log_info(
+            f"Scaled to zero: {'; '.join(t.describe() for t in cold)}. "
+            f"Sending one inference request (timeout {timeout}s) to scale up..."
+        )
+        _, err = BaseSmoketest._curl_post(
+            cmd,
+            namespace,
+            f"{endpoint_url}/v1/completions",
+            {"model": model_name, "prompt": "Hello", "max_tokens": 1},
+            plan_config,
+            timeout,
+        )
+        if err:
+            context.logger.log_warning(f"Scale-from-zero request failed: {err[:200]}")
 
     @staticmethod
     def _parse_endpoint(url: str) -> tuple[str, str, str]:
