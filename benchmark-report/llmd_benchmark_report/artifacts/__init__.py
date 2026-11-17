@@ -14,16 +14,34 @@ from .registry import (
     load_artifact,
     register,
 )
+from .stream import (
+    LocalFileSink,
+    RecordDecoder,
+    RecordEncoder,
+    Sink,
+    StreamContents,
+    StreamingArtifact,
+    StreamWriter,
+    read_stream,
+)
 
 __all__ = [
     "LEGACY_BENCHMARK_REPORT_VERSIONS",
     "Artifact",
     "ArtifactHeader",
+    "LocalFileSink",
     "Producer",
+    "RecordDecoder",
+    "RecordEncoder",
     "Run",
     "RunTime",
+    "Sink",
+    "StreamContents",
+    "StreamWriter",
+    "StreamingArtifact",
     "ValidationIssue",
     "artifact_model",
     "load_artifact",
+    "read_stream",
     "register",
 ]
