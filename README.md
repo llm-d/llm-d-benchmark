@@ -439,7 +439,7 @@ llmdbenchmark --version
 | `--quiet-plan` / `--no-quiet-plan` | `LLMDBENCH_QUIET_PLAN` | Suppress the per-file plan-rendering narration on the console -- the `Rendered: <file>` lines, image overrides and per-stack banners -- replacing it with a one-line summary of what was rendered and where. **On by default** for `standup`, `smoketest`, `teardown`, `run` and `experiment`, where the render is an implicit prelude; **off by default** for `plan`, whose output it is. The detail is never lost: it is written to `<workspace>/logs/` at `DEBUG` either way. `--verbose` overrides this and always shows the full narration. See [Quieting the plan-rendering output](#quieting-the-plan-rendering-output). |
 | `--run-description TEXT` | `LLMDBENCH_DESCRIPTION_TEXT` | Human-readable label for the run, recorded as `run.description` in the benchmark report. Defaults to `<model> [<experiment id>]`. Also settable as `description.text` under a scenario's `common:` (or top-level `shared:`) block, or per treatment in an experiment. |
 | `--run-keywords LIST` | `LLMDBENCH_DESCRIPTION_KEYWORDS` | Comma-separated tags recorded as `run.keywords`. Never auto-populated; omitted entirely when unset. Also settable as `description.keywords` in the same places. |
-| `--compress` / `--no-compress` | `LLMDBENCH_COMPRESS` | Compress output (default: on). Each result set is compressed on the PVC before collection, so the archive rather than the raw tree crosses the tunnel; nothing is compressed on the driver. benchmark reports, `run_metadata.yaml` and `experiment-summary.yaml` stay plain at the paths an uncompressed run writes them to; everything else lives in `workspace.tar.zst`. `--no-compress` keeps a fully plain tree. See [Compressed output](#compressed-output). |
+| `--compress` / `--no-compress` | `LLMDBENCH_COMPRESS` | Compress output (default: on). Each result set is compressed on the PVC before collection, so the archive rather than the raw tree crosses the tunnel; nothing is compressed on the driver. benchmark reports, `run_metadata.yaml`, `experiment-summary.yaml` and `per_request_lifecycle_metrics.json` stay plain at the paths an uncompressed run writes them to; everything else lives in `workspace.tar.zst`. `--no-compress` keeps a fully plain tree. See [Compressed output](#compressed-output). |
 | `--compress-level N` | `LLMDBENCH_COMPRESS_LEVEL` | zstd level (default: 10, the speed/size knee). Raise for archival runs: level 16 costs roughly an order of magnitude more wall clock, for a size gain that measured between 6% and 12% on real result data. |
 | `--cluster-config FILE` / `--cc` | | YAML of cluster-specific overrides (storage class, service account, ...), deep-merged on top of the scenario. Not committed -- each user keeps their own. See [openshift-setup.md](docs/openshift-setup.md). |
 | `--set KEY=VALUE` | `LLMDBENCH_SET` | Scenario override(s) as `[stack:]dotted.key=value`, comma-separated and repeatable. Deep-merged on top of the scenario, so a variant differing in a few fields needs no separate YAML file. Prefix with a stack name or glob to scope it in a multi-stack scenario. Available on every subcommand that renders templates. **Distinct from `run`/`experiment`'s `-o`, which overrides the workload profile — the two can be combined.** See [standup.md](docs/standup.md#overriding-scenario-values-from-the-cli---set). |
@@ -660,14 +660,17 @@ touching the archive:
     └── results/<experiment_id>/
         ├── benchmark_report_v0.2,_*.yaml      # plain
         ├── run_metadata.yaml                  # plain
+        ├── per_request_lifecycle_metrics.json # plain
         └── workspace.tar.zst                  # everything else
 ```
 
-Three keep-plain entries, each earning it: the benchmark reports and `run_metadata.yaml` are
+Four keep-plain entries, each earning it: the benchmark reports and `run_metadata.yaml` are
 what `results_store` globs off the live filesystem to resolve a run's uid/model/hardware, and
-`experiment-summary.yaml` is a DoE run's only index.
+`experiment-summary.yaml` is a DoE run's only index. `per_request_lifecycle_metrics.json` is the
+raw per-request data that load-versus-supply analysis needs, and it stays plain so
+`--data-collect results` can fetch it without the rest of the set.
 
-Everything else -- the per-request JSON, logs including the raw Prometheus snapshots, metric
+Everything else -- the other JSON, logs including the raw Prometheus snapshots, metric
 summaries, CSV, HTML, traces -- lives in `workspace.tar.zst`, and every component that reads
 one of those goes through the archive rather than requiring a plain copy: summary extraction,
 the failure validator, and the FMA comparison table. The `eval-containers` reports and run
