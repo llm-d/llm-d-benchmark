@@ -794,6 +794,11 @@ class KustomizeDeployStep(Step):
         extra_values: list[str],
         extra_sets: dict[str, str],
     ) -> str:
+        # Only helm install/upgrade take -f / --set. A router step can also
+        # hold kubectl and `kustomize build | kubectl apply -f -` commands,
+        # where an appended `-f <values.yaml>` is applied as a manifest.
+        if helm_cmd.split()[:2] not in (["helm", "install"], ["helm", "upgrade"]):
+            return helm_cmd
         parts = [helm_cmd]
         for vf in extra_values:
             abs_vf = str(Path(vf).resolve()) if not Path(vf).is_absolute() else vf
