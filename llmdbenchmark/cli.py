@@ -1432,6 +1432,10 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             max_parallel_stacks=1,
         )
         result = executor.execute(step_spec="3")
+        if result.errors:
+            for error in result.errors:
+                logger.log_error(str(error))
+            sys.exit(1)
         _print_endpoints_table(context, logger, args)
         return context, result
 

@@ -9,6 +9,10 @@ from pathlib import Path
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
+from llmdbenchmark.standup.scc import (
+    elevated_service_account,
+    scenario_requests_elevation,
+)
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
 from llmdbenchmark.utilities.kube_helpers import (
     clear_wedged_release,
@@ -602,45 +606,13 @@ class DeployModelserviceStep(Step):
         namespace: str,
     ):
         """Add anyuid/privileged SCCs when ``runAsUser: 0`` or ``runAsGroup: 0``."""
-        needs_elevated = False
-
-        sections_to_check = [
-            plan_config.get("standalone", {}),
-            plan_config.get("vllmCommon", {}),
-            plan_config.get("decode", {}),
-            plan_config.get("prefill", {}),
-        ]
-        for role in ["Decode", "Prefill"]:
-            sections_to_check.append(plan_config.get(f"vllmModelservice{role}", {}))
-
-        for section in sections_to_check:
-            # Check top-level securityContext
-            sc = section.get("securityContext", {})
-            if sc.get("runAsUser") == 0 or sc.get("runAsGroup") == 0:
-                needs_elevated = True
-                break
-            # Check securityContext inside extraContainerConfig (used by
-            # modelservice Helm chart for container-level security settings)
-            extra_sc = section.get("extraContainerConfig", {}).get(
-                "securityContext", {}
-            )
-            if extra_sc.get("runAsUser") == 0 or extra_sc.get("runAsGroup") == 0:
-                needs_elevated = True
-                break
-
-        if not needs_elevated:
+        if not scenario_requests_elevation(plan_config):
             context.logger.log_info(
                 "ℹ️  No runAsUser:0 detected -- skipping SCC assignment"
             )
             return
 
-        # The Helm chart creates a SA named after fullnameOverride (= model_id_label).
-        # If serviceAccountOverride is set, the chart uses that instead.
-        sa_override = plan_config.get("serviceAccountOverride", "")
-        if sa_override:
-            sa_name = sa_override
-        else:
-            sa_name = plan_config.get("model_id_label", "")
+        sa_name = elevated_service_account(plan_config)
 
         if context.non_admin:
             # No cluster-admin, so the grant below is not ours to make. Say so

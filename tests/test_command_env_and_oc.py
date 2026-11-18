@@ -71,28 +71,21 @@ def test_kube_without_oc_fails_clearly_on_every_call(tmp_path, monkeypatch):
     assert second.stderr == OC_MISSING_MESSAGE
 
 
-def test_kube_without_oc_in_dry_run_stays_a_dry_run(tmp_path, monkeypatch):
+def test_the_oc_check_blocks_neither_dry_run_nor_an_installed_oc(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "llmdbenchmark.executor.command.shutil.which", lambda _name: None
     )
-    cmd = CommandExecutor(
+    capture = _patch_run(monkeypatch)
+    dry_run = CommandExecutor(
         work_dir=tmp_path, dry_run=True, verbose=False, openshift=True
     )
 
-    result = cmd.kube("get", "pods")
+    assert dry_run.kube("get", "pods").dry_run
 
-    assert result.dry_run
-    assert result.success
-
-
-def test_kube_with_oc_proceeds(tmp_path, monkeypatch):
-    capture = _patch_run(monkeypatch)
     monkeypatch.setattr(
         "llmdbenchmark.executor.command.shutil.which", lambda _name: "/usr/bin/oc"
     )
-    cmd = _executor(tmp_path, openshift=True)
+    live = _executor(tmp_path, openshift=True)
 
-    result = cmd.kube("get", "pods")
-
-    assert result.success
+    assert live.kube("get", "pods").success
     assert capture.calls

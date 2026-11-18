@@ -2,6 +2,7 @@
 
 import sys
 
+from llmdbenchmark.executor.command import OC_MISSING_MESSAGE
 from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.parser.cli_overrides import GLOBAL_SELECTOR
 from llmdbenchmark.update import (
@@ -253,6 +254,9 @@ def missing_stacks(context, stacks_info: list[dict], logger) -> list[str]:
             result = cmd.kube(
                 "get", *probe, "--namespace", namespace, "-o", "name", check=False
             )
+            if result.stderr == OC_MISSING_MESSAGE:
+                # an unreadable cluster must not read as an undeployed one
+                raise RuntimeError(result.stderr)
             if result.success and result.stdout.strip():
                 continue
         elif "modelservice" not in methods:

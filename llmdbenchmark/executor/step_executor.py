@@ -1,6 +1,7 @@
 """Phase-agnostic step orchestrator with sequential and parallel execution."""
 
 import re
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from llmdbenchmark.executor.step import (
     StackExecutionResult,
     ExecutionResult,
 )
+from llmdbenchmark.executor.command import OC_MISSING_MESSAGE
 from llmdbenchmark.executor.context import ExecutionContext
 
 
@@ -57,6 +59,18 @@ class StepExecutor:
                 sys.exit(1)
 
         result = ExecutionResult(phase=self.context.current_phase)
+
+        # oc is optional in the dependency check, but every cluster
+        # call goes through it on OpenShift; dry-run executes nothing
+        if (
+            self.context.is_openshift
+            and not self.context.dry_run
+            and shutil.which("oc") is None
+        ):
+            self.logger.log_error(OC_MISSING_MESSAGE)
+            result.errors.append(OC_MISSING_MESSAGE)
+            return result
+
         allowed_numbers = set(self.parse_step_list(step_spec)) if step_spec else None
 
         pre_global, per_stack_steps, post_global = self._partition_steps(
