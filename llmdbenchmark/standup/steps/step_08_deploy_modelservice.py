@@ -10,7 +10,11 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
-from llmdbenchmark.utilities.kube_helpers import wait_for_epp
+from llmdbenchmark.utilities.kube_helpers import (
+    clear_wedged_release,
+    restore_release_record,
+    wait_for_epp,
+)
 from llmdbenchmark.utilities.podstate import observe_pods
 from llmdbenchmark.utilities.standup_parameters import (
     write as write_standup_parameters,
@@ -113,6 +117,20 @@ class DeployModelserviceStep(Step):
         helm_dir = context.setup_helm_dir() / stack_name
         helmfile_work = helm_dir / "helmfile.yaml"
 
+        # the helmfile declares every release in the gateway namespace
+        release_ns = (plan_config.get("gateway", {}) or {}).get(
+            "namespace"
+        ) or namespace
+        cleared = False
+        record = None
+        if model_id_label and not context.dry_run:
+            cleared, record = clear_wedged_release(
+                cmd, release_ns, f"{model_id_label}-ms", context.logger
+            )
+        # the surviving record can claim the desired state is already
+        # live while the objects are not
+        diff_env = {"HELM_DIFF_THREE_WAY_MERGE": "true"} if cleared else None
+
         if helmfile_work.exists():
             result = cmd.helmfile(
                 "--namespace",
@@ -124,9 +142,14 @@ class DeployModelserviceStep(Step):
                 str(helmfile_work),
                 "--skip-diff-on-install",
                 "--skip-schema-validation",
+                env=diff_env,
             )
             if not result.success:
                 errors.append(f"Failed to deploy modelservice: {result.stderr}")
+                if record:
+                    restore_release_record(
+                        cmd, release_ns, f"{model_id_label}-ms", record, context.logger
+                    )
         else:
             main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")
             if main_helmfile:
@@ -140,9 +163,18 @@ class DeployModelserviceStep(Step):
                     str(main_helmfile),
                     "--skip-diff-on-install",
                     "--skip-schema-validation",
+                    env=diff_env,
                 )
                 if not result.success:
                     errors.append(f"Failed to deploy modelservice: {result.stderr}")
+                    if record:
+                        restore_release_record(
+                            cmd,
+                            release_ns,
+                            f"{model_id_label}-ms",
+                            record,
+                            context.logger,
+                        )
 
         if direct_service_mode:
             direct_service_yaml = self._find_yaml(

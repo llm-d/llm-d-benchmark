@@ -18,6 +18,7 @@ from llmdbenchmark.utilities.kube_helpers import (
     force_remove_finalizers_by_selector,
     list_helm_releases,
     wait_for_pods_deleted,
+    WEDGED_HELM_STATES,
 )
 
 _RELEASE_RECORD_PREFIX = "sh.helm.release.v1."
@@ -49,15 +50,7 @@ class UninstallHelmStep(Step):
     # that block a subsequent standup `helmfile apply` from reinstalling.
     # For releases in these states we delete the backing release secret
     # directly instead of calling `helm uninstall`.
-    _WEDGED_HELM_STATES = frozenset(
-        {
-            "uninstalling",
-            "pending-install",
-            "pending-upgrade",
-            "pending-rollback",
-            "failed",
-        }
-    )
+    _WEDGED_HELM_STATES = WEDGED_HELM_STATES
 
     # Chart name prefixes used exclusively by deployments this tool creates
     # (llm-d-modelservice, llm-d-router-gateway/-standalone, fma-controllers).

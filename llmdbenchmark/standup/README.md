@@ -16,9 +16,9 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 05 | `StandaloneDeployStep` | per-stack | Deploy vLLM as standalone Kubernetes Deployments and Services |
 | 05 | `KustomizeDeployStep` | per-stack | Replay an llm-d guide's README commands (kustomize method) |
 | 05 | `NoK8sDeployStep` | per-stack | Run vLLM/EPP/Envoy as plain containers (no Kubernetes) |
-| 06 | `DeploySetupStep` | per-stack | Set up Helm repos, stage the helmfile values files, and deploy gateway infrastructure for modelservice mode (the cluster-scoped gateway provider install is skipped with `--non-admin`) |
-| 07 | `DeployRouterStep` | per-stack | Deploy the llm-d router (EPP + provider resources); with `--non-admin`, router Prometheus monitoring and its cluster-scoped auth RBAC are disabled |
-| 08 | `DeployModelserviceStep` | per-stack | Deploy the model via the llm-d modelservice Helm chart |
+| 06 | `DeploySetupStep` | per-stack | Set up Helm repos, stage the helmfile values files, and deploy gateway infrastructure for modelservice mode (the cluster-scoped gateway provider install is skipped with `--non-admin`). Clears a wedged Helm release in the gateway namespace before the apply; if the apply then fails, the removed record is restored so the next run can detect it |
+| 07 | `DeployRouterStep` | per-stack | Deploy the llm-d router (EPP + provider resources); with `--non-admin`, router Prometheus monitoring and its cluster-scoped auth RBAC are disabled. Clears a wedged Helm release before the apply, with the same record restore |
+| 08 | `DeployModelserviceStep` | per-stack | Deploy the model via the llm-d modelservice Helm chart. Clears a wedged Helm release before the apply, with the same record restore |
 | 09 | `ExposeEndpointStep` | per-stack | Unless `externally_accessible: false`, expose the model Service outside the cluster: an OpenShift Route, or a detached `kubectl port-forward` on Kubernetes. Skipped for nok8s and FMA-only. |
 
 Note: Step 01 is intentionally absent (reserved). Smoketest and inference test run as a separate phase after standup, from the `llmdbenchmark.smoketests` module; `get_standup_steps()` no longer registers them. `step_10_smoketest.py` and `step_11_inference_test.py` are still on disk but unregistered -- only their helpers are still imported.

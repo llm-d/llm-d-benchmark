@@ -7,6 +7,10 @@ import yaml
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.utilities.kube_helpers import (
+    clear_wedged_release,
+    restore_release_record,
+)
 
 
 class DeploySetupStep(Step):
@@ -107,6 +111,19 @@ class DeploySetupStep(Step):
             # that matches specified selector" which is harmless but
             # noisy in the standup log.
             if self._helmfile_declares_release(helmfile_work, f"infra-{release}"):
+                # the helmfile declares the release in the gateway namespace
+                release_ns = (plan_config.get("gateway", {}) or {}).get(
+                    "namespace"
+                ) or namespace
+                cleared = False
+                record = None
+                if not context.dry_run:
+                    cleared, record = clear_wedged_release(
+                        cmd, release_ns, f"infra-{release}", context.logger
+                    )
+                # the surviving record can claim the desired state is
+                # already live while the objects are not
+                diff_env = {"HELM_DIFF_THREE_WAY_MERGE": "true"} if cleared else None
                 result = cmd.helmfile(
                     "--namespace",
                     namespace,
@@ -117,9 +134,14 @@ class DeploySetupStep(Step):
                     str(helmfile_work),
                     "--skip-diff-on-install",
                     "--skip-schema-validation",
+                    env=diff_env,
                 )
                 if not result.success:
                     errors.append(f"Failed to apply infra helmfile: {result.stderr}")
+                    if record:
+                        restore_release_record(
+                            cmd, release_ns, f"infra-{release}", record, context.logger
+                        )
             else:
                 context.logger.log_info(
                     f"    | infra-{release} not in this stack's helmfile "
