@@ -74,12 +74,22 @@ def embed_metrics(
     import yaml
 
     try:
+        from llmdbenchmark.analysis.benchmark_report.load_series import (
+            ClockAnchorError,
+            load_generator_requests,
+        )
         from llmdbenchmark.analysis.benchmark_report.metrics_processor import (
+            _embed_time_series_enabled,
             add_metrics_to_benchmark_report,
             load_scraped_time_series,
         )
     except ImportError:  # in-pod: the library is installed, the package is not
+        from benchmark_report.load_series import (  # type: ignore[no-redef]
+            ClockAnchorError,
+            load_generator_requests,
+        )
         from benchmark_report.metrics_processor import (  # type: ignore[no-redef]
+            _embed_time_series_enabled,
             add_metrics_to_benchmark_report,
             load_scraped_time_series,
         )
@@ -104,8 +114,18 @@ def embed_metrics(
             True,
         )
 
-    # Parsed once for every report: the scrapes can be large.
+    # Parsed once for every report: the scrapes and the per-request file can be large.
     scraped_series = load_scraped_time_series(str(metrics_dir))
+    load_requests, load_unavailable = None, None
+    if _embed_time_series_enabled():
+        try:
+            load_requests = load_generator_requests(results_dir)
+        except ClockAnchorError as exc:
+            load_unavailable = str(exc)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            load_unavailable = f"per-request records unreadable: {exc}"
+        if load_unavailable:
+            _say(f"No offered-load series: {load_unavailable}", True)
     written = 0
     for report in reports:
         try:
@@ -125,6 +145,8 @@ def embed_metrics(
                 str(metrics_dir),
                 time_series_window=window,
                 scraped_series=scraped_series,
+                load_requests=load_requests,
+                load_unavailable=load_unavailable,
             )
 
             interval = br_dict.get("results", {}).get("observability", {})

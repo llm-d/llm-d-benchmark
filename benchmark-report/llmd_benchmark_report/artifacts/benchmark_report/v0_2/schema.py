@@ -16,8 +16,9 @@ Revision history:
     grouping on the workload metadata.
   - 0.2.2: optional autoscaling signals on the observability time series
     (router in-flight load, running requests, flow-control queue and
-    saturation, request and error counters; engine finished requests) and
-    desired / ready replicas per controller.
+    saturation, request and error counters; engine finished requests),
+    desired / ready replicas per controller, and the load generator's offered
+    load and SLO attainment by send time.
 """
 
 import datetime
@@ -924,6 +925,13 @@ class TimeSeriesResourceMetrics(UnitsValidatedModel):
         "epp_request_errors": UNITS_QUANTITY,
         "desired_replicas": UNITS_QUANTITY,
         "ready_replicas": UNITS_QUANTITY,
+        "requests_sent": UNITS_QUANTITY,
+        "requests_errored": UNITS_QUANTITY,
+        "requests_errored_at_end": UNITS_QUANTITY,
+        "offered_request_rate": UNITS_REQUEST_THROUGHPUT,
+        "offered_input_token_rate": UNITS_GEN_THROUGHPUT,
+        "offered_output_budget_rate": UNITS_GEN_THROUGHPUT,
+        "slo_attainment": UNITS_PORTION,
     }
 
     kv_cache_usage: TimeSeriesData | None = None
@@ -1002,6 +1010,20 @@ class TimeSeriesResourceMetrics(UnitsValidatedModel):
     """Replicas the controller asks for (spec.replicas) over time."""
     ready_replicas: TimeSeriesData | None = None
     """Ready replicas of the controller over time."""
+    requests_sent: TimeSeriesData | None = None
+    """Requests the load generator sent per bin (binned by send time)."""
+    requests_errored: TimeSeriesData | None = None
+    """Of the requests sent in the bin, those that failed."""
+    requests_errored_at_end: TimeSeriesData | None = None
+    """Failed requests binned by when they ended (aligns error bursts with their cause, e.g. a scale-down)."""
+    offered_request_rate: TimeSeriesData | None = None
+    """Requests sent per second in the bin: the offered rate for open-loop load, the achieved send rate for closed-loop."""
+    offered_input_token_rate: TimeSeriesData | None = None
+    """Prompt tokens sent per second in the bin; a failed request, which inference-perf records with no prompt tokens, counts at the run's mean."""
+    offered_output_budget_rate: TimeSeriesData | None = None
+    """Output tokens requested (max_tokens) per second in the bin: work asked for, not generated."""
+    slo_attainment: TimeSeriesData | None = None
+    """Share of the bin's requests that met every declared SLO constraint and did not fail. Only with declared constraints; no point for a bin with no requests."""
 
     @model_validator(mode="after")
     def check_units(self):
