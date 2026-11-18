@@ -541,6 +541,9 @@ monitoring:
   # Only metrics in the _EMBED_TIME_SERIES allow-list (metrics_processor.py) qualify.
   embedTimeSeries: true
   timeSeriesMaxPoints: 256
+  # Bin width (s) of the load generator's offered-load and SLO-attainment series,
+  # binned by request send time (inference-perf runs).
+  loadBinSeconds: 30
   # Prometheus time-series metrics kept for processing and for benchmark-report
   # observability entries. Add new metrics here without changing the analysis code.
   timeSeriesMetrics:

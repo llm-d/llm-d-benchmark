@@ -203,6 +203,19 @@ Per Deployment/StatefulSet whose pod template is labelled `llm-d.ai/inferenceSer
 - **`model`** - From `llm-d.ai/model` label
 - **`role`** - From `llm-d.ai/role` label (decode/prefill/both)
 
+#### Offered Load and SLO Attainment (`per_request_lifecycle_metrics.json`)
+For inference-perf runs, the in-pod analyzer reads the load generator's per-request records (streamed, so the file's prompt and response bodies do not have to fit in memory) and embeds one `Load generator (inference-perf)` component per stage report, binned by the time each request was sent (`monitoring.loadBinSeconds`, 30 s by default). Bins with no sends carry 0, so a gap in the load is not drawn over:
+- **`requests_sent`** / **`requests_errored`** - requests sent in the bin, and those that failed (count). `requests_sent` is the series llm-d-prism can draw on the same axis as `desired_replicas` / `ready_replicas`; the rates below have their own units
+- **`requests_errored_at_end`** - failed requests binned by when they ended (count). A pod removed by a scale-down ends its in-flight requests together, so the burst lines up with the replica decrease, while `requests_errored` and `slo_attainment` show it up to one request latency earlier, when those requests were sent
+- **`offered_request_rate`** - requests sent per second (queries/s). For open-loop load (`poisson`, `constant`, `trace_replay`) this is the offered rate; for closed-loop load (`concurrent`, `trace_session_replay`) it is the achieved send rate, which falls when the pool slows down. `results.observability.load_generator.loop` says which, and `schedule_delay_seconds` (per stage, from inference-perf's stage summaries) shows whether open-loop sends kept to the schedule
+- **`offered_input_token_rate`** - prompt tokens sent per second (tokens/s). inference-perf records no prompt tokens for a failed request, so failures count at the run's mean prompt length (`failed_requests_with_estimated_input_tokens`)
+- **`offered_output_budget_rate`** - output tokens requested (`max_tokens`) per second: work asked for, not generated (tokens/s). Profiles that drop the request body (`per_request_fields.request: false`) have no budget; with `ignore_eos` the generated count is used instead (`output_budget_from_generated_tokens`), otherwise the series is left out
+- **`slo_attainment`** - share of the bin's requests that met every constraint in the run's `report.goodput.constraints` and did not fail (fraction). Only when constraints are declared; no point for a bin with no sends
+
+inference-perf timestamps are `perf_counter()` values, so each run is placed in UTC from the stage start and end epochs in `inference-perf.partial.stage_<n>.yaml`. Rate-mode stages schedule from 1 s after their start and end after their last completion; session-replay stages send from their start and stamp their end before the teardown that ends in-flight requests, so their last send bounds the placement instead. `clock_uncertainty_seconds` records how tightly the run was placed (tens of milliseconds when the partial reports' request counts add up); a run that cannot be placed gets no series, `load_generator.unavailable` with the reason, and a warning in the analyzer log.
+
+Not counted: requests that never produced a record (session-replay events cancelled at teardown, `client_side_warmup` requests). The series is embedded with the other time series, so only when metrics collection ran (`--monitoring` / `metricsScrapeEnabled`) and `embedTimeSeries` is on. With `loadParallelism` N, each result set (`_1` to `_N`) carries its own harness pod's share of the load next to the whole pool's replica counts: add them up to get the offered load.
+
 #### Pod Startup Times (`pod_startup_times.json`)
 Per Running vLLM pod:
 - **`startup_seconds`** - `conditions[Ready].lastTransitionTime - metadata.creationTimestamp`

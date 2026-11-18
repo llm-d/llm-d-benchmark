@@ -18,6 +18,7 @@ _SUBMODULES = (
     "cli",
     "core",
     "guidellm_native",
+    "load_series",
     "metrics_processor",
     "native_to_br0_1",
     "native_to_br0_2",

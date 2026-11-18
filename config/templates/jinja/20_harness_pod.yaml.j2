@@ -113,6 +113,10 @@
     - name: LLMDBENCH_METRICS_TS_MAX_POINTS
       value: "{{ monitoring.timeSeriesMaxPoints }}"
 {% endif %}
+{% if monitoring.loadBinSeconds is defined %}
+    - name: LLMDBENCH_METRICS_LOAD_BIN_SECONDS
+      value: "{{ monitoring.loadBinSeconds }}"
+{% endif %}
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED
       value: "{{ standalone.enabled | lower }}"

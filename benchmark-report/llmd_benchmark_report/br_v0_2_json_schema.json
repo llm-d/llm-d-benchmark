@@ -3596,6 +3596,90 @@
           ],
           "default": null,
           "description": "Ready replicas of the controller over time."
+        },
+        "requests_sent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests the load generator sent per bin (binned by send time)."
+        },
+        "requests_errored": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Of the requests sent in the bin, those that failed."
+        },
+        "requests_errored_at_end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Failed requests binned by when they ended (aligns error bursts with their cause, e.g. a scale-down)."
+        },
+        "offered_request_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests sent per second in the bin: the offered rate for open-loop load, the achieved send rate for closed-loop."
+        },
+        "offered_input_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prompt tokens sent per second in the bin; a failed request, which inference-perf records with no prompt tokens, counts at the run's mean."
+        },
+        "offered_output_budget_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output tokens requested (max_tokens) per second in the bin: work asked for, not generated."
+        },
+        "slo_attainment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Share of the bin's requests that met every declared SLO constraint and did not fail. Only with declared constraints; no point for a bin with no requests."
         }
       },
       "title": "TimeSeriesResourceMetrics",

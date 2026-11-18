@@ -207,6 +207,13 @@ _V0_2_2_TIME_SERIES_FIELDS = frozenset(
         "epp_requests",
         "epp_request_errors",
         *_REPLICA_TIME_SERIES,
+        "requests_sent",
+        "requests_errored",
+        "requests_errored_at_end",
+        "offered_request_rate",
+        "offered_input_token_rate",
+        "offered_output_budget_rate",
+        "slo_attainment",
     )
 )
 
@@ -939,6 +946,8 @@ def add_metrics_to_benchmark_report(
     component_label: str = "vllm-service",
     time_series_window: tuple[Any, Any] | None = None,
     scraped_series: dict[str, dict[str, list]] | None = None,
+    load_requests: Any = None,
+    load_unavailable: str | None = None,
 ) -> dict[str, Any]:
     """Add metrics to an existing benchmark report dictionary.
 
@@ -952,6 +961,10 @@ def add_metrics_to_benchmark_report(
     interval, the statistics' scope, and how many points survived the clip so
     an empty series is never mistaken for a quiet stage. ``scraped_series`` is
     the output of :func:`load_scraped_time_series`; it is parsed here if omitted.
+    ``load_requests`` is the output of :func:`load_series.load_generator_requests`:
+    the load generator's offered load and SLO attainment over the same window,
+    as a component next to the replica counts; nothing is added without it.
+    ``load_unavailable`` records why the load generator's series are missing.
     """
     obs = br_dict.setdefault("results", {}).setdefault("observability", {})
 
@@ -1004,6 +1017,18 @@ def add_metrics_to_benchmark_report(
         _declare_version(
             br_dict, _build_replica_time_series(obs, metrics_dir, time_series_window)
         )
+        if load_unavailable:
+            obs["load_generator"] = {"unavailable": load_unavailable}
+        if load_requests is not None:
+            from .load_series import build_load_component
+
+            component, load_meta = build_load_component(
+                br_dict, load_requests, time_series_window
+            )
+            obs["load_generator"] = load_meta
+            if component is not None:
+                obs.setdefault("components", []).append(component)
+                _declare_version(br_dict, set(component["time_series"]))
 
     # EPP log-derived metrics
     epp_summary = _load_json(os.path.join(metrics_dir, "epp_metrics_summary.json"))
