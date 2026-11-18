@@ -119,10 +119,15 @@ collect_replica_status() {
 
     mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
 
-    local all_json
-    all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log") || all_json='{"items":[]}'
+    # A failed call (e.g. RBAC forbids listing) must not read as "no replicas":
+    # the snapshot carries collection_error so the gap is visible in the data.
+    local all_json collect_error=""
+    if ! all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log"); then
+        all_json='{"items":[]}'
+        collect_error="kubectl get deployments,statefulsets failed (see raw/collection_debug.log)"
+    fi
 
-    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" _RS_MODEL_FILTER="$model_filter" python3 -c '
+    echo "$all_json" | _RS_ERROR="$collect_error" _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" _RS_MODEL_FILTER="$model_filter" python3 -c '
 import json, sys, os
 from datetime import datetime, timezone
 
@@ -137,6 +142,8 @@ snapshot = {
     "namespace": namespace,
     "controllers": [],
 }
+if os.environ.get("_RS_ERROR"):
+    snapshot["collection_error"] = os.environ["_RS_ERROR"]
 
 for item in data.get("items", []):
     kind = item.get("kind", "Deployment")
@@ -198,6 +205,8 @@ if len(ts_data["snapshots"]) >= 2:
 with open(ts_file, "w") as f:
     json.dump(ts_data, f, indent=2)
 
+if snapshot.get("collection_error"):
+    print("Replica status: " + snapshot["collection_error"], file=sys.stderr)
 print("Replica status: %d controller(s), %d snapshots%s" % (
     len(snapshot["controllers"]), len(ts_data["snapshots"]),
     "" if changed else " (unchanged)"))

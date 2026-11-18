@@ -287,3 +287,35 @@ def test_replica_time_series_records_the_dry_run_decision(tmp_path):
     assert controllers["m-decode-dryrun"]["desired_replicas"] == 7
     assert controllers["m-decode-dryrun"]["ready_replicas"] == 0
     assert controllers["m-decode-dryrun"]["role"] == "decode-dryrun"
+
+
+def _run_collect(tmp_path, function: str, kubectl_body: str) -> None:
+    fake_kubectl = tmp_path / "kubectl"
+    fake_kubectl.write_text("#!/usr/bin/env bash\n" + kubectl_body)
+    fake_kubectl.chmod(0o755)
+    env = {
+        **os.environ,
+        "KUBECTL_CMD": str(fake_kubectl),
+        "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(tmp_path),
+    }
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source <(sed "/^# Main command dispatcher/,\\$d" {COLLECT_METRICS}); {function}',
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_replica_status_records_kubectl_failure(tmp_path):
+    """A failed list (e.g. RBAC) must be distinguishable from "no replicas"."""
+    _run_collect(tmp_path, "collect_replica_status", "echo forbidden >&2; exit 1\n")
+    processed = tmp_path / "metrics" / "processed"
+    snapshot = json.loads((processed / "replica_status.json").read_text())
+    assert snapshot["controllers"] == []
+    assert "failed" in snapshot["collection_error"]
+    series = json.loads((processed / "replica_status_timeseries.json").read_text())
+    assert "collection_error" in series["snapshots"][-1]
