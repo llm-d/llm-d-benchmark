@@ -29,6 +29,9 @@ KEEP_PLAIN = (
     "benchmark_report*.yaml",
     "run_metadata.yaml",
     "experiment-summary.yaml",
+    # Top-level only, like the rest: ``find -name`` cannot see a path with a '/',
+    # so files under metrics/processed/ cannot be listed here.
+    "per_request_lifecycle_metrics.json",
 )
 
 REMOTE_ARCHIVE_NAME = "workspace.tar.zst"

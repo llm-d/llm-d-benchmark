@@ -287,3 +287,79 @@ def test_replica_time_series_records_the_dry_run_decision(tmp_path):
     assert controllers["m-decode-dryrun"]["desired_replicas"] == 7
     assert controllers["m-decode-dryrun"]["ready_replicas"] == 0
     assert controllers["m-decode-dryrun"]["role"] == "decode-dryrun"
+
+
+def _run_collect(tmp_path, function: str, kubectl_body: str) -> None:
+    fake_kubectl = tmp_path / "kubectl"
+    fake_kubectl.write_text("#!/usr/bin/env bash\n" + kubectl_body)
+    fake_kubectl.chmod(0o755)
+    env = {
+        **os.environ,
+        "KUBECTL_CMD": str(fake_kubectl),
+        "LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR": str(tmp_path),
+    }
+    subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source <(sed "/^# Main command dispatcher/,\\$d" {COLLECT_METRICS}); {function}',
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_replica_status_records_kubectl_failure(tmp_path):
+    """A failed list (e.g. RBAC) must be distinguishable from "no replicas"."""
+    _run_collect(tmp_path, "collect_replica_status", "echo forbidden >&2; exit 1\n")
+    processed = tmp_path / "metrics" / "processed"
+    snapshot = json.loads((processed / "replica_status.json").read_text())
+    assert snapshot["controllers"] == []
+    assert "failed" in snapshot["collection_error"]
+    series = json.loads((processed / "replica_status_timeseries.json").read_text())
+    assert "collection_error" in series["snapshots"][-1]
+
+
+def test_autoscaler_timeseries_records_hpa_and_triggers(tmp_path):
+    payload = tmp_path / "as.json"
+    payload.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kind": "HorizontalPodAutoscaler",
+                        "metadata": {"name": "keda-hpa-m"},
+                        "status": {
+                            "currentMetrics": [
+                                {"external": {"metric": {"name": "s0-prometheus"}}}
+                            ],
+                            "desiredReplicas": 3,
+                            "currentReplicas": 2,
+                            "conditions": [{"type": "AbleToScale", "status": "True"}],
+                        },
+                    },
+                    {
+                        "kind": "ScaledObject",
+                        "metadata": {"name": "m"},
+                        "spec": {"triggers": [{"type": "prometheus", "name": "queue"}]},
+                        "status": {"conditions": [{"type": "Ready", "status": "True"}]},
+                    },
+                ]
+            }
+        )
+    )
+    _run_collect(tmp_path, "collect_autoscaler_state", f"cat {payload}\n")
+    _run_collect(tmp_path, "collect_autoscaler_state", f"cat {payload}\n")
+    series = json.loads(
+        (tmp_path / "metrics" / "processed" / "autoscaler_timeseries.json").read_text()
+    )
+    assert len(series["snapshots"]) == 2
+    entry = series["snapshots"][0]
+    hpa = entry["hpa"]["keda-hpa-m"]
+    assert hpa["desiredReplicas"] == 3 and hpa["currentReplicas"] == 2
+    assert hpa["currentMetrics"] and hpa["conditions"]
+    assert entry["scaledobjects"]["m"]["triggers"] == [
+        {"name": "queue", "type": "prometheus"}
+    ]
+    assert "collection_error" not in entry

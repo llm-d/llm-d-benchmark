@@ -178,6 +178,7 @@ def test_no_compress_leaves_the_same_artifacts_as_compress(tmp_path):
     expected = {
         "benchmark_report_v0.2,_stage_0.json.yaml",
         "run_metadata.yaml",
+        "per_request_lifecycle_metrics.json",
     }
     assert expected == {
         str(f.relative_to(compressed))
@@ -189,9 +190,34 @@ def test_no_compress_leaves_the_same_artifacts_as_compress(tmp_path):
     for archived in (
         "stdout.log",
         "analysis/summary.txt",
-        "per_request_lifecycle_metrics.json",
+        "per_request_lifecycle_metrics.json",  # plain, and still readable
     ):
         assert read_member(compressed, archived) == (plain / archived).read_bytes()
+
+
+def test_per_request_metrics_stay_plain_but_nested_metrics_are_archived(tmp_path):
+    """``--data-collect results`` fetches KEEP_PLAIN: the per-request file is in it.
+    ``find -name`` matches basenames at the top level only, so metrics/processed/
+    files cannot be listed there and are read from the archive."""
+    from llmdbenchmark.utilities.archive import KEEP_PLAIN, read_member
+
+    assert "per_request_lifecycle_metrics.json" in KEEP_PLAIN
+    results = tmp_path / "exp_1"
+    (results / "metrics" / "processed").mkdir(parents=True)
+    (results / "run_metadata.yaml").write_text("x: 1\n", encoding="utf-8")
+    (results / "per_request_lifecycle_metrics.json").write_text(
+        "[]\n", encoding="utf-8"
+    )
+    nested = results / "metrics" / "processed" / "autoscaler_timeseries.json"
+    nested.write_text('{"snapshots": []}\n', encoding="utf-8")
+    _compress(results)
+
+    assert (results / "per_request_lifecycle_metrics.json").is_file()
+    assert not nested.exists()
+    assert (
+        read_member(results, "metrics/processed/autoscaler_timeseries.json")
+        == b'{"snapshots": []}\n'
+    )
 
 
 def test_member_names_keep_a_leading_dot():

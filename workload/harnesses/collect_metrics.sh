@@ -119,10 +119,15 @@ collect_replica_status() {
 
     mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
 
-    local all_json
-    all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log") || all_json='{"items":[]}'
+    # A failed call (e.g. RBAC forbids listing) must not read as "no replicas":
+    # the snapshot carries collection_error so the gap is visible in the data.
+    local all_json collect_error=""
+    if ! all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log"); then
+        all_json='{"items":[]}'
+        collect_error="kubectl get deployments,statefulsets failed (see raw/collection_debug.log)"
+    fi
 
-    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" _RS_MODEL_FILTER="$model_filter" python3 -c '
+    echo "$all_json" | _RS_ERROR="$collect_error" _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" _RS_MODEL_FILTER="$model_filter" python3 -c '
 import json, sys, os
 from datetime import datetime, timezone
 
@@ -137,6 +142,8 @@ snapshot = {
     "namespace": namespace,
     "controllers": [],
 }
+if os.environ.get("_RS_ERROR"):
+    snapshot["collection_error"] = os.environ["_RS_ERROR"]
 
 for item in data.get("items", []):
     kind = item.get("kind", "Deployment")
@@ -198,12 +205,91 @@ if len(ts_data["snapshots"]) >= 2:
 with open(ts_file, "w") as f:
     json.dump(ts_data, f, indent=2)
 
+if snapshot.get("collection_error"):
+    print("Replica status: " + snapshot["collection_error"], file=sys.stderr)
 print("Replica status: %d controller(s), %d snapshots%s" % (
     len(snapshot["controllers"]), len(ts_data["snapshots"]),
     "" if changed else " (unchanged)"))
 ' 2>>"$debug_log"
     if [[ $? -ne 0 ]]; then
         echo "Warning: Failed to collect replica status (see $debug_log)" >&2
+    fi
+}
+
+# Record HPA / KEDA ScaledObject state each tick, so scaling decisions can be
+# lined up against load. KEDA's HPA (keda-hpa-<name>) carries the per-trigger
+# currentMetrics, named s<N>-<trigger type>-<metric>; the ScaledObject's
+# trigger names are kept so those entries map back to triggers.
+collect_autoscaler_state() {
+    local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+    local output_file="$METRICS_DIR/processed/autoscaler_timeseries.json"
+    local debug_log="$METRICS_DIR/raw/collection_debug.log"
+
+    mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
+
+    local as_json collect_error=""
+    # kubectl still prints the kinds it could list when another (e.g. the KEDA
+    # CRD) is missing, so keep stdout and only flag the failure.
+    as_json=$($kubectl_cmd --namespace "$namespace" get hpa,scaledobjects.keda.sh -o json 2>>"$debug_log") || \
+        collect_error="kubectl get hpa,scaledobjects.keda.sh failed (see raw/collection_debug.log)"
+    [[ -n "$as_json" ]] || as_json='{"items":[]}'
+
+    echo "$as_json" | _AS_ERROR="$collect_error" _AS_OUTPUT="$output_file" python3 -c '
+import json, sys, os
+from datetime import datetime, timezone
+
+output_file = os.environ["_AS_OUTPUT"]
+data = json.load(sys.stdin)
+
+hpa, scaledobjects = {}, {}
+for item in data.get("items", []):
+    kind = item.get("kind", "")
+    name = item.get("metadata", {}).get("name", "")
+    spec = item.get("spec", {})
+    status = item.get("status", {})
+    if kind == "HorizontalPodAutoscaler":
+        hpa[name] = {
+            "name": name,
+            "currentMetrics": status.get("currentMetrics", []),
+            "desiredReplicas": status.get("desiredReplicas"),
+            "currentReplicas": status.get("currentReplicas"),
+            "conditions": status.get("conditions", []),
+        }
+    elif kind == "ScaledObject":
+        scaledobjects[name] = {
+            "name": name,
+            "triggers": [
+                {"name": t.get("name"), "type": t.get("type")}
+                for t in spec.get("triggers", [])
+            ],
+            "conditions": status.get("conditions", []),
+        }
+
+entry = {
+    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "hpa": hpa,
+    "scaledobjects": scaledobjects,
+}
+if os.environ.get("_AS_ERROR"):
+    entry["collection_error"] = os.environ["_AS_ERROR"]
+
+ts_data = {"snapshots": []}
+if os.path.exists(output_file):
+    try:
+        with open(output_file) as f:
+            ts_data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        ts_data = {"snapshots": []}
+ts_data["snapshots"].append(entry)
+with open(output_file, "w") as f:
+    json.dump(ts_data, f, indent=2)
+
+print("Autoscaler state: %d HPA(s), %d ScaledObject(s), %d snapshots" % (
+    len(hpa), len(scaledobjects), len(ts_data["snapshots"])))
+' 2>>"$debug_log"
+    if [[ $? -ne 0 ]]; then
+        echo "Warning: Failed to collect autoscaler state (see $debug_log)" >&2
     fi
 }
 
@@ -516,6 +602,7 @@ start_continuous_collection() {
     while true; do
         # Collect infrastructure state every iteration to track autoscaling
         collect_replica_status
+        collect_autoscaler_state
         collect_pod_startup_times
 
         # Collect Prometheus metrics from all pods
@@ -570,6 +657,7 @@ case "${1:-}" in
         init_metrics_dir
         collect_metrics_snapshot
         collect_replica_status
+        collect_autoscaler_state
         collect_pod_startup_times
         ;;
     process)
