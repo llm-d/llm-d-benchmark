@@ -158,7 +158,7 @@ def test_warm_next_turn_posts_one_token_request_and_records_result(
         port = site._server.sockets[0].getsockname()[1]
         config = {"server": {"base_url": f"http://127.0.0.1:{port}"}, "api": {}}
         if configured_headers:
-            config["server"]["api_key"] = "test-key"
+            config["server"]["api_key"] = "test-key"  # pragma: allowlist secret
             config["api"]["headers"] = {"x-llm-d-tenant": "test-tenant"}
             config["api"]["session_id_header_key"] = "x-session-id"
         config_file.write_text(json.dumps(config))
@@ -218,7 +218,14 @@ def test_apply_patch_updates_shared_prefix_load_lazy_data_when_inference_perf_is
 
     module.apply_patch()
 
-    from inference_perf.datagen.shared_prefix_datagen import SharedPrefixDataGenerator
+    try:
+        from inference_perf.datagen.synthetic.shared_prefix_datagen import (
+            SharedPrefixDataGenerator,
+        )
+    except ModuleNotFoundError:  # inference-perf releases before datagen/synthetic/
+        from inference_perf.datagen.shared_prefix_datagen import (
+            SharedPrefixDataGenerator,
+        )
 
     assert (
         SharedPrefixDataGenerator.load_lazy_data.__name__
