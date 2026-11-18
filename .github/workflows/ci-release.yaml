@@ -10,6 +10,9 @@ on:
 jobs:
   docker-build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
@@ -41,7 +44,7 @@ jobs:
           tag: ${{ steps.tag.outputs.tag }}
           image-name: ${{ steps.version.outputs.project_name }}
           registry: ghcr.io/llm-d
-          github-token: ${{ secrets.GHCR_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Trivy scan
         uses: ./.github/actions/trivy-scan

@@ -20,6 +20,9 @@ jobs:
     name: Build Nightly Image
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -30,5 +33,5 @@ jobs:
           tag: ${{ inputs.tag_name || 'nightly' }}
           image-name: llm-d-benchmark
           registry: ghcr.io/llm-d
-          github-token: ${{ secrets.GHCR_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           platform: linux/amd64
