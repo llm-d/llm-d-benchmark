@@ -146,7 +146,7 @@ def load_benchmark_report(data: dict[str, Any]) -> BenchmarkReport:
     # One model implements the 0.2 line. A report declaring an earlier 0.2
     # revision validates against the current one unchanged and keeps its
     # declared version.
-    if version in ("0.2", "0.2.1"):
+    if version in ("0.2", "0.2.1", "0.2.2"):
         return BenchmarkReportV02(**data)
     raise ValueError(f"Unsupported schema version: {version}")
 
@@ -188,6 +188,6 @@ def make_json_schema(version: str = "0.2") -> str:
     """
     if version == "0.1":
         return json.dumps(BenchmarkReportV01.model_json_schema(), indent=2)
-    if version in ("0.2", "0.2.1"):
+    if version in ("0.2", "0.2.1", "0.2.2"):
         return json.dumps(BenchmarkReportV02.model_json_schema(), indent=2)
     raise ValueError(f"Unsupported schema version: {version}")

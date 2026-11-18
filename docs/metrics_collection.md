@@ -175,12 +175,27 @@ Scraped from EPP pods (default port 9090, bearer token auth):
 - **`llm_d_inference_scheduler_pd_decision_total`** - P/D routing decisions (count)
 - **`llm_d_inference_scheduler_disagg_decision_total`** - Disaggregation decisions (count)
 
+#### Autoscaling Signals
+The router metrics the KEDA autoscaling paths scale on. Each is exported as several series (the in-flight gauges one per endpoint, pool saturation one per stage, the others one per model and flow, errors also per error code), so the report folds the series of each scrape into one value with the scaling queries' aggregation: the sum, or for pool saturation the highest stage.
+- **`llm_d_epp_inflight_requests`** - In-flight requests, summed over endpoints (count)
+- **`llm_d_epp_inflight_tokens`** - In-flight uncached prompt tokens (plus estimated output tokens when the producer sets `addEstimatedOutputTokens`, off by default), summed over endpoints (tokens)
+- **`llm_d_epp_request_running`** - Dispatched requests whose response stream has not ended (count)
+- **`llm_d_epp_flow_control_queue_size`** - Requests held in the flow-control queue (count; flow control only)
+- **`llm_d_epp_flow_control_pool_saturation`** - Pool saturation, highest stage; 1.0 is the router's gating set point and higher values mean oversubscription (ratio; flow control only)
+- **`llm_d_epp_request_total`** / **`llm_d_epp_request_error_total`** - Cumulative scheduled requests and request errors over every error code (count). Model-server errors are counted in both; requests rejected before scheduling only as errors. A pending-aware arrivals query that keeps only the shed codes (`ResourceExhausted`, `ServiceUnavailable`) cannot be rebuilt from the summed errors
+
+The engine's **`vllm:request_success_total`** (finished requests, summed over every finish reason; requests the client cancels are not counted, aborts the engine starts itself are) is collected alongside them.
+
+The sums are what a `sum()` trigger reads, including its faults. On llm-d-router `v1.0.0`, removing an endpoint deletes its series, and requests still in flight on it are released later onto a re-created series: `llm_d_epp_inflight_requests` goes negative by the requests in flight at removal and, with the default config, `llm_d_epp_inflight_tokens` by those that had not received their first token. The in-flight sums then read low after a scale-in (fixed on the router's `main`). With P/D disaggregation the router charges each request to both its prefill and its decode endpoint, so the in-flight sums count both stages; a prefill-only trigger reads a subset.
+
+These are embedded in the report as `epp_inflight_requests`, `epp_inflight_tokens`, `epp_request_running`, `epp_flow_control_queue_size`, `epp_flow_control_pool_saturation`, `epp_requests`, `epp_request_errors` and `request_success` under `results.observability.components[].time_series`, so llm-d-prism plots them with the engine metrics. `results.observability.time_series_interval` (scope and datapoint counts) describes the Prometheus scrapes only, not the replica series below.
+
 ### Infrastructure Metrics (Kubernetes API)
 
-Collected as one-time snapshots at the start of metrics collection:
+Polled on every collection interval, alongside the Prometheus scrapes:
 
-#### Replica Status (`replica_status.json`)
-Per Deployment/StatefulSet with `llm-d.ai/inferenceServing=true` pod template label:
+#### Replica Status (`replica_status.json`, `replica_status_timeseries.json`)
+Per Deployment/StatefulSet whose pod template is labelled `llm-d.ai/inferenceServing=true`, plus the KEDA dry-run shadow (`llm-d.ai/autoscaling-dry-run=true`, role `<role>-dryrun`) and FMA requesters (`llm-d.ai/role=requester`). `replica_status.json` holds the latest snapshot and `replica_status_timeseries.json` every snapshot. The report embeds `desired_replicas` and `ready_replicas` over time as one `results.observability.components[]` entry per controller (`decode-engine`, `prefill-engine`, `FMA requester`, ...), keeping only the samples around each change and not downsampling them, so every step is kept however long the run. The dry-run shadow (`<engine> (autoscaling dry-run)`) carries only `desired_replicas`, what the autoscaler would have asked for; it runs no pods:
 - **`desired_replicas`** - `spec.replicas`
 - **`ready_replicas`** - `status.readyReplicas`
 - **`available_replicas`** - `status.availableReplicas`

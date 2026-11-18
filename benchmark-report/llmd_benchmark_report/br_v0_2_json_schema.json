@@ -3476,6 +3476,126 @@
           ],
           "default": null,
           "description": "Endpoints the router considers ready over time."
+        },
+        "request_success": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative requests the engine finished, summed over every finish reason. Requests the client cancels are not counted."
+        },
+        "epp_inflight_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router's in-flight requests, summed over its series (endpoints, producers, flows), as a sum() trigger reads them. With P/D disaggregation a request is counted on both its prefill and its decode endpoint."
+        },
+        "epp_inflight_tokens": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router's in-flight tokens (uncached prompt, optionally plus estimated output), summed over its series. With P/D disaggregation both stages' endpoints are included."
+        },
+        "epp_request_running": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests the router has dispatched whose response stream has not ended."
+        },
+        "epp_flow_control_queue_size": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Requests held in the router's flow-control queue."
+        },
+        "epp_flow_control_pool_saturation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Router's pool saturation, the highest of its per-stage series. 1.0 is the gating set point; above it the pool is oversubscribed."
+        },
+        "epp_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative requests the router admitted and scheduled to an endpoint."
+        },
+        "epp_request_errors": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cumulative router request errors, summed over error codes. Includes model-server errors (also counted in epp_requests) and requests rejected before scheduling (not counted there)."
+        },
+        "desired_replicas": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replicas the controller asks for (spec.replicas) over time."
+        },
+        "ready_replicas": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ready replicas of the controller over time."
         }
       },
       "title": "TimeSeriesResourceMetrics",
@@ -3647,6 +3767,30 @@
     }
   },
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "version": {
+            "not": {
+              "enum": [
+                "0.2",
+                "0.2.1"
+              ]
+            }
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "then": {
+        "required": [
+          "kind"
+        ]
+      }
+    }
+  ],
   "description": "Base class for a benchmark report.",
   "properties": {
     "kind": {
@@ -3713,6 +3857,6 @@
     "run",
     "results"
   ],
-  "title": "Benchmark Report v0.2.1",
+  "title": "Benchmark Report v0.2.x",
   "type": "object"
 }

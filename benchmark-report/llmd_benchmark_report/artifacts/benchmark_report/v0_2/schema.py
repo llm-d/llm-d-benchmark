@@ -1,9 +1,11 @@
 """
 Benchmark report v0.2.x
 
-This module implements the whole 0.2 line, and VERSION is its current
-revision. Revisions only add optional fields, so a report written against an
-earlier 0.2 revision validates here unchanged.
+This module implements the whole 0.2 line. VERSION is the revision the
+converters declare; a report that embeds a field of a later revision declares
+that revision instead (metrics_processor._declare_version). Revisions only add
+optional fields, so a report written against an earlier 0.2 revision validates
+here unchanged.
 
 Revision history:
 
@@ -12,6 +14,10 @@ Revision history:
     observability time series (scheduler queue depth, prefix-cache
     effectiveness, token counters, router pool state); optional treatment
     grouping on the workload metadata.
+  - 0.2.2: optional autoscaling signals on the observability time series
+    (router in-flight load, running requests, flow-control queue and
+    saturation, request and error counters; engine finished requests) and
+    desired / ready replicas per controller.
 """
 
 import datetime
@@ -908,6 +914,16 @@ class TimeSeriesResourceMetrics(UnitsValidatedModel):
         "pool_avg_queue_size": UNITS_QUANTITY,
         "pool_avg_running_requests": UNITS_QUANTITY,
         "pool_ready_pods": UNITS_QUANTITY,
+        "request_success": UNITS_QUANTITY,
+        "epp_inflight_requests": UNITS_QUANTITY,
+        "epp_inflight_tokens": UNITS_QUANTITY,
+        "epp_request_running": UNITS_QUANTITY,
+        "epp_flow_control_queue_size": UNITS_QUANTITY,
+        "epp_flow_control_pool_saturation": UNITS_RATIO,
+        "epp_requests": UNITS_QUANTITY,
+        "epp_request_errors": UNITS_QUANTITY,
+        "desired_replicas": UNITS_QUANTITY,
+        "ready_replicas": UNITS_QUANTITY,
     }
 
     kv_cache_usage: TimeSeriesData | None = None
@@ -966,6 +982,26 @@ class TimeSeriesResourceMetrics(UnitsValidatedModel):
     """Router view of mean running requests across the pool."""
     pool_ready_pods: TimeSeriesData | None = None
     """Endpoints the router considers ready over time."""
+    request_success: TimeSeriesData | None = None
+    """Cumulative requests the engine finished, summed over every finish reason. Requests the client cancels are not counted."""
+    epp_inflight_requests: TimeSeriesData | None = None
+    """Router's in-flight requests, summed over its series (endpoints, producers, flows), as a sum() trigger reads them. With P/D disaggregation a request is counted on both its prefill and its decode endpoint."""
+    epp_inflight_tokens: TimeSeriesData | None = None
+    """Router's in-flight tokens (uncached prompt, optionally plus estimated output), summed over its series. With P/D disaggregation both stages' endpoints are included."""
+    epp_request_running: TimeSeriesData | None = None
+    """Requests the router has dispatched whose response stream has not ended."""
+    epp_flow_control_queue_size: TimeSeriesData | None = None
+    """Requests held in the router's flow-control queue."""
+    epp_flow_control_pool_saturation: TimeSeriesData | None = None
+    """Router's pool saturation, the highest of its per-stage series. 1.0 is the gating set point; above it the pool is oversubscribed."""
+    epp_requests: TimeSeriesData | None = None
+    """Cumulative requests the router admitted and scheduled to an endpoint."""
+    epp_request_errors: TimeSeriesData | None = None
+    """Cumulative router request errors, summed over error codes. Includes model-server errors (also counted in epp_requests) and requests rejected before scheduling (not counted there)."""
+    desired_replicas: TimeSeriesData | None = None
+    """Replicas the controller asks for (spec.replicas) over time."""
+    ready_replicas: TimeSeriesData | None = None
+    """Ready replicas of the controller over time."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -1347,11 +1383,12 @@ class BenchmarkReportV02(BenchmarkReport, Artifact):
     """Base class for a benchmark report."""
 
     model_config = MODEL_CONFIG.copy()
-    model_config["title"] = f"Benchmark Report v{VERSION}"
+    model_config["title"] = "Benchmark Report v0.2.x"
 
-    # One model reads the whole 0.2 line, all of it written before `kind` existed.
-    VERSIONS: ClassVar[tuple[str, ...]] = ("0.2", "0.2.1")
-    LEGACY_VERSIONS: ClassVar[frozenset[str]] = frozenset(VERSIONS)
+    # One model reads the whole 0.2 line.
+    VERSIONS: ClassVar[tuple[str, ...]] = ("0.2", "0.2.1", "0.2.2")
+    # Written before `kind` existed; every later revision carries it.
+    LEGACY_VERSIONS: ClassVar[frozenset[str]] = frozenset({"0.2", "0.2.1"})
 
     kind: Literal["benchmark-report"]
     """Artifact kind. Reports at 0.2 and 0.2.1 may omit it."""
