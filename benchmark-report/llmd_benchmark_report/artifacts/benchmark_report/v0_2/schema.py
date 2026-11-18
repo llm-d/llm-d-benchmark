@@ -310,8 +310,11 @@ class Statistics(BaseModel):
 #   MediaPayloadStats        count, filesize              (all modalities)
 #     └─ VisualPayloadStats  + pixels, aspect_ratio       (image, video)
 #         ├─ ImagePayloadStats
-#         └─ VideoPayloadStats  + frames
+#         └─ VideoPayloadStats  + frames, duration
 #     └─ AudioPayloadStats   + duration
+#
+# The same classes describe request media (AggregateRequests.multimodal) and
+# response media (AggregateRequests.output_multimodal).
 #
 # Adding a modality is a new leaf class plus one field on MultiModalRequests.
 ###############################################################################
@@ -320,8 +323,11 @@ class Statistics(BaseModel):
 class MediaPayloadStats(UnitsValidatedModel):
     """Payload statistics shared by every media modality.
 
-    All fields are distributions over the individual media instances the client
-    sent, derived purely from the request payload.
+    All fields are distributions over individual media instances: the ones the
+    client sent under ``multimodal`` (request media), the ones the server
+    returned under ``output_multimodal`` (response media). A statistic covers
+    only the instances it could be measured on: a returned URL has no filesize,
+    so it is left out of ``filesize`` but still counted in ``count``.
     """
 
     model_config = MODEL_CONFIG.copy()
@@ -364,10 +370,15 @@ class VideoPayloadStats(VisualPayloadStats):
 
     model_config = MODEL_CONFIG.copy()
 
-    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"frames": UNITS_QUANTITY}
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "frames": UNITS_QUANTITY,
+        "duration": UNITS_TIME,
+    }
 
     frames: Statistics | None = None
     """Number of frames per video instance."""
+    duration: Statistics | None = None
+    """Duration per video instance."""
 
 
 class AudioPayloadStats(MediaPayloadStats):
@@ -382,7 +393,7 @@ class AudioPayloadStats(MediaPayloadStats):
 
 
 class MultiModalRequests(BaseModel):
-    """Per-modality request payload statistics for multi-modal workloads."""
+    """Per-modality media payload statistics, for request or response media."""
 
     model_config = MODEL_CONFIG.copy()
 
@@ -416,7 +427,9 @@ class AggregateRequests(UnitsValidatedModel):
     request_size: Statistics | None = None
     """Total encoded request size, including all media payloads."""
     multimodal: MultiModalRequests | None = None
-    """Per-modality payload statistics."""
+    """Per-modality payload statistics of the media the client sent (request media)."""
+    output_multimodal: MultiModalRequests | None = None
+    """Per-modality payload statistics of the media the server returned (response media)."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -517,6 +530,9 @@ class AggregateThroughput(UnitsValidatedModel):
         "image_rate": UNITS_MEDIA_THROUGHPUT,
         "video_rate": UNITS_MEDIA_THROUGHPUT,
         "audio_rate": UNITS_MEDIA_THROUGHPUT,
+        "output_image_rate": UNITS_MEDIA_THROUGHPUT,
+        "output_video_rate": UNITS_MEDIA_THROUGHPUT,
+        "output_audio_rate": UNITS_MEDIA_THROUGHPUT,
     }
 
     input_token_rate: Statistics | None = None
@@ -528,11 +544,17 @@ class AggregateThroughput(UnitsValidatedModel):
     request_rate: Statistics | None = None
     """Request (query) processing rate."""
     image_rate: Statistics | None = None
-    """Image delivery rate."""
+    """Rate of images sent in requests (request media)."""
     video_rate: Statistics | None = None
-    """Video delivery rate."""
+    """Rate of videos sent in requests (request media)."""
     audio_rate: Statistics | None = None
-    """Audio delivery rate."""
+    """Rate of audio clips sent in requests (request media)."""
+    output_image_rate: Statistics | None = None
+    """Rate of images returned in responses (response media)."""
+    output_video_rate: Statistics | None = None
+    """Rate of videos returned in responses (response media)."""
+    output_audio_rate: Statistics | None = None
+    """Rate of audio clips returned in responses (response media)."""
 
     @model_validator(mode="after")
     def check_units(self):
