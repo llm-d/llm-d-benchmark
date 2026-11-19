@@ -13,6 +13,7 @@ class CommandPhase(str, Enum):
     ROUTER = "router"
     MODELSERVER = "modelserver"
     MONITORING = "monitoring"
+    COORDINATOR = "coordinator"
     AUTOSCALING = "autoscaling"
     VERIFY = "verify"
     CLEANUP = "cleanup"
@@ -98,12 +99,13 @@ class ParsedGuide:
     def get_deploy_commands(
         self, mode: DeployMode = DeployMode.STANDALONE
     ) -> list[GuideCommand]:
-        """Return all deployment commands (prerequisites + router + modelserver + monitoring)."""
+        """Return all deployment commands (prerequisites + router + modelserver + monitoring + coordinator)."""
         phases = (
             CommandPhase.PREREQUISITES,
             CommandPhase.ROUTER,
             CommandPhase.MODELSERVER,
             CommandPhase.MONITORING,
+            CommandPhase.COORDINATOR,
         )
         return [
             c
@@ -134,6 +136,7 @@ class _Section(str, Enum):
     ROUTER_GATEWAY = "router_gateway"
     MODELSERVER = "modelserver"
     MONITORING = "monitoring"
+    COORDINATOR = "coordinator"
     AUTOSCALING = "autoscaling"
     VERIFICATION = "verification"
     CLEANUP = "cleanup"
@@ -195,6 +198,14 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         return _Section.AUTOSCALING
     if "monitoring" in lower:
         return _Section.MONITORING
+    # Checked before the router rule: "HTTP front door with the router
+    # coordinator" is a Coordinator step. A guide title or overview
+    # mention ("Coordinator Disaggregation", "When to use the Coordinator")
+    # is not.
+    if "coordinator" in lower:
+        if current == _Section.PREAMBLE:
+            return current
+        return _Section.COORDINATOR
     if "deploy the model server" in lower or "model server" in lower:
         return _Section.MODELSERVER
     if "standalone mode" in lower or "standalone" in lower:
@@ -224,6 +235,7 @@ def _section_to_phase_mode(
         _Section.ROUTER_GATEWAY: (CommandPhase.ROUTER, DeployMode.GATEWAY),
         _Section.MODELSERVER: (CommandPhase.MODELSERVER, DeployMode.ANY),
         _Section.MONITORING: (CommandPhase.MONITORING, DeployMode.ANY),
+        _Section.COORDINATOR: (CommandPhase.COORDINATOR, DeployMode.ANY),
         _Section.AUTOSCALING: (CommandPhase.AUTOSCALING, DeployMode.ANY),
         _Section.VERIFICATION: (CommandPhase.VERIFY, DeployMode.ANY),
         _Section.CLEANUP: (CommandPhase.CLEANUP, DeployMode.ANY),
