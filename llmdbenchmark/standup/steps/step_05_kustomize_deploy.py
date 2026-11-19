@@ -217,6 +217,13 @@ class KustomizeDeployStep(Step):
             parsed.get_commands(CommandPhase.ROUTER, DeployMode.STANDALONE),
             accel_backend,
         )
+        # The extra args join an already-resolved command, so they get the
+        # same resolution: ${VAR} placeholders (e.g. ${REPO_ROOT}) and
+        # relative guides/... paths, which then point into the llm-d repo.
+        extra_helm_values = [resolver.resolve(str(vf)) for vf in extra_helm_values]
+        extra_helm_sets = {
+            k: resolver.resolve(str(v)) for k, v in extra_helm_sets.items()
+        }
         for gc in router_cmds:
             resolved = resolver.resolve(gc.raw)
             resolved = self._inject_extra_helm_args(
