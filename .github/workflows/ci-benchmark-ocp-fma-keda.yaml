@@ -154,7 +154,7 @@ jobs:
       connector: ${{ inputs.connector || '' }}
       cluster_namespace: 'llmdbenchcicdkbns-ocp'
       helm_release: 'lmdbenchcicdkbr-ocp'
-      workspace_dir: '/tmp/llmdbenchcicdkb-ocp'
+      workspace_dir: ${{ format('/tmp/llmdbenchcicdkb-ocp-{0}-{1}', github.run_id, github.run_attempt) }}
       bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
       bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
       bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
@@ -196,7 +196,7 @@ jobs:
       connector: ${{ inputs.connector || '' }}
       cluster_namespace: 'llmdbenchcicdkwns-ocp'
       helm_release: 'lmdbenchcicdkwr-ocp'
-      workspace_dir: '/tmp/llmdbenchcicdkw-ocp'
+      workspace_dir: ${{ format('/tmp/llmdbenchcicdkw-ocp-{0}-{1}', github.run_id, github.run_attempt) }}
       bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
       bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
       bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
@@ -234,7 +234,7 @@ jobs:
       connector: ${{ inputs.connector || '' }}
       cluster_namespace: 'llmdbenchcicdkhns-ocp'
       helm_release: 'lmdbenchcicdkhr-ocp'
-      workspace_dir: '/tmp/llmdbenchcicdkh-ocp'
+      workspace_dir: ${{ format('/tmp/llmdbenchcicdkh-ocp-{0}-{1}', github.run_id, github.run_attempt) }}
       bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
       bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
       bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
@@ -381,7 +381,8 @@ jobs:
               fma_keda_warmstart) base=/tmp/fma-keda-warmstart-results ;;
               fma_keda_hotstart)  base=/tmp/fma-keda-hotstart-results ;;
             esac
-            latest=$(find "$base" -type d -name "runner-*" 2>/dev/null | sort | tail -1)
+            latest=$(find "$base" -type d \( -name "runner-*" -o -name "root-*" \) \
+              -printf '%f\t%p\n' 2>/dev/null | sed -E 's/^(runner|root)-//' | sort | tail -1 | cut -f2-)
             exp=""
             if [ -n "$latest" ]; then
               # Prefer a result dir the dump helper can actually read hpa.txt from.
