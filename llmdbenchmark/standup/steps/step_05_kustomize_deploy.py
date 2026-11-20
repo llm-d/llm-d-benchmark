@@ -22,6 +22,7 @@ from llmdbenchmark.kustomize.variable_resolver import (
     GuideVariableResolver,
 )
 from llmdbenchmark.standup import keda_saturation as keda_sat_mod
+from llmdbenchmark.standup.lib import keda as keda_mod
 from llmdbenchmark.standup.wva import _find_yaml, _has_yaml_content
 from llmdbenchmark.utilities.standup_parameters import (
     write as write_standup_parameters,
@@ -340,6 +341,37 @@ class KustomizeDeployStep(Step):
                     [f"Autoscaling step failed: {result.stderr}"],
                     stack_path,
                     "Autoscaling deployment failed",
+                    context=context,
+                )
+
+        # --- 5c. Generic KEDA ScaledObjects (keda.scaledObjects) ---
+        # Applied here rather than in step 3: step 3 is skipped for kustomize
+        # stacks without --full-infra, and step 1c above removes every
+        # ScaledObject in the namespace, so ones applied earlier would not
+        # survive. Their scale targets also only exist after the guide deploy.
+        if plan_config.get("keda", {}).get("scaledObjects"):
+            keda_sat_mod.verify_keda_installed(cmd, context)
+            prom_ca_cert = None
+            if (
+                plan_config.get("keda", {}).get("prometheus", {}).get("authMode")
+                == "bearer-secret"
+            ):
+                prom_ca_cert = keda_sat_mod.extract_prometheus_ca_cert(
+                    cmd, context.logger
+                )
+            keda_mod.install_keda_for_namespace(
+                cmd=cmd,
+                context=context,
+                stack_path=stack_path,
+                namespace=namespace,
+                errors=errors,
+                prom_ca_cert=prom_ca_cert,
+            )
+            if errors:
+                return self._fail(
+                    errors,
+                    stack_path,
+                    "Generic KEDA autoscaling setup failed",
                     context=context,
                 )
 

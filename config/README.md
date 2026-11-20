@@ -1511,7 +1511,8 @@ Renders one or more `ScaledObject` resources from a user-defined list. Works on 
 **Standup wiring:**
 - `step_03` (workload monitoring) applies the `TriggerAuthentication` once per namespace (bearer-secret mode only), then the `ScaledObjects` template.
 - `step_09` (deploy modelservice) re-applies the `ScaledObjects` template per stack (idempotent).
-- Neither step is gated on `is_openshift`.
+- `step_05` (kustomize deploy) applies them for kustomize stacks, after the guide is deployed and its autoscaling commands have run: `step_03` is skipped for kustomize-only stacks unless `--full-infra`, and `step_05` removes leftover ScaledObjects before deploying.
+- None of these steps is gated on `is_openshift`.
 
 #### `keda.prometheus` — shared Prometheus connection
 
