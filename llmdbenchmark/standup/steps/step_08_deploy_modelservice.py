@@ -9,8 +9,16 @@ from pathlib import Path
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step import Phase, Step, StepResult
+from llmdbenchmark.standup.scc import (
+    elevated_service_account,
+    scenario_requests_elevation,
+)
 from llmdbenchmark.utilities.endpoint import resolve_direct_service_namespace
-from llmdbenchmark.utilities.kube_helpers import wait_for_epp
+from llmdbenchmark.utilities.kube_helpers import (
+    clear_wedged_release,
+    restore_release_record,
+    wait_for_epp,
+)
 from llmdbenchmark.utilities.podstate import observe_pods
 from llmdbenchmark.utilities.standup_parameters import (
     write as write_standup_parameters,
@@ -113,6 +121,20 @@ class DeployModelserviceStep(Step):
         helm_dir = context.setup_helm_dir() / stack_name
         helmfile_work = helm_dir / "helmfile.yaml"
 
+        # the helmfile declares every release in the gateway namespace
+        release_ns = (plan_config.get("gateway", {}) or {}).get(
+            "namespace"
+        ) or namespace
+        cleared = False
+        record = None
+        if model_id_label and not context.dry_run:
+            cleared, record = clear_wedged_release(
+                cmd, release_ns, f"{model_id_label}-ms", context.logger
+            )
+        # the surviving record can claim the desired state is already
+        # live while the objects are not
+        diff_env = {"HELM_DIFF_THREE_WAY_MERGE": "true"} if cleared else None
+
         if helmfile_work.exists():
             result = cmd.helmfile(
                 "--namespace",
@@ -124,9 +146,14 @@ class DeployModelserviceStep(Step):
                 str(helmfile_work),
                 "--skip-diff-on-install",
                 "--skip-schema-validation",
+                env=diff_env,
             )
             if not result.success:
                 errors.append(f"Failed to deploy modelservice: {result.stderr}")
+                if record:
+                    restore_release_record(
+                        cmd, release_ns, f"{model_id_label}-ms", record, context.logger
+                    )
         else:
             main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")
             if main_helmfile:
@@ -140,9 +167,18 @@ class DeployModelserviceStep(Step):
                     str(main_helmfile),
                     "--skip-diff-on-install",
                     "--skip-schema-validation",
+                    env=diff_env,
                 )
                 if not result.success:
                     errors.append(f"Failed to deploy modelservice: {result.stderr}")
+                    if record:
+                        restore_release_record(
+                            cmd,
+                            release_ns,
+                            f"{model_id_label}-ms",
+                            record,
+                            context.logger,
+                        )
 
         if direct_service_mode:
             direct_service_yaml = self._find_yaml(
@@ -570,45 +606,13 @@ class DeployModelserviceStep(Step):
         namespace: str,
     ):
         """Add anyuid/privileged SCCs when ``runAsUser: 0`` or ``runAsGroup: 0``."""
-        needs_elevated = False
-
-        sections_to_check = [
-            plan_config.get("standalone", {}),
-            plan_config.get("vllmCommon", {}),
-            plan_config.get("decode", {}),
-            plan_config.get("prefill", {}),
-        ]
-        for role in ["Decode", "Prefill"]:
-            sections_to_check.append(plan_config.get(f"vllmModelservice{role}", {}))
-
-        for section in sections_to_check:
-            # Check top-level securityContext
-            sc = section.get("securityContext", {})
-            if sc.get("runAsUser") == 0 or sc.get("runAsGroup") == 0:
-                needs_elevated = True
-                break
-            # Check securityContext inside extraContainerConfig (used by
-            # modelservice Helm chart for container-level security settings)
-            extra_sc = section.get("extraContainerConfig", {}).get(
-                "securityContext", {}
-            )
-            if extra_sc.get("runAsUser") == 0 or extra_sc.get("runAsGroup") == 0:
-                needs_elevated = True
-                break
-
-        if not needs_elevated:
+        if not scenario_requests_elevation(plan_config):
             context.logger.log_info(
                 "ℹ️  No runAsUser:0 detected -- skipping SCC assignment"
             )
             return
 
-        # The Helm chart creates a SA named after fullnameOverride (= model_id_label).
-        # If serviceAccountOverride is set, the chart uses that instead.
-        sa_override = plan_config.get("serviceAccountOverride", "")
-        if sa_override:
-            sa_name = sa_override
-        else:
-            sa_name = plan_config.get("model_id_label", "")
+        sa_name = elevated_service_account(plan_config)
 
         if context.non_admin:
             # No cluster-admin, so the grant below is not ours to make. Say so

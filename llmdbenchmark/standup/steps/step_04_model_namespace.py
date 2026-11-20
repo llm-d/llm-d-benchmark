@@ -315,19 +315,70 @@ class ModelNamespaceStep(Step):
         if not ns_yaml:
             return
 
-        result = cmd.kube("apply", "-f", str(ns_yaml))
-        if not result.success:
-            errors.append(f"Failed to apply namespace resources: {result.stderr}")
-
         try:
             with open(ns_yaml, encoding="utf-8") as f:
                 docs = list(yaml.safe_load_all(f))
-            for doc in docs:
-                if doc and doc.get("kind") == "Namespace":
-                    context.namespace = doc["metadata"]["name"]
-                    break
         except yaml.YAMLError, OSError:
-            pass
+            docs = []
+
+        for doc in docs:
+            if doc and doc.get("kind") == "Namespace":
+                context.namespace = doc["metadata"]["name"]
+                break
+
+        def _is_scc_binding(doc) -> bool:
+            return bool(
+                doc
+                and doc.get("kind") == "RoleBinding"
+                and str((doc.get("roleRef") or {}).get("name", "")).startswith(
+                    "system:openshift:scc:"
+                )
+            )
+
+        # a namespace-level user cannot patch the namespace object, and
+        # plain kubernetes has no openshift scc cluster roles to bind
+        if not context.non_admin or not docs:
+            result = cmd.kube("apply", "-f", str(ns_yaml))
+            if not result.success:
+                errors.append(f"Failed to apply namespace resources: {result.stderr}")
+            return
+
+        kept = []
+        scc_bindings = []
+        for doc in docs:
+            if doc and doc.get("kind") == "Namespace":
+                continue
+            if _is_scc_binding(doc):
+                if context.is_openshift:
+                    scc_bindings.append(doc)
+                continue
+            kept.append(doc)
+
+        # kept in the workspace so the applied manifest can be reviewed
+        yamls_dir = context.setup_yamls_dir()
+        apply_path = yamls_dir / "05_namespace_sa_rbac.nsa.yaml"
+        with open(apply_path, "w", encoding="utf-8") as filtered:
+            yaml.safe_dump_all(kept, filtered)
+        context.logger.log_info(
+            "Non-admin: applying the namespace resources without the "
+            "objects a namespace-level user cannot create"
+        )
+        result = cmd.kube("apply", "-f", str(apply_path))
+        if not result.success:
+            errors.append(f"Failed to apply namespace resources: {result.stderr}")
+
+        if scc_bindings:
+            scc_path = yamls_dir / "05_namespace_sa_rbac.scc.yaml"
+            with open(scc_path, "w", encoding="utf-8") as scc_file:
+                yaml.safe_dump_all(scc_bindings, scc_file)
+            # best effort: the service account already runs restricted-v2
+            # by default, and a hardened cluster can refuse the binding to
+            # a user who holds no scc at all
+            result = cmd.kube("apply", "-f", str(scc_path), check=False)
+            if not result.success:
+                context.logger.log_warning(
+                    f"Could not apply the openshift scc binding: {result.stderr}"
+                )
 
     def _create_model_pvc(
         self,

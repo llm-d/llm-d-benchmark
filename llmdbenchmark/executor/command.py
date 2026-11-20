@@ -2,7 +2,9 @@
 
 import json
 import logging
+import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -24,6 +26,10 @@ from llmdbenchmark.utilities.podstate import (
 #: A rollout query that keeps failing (e.g. no right to list Deployments) is
 #: given up, or every wait would run to its timeout.
 ROLLOUT_QUERY_ATTEMPTS = 3
+
+OC_MISSING_MESSAGE = (
+    "oc is required on OpenShift (every cluster call uses it) but was not found on PATH"
+)
 
 
 @dataclass
@@ -128,6 +134,7 @@ class CommandExecutor:
         self.kube_context = kube_context
         self.openshift = openshift
         self._kube_bin = "oc" if openshift else "kubectl"
+        self._oc_present: bool | None = None
         self._commands_dir = work_dir / "setup" / "commands"
         self._commands_dir.mkdir(parents=True, exist_ok=True)
         # Owned by the caller, not built here: this executor is rebuilt
@@ -154,6 +161,7 @@ class CommandExecutor:
         check: bool = True,
         force: bool = False,
         stdin: str = "",
+        env: dict | None = None,
     ) -> CommandResult:
         """Run a shell command with optional retry. Raises ExecutionError if fatal and failed.
 
@@ -165,6 +173,9 @@ class CommandExecutor:
         command itself, is **never logged** -- it is the channel for values that
         must not be persisted (a Hugging Face token forwarded to a remote
         runtime). It is not replayed on retries other than as given.
+
+        *env* adds variables to the inherited environment for this one
+        command only.
         """
         cmd_str = " ".join(cmd) if isinstance(cmd, list) else cmd
         timestamp = int(time.time() * 1e9)
@@ -175,7 +186,7 @@ class CommandExecutor:
         self._write_log(f"{timestamp}_command.log", f'---> will execute: "{cmd_str}"')
 
         exit_code, stdout, stderr = self._run_with_retries(
-            cmd_str, attempts, silent, delay, stdin
+            cmd_str, attempts, silent, delay, stdin, env
         )
 
         if exit_code != 0 and check:
@@ -197,7 +208,13 @@ class CommandExecutor:
         return CommandResult(command=cmd_str, exit_code=0, dry_run=True)
 
     def _run_with_retries(
-        self, cmd_str: str, attempts: int, silent: bool, delay: int, stdin: str = ""
+        self,
+        cmd_str: str,
+        attempts: int,
+        silent: bool,
+        delay: int,
+        stdin: str = "",
+        env: dict | None = None,
     ) -> tuple[int, str, str]:
         """Execute a command with retry logic, returning (exit_code, stdout, stderr)."""
         exit_code = 1
@@ -205,7 +222,7 @@ class CommandExecutor:
         stderr = ""
 
         for attempt in range(1, attempts + 1):
-            exit_code, stdout, stderr = self._run_once(cmd_str, silent, stdin)
+            exit_code, stdout, stderr = self._run_once(cmd_str, silent, stdin, env)
 
             if exit_code == 0:
                 break
@@ -220,7 +237,7 @@ class CommandExecutor:
         return exit_code, stdout, stderr
 
     def _run_once(
-        self, cmd_str: str, silent: bool, stdin: str = ""
+        self, cmd_str: str, silent: bool, stdin: str = "", env: dict | None = None
     ) -> tuple[int, str, str]:
         """Run a single command attempt, returning (exit_code, stdout, stderr)."""
         timestamp = int(time.time() * 1e9)
@@ -235,6 +252,7 @@ class CommandExecutor:
                 # None, not "": an empty string would close stdin on commands
                 # that inherit it today, changing behaviour for every caller.
                 input=stdin or None,
+                env={**os.environ, **env} if env else None,
             )
             self._write_log(f"{timestamp}_stdout.log", result.stdout)
             self._write_log(f"{timestamp}_stderr.log", result.stderr)
@@ -310,6 +328,17 @@ class CommandExecutor:
         endpoint that never answers (a stale tunnel) kubectl blocks before
         its own ``--request-timeout`` applies.
         """
+        # fail before the first shell "oc: command not found", which
+        # callers read as an empty answer; dry-run executes nothing
+        if self.openshift and not self.dry_run:
+            if self._oc_present is None:
+                self._oc_present = shutil.which("oc") is not None
+            if not self._oc_present:
+                return CommandResult(
+                    command=" ".join([self._kube_bin, *args]),
+                    exit_code=127,
+                    stderr=OC_MISSING_MESSAGE,
+                )
         parts = ["timeout", str(timeout)] if timeout else []
         parts.append(self._kube_bin)
         parts.extend(self._kubeconfig_args())
@@ -374,7 +403,9 @@ class CommandExecutor:
         parts.extend(args)
         return self.execute(" ".join(parts), check=check)
 
-    def helmfile(self, *args: str, use_kubeconfig: bool = True) -> CommandResult:
+    def helmfile(
+        self, *args: str, use_kubeconfig: bool = True, env: dict | None = None
+    ) -> CommandResult:
         """Execute a helmfile command.
 
         Args:
@@ -386,6 +417,7 @@ class CommandExecutor:
                 the kubeconfig context namespace. When False, the stored
                 kubeconfig path is exported as KUBECONFIG env var so helm
                 can still reach the cluster.
+            env: extra environment variables for this one call only.
         """
         parts = []
         if not use_kubeconfig and self.kubeconfig:
@@ -397,7 +429,7 @@ class CommandExecutor:
         if use_kubeconfig:
             parts.extend(self._kubeconfig_args())
         parts.extend(args)
-        return self.execute(" ".join(parts))
+        return self.execute(" ".join(parts), env=env)
 
     def wait_for_pods(
         self,

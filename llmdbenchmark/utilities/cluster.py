@@ -114,20 +114,42 @@ def is_openshift(api_client: client.ApiClient) -> bool:
     """Return True if the cluster is an OpenShift cluster.
 
     Queries the ``clusterversions`` resource under ``config.openshift.io``,
-    which only exists on actual OpenShift clusters.
+    which only exists on actual OpenShift clusters. Listing it needs
+    cluster-scope rights a namespace-level user can lack, and the API
+    server refuses such a list even for resources that do not exist, so
+    a refusal (403) falls back to the group's resource list, which
+    discovery serves to everyone. Any other answer means the cluster is
+    not an OpenShift one.
     """
     if not _KUBE_AVAILABLE:
         return False
     try:
-        custom_api = client.CustomObjectsApi(api_client)
-        custom_api.list_cluster_custom_object(
+        client.CustomObjectsApi(api_client).list_cluster_custom_object(
             group="config.openshift.io",
             version="v1",
             plural="clusterversions",
         )
         return True
-    except ApiException:
+    except ApiException as exc:
+        if exc.status != 403:
+            return False
+    except Exception:  # pylint: disable=broad-exception-caught
         return False
+    # a group alone is not proof: a stray CRD can create it, so the
+    # resource itself must be listed
+    try:
+        resource_list, _status, _headers = api_client.call_api(
+            "/apis/config.openshift.io/v1",
+            "GET",
+            response_type="object",
+            auth_settings=["BearerToken"],
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        return False
+    if not isinstance(resource_list, dict):
+        return False
+    resources = resource_list.get("resources") or []
+    return any(resource.get("name") == "clusterversions" for resource in resources)
 
 
 def get_service_endpoint(
@@ -384,16 +406,7 @@ def _kube_api_connect(context: ExecutionContext) -> None:
             "and that the cluster is running."
         ) from exc
 
-    try:
-        custom_api = client.CustomObjectsApi(api_client)
-        custom_api.list_cluster_custom_object(
-            group="config.openshift.io",
-            version="v1",
-            plural="clusterversions",
-        )
-        context.is_openshift = True
-    except Exception:  # pylint: disable=broad-exception-caught
-        context.is_openshift = False
+    context.is_openshift = is_openshift(api_client)
 
 
 def _detect_local_platform(cmd: CommandExecutor, context: ExecutionContext) -> None:
@@ -498,14 +511,19 @@ def _is_context_stale(
 ) -> bool:
     """Return True if the stored context.ctx points to a different cluster than the active kubeconfig."""
     try:
-        stored_data = _read_kubeconfig_json(cmd, kubeconfig_override=str(context_file))
+        stored_data, stored_readable = _read_kubeconfig_json(
+            cmd, kubeconfig_override=str(context_file)
+        )
         stored_server = (
             _server_from_kubeconfig_data(stored_data) if stored_data else None
         )
         if not stored_server:
-            return True  # Can't determine -- treat as stale
+            # a failed read (a missing kubectl/oc) must not count as
+            # stale: the stored file is only ever replaced, never lost,
+            # when the config tool can read it
+            return stored_readable
 
-        current_data = _read_kubeconfig_json(cmd)
+        current_data, _current_readable = _read_kubeconfig_json(cmd)
         current_server = (
             _server_from_kubeconfig_data(current_data) if current_data else None
         )
@@ -519,7 +537,7 @@ def _is_context_stale(
 
 def _get_cluster_name(cmd: CommandExecutor) -> str | None:
     """Derive a short cluster name (hostname) from the current API server."""
-    data = _read_kubeconfig_json(cmd)
+    data, _readable = _read_kubeconfig_json(cmd)
     if not data:
         return None
     server = _server_from_kubeconfig_data(data)
@@ -570,20 +588,25 @@ def _kube_login_and_store(
 
 def _read_kubeconfig_json(
     cmd: CommandExecutor, kubeconfig_override: str | None = None
-) -> dict | None:
-    """Run ``kubectl config view -o json`` and return the parsed output, or None."""
+) -> tuple[dict | None, bool]:
+    """Run ``kubectl config view -o json``.
+
+    Returns the parsed output and whether the config command itself
+    succeeded; a failed command and unparseable output are not the same
+    thing for the callers deciding whether to replace a stored context.
+    """
     args = ["config", "view", "-o", "json"]
     if kubeconfig_override:
         args = ["--kubeconfig", kubeconfig_override] + args
 
     result = cmd.kube(*args, check=False, force=True)  # Local-only read
     if not result.success:
-        return None
+        return None, False
 
     try:
-        return json.loads(result.stdout)
+        return json.loads(result.stdout), True
     except json.JSONDecodeError:
-        return None
+        return None, True
 
 
 def _server_from_kubeconfig_data(data: dict) -> str | None:
@@ -604,7 +627,7 @@ def _resolve_cluster_metadata(cmd: CommandExecutor, context: ExecutionContext) -
     """Populate cluster_server, cluster_name, context_name, and username."""
     _resolve_username(context)
 
-    data = _read_kubeconfig_json(cmd)
+    data, _readable = _read_kubeconfig_json(cmd)
     if not data:
         return
 

@@ -1,14 +1,14 @@
-"""Shared Kubernetes helper functions used across run-phase steps.
+"""Shared Kubernetes helper functions used across standup- and run-phase steps.
 
 Extracts common kubectl patterns (waiting, collecting, logging, cleanup)
-into reusable functions to avoid duplication between step_06, step_07,
-step_08, and step_10.
+into reusable functions to avoid duplication between steps.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -855,6 +855,136 @@ def capture_infrastructure_logs(
             context.logger.log_warning(
                 f"EPP log processing failed (non-fatal): {type(e).__name__}: {e}"
             )
+
+
+# Helm statuses a helmfile apply cannot recover from: the release record
+# makes the diff see no changes, so the apply no-ops. ``failed`` is what a
+# mid-install error leaves behind; ``uninstalling`` and ``pending-*`` come
+# from interrupted operations.
+WEDGED_HELM_STATES = frozenset(
+    {
+        "uninstalling",
+        "pending-install",
+        "pending-upgrade",
+        "pending-rollback",
+        "failed",
+    }
+)
+
+
+def clear_wedged_release(
+    cmd, namespace: str, release_name: str, logger
+) -> tuple[bool, str | None]:
+    """Drop the newest record of a Helm release stuck in a state a re-apply
+    cannot recover from.
+
+    The record makes ``helmfile apply`` see the release as present, so
+    the apply no-ops and objects a failed install left out are never
+    retried. Removing only the newest record leaves the previous
+    revision the latest, so the next apply is a real upgrade from it.
+    Returns whether a record was removed, and the record itself so the
+    caller can put it back when the apply that follows fails before
+    writing a new one. Best-effort: failures are logged and left to the
+    apply below to surface.
+    """
+    status = cmd.helm(
+        "status",
+        release_name,
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
+        check=False,
+    )
+    if not status.success:
+        # a missing release is the common, healthy case
+        if "not found" not in (status.stderr or "").lower():
+            logger.log_warning(
+                f'Could not check Helm release "{release_name}" in '
+                f"{namespace}: {status.stderr}"
+            )
+        return False, None
+
+    try:
+        info = json.loads(status.stdout)
+    except ValueError, AttributeError:
+        return False, None
+    if not isinstance(info, dict):
+        return False, None
+
+    state = (info.get("info", {}) or {}).get("status", "")
+    if state not in WEDGED_HELM_STATES:
+        return False, None
+
+    revision = info.get("version") or 0
+    record = None
+    # an interrupted uninstall may have removed any subset of the objects;
+    # no record left behind can be trusted
+    if state == "uninstalling" or not revision:
+        delete_args = (
+            "delete",
+            "secret",
+            "-l",
+            f"owner=helm,name={release_name}",
+            "--ignore-not-found=true",
+        )
+        message = "clearing its release record(s) so the install can proceed."
+    else:
+        record_name = f"sh.helm.release.v1.{release_name}.v{revision}"
+        fetched = cmd.kube(
+            "get", "secret", record_name, "-o", "yaml", namespace=namespace, check=False
+        )
+        if fetched.success and fetched.stdout.strip():
+            record = fetched.stdout
+        delete_args = (
+            "delete",
+            "secret",
+            record_name,
+            "--ignore-not-found=true",
+        )
+        message = "dropping its newest release record so the install can proceed."
+    logger.log_warning(
+        f'Helm release "{release_name}" is stuck in state "{state}"; {message}'
+    )
+    cleared = cmd.kube(*delete_args, namespace=namespace, check=False)
+    if not cleared.success:
+        logger.log_warning(
+            f'Could not clear release "{release_name}" in {namespace}: {cleared.stderr}'
+        )
+        return False, None
+    return True, record
+
+
+def restore_release_record(
+    cmd, namespace: str, release_name: str, record: str, logger
+) -> None:
+    """Recreate a release record removed for a retry whose apply failed.
+
+    Without the record the next standup sees the previous revision as
+    deployed and the partly applied upgrade leaves no trace. Uses
+    ``create`` so the payload does not land in a last-applied annotation,
+    and a record helm already wrote back reads as the desired end state.
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+        tmp.write(record)
+        record_path = tmp.name
+    try:
+        restored = cmd.kube(
+            "create", "-f", record_path, namespace=namespace, check=False
+        )
+    finally:
+        Path(record_path).unlink(missing_ok=True)
+    if restored.success or "already exists" in (restored.stderr or "").lower():
+        logger.log_warning(
+            f"Apply failed; restored the failed release record of "
+            f'"{release_name}" in {namespace} so the next standup can '
+            "detect it"
+        )
+    else:
+        logger.log_warning(
+            f'Could not restore the release record of "{release_name}" '
+            f"in {namespace}: {restored.stderr}"
+        )
 
 
 def list_helm_releases(cmd, namespace: str, statuses: list[str]) -> list[dict] | None:
