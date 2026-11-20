@@ -304,6 +304,26 @@ class KustomizeDeployStep(Step):
                 context.logger.log_warning(
                     f"Monitoring apply failed (non-fatal): {result.stderr}"
                 )
+            # The guide's own monitoring commands (e.g. a PodMonitor for a
+            # component the shared recipe does not cover). Non-fatal, as above.
+            for gc in parsed.get_commands(CommandPhase.MONITORING):
+                if not gc.applies(resolver.variables):
+                    context.logger.log_info(
+                        f"Skipping monitoring step (only when {gc.describe_when()}): "
+                        f"{gc.raw[:80]}"
+                    )
+                    continue
+                result = self._run_resolved(
+                    cmd,
+                    resolver.resolve(gc.raw),
+                    check=False,
+                    context=context,
+                    phase="monitoring",
+                )
+                if not result.success:
+                    context.logger.log_warning(
+                        f"Monitoring step failed (non-fatal): {result.stderr}"
+                    )
 
         # --- 5. Wait ---
         context.logger.log_info(f"Waiting for pods (timeout={deploy_timeout}s)...")
@@ -321,6 +341,31 @@ class KustomizeDeployStep(Step):
                 "Pod readiness timeout",
                 context=context,
             )
+
+        # --- 5a. Coordinator (the router's HTTP front door) ---
+        # After the wait: the Coordinator calls back into the router and the
+        # model servers, so they must be Ready first.
+        for gc in parsed.get_commands(CommandPhase.COORDINATOR):
+            if not gc.applies(resolver.variables):
+                context.logger.log_info(
+                    f"Skipping coordinator step (only when {gc.describe_when()}): "
+                    f"{gc.raw[:80]}"
+                )
+                continue
+            result = self._run_resolved(
+                cmd,
+                resolver.resolve(gc.raw),
+                check=False,
+                context=context,
+                phase="coordinator",
+            )
+            if not result.success:
+                return self._fail(
+                    [f"Coordinator step failed: {result.stderr}"],
+                    stack_path,
+                    "Coordinator deployment failed",
+                    context=context,
+                )
 
         # --- 5b. Autoscaling (e.g. a KEDA ScaledObject) ---
         # After the wait: pods must be Ready before the autoscaler takes over.
