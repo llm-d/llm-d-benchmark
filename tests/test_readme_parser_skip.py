@@ -407,7 +407,7 @@ class TestGuideRenderedOnlyWhenGuard:
         assert cmds[1].describe_when() == "SIGNAL=queue or saturation"
         assert cmds[3].describe_when() == "SIGNAL=inflight and ENV=ocp"
 
-    def test_unparseable_guard_does_not_inherit_the_previous_one(self, tmp_path: Path):
+    def test_unparsable_guard_does_not_inherit_the_previous_one(self, tmp_path: Path):
         readme = """\
             # Prerequisites
 
