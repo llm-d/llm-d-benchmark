@@ -2123,7 +2123,7 @@ kustomize:
   gaieVersion: ""                    # GAIE CRD bundle version (auto-detected from README if empty)
   routerChartVersion: ""             # llm-d-router chart version (auto-detected from README; defaults to v0)
   acceleratorBackend: "gpu/vllm"     # Modelserver backend path
-  monitoring: false                  # Apply monitoring kustomize overlay
+  monitoring: false                  # Apply the monitoring kustomize overlay and the guide README's monitoring commands
   overlayPath: ""                    # Path to additional kustomize overlay directory
   extraHelmValues: []                # Extra -f args for helm install
   extraHelmSets: {}                  # Extra --set args for helm install
