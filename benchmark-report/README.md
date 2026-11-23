@@ -189,7 +189,7 @@ issues = br.validate(complete=True)  # also require scenario.load and scenario.s
 | `results-missing` | `results.request_performance` or `results.session_performance` is set |
 | `request-count-exceeds-total` | request `failures` and `incomplete` are not above `total` |
 | `session-count-exceeds-total` | `succeeded` and `failed` are not above the session `total`, completed and cancelled events not above `total_events` |
-| `negative-latency`, `negative-throughput` | no aggregate latency or throughput statistic is negative |
+| `negative-latency`, `negative-throughput` | no aggregate latency or throughput statistic, and no `session_duration` or `session_rate` statistic, is negative |
 | `incomplete-scenario-load`, `incomplete-scenario-stack` | with `complete=True` only: `scenario.load` is set and `scenario.stack` is not empty |
 
 An instance of `BenchmarkReport` may be created directly, for example:

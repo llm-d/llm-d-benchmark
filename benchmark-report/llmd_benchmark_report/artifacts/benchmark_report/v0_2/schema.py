@@ -1510,13 +1510,18 @@ def _check_count(
     return [_issue(rule, path, f"{value} is more than {total_path} ({total})")]
 
 
+# Checks the Statistics fields of group (all of them, or only those named in
+# metrics) for negative values.
 def _check_statistics(
-    rule: str, path: str, group: BaseModel | None
+    rule: str,
+    path: str,
+    group: BaseModel | None,
+    metrics: tuple[str, ...] | None = None,
 ) -> list[ValidationIssue]:
     issues = []
     if group is None:
         return issues
-    for metric in type(group).model_fields:
+    for metric in metrics or tuple(type(group).model_fields):
         stats = getattr(group, metric)
         if not isinstance(stats, Statistics):
             continue
@@ -1581,6 +1586,12 @@ def _check_results(results: Results) -> list[ValidationIssue]:
                 sessions.total_events,
                 f"{path}.total_events",
             )
+        issues += _check_statistics(
+            "negative-latency", path, sessions, ("session_duration",)
+        )
+        issues += _check_statistics(
+            "negative-throughput", path, sessions, ("session_rate",)
+        )
     return issues
 
 

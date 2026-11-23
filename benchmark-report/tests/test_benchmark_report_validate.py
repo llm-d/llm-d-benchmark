@@ -226,6 +226,30 @@ def test_negative_latency_and_throughput() -> None:
     ]
 
 
+# A session-only report with session_duration mean -3 s and session_rate mean -2
+# gives negative-latency and negative-throughput at those statistics. Negative
+# per-session counts like events_per_session are not latency or throughput.
+def test_negative_session_duration_and_rate() -> None:
+    data = _partial()
+    data["results"] = {
+        "session_performance": {
+            "sessions": {
+                "total": 4,
+                "session_duration": {"units": "s", "mean": -3},
+                "session_rate": {"units": "queries/s", "mean": -2},
+            }
+        }
+    }
+    issues = load_artifact(data).validate()
+    assert [(i.rule, i.path) for i in issues] == [
+        ("negative-latency", f"{SESSIONS}.session_duration.mean"),
+        ("negative-throughput", f"{SESSIONS}.session_rate.mean"),
+    ]
+    data["results"]["session_performance"]["sessions"]["session_duration"]["mean"] = 3
+    data["results"]["session_performance"]["sessions"]["session_rate"]["mean"] = 2
+    assert _rules(data) == []
+
+
 # Every numeric statistic of a latency metric is checked: a negative value at each
 # of mean, mode, min, the percentiles and max is reported at that field.
 def test_every_latency_statistic_is_checked() -> None:
