@@ -2126,8 +2126,8 @@ kustomize:
   acceleratorBackend: "gpu/vllm"     # Modelserver backend path
   monitoring: false                  # Apply the monitoring kustomize overlay and the guide README's monitoring commands
   overlayPath: ""                    # Path to additional kustomize overlay directory
-  extraHelmValues: []                # Extra -f args for helm install
-  extraHelmSets: {}                  # Extra --set args for helm install
+  extraHelmValues: []                # Extra -f args for helm install/upgrade; ${VAR} and guides/... resolve as in the README's commands (e.g. ${REPO_ROOT}/guides/<guide>/router/x.values.yaml)
+  extraHelmSets: {}                  # Extra --set args for helm install/upgrade; values resolve the same way
   guideVariableOverrides: {}         # Override/fill the guide README's ${VAR} values
   deployTimeout: 900                 # Seconds to wait for pods
   patches: []                        # Inline strategic merge patches (see below)
