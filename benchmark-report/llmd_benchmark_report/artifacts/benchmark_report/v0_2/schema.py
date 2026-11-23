@@ -1423,9 +1423,178 @@ class BenchmarkReportV02(BenchmarkReport, Artifact):
     results: Results
     """Experiment results."""
 
-    def validate(self) -> list[ValidationIssue]:  # type: ignore[override]
-        # the 0.2 rules still run as pydantic validators at load, #2098 moves them here
+    def validate(  # type: ignore[override]
+        self, *, complete: bool = False
+    ) -> list[ValidationIssue]:
+        """Check the rules the schema cannot express. Empty when the report passes.
+
+        The sanity rules always run. ``complete=True`` also requires the parts a
+        standalone producer may leave to a later merge (rules ``incomplete-*``),
+        so a partial report can be checked on its own.
+        """
+        # the unit rules still run as pydantic validators at load, #2098 moves them here
+        issues = _check_run_and_producer(self)
+        issues += _check_results(self.results)
+        if complete:
+            issues += _check_scenario(self.scenario)
+        return issues
+
+
+# ------------------------------------------------------------------------------
+# Rules for BenchmarkReportV02.validate()
+# ------------------------------------------------------------------------------
+
+# Every numeric field of Statistics; stddev is already ge=0 in the schema.
+_STATISTIC_VALUES = tuple(
+    name for name in Statistics.model_fields if name not in ("units", "stddev")
+)
+
+
+# A timestamp without an offset is read as UTC, so a report that mixes naive and
+# offset timestamps can still be ordered instead of raising TypeError.
+def _as_utc(value: datetime.datetime) -> datetime.datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value
+
+
+def _issue(rule: str, path: str, message: str) -> ValidationIssue:
+    return ValidationIssue(rule=rule, path=path, message=message)
+
+
+def _check_run_and_producer(report: BenchmarkReportV02) -> list[ValidationIssue]:
+    issues = []
+    time = report.run.time
+    start = time.start if time else None
+    end = time.end if time else None
+    if start is None:
+        issues.append(
+            _issue("run-time-missing", "run.time.start", "run start time is not set")
+        )
+    if end is None:
+        issues.append(
+            _issue("run-time-missing", "run.time.end", "run end time is not set")
+        )
+    if start is not None and end is not None and _as_utc(end) < _as_utc(start):
+        issues.append(
+            _issue(
+                "run-time-order",
+                "run.time.end",
+                f"run ends ({end.isoformat()}) before it starts ({start.isoformat()})",
+            )
+        )
+    if report.producer is None:
+        issues.append(
+            _issue(
+                "producer-missing", "producer", "producer name and version are not set"
+            )
+        )
+    else:
+        for field in ("name", "version"):
+            if not getattr(report.producer, field).strip():
+                issues.append(
+                    _issue(
+                        "producer-missing",
+                        f"producer.{field}",
+                        f"producer {field} is empty",
+                    )
+                )
+    return issues
+
+
+def _check_count(
+    rule: str, path: str, value: int | None, total: int | None, total_path: str
+) -> list[ValidationIssue]:
+    if value is None or total is None or value <= total:
         return []
+    return [_issue(rule, path, f"{value} is more than {total_path} ({total})")]
+
+
+def _check_statistics(
+    rule: str, path: str, group: BaseModel | None
+) -> list[ValidationIssue]:
+    issues = []
+    if group is None:
+        return issues
+    for metric in type(group).model_fields:
+        stats = getattr(group, metric)
+        if not isinstance(stats, Statistics):
+            continue
+        for name in _STATISTIC_VALUES:
+            value = getattr(stats, name)
+            if value is not None and value < 0:
+                issues.append(
+                    _issue(rule, f"{path}.{metric}.{name}", f"{value} is negative")
+                )
+    return issues
+
+
+def _check_results(results: Results) -> list[ValidationIssue]:
+    if results.request_performance is None and results.session_performance is None:
+        return [
+            _issue(
+                "results-missing",
+                "results",
+                "neither request_performance nor session_performance is set",
+            )
+        ]
+    issues = []
+    aggregate = (
+        results.request_performance.aggregate if results.request_performance else None
+    )
+    if aggregate is not None:
+        path = "results.request_performance.aggregate"
+        requests = aggregate.requests
+        if requests is not None:
+            for field in ("failures", "incomplete"):
+                issues += _check_count(
+                    "request-count-exceeds-total",
+                    f"{path}.requests.{field}",
+                    getattr(requests, field),
+                    requests.total,
+                    f"{path}.requests.total",
+                )
+        issues += _check_statistics(
+            "negative-latency", f"{path}.latency", aggregate.latency
+        )
+        issues += _check_statistics(
+            "negative-throughput", f"{path}.throughput", aggregate.throughput
+        )
+    sessions = (
+        results.session_performance.sessions if results.session_performance else None
+    )
+    if sessions is not None:
+        path = "results.session_performance.sessions"
+        for field in ("succeeded", "failed"):
+            issues += _check_count(
+                "session-count-exceeds-total",
+                f"{path}.{field}",
+                getattr(sessions, field),
+                sessions.total,
+                f"{path}.total",
+            )
+        for field in ("total_events_completed", "total_events_cancelled"):
+            issues += _check_count(
+                "session-count-exceeds-total",
+                f"{path}.{field}",
+                getattr(sessions, field),
+                sessions.total_events,
+                f"{path}.total_events",
+            )
+    return issues
+
+
+def _check_scenario(scenario: Scenario | None) -> list[ValidationIssue]:
+    issues = []
+    if scenario is None or scenario.load is None:
+        issues.append(
+            _issue("incomplete-scenario-load", "scenario.load", "workload is not set")
+        )
+    if scenario is None or not scenario.stack:
+        issues.append(
+            _issue("incomplete-scenario-stack", "scenario.stack", "stack is not set")
+        )
+    return issues
 
 
 # 0.2.1 used to be a separate subclass; the name stays for existing imports.
