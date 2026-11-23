@@ -412,43 +412,9 @@ def find_gateway_endpoint(
         (ip_or_hostname, gateway_name, port) -- port is '443' for HTTPS, '80' otherwise.
     """
     gateway_name = f"infra-{release}-inference-gateway"
-    gateway_port = "80"
-
-    result = cmd.kube(
-        "get",
-        "gateway",
-        gateway_name,
-        "--namespace",
-        namespace,
-        "-o",
-        "json",
-        check=False,
-    )
-    if result.success and result.stdout.strip():
-        try:
-            gw_data = json.loads(result.stdout)
-
-            managed_fields = gw_data.get("metadata", {}).get("managedFields", [])
-            for mf in managed_fields:
-                fields_v1 = mf.get("fieldsV1", {})
-                f_status = fields_v1.get("f:status", {})
-                f_listeners = f_status.get("f:listeners", {})
-                for key in f_listeners:
-                    if "https" in key.lower():
-                        gateway_port = "443"
-                        break
-
-            addresses = gw_data.get("status", {}).get("addresses", [])
-            for addr in addresses:
-                addr_type = addr.get("type", "")
-                value = addr.get("value", "")
-                if addr_type == "IPAddress" and value:
-                    return value, gateway_name, gateway_port
-                if addr_type == "Hostname" and value:
-                    return value, gateway_name, gateway_port
-
-        except json.JSONDecodeError, KeyError:
-            pass
+    _, address, gateway_port = _gateway_address(cmd, namespace, gateway_name)
+    if address:
+        return address, gateway_name, gateway_port
 
     # Fallback: try querying the service directly
     result = cmd.kube(
@@ -562,12 +528,69 @@ def extract_hf_token_from_secret(
     return None
 
 
+# The Gateway name kustomize guides deploy (README and docs/infrastructure/gateway).
+KUSTOMIZE_GATEWAY_NAME = "llm-d-inference-gateway"
+
+
+def _gateway_address(
+    cmd: CommandExecutor, namespace: str, gateway_name: str
+) -> tuple[bool, str | None, str]:
+    """Read a Gateway's address and port.
+
+    Returns ``(exists, address, port)``: ``address`` is the first ``IPAddress``
+    or ``Hostname`` in ``status.addresses`` (None while the Gateway has none),
+    and ``port`` is '443' when a listener is HTTPS, '80' otherwise.
+    """
+    gateway_port = "80"
+    result = cmd.kube(
+        "get",
+        "gateway",
+        gateway_name,
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
+        check=False,
+    )
+    if not (result.success and result.stdout.strip()):
+        return False, None, gateway_port
+    try:
+        gw_data = json.loads(result.stdout)
+    except json.JSONDecodeError, TypeError:
+        return False, None, gateway_port
+
+    for mf in gw_data.get("metadata", {}).get("managedFields", []) or []:
+        f_listeners = mf.get("fieldsV1", {}).get("f:status", {}).get("f:listeners", {})
+        if any("https" in key.lower() for key in f_listeners):
+            gateway_port = "443"
+            break
+
+    for addr in gw_data.get("status", {}).get("addresses", []) or []:
+        if addr.get("type", "") in ("IPAddress", "Hostname") and addr.get("value", ""):
+            return True, addr["value"], gateway_port
+    return True, None, gateway_port
+
+
 def find_kustomize_endpoint(
     cmd: CommandExecutor,
     namespace: str,
     guide_name: str,
 ) -> tuple[str | None, str | None, str]:
-    """Find the ``{guide_name}-epp`` service and pick the HTTP port."""
+    """Find the endpoint clients of a kustomize-deployed guide use.
+
+    A guide that runs the router in Gateway mode deploys the Gateway
+    ``llm-d-inference-gateway``; clients go through it (for coord-disaggregation,
+    to the Coordinator), and its EPP Service carries no model traffic. So the
+    Gateway's address is the endpoint when the Gateway exists; while it has no
+    address yet the endpoint is not ready (None). Without a Gateway (EPP-only
+    guides), the endpoint is the ``{guide_name}-epp`` Service and its HTTP port.
+    """
+    exists, address, gateway_port = _gateway_address(
+        cmd, namespace, KUSTOMIZE_GATEWAY_NAME
+    )
+    if exists:
+        return address, KUSTOMIZE_GATEWAY_NAME, gateway_port
+
     svc_name = f"{guide_name.split('/')[-1]}-epp"
     result = cmd.kube(
         "get",

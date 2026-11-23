@@ -17,6 +17,7 @@ from llmdbenchmark.kustomize.readme_parser import (
     DeployMode,
     parse_guide_readme,
 )
+from llmdbenchmark.utilities.endpoint import find_kustomize_endpoint
 from llmdbenchmark.kustomize.variable_resolver import (
     DEFAULT_ACCEL_BACKEND,
     GuideVariableResolver,
@@ -428,9 +429,7 @@ class KustomizeDeployStep(Step):
                 )
 
         # --- 6. Endpoint ---
-        epp_service = f"{guide_name.split('/')[-1]}-epp"
-        context.deployed_endpoints[stack_path.name] = epp_service
-        context.logger.log_info(f"Endpoint registered: {epp_service}")
+        self._register_endpoint(cmd, context, namespace, guide_name, stack_path.name)
 
         cmd.kube(
             "get", "deployment,service,pods", "--namespace", namespace, check=False
@@ -468,6 +467,26 @@ class KustomizeDeployStep(Step):
         "HUGGING_FACE_HUB_TOKEN",
     )
     _PLACEHOLDER_TOKENS = frozenset({"HF_TOKEN_PLACEHOLDER", ""})
+
+    @staticmethod
+    def _register_endpoint(
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        guide_name: str,
+        stack_name: str,
+    ) -> str:
+        """Register the endpoint clients of the guide use (the smoketest's target).
+
+        The same lookup as the run phase (``find_kustomize_endpoint``): the
+        guide's Gateway when it deploys one, otherwise ``{guide_name}-epp``. The
+        EPP name is also the fallback when nothing is found yet (dry run).
+        """
+        address, _, _ = find_kustomize_endpoint(cmd, namespace, guide_name)
+        endpoint = address or f"{guide_name.split('/')[-1]}-epp"
+        context.deployed_endpoints[stack_name] = endpoint
+        context.logger.log_info(f"Endpoint registered: {endpoint}")
+        return endpoint
 
     @classmethod
     def _scrub_secrets(cls, text: str) -> str:
