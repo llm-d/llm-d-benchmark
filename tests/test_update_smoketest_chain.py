@@ -140,11 +140,11 @@ class _Cmd:
 
     def helm(self, *args, **kwargs):
         self.helm_namespaces.append(args[args.index("--namespace") + 1])
-        return SimpleNamespace(success=self._helm_ok, stdout=self._releases)
+        return SimpleNamespace(success=self._helm_ok, stdout=self._releases, stderr="")
 
     def kube(self, *args, **kwargs):
         self.kube_calls.append(args)
-        return SimpleNamespace(success=True, stdout=self._probe)
+        return SimpleNamespace(success=True, stdout=self._probe, stderr="")
 
 
 def _ctx(cmd, *, stack_filter=None, methods=("modelservice",)):

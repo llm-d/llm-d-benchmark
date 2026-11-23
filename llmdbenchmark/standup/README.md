@@ -9,19 +9,20 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | Step | Name | Scope | Description |
 |------|------|-------|-------------|
 | 00 | `EnsureInfraStep` | global | Validate system dependencies (kubectl, helm, etc.) and print cluster summary banner |
+| 01 | `NonAdminPreflightStep` | global | With `--non-admin`, verify the invoking user's permissions (namespace exists, namespace-admin rights, the permissions the router chart grants, required CRDs) and print remediations before anything is deployed. Skipped in dry-run. |
 | 02 | `AdminPrerequisitesStep` | global | Install cluster-level admin prerequisites (CRDs, gateways, LeaderWorkerSet, SCCs) |
 | 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors). Installs WVA controller once per `wva.namespace` across all rendered stacks. |
-| 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ~ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. |
+| 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ~ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. With `--non-admin`, applies the namespace resources without the `Namespace` object (a namespace-level user cannot patch it) and, on non-OpenShift, without the OpenShift SCC RoleBindings; a refused SCC binding is a warning. The filtered manifests are kept under `<workspace>/setup/yamls/`. |
 | 05 | `FMADeployStep` | per-stack | Deploy FMA controllers |
 | 05 | `StandaloneDeployStep` | per-stack | Deploy vLLM as standalone Kubernetes Deployments and Services |
 | 05 | `KustomizeDeployStep` | per-stack | Replay an llm-d guide's README commands (kustomize method) |
 | 05 | `NoK8sDeployStep` | per-stack | Run vLLM/EPP/Envoy as plain containers (no Kubernetes) |
-| 06 | `DeploySetupStep` | per-stack | Set up Helm repos, stage the helmfile values files, and deploy gateway infrastructure for modelservice mode (the cluster-scoped gateway provider install is skipped with `--non-admin`) |
-| 07 | `DeployRouterStep` | per-stack | Deploy the llm-d router (EPP + provider resources); with `--non-admin`, router Prometheus monitoring and its cluster-scoped auth RBAC are disabled |
-| 08 | `DeployModelserviceStep` | per-stack | Deploy the model via the llm-d modelservice Helm chart |
+| 06 | `DeploySetupStep` | per-stack | Set up Helm repos, stage the helmfile values files, and deploy gateway infrastructure for modelservice mode (the cluster-scoped gateway provider install is skipped with `--non-admin`). Clears a wedged Helm release in the gateway namespace before the apply; if the apply then fails, the removed record is restored so the next run can detect it |
+| 07 | `DeployRouterStep` | per-stack | Deploy the llm-d router (EPP + provider resources); with `--non-admin`, router Prometheus monitoring and its cluster-scoped auth RBAC are disabled. Clears a wedged Helm release before the apply, with the same record restore |
+| 08 | `DeployModelserviceStep` | per-stack | Deploy the model via the llm-d modelservice Helm chart. Clears a wedged Helm release before the apply, with the same record restore |
 | 09 | `ExposeEndpointStep` | per-stack | Unless `externally_accessible: false`, expose the model Service outside the cluster: an OpenShift Route, or a detached `kubectl port-forward` on Kubernetes. Skipped for nok8s and FMA-only. |
 
-Note: Step 01 is intentionally absent (reserved). Smoketest and inference test run as a separate phase after standup, from the `llmdbenchmark.smoketests` module; `get_standup_steps()` no longer registers them. `step_10_smoketest.py` and `step_11_inference_test.py` are still on disk but unregistered -- only their helpers are still imported.
+Note: Smoketest and inference test run as a separate phase after standup, from the `llmdbenchmark.smoketests` module; `get_standup_steps()` no longer registers them. `step_10_smoketest.py` and `step_11_inference_test.py` are still on disk but unregistered -- only their helpers are still imported.
 
 Harness preparation (namespace, HF secret copy, preprocess ConfigMap, workload PVC, data-access pod) moved to the run phase (run step 02) — standup ends with the model endpoint serving and no benchmark-side resources. The one exception is the workload PVC when it holds the vLLM compile caches (`vllmCommon.cacheMountPath`, on by default): steps 05/08 create it before the serving pods, and fail when it is not ReadWriteMany. **Breaking:** step numbers 6–9 shifted down to 5–8; update any `-s` step selections.
 
@@ -187,6 +188,7 @@ standup/
 +-- steps/
     +-- __init__.py           -- Step registry (get_standup_steps)
     +-- step_00_ensure_infra.py
+    +-- step_01_non_admin_preflight.py
     +-- step_02_admin_prerequisites.py
     +-- step_03_workload_monitoring.py
     +-- step_04_model_namespace.py
