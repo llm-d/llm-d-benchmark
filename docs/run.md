@@ -272,6 +272,63 @@ llmdbenchmark run \
 Include the path prefix in the URL exactly as shown - the HTTPRoute
 rewrites it away before the request reaches vLLM.
 
+## Per-Band Traffic (Flow Control)
+
+`--per-band-traffic` launches one inference-perf instance per EPP
+flow-control priority band, so a single run exercises every traffic class
+at the same time. Each instance sends its requests with the
+`x-llm-d-inference-objective` header of the InferenceObjective that
+selects its band, and the instances run concurrently as one treatment
+group (`bands`) -- one harness pod per class, one result set per class.
+
+```bash
+llmdbenchmark run --spec <spec> --workspace <ws> -p <prefix> \
+  -l inference-perf --workload-file-path <base profile> \
+  --per-band-traffic
+```
+
+How the instances are discovered:
+
+- **Bands** are read from the rendered stack's EPP plugins config
+  (`modelservice.router.epp.pluginsCustomConfig`). Flow control must be
+  enabled (`featureGates: [flowControl]` with `flowControl.priorityBands`);
+  the run fails with a clear error otherwise.
+- **Class names** come from the InferenceObjective CRs in the workload
+  namespace (`kubectl get inferenceobjectives.llm-d.ai`). The header only
+  targets a band through an objective whose `spec.priority` selects it, so
+  objectives are the targetable classes. Apply the llm-d CRDs and define
+  one objective per band you want traffic in.
+- An objective whose priority matches no band is skipped with a warning,
+  and a band with no objective warns that no traffic can target it. The
+  default band gets one header-less instance only when it names an
+  explicit `priority` that nothing else covers.
+
+Every instance runs the same base workload profile. Use
+`--per-band-overrides <yaml>` to shape the classes differently -- most
+often to split the offered rate across bands:
+
+```yaml
+# bands.yaml
+premium:
+  load.stages.0.rate: 5
+besteffort:
+  load.stages.0.rate: 1
+```
+
+```bash
+llmdbenchmark run ... --per-band-traffic --per-band-overrides bands.yaml
+```
+
+`-o/--overrides` still applies, to every band instance. The objective
+header is always written last, so it cannot be overridden away.
+
+`--per-band-traffic` cannot be combined with an `--experiments` file that
+defines run treatments (`treatments:`/`run:`/`groups:`); setup-only
+experiment files are fine. Unless you pinned
+`--max-parallel-treatments`, the concurrency cap is raised to the number
+of band instances (up to the hard cap of 8). Env vars:
+`LLMDBENCH_PER_BAND_TRAFFIC`, `LLMDBENCH_PER_BAND_OVERRIDES`.
+
 ## Harnesses
 
 ### [inference-perf](https://github.com/kubernetes-sigs/inference-perf)

@@ -210,7 +210,9 @@ def _assign(container: Any, part: str, value: Any) -> bool:
 
 
 def apply_overrides(
-    profile_content: str, overrides: dict[str, Any]
+    profile_content: str,
+    overrides: dict[str, Any],
+    create_missing_parents: bool = False,
 ) -> tuple[str, list[str]]:
     """Apply dotted key=value overrides to a rendered YAML profile.
 
@@ -221,6 +223,12 @@ def apply_overrides(
     are override keys whose dotted path did not exist in the profile. The
     caller is expected to log a warning per unmatched key (see
     :func:`classify_override_miss` for a pre-built hint).
+
+    When *create_missing_parents* is True, a missing dict parent along the
+    path is created instead of unmatched-ing the key, so an override can
+    grow the profile (e.g. attach ``api.headers`` to a base profile that
+    has no headers block). List parents are never grown: an integer-looking
+    segment must still index an existing element.
 
     Falls back to ``(original_content, [])`` if YAML parsing fails.
     """
@@ -241,7 +249,15 @@ def apply_overrides(
             target = data
             parent_chain_intact = True
             for part in parts[:-1]:
-                target = _descend(target, part)
+                descended = _descend(target, part)
+                if (
+                    descended is _MISSING
+                    and create_missing_parents
+                    and isinstance(target, dict)
+                ):
+                    target[part] = {}
+                    descended = target[part]
+                target = descended
                 if target is _MISSING:
                     parent_chain_intact = False
                     break

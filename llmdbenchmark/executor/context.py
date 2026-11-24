@@ -103,6 +103,15 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     workload_file_path: str | None = None
     experiment_treatments_file: str | None = None
     profile_overrides: str | None = None
+    # --per-band-traffic: discover the EPP flow-control bands plus the
+    # InferenceObjectives that target them and run one workload treatment
+    # per band, all concurrent (see llmdbenchmark.experiment.bands).
+    per_band_traffic: bool = False
+    per_band_overrides_file: str | None = None
+    # Whether the operator pinned max_parallel_treatments by hand (CLI flag
+    # or experiments YAML); band mode may raise the cap to the instance
+    # count, but must never override an explicit choice.
+    max_parallel_treatments_explicit: bool = False
     harness_output: str = "local"
     harness_parallelism: int = 1
     harness_wait_timeout: int = 3600

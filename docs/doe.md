@@ -183,7 +183,7 @@ The benchmark supports parallelism at three levels:
 | Level | Flag | Description |
 |-------|------|-------------|
 | **Pod parallelism** | `-j/--parallelism` | Number of identical harness pods running the same workload profile concurrently. Useful for increasing aggregate load or reducing statistical variance. Each pod writes results to its own subdirectory (`<experiment_id>_1`, `<experiment_id>_2`, etc.). |
-| **Treatment parallelism** | (sequential) | Run treatments within a setup cycle execute sequentially. Each treatment waits for the previous to complete before starting. |
+| **Treatment parallelism** | (sequential) | Run treatments within a setup cycle execute sequentially. Each treatment waits for the previous to complete before starting. Treatments placed in one `groups:` entry, and the band-generated instances of `run --per-band-traffic` (see [run.md](run.md#per-band-traffic-flow-control)), run side by side instead. |
 | **Setup parallelism** | `--parallel N` | Maximum number of stacks to deploy in parallel during standalone `standup` (not used during `experiment`, which processes setup treatments sequentially to avoid resource contention). |
 
 Pod parallelism is the most commonly used level. With `-j 4`, four harness pods are created simultaneously, each executing the same workload profile. Results from all pods are collected and can be analyzed together for statistical significance.

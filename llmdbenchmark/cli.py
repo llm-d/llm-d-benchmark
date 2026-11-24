@@ -1278,6 +1278,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     from llmdbenchmark.experiment.parser import (
         MAX_PARALLEL_TREATMENTS_CAP,
         RUN_CONTROL_DEFAULTS,
+        parse_experiment,
         read_reset_caches,
         read_run_controls,
         read_treatment_groups,
@@ -1329,6 +1330,24 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
             f"from the largest group"
         )
 
+    # --per-band-traffic generates its own run treatments from the EPP
+    # flow-control bands, so an experiments file that also defines run
+    # treatments (flat treatments:/run: lists or groups) would race it for
+    # the same step-05 branch. Setup-only experiment files are fine: their
+    # setup treatments stand up stacks, and the bands supply the run side.
+    per_band_traffic = bool(getattr(args, "per_band_traffic", False))
+    if per_band_traffic and experiments_file:
+        try:
+            _run_count = parse_experiment(Path(experiments_file)).run_treatments_count
+        except (OSError, ValueError, _yaml.YAMLError) as exc:
+            raise PhaseError(f"Invalid experiment file: {exc}") from exc
+        if _run_count > 0:
+            raise PhaseError(
+                "--per-band-traffic generates its own treatments; it cannot "
+                "be combined with an --experiments file that defines run "
+                "treatments (treatments:/run:/groups)."
+            )
+
     context = ExecutionContext(
         plan_dir=config.plan_dir,
         workspace=config.workspace,
@@ -1377,6 +1396,13 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         validate_failures=validate_failures,
         treatment_groups=_groups,
         max_parallel_treatments=max_parallel_treatments,
+        per_band_traffic=per_band_traffic,
+        per_band_overrides_file=getattr(args, "per_band_overrides", None),
+        max_parallel_treatments_explicit=(
+            _cli_max_parallel is not None
+            or _run_controls["max_parallel_treatments"]
+            != RUN_CONTROL_DEFAULTS["max_parallel_treatments"]
+        ),
         harness_service_account=getattr(args, "serviceaccount", None),
         harness_envvars_to_pod=getattr(args, "envvarspod", None),
         endpoint_url=endpoint_url,
@@ -2224,6 +2250,11 @@ def _log_env_overrides(logger, args):
         ),
         "LLMDBENCH_EXPERIMENTS": ("experiments", "--experiments"),
         "LLMDBENCH_OVERRIDES": ("overrides", "--overrides"),
+        "LLMDBENCH_PER_BAND_TRAFFIC": ("per_band_traffic", "--per-band-traffic"),
+        "LLMDBENCH_PER_BAND_OVERRIDES": (
+            "per_band_overrides",
+            "--per-band-overrides",
+        ),
         "LLMDBENCH_SET": ("set_overrides", "--set"),
         "LLMDBENCH_OUTPUT": ("output", "--output"),
         "LLMDBENCH_PARALLELISM": ("parallelism", "--parallelism"),
