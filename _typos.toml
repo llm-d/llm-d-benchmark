@@ -17,6 +17,10 @@ extend-ignore-re = [
 ]
 
 [default.extend-words]
+# `unparseable` is a normal English word used in a test name; the checker
+# flags it, so accept it explicitly (see #2194)
+unparseable = "unparseable"
+
 # Deliberate misspellings fed to the config schema by
 # tests/test_config_schema.py::TestTypoDetection to assert that
 # `extra="forbid"` rejects unknown keys. Correcting these turns them into
