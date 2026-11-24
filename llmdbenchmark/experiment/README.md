@@ -117,6 +117,16 @@ Notes and limits:
   scheduling, so the first seconds of the faster-starting member are
   uncontended. Over runs of minutes that is noise.
 
+### Band-Generated Groups
+
+`run --per-band-traffic` (see [docs/run.md](../../docs/run.md#per-band-traffic-flow-control))
+generates its own group instead of reading one from an experiment file: one
+treatment per EPP flow-control priority band, discovered from the stack's EPP
+plugins config plus the InferenceObjectives on the cluster. The generated
+treatments flow through exactly the same group lifecycle as the hand-written
+`groups:` block above -- one pod and one result set per member, `bands` as the
+group name -- so every note and limit listed here applies to them too.
+
 ### Matrix
 
 The total experiment matrix is `setup_treatments x run_treatments`. For example, 3 setup treatments and 4 run treatments produce 12 total runs.

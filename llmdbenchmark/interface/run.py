@@ -209,6 +209,33 @@ def add_subcommands(
         ),
     )
     run_parser.add_argument(
+        "--per-band-traffic",
+        action="store_true",
+        default=env_bool("LLMDBENCH_PER_BAND_TRAFFIC"),
+        help=(
+            "Launch one harness instance per EPP flow-control priority band, "
+            "discovered from the scenario's EPP plugins config plus the "
+            "InferenceObjectives in the workload namespace. Each instance "
+            "sends its requests with the matching x-llm-d-inference-objective "
+            "header, so its traffic lands in that band. Instances run "
+            "concurrently as one treatment group. Requires flow control to be "
+            "enabled on the stack and InferenceObjective CRs the headers can "
+            "resolve through. Cannot be combined with --experiments run "
+            "treatments (env: LLMDBENCH_PER_BAND_TRAFFIC). Default: off."
+        ),
+    )
+    run_parser.add_argument(
+        "--per-band-overrides",
+        default=env("LLMDBENCH_PER_BAND_OVERRIDES"),
+        help=(
+            "Optional YAML file mapping a band instance name (an "
+            "InferenceObjective name, or 'default' for the default band) to "
+            "dotted profile overrides applied only to that band's instance -- "
+            "e.g. to split the offered rate across classes. Only used with "
+            "--per-band-traffic (env: LLMDBENCH_PER_BAND_OVERRIDES)."
+        ),
+    )
+    run_parser.add_argument(
         "-x",
         "--dataset",
         default=env("LLMDBENCH_DATASET"),

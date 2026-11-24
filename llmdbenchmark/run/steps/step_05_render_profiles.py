@@ -10,8 +10,20 @@ import yaml
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.experiment.parser import (
+    MAX_PARALLEL_TREATMENTS_CAP,
+    TreatmentGroup,
     groups_from_treatments,
     read_treatment_groups,
+)
+from llmdbenchmark.experiment.bands import (
+    BAND_GROUP_NAME,
+    OBJECTIVE_HEADER_KEY,
+    build_band_treatments,
+    extract_flow_control,
+    find_endpoint_picker_config,
+    list_inference_objectives,
+    load_per_band_overrides,
+    pair_bands_with_objectives,
 )
 from llmdbenchmark.parser.cli_overrides import (
     coerce_value,
@@ -24,6 +36,28 @@ from llmdbenchmark.utilities.profile_renderer import (
     apply_overrides,
     classify_override_miss,
 )
+
+
+def _parse_cli_overrides(context: ExecutionContext) -> dict[str, Any]:
+    """Parse the ``-o/--overrides`` flag into flat dotted-key overrides.
+
+    Shared by the plain single-treatment path and the per-band path, so
+    ``-o`` shapes every band instance the same way. Values are parsed as
+    YAML, same as ``--set``.
+    """
+    overrides: dict[str, Any] = {}
+    if not context.profile_overrides:
+        return overrides
+    for pair in split_override_pairs(context.profile_overrides):
+        if "=" not in pair:
+            continue
+        key, value = pair.split("=", 1)
+        coerced = coerce_value(value)
+        warning = surprising_coercion(value, coerced)
+        if warning:
+            context.logger.log_warning(f"-o {key.strip()}: {warning}")
+        overrides[key.strip()] = coerced
+    return overrides
 
 
 class RenderProfilesStep(Step):
@@ -172,8 +206,20 @@ class RenderProfilesStep(Step):
                 if src_file.is_file() and not src_file.name.endswith(".yaml.in"):
                     shutil.copy2(src_file, output_dir / src_file.name)
 
-        # Determine treatments
-        treatments = self._resolve_treatments(context, plan_config)
+        # Determine treatments. Band discovery fails as a step error (not
+        # an exception) so the message reaches the run report.
+        try:
+            treatments = self._resolve_treatments(context, plan_config)
+        except ValueError as exc:
+            errors.append(str(exc))
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="Treatments could not be resolved",
+                errors=errors,
+                stack_name=stack_name,
+            )
 
         if not treatments:
             # Single default treatment -- render the profile as-is
@@ -236,13 +282,26 @@ class RenderProfilesStep(Step):
 
                 render_profile_file(source_file, dest_file, env_map)
 
-                # Apply treatment-specific overrides
+                # Apply treatment-specific overrides. Band-generated
+                # treatments may grow the profile (a base profile without
+                # an api.headers block), and their objective header must
+                # land or the instance would silently target the default
+                # band -- so a miss there is a hard error, not a warning.
                 if treatment_overrides:
                     rendered_content = dest_file.read_text(encoding="utf-8")
                     overridden, unmatched = apply_overrides(
-                        rendered_content, treatment_overrides
+                        rendered_content,
+                        treatment_overrides,
+                        create_missing_parents=bool(treatment.get("band")),
                     )
                     dest_file.write_text(overridden, encoding="utf-8")
+                    if treatment.get("band") and OBJECTIVE_HEADER_KEY in unmatched:
+                        errors.append(
+                            f"Treatment '{treatment_name}': the objective "
+                            f"header override '{OBJECTIVE_HEADER_KEY}' did "
+                            f"not land in the profile; refusing to run an "
+                            f"instance that cannot target its band."
+                        )
                     # Surface silent no-ops: a treatment override whose parent
                     # path doesn't exist in the workload profile (most often a
                     # plan-level field like decode.replicas or
@@ -384,6 +443,12 @@ class RenderProfilesStep(Step):
         """
         treatments: list[dict] = []
 
+        # --per-band-traffic generates its own treatments from the EPP
+        # flow-control bands; it cannot be combined with the sources below
+        # (cli.py rejects an experiments file with run treatments already).
+        if getattr(context, "per_band_traffic", False):
+            return self._resolve_band_treatments(context, plan_config)
+
         # --experiments file takes precedence
         if context.experiment_treatments_file:
             groups = read_treatment_groups(context.experiment_treatments_file)
@@ -427,16 +492,7 @@ class RenderProfilesStep(Step):
         # --overrides creates a single treatment. Values are parsed as YAML,
         # same as --set, so a map or list value works too.
         if context.profile_overrides:
-            overrides: dict[str, Any] = {}
-            for pair in split_override_pairs(context.profile_overrides):
-                if "=" not in pair:
-                    continue
-                key, value = pair.split("=", 1)
-                coerced = coerce_value(value)
-                warning = surprising_coercion(value, coerced)
-                if warning:
-                    context.logger.log_warning(f"-o {key.strip()}: {warning}")
-                overrides[key.strip()] = coerced
+            overrides = _parse_cli_overrides(context)
             if overrides:
                 treatments.append(
                     {
@@ -448,3 +504,91 @@ class RenderProfilesStep(Step):
 
         # No explicit treatments
         return []
+
+    def _resolve_band_treatments(
+        self, context: ExecutionContext, plan_config: dict | None
+    ) -> list[dict]:
+        """Build one workload treatment per EPP flow-control band.
+
+        Bands come from the rendered stack's EPP plugins config; the
+        targetable class names come from the InferenceObjectives on the
+        cluster. Both layers meet in
+        :mod:`llmdbenchmark.experiment.bands`; this method wires the result
+        into the regular treatment machinery (one group, concurrent pods,
+        ``max_parallel_treatments`` raised to the instance count unless the
+        operator pinned it).
+        """
+        picker = find_endpoint_picker_config(plan_config)
+        bands = extract_flow_control(picker) if picker is not None else None
+        if picker is not None and bands is None:
+            raise ValueError(
+                "--per-band-traffic: flow control is not enabled in this "
+                "stack's EPP configuration (no flowControl feature gate or "
+                "no priorityBands). Per-band traffic needs flow control."
+            )
+        if picker is None:
+            context.logger.log_warning(
+                "--per-band-traffic: no EPP plugins config found in the "
+                "rendered stack (run-only mode?); discovering objectives "
+                "without cross-checking bands."
+            )
+
+        namespace = context.namespace or (plan_config or {}).get("namespace", {}).get(
+            "name"
+        )
+        objectives = list_inference_objectives(context.cmd, namespace)
+        instances, warnings = pair_bands_with_objectives(bands, objectives)
+        for warning in warnings:
+            context.logger.log_warning(f"--per-band-traffic: {warning}")
+
+        try:
+            per_band = load_per_band_overrides(
+                getattr(context, "per_band_overrides_file", None)
+            )
+        except ValueError as exc:
+            raise ValueError(f"--per-band-traffic: {exc}") from exc
+
+        treatments, errors = build_band_treatments(
+            instances, _parse_cli_overrides(context), per_band
+        )
+        if errors:
+            raise ValueError("--per-band-traffic: " + "; ".join(errors))
+        if not treatments:
+            raise ValueError(
+                "--per-band-traffic: no band instances were discovered. "
+                "Define flow-control priorityBands in the EPP config and "
+                "InferenceObjective CRs whose spec.priority selects them "
+                "(the x-llm-d-inference-objective header resolves through "
+                "those CRs)."
+            )
+
+        context.treatment_groups = [
+            TreatmentGroup(name=BAND_GROUP_NAME, treatments=treatments)
+        ]
+        if (
+            not context.max_parallel_treatments_explicit
+            and context.max_parallel_treatments < len(treatments)
+        ):
+            context.max_parallel_treatments = min(
+                MAX_PARALLEL_TREATMENTS_CAP, len(treatments)
+            )
+            context.logger.log_info(
+                f"max_parallel_treatments raised to "
+                f"{context.max_parallel_treatments} for the "
+                f"{len(treatments)} band instance(s)"
+            )
+        if len(treatments) > MAX_PARALLEL_TREATMENTS_CAP:
+            raise ValueError(
+                f"--per-band-traffic: discovered {len(treatments)} band "
+                f"instances but the concurrency cap is "
+                f"{MAX_PARALLEL_TREATMENTS_CAP}; the instances would "
+                f"serialize and stop being concurrent. Reduce the number "
+                f"of bands/objectives or raise the cap."
+            )
+
+        summary = ", ".join(
+            f"{instance.treatment_name} (priority {instance.band_priority})"
+            for instance in instances
+        )
+        context.logger.log_info(f"Per-band traffic instances: {summary}")
+        return treatments
