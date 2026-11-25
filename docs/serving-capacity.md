@@ -38,7 +38,8 @@ SERVING_CAPACITY=1.8 (stage 2, 1 replica(s))
 What the target does:
 
 1. **Holds the pool at `REPLICAS`** (default 1). It pauses every ScaledObject in the namespace with
-   `autoscaling.keda.sh/paused-replicas`, waits until that many `llm-d.ai/role=decode` pods are Ready,
+   `autoscaling.keda.sh/paused-replicas`, waits until that many model-server pods (`llm-d.ai/role`
+   `decode` or `prefill-decode`) are Ready,
    and removes the pause on exit. It fails if the Ready count changes during the run.
 2. **Waits for the pool to drain.** In-flight requests left by a previous run read as capacity the
    pod does not have: the ladder's first stage measures the leftover queue, not the pod. The target

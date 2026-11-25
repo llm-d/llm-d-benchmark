@@ -16,6 +16,39 @@ from json import JSONDecodeError, loads
 _MISSING_RESOURCE = "the server doesn't have a resource type"
 
 
+def _selector_terms(selector: str) -> list[str]:
+    """Split a label selector on the commas outside ``in (...)`` value sets."""
+    terms, current, depth = [], [], 0
+    for char in selector:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            terms.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    terms.append("".join(current))
+    return [t.strip() for t in terms if t.strip()]
+
+
+def selector_matches(labels: dict[str, str], selector: str) -> bool:
+    """True when *labels* satisfy every ``k=v`` and ``k in (a,b)`` term of
+    *selector*. Any other term form does not match."""
+    for term in _selector_terms(selector):
+        key, sep, values = term.partition(" in ")
+        if sep:
+            allowed = {v.strip() for v in values.strip().strip("()").split(",")}
+            if labels.get(key.strip()) not in allowed:
+                return False
+            continue
+        key, sep, value = term.partition("=")
+        if not sep or labels.get(key) != value:
+            return False
+    return True
+
+
 @dataclass(frozen=True)
 class ScaleTarget:
     """An autoscaled workload together with its live replica state."""
@@ -40,12 +73,8 @@ class ScaleTarget:
         return self.min_replicas == 0 and self.current_replicas == 0
 
     def matches(self, selector: str) -> bool:
-        """True when this workload's pods carry every ``k=v`` in *selector*."""
-        for term in filter(None, (t.strip() for t in selector.split(","))):
-            key, sep, value = term.partition("=")
-            if not sep or self.pod_labels.get(key) != value:
-                return False
-        return True
+        """True when this workload's pods satisfy every term in *selector*."""
+        return selector_matches(self.pod_labels, selector)
 
     def describe(self) -> str:
         current = "?" if self.current_replicas is None else self.current_replicas

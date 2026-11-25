@@ -414,9 +414,9 @@ calibrate-peak-decode: check-kubectl ## Measure peakDecodeThroughput with a deco
 	  echo "❌ usage: make calibrate-peak-decode NAMESPACE=<ns> SPEC=<spec> [RATES=0.5,1,2,4] [TPOT_TARGET=0.1]"; exit 1; }
 	@set -e; \
 	NS="$(NAMESPACE)"; WS=$$(mktemp -d); \
-	decode_replicas() { kubectl get pods -n "$$NS" -l llm-d.ai/role=decode --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' '; }; \
+	decode_replicas() { kubectl get pods -n "$$NS" -l 'llm-d.ai/role in (decode,prefill-decode)' --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' '; }; \
 	BEFORE=$$(decode_replicas); \
-	test "$$BEFORE" -ge 1 || { echo "❌ no running llm-d.ai/role=decode pods in ns/$$NS"; exit 2; }; \
+	test "$$BEFORE" -ge 1 || { echo "❌ no running decode or prefill-decode pods in ns/$$NS"; exit 2; }; \
 	STAGES=$$(echo "$(RATES)" | tr ',' '\n' | awk -v d=$(STAGE_SECONDS) 'NF{printf "%s{rate: %s, duration: %s}", (n++ ? ", " : ""), $$1, d}'); \
 	echo "▶️  random_decode_heavy at $(RATES) req/s, $(STAGE_SECONDS)s each, against $$BEFORE decode replica(s)"; \
 	$(LLMDBENCH) --spec "$(SPEC)" --ws "$$WS" run -p "$$NS" -l inference-perf -w random_decode_heavy.yaml \
@@ -464,11 +464,11 @@ calibrate-serving-capacity: check-kubectl ## Measure R, the SLO-bounded req/s on
 	  kubectl annotate -n "$$NS" "$$so" autoscaling.keda.sh/paused-replicas=$(REPLICAS) --overwrite >/dev/null; done; \
 	trap 'for so in $$PAUSED; do kubectl annotate -n "$$NS" "$$so" autoscaling.keda.sh/paused-replicas- >/dev/null 2>&1 || true; done' EXIT; \
 	test -z "$$PAUSED" || echo "🅿️  paused $$(echo $$PAUSED | wc -w | tr -d ' ') ScaledObject(s) at $(REPLICAS) replica(s) for the measurement"; \
-	ready() { kubectl get pods -n "$$NS" -l llm-d.ai/role=decode --field-selector=status.phase=Running \
+	ready() { kubectl get pods -n "$$NS" -l 'llm-d.ai/role in (decode,prefill-decode)' --field-selector=status.phase=Running \
 	  -o jsonpath='{range .items[*]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null | grep -c True || true; }; \
 	for i in $$(seq 1 120); do [ "$$(ready)" = "$(REPLICAS)" ] && break; sleep 10; done; \
 	BEFORE=$$(ready); \
-	test "$$BEFORE" = "$(REPLICAS)" || { echo "❌ expected $(REPLICAS) Ready llm-d.ai/role=decode pod(s) in ns/$$NS, found $$BEFORE"; exit 2; }; \
+	test "$$BEFORE" = "$(REPLICAS)" || { echo "❌ expected $(REPLICAS) Ready decode or prefill-decode pod(s) in ns/$$NS, found $$BEFORE"; exit 2; }; \
 	PY=$$(head -1 "$$(command -v $(LLMDBENCH))" | sed 's/^#!//'); \
 	"$$PY" -m llmdbenchmark.run.pool_drain check --namespace "$$NS" --timeout "$(DRAIN_TIMEOUT_S)" || exit 4; \
 	STAGES=$$(echo "$(R_RATES)" | tr ',' '\n' | awk -v d=$(R_STAGE_SECONDS) 'NF{printf "%s{rate: %s, duration: %s}", (n++ ? ", " : ""), $$1, d}'); \
@@ -526,10 +526,10 @@ pending-aware-standup: check-kubectl ## Turn on pending-aware scaling (R-based d
 	  echo "   restarting $$EPP so the router's in-flight gauges start at 0 (they can carry over from the calibration)"; \
 	  kubectl rollout restart -n "$$NS" "$$EPP" >/dev/null; kubectl rollout status -n "$$NS" "$$EPP" --timeout=600s >/dev/null; \
 	fi; \
-	ready() { kubectl get pods -n "$$NS" -l llm-d.ai/role=decode --field-selector=status.phase=Running \
+	ready() { kubectl get pods -n "$$NS" -l 'llm-d.ai/role in (decode,prefill-decode)' --field-selector=status.phase=Running \
 	  -o jsonpath='{range .items[*]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null | grep -c True || true; }; \
 	for i in $$(seq 1 60); do [ "$$(ready)" -ge 1 ] && break; sleep 10; done; \
-	[ "$$(ready)" -ge 1 ] || { echo "❌ no Ready llm-d.ai/role=decode pod in ns/$$NS after 10 min"; exit 3; }; \
+	[ "$$(ready)" -ge 1 ] || { echo "❌ no Ready decode or prefill-decode pod in ns/$$NS after 10 min"; exit 3; }; \
 	echo "▶️  standup with pendingAware=true, servingCapacity=$$R"; \
 	$(LLMDBENCH) --spec "$(SPEC)" standup -p "$$NS" \
 	  --set eppKedaSaturation.scaledObject.pendingAware=true \
