@@ -1533,6 +1533,8 @@ Renders one or more `ScaledObject` resources from a user-defined list. Works on 
 
 > **Note:** KEDA's `secretTargetRef` does not support cross-namespace Secret references. The Secret must be in the same namespace as the ScaledObject.
 
+> **Note:** In `bearer-secret` mode, when a Prometheus CA is found, the bearer token is minted from the ServiceAccount `keda.prometheus.saName` (default `keda-prometheus-auth`), which is created in the deploy namespace if it does not exist (the kustomize path skips the step that creates it on the modelservice path). Its read access to Prometheus is cluster-scoped and is not created: grant it before standup (on OpenShift, for example, a ClusterRoleBinding of `cluster-monitoring-view` to `<namespace>:keda-prometheus-auth`), or KEDA's queries get 403.
+
 #### `keda.scaledObjects` — list of ScaledObjects to create
 
 Each entry in the list produces one `ScaledObject`. The list is empty by default (no ScaledObjects rendered).

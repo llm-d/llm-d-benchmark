@@ -65,6 +65,8 @@ def install_keda_for_namespace(
         sa_name = prometheus_cfg.get("saName", "keda-prometheus-auth")
 
         if prom_ca_cert:
+            if not _ensure_service_account(cmd, context, namespace, sa_name, errors):
+                return
             create_prometheus_auth_secret(
                 cmd=cmd,
                 context=context,
@@ -107,6 +109,39 @@ def install_keda_for_namespace(
         errors.append(
             f"Failed to apply keda ScaledObjects in ns/{namespace}: {result.stderr}"
         )
+
+
+def _ensure_service_account(
+    cmd: CommandExecutor,
+    context: ExecutionContext,
+    namespace: str,
+    sa_name: str,
+    errors: list,
+) -> bool:
+    """Create the ServiceAccount the bearer token is minted from, if missing.
+
+    On the modelservice path step 2 (admin prerequisites) creates it, but the
+    kustomize path skips steps 2-4 unless ``--full-infra`` is given, so the
+    token mint failed with ``serviceaccounts "<sa_name>" not found``. The
+    ServiceAccount is namespace-scoped and nothing else creates it there, so it
+    is created here. Its read access to Thanos (for example a ClusterRoleBinding
+    to ``cluster-monitoring-view``) is cluster-scoped and stays an admin step.
+    """
+    if cmd.kube("get", "serviceaccount", sa_name, "-n", namespace, check=False).success:
+        return True
+    result = cmd.kube("create", "serviceaccount", sa_name, "-n", namespace, check=False)
+    if not result.success:
+        errors.append(
+            f"Failed to create ServiceAccount/{sa_name} in ns/{namespace}: {result.stderr}"
+        )
+        return False
+    context.logger.log_info(
+        f"Created ServiceAccount/{sa_name} in ns/{namespace} for KEDA bearer-secret "
+        "auth. It still needs read access to the Thanos querier (an admin step, for "
+        f"example a ClusterRoleBinding of cluster-monitoring-view to "
+        f"{namespace}:{sa_name}); without it KEDA's queries get 403."
+    )
+    return True
 
 
 def _find_yaml(stack_path: Path, stem_prefix: str) -> Path | None:

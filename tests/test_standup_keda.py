@@ -640,3 +640,109 @@ class TestApplyKedaStackResources:
 
         assert len(errors) == 1
         assert "forbidden" in errors[0]
+
+
+# ---------------------------------------------------------------------------
+# Tests: install_keda_for_namespace ensures the bearer-token ServiceAccount
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _ServiceAccountStubCmd(_TokenMintingStubCmd):
+    """Like a cluster: `create token` fails until the ServiceAccount exists."""
+
+    sa_exists: bool = False
+
+    def kube(self, *args: str, **kw: Any) -> _StubResult:
+        if args[:2] == ("get", "serviceaccount"):
+            self.kube_calls.append(args)
+            return _StubResult(
+                success=self.sa_exists, stderr="" if self.sa_exists else "NotFound"
+            )
+        if args[:2] == ("create", "serviceaccount"):
+            self.kube_calls.append(args)
+            self.sa_exists = True
+            return _StubResult(success=True)
+        if args[:2] == ("create", "token") and not self.sa_exists:
+            self.kube_calls.append(args)
+            return _StubResult(
+                success=False, stderr=f'serviceaccounts "{args[2]}" not found'
+            )
+        return super().kube(*args, **kw)
+
+
+def _bearer_stack(tmp_path: Path) -> Path:
+    stack = _write_stack(
+        tmp_path,
+        "s1",
+        cfg={
+            "keda": {
+                "prometheus": {"authMode": "bearer-secret", "secretName": "my-secret"},
+                "scaledObjects": [{"name": "x"}],
+            }
+        },
+    )
+    _write_ta_template(stack, "test-ns", "my-secret")
+    _write_so_template(stack)
+    return stack
+
+
+class TestInstallKedaEnsuresServiceAccount:
+    """The kustomize path skips step 2, which creates the ServiceAccount on the
+    modelservice path, so the token mint failed with `serviceaccounts
+    "keda-prometheus-auth" not found`."""
+
+    def test_missing_service_account_is_created_before_the_token(
+        self, tmp_path: Path
+    ) -> None:
+        cmd, ctx, errors = _ServiceAccountStubCmd(), _StubContext(), []
+        install_keda_for_namespace(
+            cmd,
+            ctx,
+            _bearer_stack(tmp_path),
+            "test-ns",
+            errors,
+            prom_ca_cert="FAKE-CA-CERT",
+        )
+        assert errors == []
+        verbs = [a[:2] for a in cmd.kube_calls]
+        assert ("create", "serviceaccount") in verbs
+        assert verbs.index(("create", "serviceaccount")) < verbs.index(
+            ("create", "token")
+        )
+        create = next(
+            a for a in cmd.kube_calls if a[:2] == ("create", "serviceaccount")
+        )
+        assert create[2] == "keda-prometheus-auth" and "test-ns" in create
+        assert any(
+            "keda-prometheus-auth" in m and "Thanos" in m for m in ctx.logger.messages
+        )
+
+    def test_existing_service_account_is_left_alone(self, tmp_path: Path) -> None:
+        cmd, ctx, errors = _ServiceAccountStubCmd(sa_exists=True), _StubContext(), []
+        install_keda_for_namespace(
+            cmd,
+            ctx,
+            _bearer_stack(tmp_path),
+            "test-ns",
+            errors,
+            prom_ca_cert="FAKE-CA-CERT",
+        )
+        assert errors == []
+        assert ("create", "serviceaccount") not in [a[:2] for a in cmd.kube_calls]
+
+    def test_auth_mode_none_touches_no_service_account(self, tmp_path: Path) -> None:
+        stack = _write_stack(
+            tmp_path,
+            "s1",
+            cfg={
+                "keda": {
+                    "prometheus": {"authMode": "none"},
+                    "scaledObjects": [{"name": "x"}],
+                }
+            },
+        )
+        _write_so_template(stack)
+        cmd, errors = _ServiceAccountStubCmd(), []
+        install_keda_for_namespace(cmd, _StubContext(), stack, "test-ns", errors)
+        assert not [a for a in cmd.kube_calls if a[1:2] == ("serviceaccount",)]
