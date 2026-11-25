@@ -2,6 +2,7 @@
 
 import base64
 import json
+import shlex
 import time
 from pathlib import Path
 
@@ -288,11 +289,7 @@ class BaseSmoketest:
         zeroed_roles: list[str] = []
         for pod_type, role_label in roles_to_check:
             if is_kustomize and guide_name:
-                role_selector = (
-                    f"llm-d.ai/guide={guide_name.split('/')[-1]}"
-                    if role_label is None
-                    else f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role={role_label}"
-                )
+                role_selector = guide_role_selector(guide_name, role_label)
             else:
                 role_selector = (
                     f"llm-d.ai/model={model_id_label},llm-d.ai/role={role_label}"
@@ -304,7 +301,7 @@ class BaseSmoketest:
                 "get",
                 "pods",
                 "-l",
-                role_selector,
+                shlex.quote(role_selector),
                 "--namespace",
                 namespace,
                 "-o",
@@ -370,7 +367,7 @@ class BaseSmoketest:
                             "get",
                             "pods",
                             "-l",
-                            role_selector,
+                            shlex.quote(role_selector),
                             "--namespace",
                             namespace,
                             "--no-headers",
@@ -576,7 +573,7 @@ class BaseSmoketest:
             pod_ips_result = None
         else:
             if is_kustomize and guide_name:
-                primary_selector = f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role={primary_role[1]}"
+                primary_selector = guide_role_selector(guide_name, primary_role[1])
             else:
                 primary_selector = (
                     f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
@@ -585,7 +582,7 @@ class BaseSmoketest:
                 "get",
                 "pods",
                 "-l",
-                primary_selector,
+                shlex.quote(primary_selector),
                 "--namespace",
                 namespace,
                 "-o",
@@ -976,7 +973,7 @@ class BaseSmoketest:
             "get",
             "pods",
             "-l",
-            selector,
+            shlex.quote(selector),
             "--namespace",
             namespace,
             "-o",
@@ -1333,9 +1330,7 @@ class BaseSmoketest:
         guide_name = _nested_get(config, "kustomize", "guideName") or ""
 
         if is_kustomize and guide_name:
-            role_selector = (
-                f"llm-d.ai/guide={guide_name.split('/')[-1]},llm-d.ai/role={role}"
-            )
+            role_selector = guide_role_selector(guide_name, role)
         else:
             role_selector = f"llm-d.ai/model={model_short},llm-d.ai/role={role}"
 
@@ -2049,7 +2044,7 @@ class BaseSmoketest:
                     f"wait via `harness.smoketest.modelReadyTimeout: 3600` "
                     f"in your scenario, or check the model-server logs:\n"
                     f"  kubectl logs -n {namespace} "
-                    f"-l llm-d.ai/role=decode -c vllm --tail=100"
+                    f"-l 'llm-d.ai/role in (decode,prefill-decode)' -c vllm --tail=100"
                 )
                 context.logger.log_error(err)
                 return err
@@ -2707,6 +2702,26 @@ class BaseSmoketest:
         protocol = "https" if tls_termination else "http"
 
         return f"{protocol}://{route_host}/{model_id_label}{endpoint}"
+
+
+# llm-d guides label a model server that serves both phases
+# llm-d.ai/role=prefill-decode (llm-d/llm-d#3101); earlier guides labeled it
+# decode. P/D decode workers keep decode and no prefill-decode pods run beside
+# them, so matching both selects the same pods there.
+GUIDE_DECODE_ROLES = ("decode", "prefill-decode")
+
+
+def guide_role_selector(guide_name: str, role: str | None) -> str:
+    """Label selector for a kustomize guide's pods of *role*; None for any role.
+
+    A decode check matches every role in GUIDE_DECODE_ROLES.
+    """
+    selector = f"llm-d.ai/guide={guide_name.split('/')[-1]}"
+    if role is None:
+        return selector
+    if role == "decode":
+        return f"{selector},llm-d.ai/role in ({','.join(GUIDE_DECODE_ROLES)})"
+    return f"{selector},llm-d.ai/role={role}"
 
 
 def _model_id_label(plan_config: dict) -> str:
