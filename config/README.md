@@ -1738,6 +1738,12 @@ per-replica load and latency are higher than they would be at the demanded size,
 so treat demand as an upper bound. Sizing needs OpenShift's Thanos Querier and
 platform kube-state-metrics, the same as the rest of this path.
 
+Each ScaledObject is read back from the cluster, not taken from the plan `run`
+renders for itself. A stack stood up with `--set eppKedaSaturation.dryRun=true`
+is therefore reported as dry-run, with its real target, even when `run` is not
+given the same `--set`. If the cluster's copy cannot be read, step 09a logs a
+warning and sizes the rendered copy instead.
+
 The peak can be set by a single 15 s sample. Each row in `autoscaling-sizing.json`
 also has `demand.p95`: the replica count demand stays at or under for at least 95%
 of the samples (nearest rank). A static pool of that size covers the sustained
