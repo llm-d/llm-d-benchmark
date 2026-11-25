@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 
 
 _VAR_RE = re.compile(r"\$\{(\w+)\}")
 _RELATIVE_GUIDE_PATH = re.compile(r"(?<!\S)(guides/\S+)")
+# An `envsubst` stage of a shell pipeline (`... | envsubst | ...`).
+_ENVSUBST_STAGE = re.compile(r"(\|\s*)(envsubst)\b")
+_SHELL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 # The overlay selector the guide README ships by default. Every consumer that
 # needs a fallback backend must reference this rather than re-typing the
@@ -140,7 +144,34 @@ class GuideVariableResolver:
         result = self._substitute_variables(command)
         result = self._absolutise_paths(result)
         result = self._apply_accelerator_backend(result)
+        result = self._export_to_envsubst(result)
         return result
+
+    def _export_to_envsubst(self, text: str) -> str:
+        """Give each ``| envsubst`` stage the guide variables as assignments.
+
+        The command text is substituted here, but ``envsubst`` fills the
+        ``${VAR}`` placeholders of the manifests piped into it from its own
+        environment, which never had the guide's variables exported. Prefix the
+        stage with ``VAR=value`` for every variable whose value resolves fully.
+        A value that still holds a ``${...}`` reference or a command
+        substitution (``$(...)``, backticks) is left out, so ``envsubst`` treats
+        it as before (unset); values are single-quoted, never evaluated.
+        """
+        if not _ENVSUBST_STAGE.search(text):
+            return text
+        assignments = []
+        for name in sorted(self._variables):
+            if not _SHELL_NAME.match(name):
+                continue
+            value = self._substitute_variables(self._variables[name])
+            if _VAR_RE.search(value) or "$(" in value or "`" in value:
+                continue
+            assignments.append(f"{name}={shlex.quote(value)}")
+        if not assignments:
+            return text
+        prefix = " ".join(assignments)
+        return _ENVSUBST_STAGE.sub(lambda m: f"{m.group(1)}{prefix} {m.group(2)}", text)
 
     # ------------------------------------------------------------------
 
