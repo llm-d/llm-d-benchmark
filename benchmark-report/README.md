@@ -174,6 +174,24 @@ print(br_yaml_str)
 br.export_yaml("br_test.yaml")
 ```
 
+A loaded report also checks the rules the schema cannot express with `validate()`. It returns a list of `ValidationIssue(rule, path, message)` and never raises, so a producer or CI job decides whether a non-empty list fails the run:
+
+```python
+issues = br.validate()  # sanity rules only, safe for partial reports
+issues = br.validate(complete=True)  # also require scenario.load and scenario.stack
+```
+
+| Rule | Checks |
+| --- | --- |
+| `run-time-missing` | `run.time.start` and `run.time.end` are set |
+| `run-time-order` | `run.time.end` is not before `run.time.start` |
+| `producer-missing` | `producer.name` and `producer.version` are set and not blank |
+| `results-missing` | `results.request_performance` or `results.session_performance` is set |
+| `request-count-exceeds-total` | request `failures` and `incomplete` are not above `total` |
+| `session-count-exceeds-total` | `succeeded` and `failed` are not above the session `total`, completed and cancelled events not above `total_events` |
+| `negative-latency`, `negative-throughput` | no aggregate latency or throughput statistic, and no `session_duration` or `session_rate` statistic, is negative |
+| `incomplete-scenario-load`, `incomplete-scenario-stack` | with `complete=True` only: `scenario.load` is set and `scenario.stack` is not empty |
+
 An instance of `BenchmarkReport` may be created directly, for example:
 
 ```python

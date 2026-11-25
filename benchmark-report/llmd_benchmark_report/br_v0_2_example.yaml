@@ -24,6 +24,10 @@ run: # These are details on the benchmark run that produced these results
     - latency
     - qwen3
 
+producer: # Tool that wrote this benchmark report
+  name: llm-d-benchmark
+  version: 1.0.0
+
 # System inputs, combination of component configurations and workload
 scenario:
   stack:
