@@ -101,7 +101,7 @@ _anchors:
 
   # General versions
   istio_version:                     &istio_version                     1.30.6
-  agentgateway_version:              &agentgateway_version              v1.6.0
+  agentgateway_version:              &agentgateway_version              v1.7.0
   lws_version:                       &lws_version                       v1.0.0
 
   # GAIE CRDs are still installed from the gateway-api-inference-extension
